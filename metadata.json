@@ -1,0 +1,10 @@
+{
+  "name": "Horizon HR",
+  "description": "Enterprise-grade multi-tenant HR progressive web application focusing on core operational systems including biometric geofenced clock-ins and native workflows.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

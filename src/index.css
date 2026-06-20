@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Geist", "SF Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Deep Emerald & Slate Corporate Theme */
+  --color-horizon-dark: #020617; /* slate-950 */
+  --color-horizon-panel: #0f172a; /* slate-900 */
+  --color-horizon-emerald: #10b981; /* emerald-500 */
+  --color-horizon-emerald-deep: #064e3b; /* emerald-900 */
+  --color-horizon-alert: #ef4444; /* red-500 */
+}
+
+@layer base {
+  :root {
+    --bg-primary: #f8fafc;
+    --text-primary: #0f172a;
+    --panel-border: #e2e8f0;
+  }
+  
+  .dark {
+    --bg-primary: #020617;
+    --text-primary: #f8fafc;
+    --panel-border: #1e293b;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* RTL Support Enhancements */
+  [dir="rtl"] {
+    font-family: "Inter", "Tajawal", "SF Pro", sans-serif;
+  }
+}
