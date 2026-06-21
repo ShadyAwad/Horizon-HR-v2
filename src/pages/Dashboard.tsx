@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Settings2
+  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -45,8 +45,19 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [clockInState, setClockInState] = useState<'idle' | 'locating' | 'verifying' | 'success' | 'failed'>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
+
+  const [isDark, setIsDark] = useState(() =>
+  document.documentElement.classList.contains('dark')
+);
+
+const toggleTheme = () => {
+  const next = !isDark;
+  setIsDark(next);
+  document.documentElement.classList.toggle('dark', next);
+};
+
   const geo = useGeolocation();
+
   const { t, lang, setLang, isRtl } = useLanguage();
 
   const handleClockIn = async () => {
@@ -157,26 +168,45 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             {/* Locale Toggle & Theme Toggle */}
             <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-lg shrink-0 shadow-sm">
               <span className={cn("hidden md:inline-block text-xs font-semibold text-slate-500 uppercase tracking-widest", isRtl ? "ml-2" : "mr-2")}>{t('dash.core')}</span>
-              <button 
-                  onClick={() => document.documentElement.classList.toggle('dark')} 
-                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors mr-2 border-r border-slate-200 dark:border-slate-700 pr-2"
-                  title="Toggle Light/Dark Mode"
-              >
-                  <Settings2 className="w-4 h-4" />
-              </button>
-              <button 
-                  onClick={() => setLang('en')} 
-                  className={cn("text-xs font-bold transition-colors", lang === 'en' ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300")}
-              >
-                  EN-US
-              </button>
-              <div className="w-px h-3 bg-slate-200 dark:bg-slate-700"></div>
-              <button 
-                  onClick={() => setLang('ar')} 
-                  className={cn("text-xs font-bold transition-colors", lang === 'ar' ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300")}
-              >
-                  AR-AE
-              </button>
+
+              <button
+  onClick={toggleTheme}
+  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-all duration-150 active:scale-90 hover:scale-105"
+  title="Toggle Light/Dark Mode"
+>
+  {isDark ? (
+    <Moon className="w-4 h-4" />
+  ) : (
+    <Sun className="w-4 h-4" />
+  )}
+</button>
+<button 
+  type="button"
+  onClick={() => setLang('en')} 
+  className={cn(
+    "text-xs font-bold transition-colors",
+    lang === 'en'
+      ? "text-emerald-600 dark:text-emerald-400"
+      : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300"
+  )}
+>
+  EN-US
+</button>
+
+<div className="w-px h-3 bg-slate-200 dark:bg-slate-700"></div>
+
+<button 
+  type="button"
+  onClick={() => setLang('ar')} 
+  className={cn(
+    "text-xs font-bold transition-colors",
+    lang === 'ar'
+      ? "text-emerald-600 dark:text-emerald-400"
+      : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300"
+  )}
+>
+  AR-AE
+</button>
             </div>
 
             {/* Profile Element */}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect , useLayoutEffect } from 'react';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Signup } from './pages/Signup';
@@ -7,10 +7,9 @@ import { LanguageProvider } from './lib/LanguageContext';
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
 
-  useEffect(() => {
-    // Add dark mode by default to showcase the deep emerald aesthetic
-    document.documentElement.classList.add('dark');
-  }, []);
+useLayoutEffect(() => {
+  document.documentElement.classList.add('dark');
+}, []);
 
   return (
     <LanguageProvider>
