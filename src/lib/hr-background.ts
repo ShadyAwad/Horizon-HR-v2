@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import { Pool, type PoolClient } from 'pg';
 
+
 export const HR_QUEUE_NAME = 'hr-queue';
 
 const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
@@ -17,7 +18,7 @@ let dbPool: Pool | undefined;
 export type AuditLogJobData = {
   tenantId: string;
   actorEmployeeId?: string | null;
-  action: 'clock_in' | 'leave_requested' | 'leave_status_changed' | string;
+  action: 'clock_in' | 'clock_out' | 'leave_requested' | 'leave_status_changed' | string;
   entityType: 'time_log' | 'leave_request' | string;
   entityId?: string | null;
   metadata?: Record<string, unknown>;

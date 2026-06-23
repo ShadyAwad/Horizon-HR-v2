@@ -180,6 +180,91 @@ async function startServer() {
     });
   });
 
+  app.post('/api/clock-out', async (req, res) => {
+  const { tenantId, employeeId } = req.body;
+
+  if (!tenantId || !employeeId) {
+    return res.status(400).json({
+      error: 'tenantId and employeeId are required',
+    });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({
+      error: 'DATABASE_URL is required for clock-out',
+    });
+  }
+
+  try {
+    const clockOutTime = new Date();
+
+    const updatedLog = await withTenant(tenantId, async (client) => {
+      const result = await client.query<{
+        id: string;
+        clock_in_time: Date;
+        clock_out_time: Date;
+      }>(
+        `
+          UPDATE time_logs
+          SET
+            clock_out_time = $3,
+            updated_at = NOW()
+          WHERE tenant_id = $1
+            AND employee_id = $2
+            AND clock_out_time IS NULL
+          RETURNING id, clock_in_time, clock_out_time
+        `,
+        [tenantId, employeeId, clockOutTime],
+      );
+
+      return result.rows[0];
+    });
+
+    if (!updatedLog) {
+      return res.status(404).json({
+        error: 'No open shift found for this employee',
+      });
+    }
+
+    const workDate = toWorkDate(new Date(updatedLog.clock_in_time));
+
+    await Promise.all([
+      enqueueBestEffort(
+        'attendance rollup',
+        () => enqueueAttendanceRollup({ tenantId, employeeId, workDate }),
+      ),
+      enqueueBestEffort(
+        'clock-out audit log',
+        () => enqueueAuditLog({
+          tenantId,
+          actorEmployeeId: employeeId,
+          action: 'clock_out',
+          entityType: 'time_log',
+          entityId: updatedLog.id,
+          metadata: {
+            clockInTime: updatedLog.clock_in_time,
+            clockOutTime: updatedLog.clock_out_time,
+            workDate,
+          },
+        }),
+      ),
+    ]);
+
+    res.json({
+      success: true,
+      timeLogId: updatedLog.id,
+      clockedOut: updatedLog.clock_out_time,
+      message: 'Clock-out recorded successfully.',
+    });
+  } catch (error) {
+    console.error('[Clock-Out] Failed to record clock-out:', error);
+
+    res.status(500).json({
+      error: 'Unable to record clock-out',
+    });
+  }
+});
+
   app.post('/api/leave-requests', async (req, res) => {
     const { tenantId, employeeId, startDate, endDate, reason } = req.body;
 
