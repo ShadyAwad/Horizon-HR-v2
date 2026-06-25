@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
@@ -32,6 +33,12 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  console.log('[ENV DEBUG]', {
+    cwd: process.cwd(),
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    databaseUrlStart: process.env.DATABASE_URL?.slice(0, 35),
+  });
 
   app.use(express.json());
 

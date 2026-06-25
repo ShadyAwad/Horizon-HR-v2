@@ -78,7 +78,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       const cy = height / 2;
 
       // Solid background filling to optimize canvas operations
-      ctx.fillStyle = isDark ? '#020617' : '#f8fafc';
+      ctx.fillStyle = '#020403';
       ctx.fillRect(0, 0, width, height);
 
       const maxRadius = Math.max(width, height) * 0.8;
@@ -131,10 +131,10 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
         ctx.closePath();
 
         // Theme palette color mappings
-        let rVal = isDark ? 15 : 226; 
-        let gVal = isDark ? 23 : 232;
-        let bVal = isDark ? 42 : 240; 
-        let globalAlpha = 0.4 - (rIdx / ringsCount) * 0.3; 
+let rVal = 16;
+let gVal = 185;
+let bVal = 129;
+let globalAlpha = 0.16 - (rIdx / ringsCount) * 0.11;
 
         if (isPulsing) {
           const distToPulse = Math.abs(ringBaseR - pulseRadius);

@@ -8,19 +8,20 @@ import { FingerprintCanvas } from '../components/FingerprintCanvas';
 // For map demonstration purposes
 const InteractiveMap = ({ lat, lng, radius, setLat, setLng, setRadius }: any) => {
   return (
-    <div className="relative w-full h-[250px] bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col items-center justify-center font-mono text-xs">
-      {/* Mock Map Grid */}
+<div className="relative w-full h-[250px] bg-[#04110d]/80 rounded-xl border border-emerald-500/15 overflow-hidden flex flex-col items-center justify-center font-mono text-xs">      {/* Mock Map Grid */}
       <div className="absolute inset-0 opacity-20 dark:opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, #888 1px, transparent 1px), linear-gradient(to bottom, #888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       
-      <Globe className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-2" />
-      <span className="text-slate-500 dark:text-slate-400 mb-4 tracking-widest uppercase font-bold">Interactive Geo-Fence Configurator</span>
+      <Globe className="w-16 h-16 text-emerald-500/25 mb-2" />
+<span className="text-emerald-100/50 mb-4 tracking-widest uppercase font-bold">
+  Interactive Geo-Fence Configurator
+</span>
       
       <div className="z-10 flex gap-2">
-         <div className="flex flex-col gap-1 items-center bg-white/80 dark:bg-slate-950/80 p-2 rounded border border-slate-200 dark:border-slate-800 shadow-sm backdrop-blur-sm">
+         <div className="flex flex-col gap-1 items-center bg-black/35 p-2 rounded border border-emerald-500/15 shadow-sm backdrop-blur-sm">
            <span className="text-emerald-500 uppercase">Latitude</span>
            <input type="number" step="0.001" value={lat} onChange={e => setLat(Number(e.target.value))} className="w-20 bg-transparent text-center focus:outline-none dark:text-slate-200 font-bold" />
          </div>
-         <div className="flex flex-col gap-1 items-center bg-white/80 dark:bg-slate-950/80 p-2 rounded border border-slate-200 dark:border-slate-800 shadow-sm backdrop-blur-sm">
+         <div className="flex flex-col gap-1 items-center bg-black/35 p-2 rounded border border-emerald-500/15 shadow-sm backdrop-blur-sm">
            <span className="text-emerald-500 uppercase">Longitude</span>
            <input type="number" step="0.001" value={lng} onChange={e => setLng(Number(e.target.value))} className="w-20 bg-transparent text-center focus:outline-none dark:text-slate-200 font-bold" />
          </div>
@@ -97,29 +98,26 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   };
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020617] overflow-hidden font-sans transition-colors duration-300">
-      
+<div className="relative min-h-screen w-full flex items-center justify-center bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      
       <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => { if(isSubmitting) onSignupComplete(); }} />
 
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/80 dark:bg-[#0a1a17]/80 backdrop-blur-xl border border-slate-200 dark:border-emerald-900/50 rounded-2xl shadow-2xl"
-      >
+className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdrop-blur-xl border border-emerald-500/15 rounded-2xl shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
         <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-              <Building2 className="w-6 h-6" />
+<div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">              <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t('signup.title')}</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{t('signup.subtitle')}</p>
+<h1 className="text-2xl font-bold tracking-tight text-white">{t('signup.title')}</h1>
+<p className="text-sm text-emerald-100/55">{t('signup.subtitle')}</p>
             </div>
           </div>
           
           <div className="flex gap-2">
             {[1, 2, 3].map(i => (
-              <div key={i} className={cn("w-3 h-3 rounded-full transition-all", step >= i ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-200 dark:bg-slate-800")} />
+              <div key={i} className={cn("w-3 h-3 rounded-full transition-all", step >= i ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-emerald-950/60 border border-emerald-500/10")} />
             ))}
           </div>
         </div>
@@ -132,23 +130,35 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1">{t('signup.companyName')}</label>
-                    <input required name="companyName" value={formData.companyName} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-bold dark:text-white", isRtl && "text-right")} />
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.companyName')}</label>
+                    <input required name="companyName" value={formData.companyName} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  isRtl && "text-right"
+)} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1">{t('signup.tenantSlug')}</label>
-                    <input required name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-mono text-emerald-600 dark:text-emerald-400", isRtl && "text-right")} />
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.tenantSlug')}</label>
+                    <input required name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  isRtl && "text-right"
+)} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1">{t('signup.adminEmail')}</label>
-                    <input type="email" required name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-mono dark:text-white", isRtl && "text-right")} />
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.adminEmail')}</label>
+                    <input type="email" required name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  isRtl && "text-right"
+)} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1">{t('signup.adminPass')}</label>
-                    <input type="password" required name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-mono dark:text-white", isRtl && "text-right")} />
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
+                    <input type="password" required name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  isRtl && "text-right"
+)} />
                   </div>
                 </div>
               </motion.div>
@@ -160,8 +170,11 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1 flex items-center gap-2"><Wallet className="w-4 h-4"/>{t('signup.currency')}</label>
-                    <select name="currency" value={formData.currency} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-mono font-bold dark:text-white", isRtl && "text-right")}>
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1 flex items-center gap-2"><Wallet className="w-4 h-4"/>{t('signup.currency')}</label>
+                    <select name="currency" value={formData.currency} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 transition-all",
+  isRtl && "text-right"
+)}>
                       <option value="USD">USD ($)</option>
                       <option value="EUR">EUR (€)</option>
                       <option value="GBP">GBP (£)</option>
@@ -172,8 +185,11 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase px-1">{t('signup.capacity')}</label>
-                    <select name="capacity" value={formData.capacity} onChange={handleChange} className={cn("w-full bg-slate-50 dark:bg-[#020617]/50 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-500 font-mono dark:text-white", isRtl && "text-right")}>
+                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.capacity')}</label>
+                    <select name="capacity" value={formData.capacity} onChange={handleChange} className={cn(
+  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 transition-all",
+  isRtl && "text-right"
+)}>
                       <option value="1-50">1 - 50</option>
                       <option value="50-100">50 - 100</option>
                       <option value="100-500">100 - 500</option>
@@ -183,7 +199,7 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                 </div>
 
                 <div className="pt-4">
-                  <label className="flex items-center gap-3 p-4 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-[#020617]/30 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                  <label className="flex items-center gap-3 p-4 border border-emerald-500/15 rounded-xl bg-[#04110d]/60 cursor-pointer hover:border-emerald-500/50 transition-colors">
                     <div className="relative flex items-center justify-center">
                       <input type="checkbox" name="allowsLoans" checked={formData.allowsLoans} onChange={handleChange} className="sr-only" />
                       <div className={cn("w-6 h-6 rounded border flex items-center justify-center transition-colors", formData.allowsLoans ? "bg-emerald-500 border-emerald-500" : "bg-transparent border-slate-300 dark:border-slate-600")}>
@@ -191,8 +207,8 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                       </div>
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">{t('signup.loans')}</h3>
-                      <p className="text-xs text-slate-500">Enable advanced payroll deductions and standard corporate loan requests.</p>
+                      <h3 className="font-bold text-sm text-white">{t('signup.loans')}</h3>
+<p className="text-xs text-emerald-100/45">Enable payroll deductions and standard corporate loan requests.</p>
                     </div>
                   </label>
                 </div>
@@ -210,8 +226,8 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
                   setRadius={(val: number) => setFormData(p => ({ ...p, radius: val }))}
                 />
 
-                <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl">
-                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest hover:text-emerald-500 transition-colors">
+                <div className="mt-4 p-4 bg-[#04110d]/60 border border-emerald-500/15 rounded-xl">
+                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-emerald-100/55 uppercase tracking-widest hover:text-emerald-400 transition-colors">
                     <Settings2 className="w-4 h-4"/> Advanced Spatial Parameters
                   </button>
                   <AnimatePresence>
@@ -232,11 +248,10 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
           </AnimatePresence>
 
           {/* Navigation Buttons */}
-          <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800">
-             <button 
+<div className="flex items-center justify-between pt-6 border-t border-emerald-500/10">             <button 
                type="button" 
                onClick={prevStep}
-               className={cn("px-4 py-2 font-bold text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-2 uppercase tracking-widest", step === 1 && "invisible")}
+               className={cn("px-4 py-2 font-bold text-sm text-emerald-100/45 hover:text-emerald-300 transition-colors flex items-center gap-2 uppercase tracking-widest", step === 1 && "invisible")}
              >
                <ArrowLeft className="w-4 h-4" /> {t('signup.back')}
              </button>
@@ -268,7 +283,7 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
         </form>
 
         <div className="mt-6 text-center">
-            <button onClick={onNavigateLogin} className="text-[10px] font-bold text-slate-400 hover:text-emerald-500 tracking-widest uppercase transition-colors">
+            <button onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-100/45 hover:text-emerald-400 tracking-widest uppercase transition-colors">
               {t('signup.login')}
             </button>
         </div>

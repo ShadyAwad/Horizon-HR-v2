@@ -114,21 +114,74 @@ const toggleTheme = () => {
   ];
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-200 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
-      
-      {/* Background Rings */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none z-0 overflow-hidden hidden md:block">
-        <svg className="w-full h-full object-cover" viewBox="0 0 1024 768" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-          <path className="stroke-emerald-500" d="M512 100C300 100 100 300 100 512M512 150C340 150 180 310 180 482M512 200C380 200 260 320 260 452" strokeWidth="1.5" strokeDasharray="10 5" />
-          <circle cx="512" cy="512" r="400" className="stroke-emerald-300 dark:stroke-emerald-900" strokeWidth="0.5" />
-          <circle cx="512" cy="512" r="350" className="stroke-emerald-300 dark:stroke-emerald-900" strokeWidth="0.5" />
-          <circle cx="512" cy="512" r="300" className="stroke-emerald-300 dark:stroke-emerald-900" strokeWidth="0.5" />
-        </svg>
-      </div>
+<div className="min-h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
+{/* Background Atmosphere */}
+<div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+  {/* Light mode base */}
+  <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fafc_0%,#ecfdf5_45%,#f8fafc_100%)] dark:hidden" />
+
+  {/* Dark mode base */}
+  <div className="absolute inset-0 hidden dark:block bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_38%),linear-gradient(180deg,#020403_0%,#03100b_52%,#020403_100%)]" />
+
+  {/* Light mode topography */}
+  <div
+    className="absolute inset-0 bg-emerald-700/10 opacity-50 dark:hidden"
+    style={{
+      WebkitMaskImage: "url('/topography.svg')",
+      maskImage: "url('/topography.svg')",
+      WebkitMaskRepeat: 'repeat',
+      maskRepeat: 'repeat',
+      WebkitMaskSize: '520px 520px',
+      maskSize: '520px 520px',
+      WebkitMaskPosition: 'center',
+      maskPosition: 'center',
+    }}
+  />
+
+  {/* Dark mode topography */}
+  <div
+    className="absolute inset-0 hidden bg-emerald-400/20 opacity-35 dark:block"
+    style={{
+      WebkitMaskImage: "url('/topography.svg')",
+      maskImage: "url('/topography.svg')",
+      WebkitMaskRepeat: 'repeat',
+      maskRepeat: 'repeat',
+      WebkitMaskSize: '520px 520px',
+      maskSize: '520px 520px',
+      WebkitMaskPosition: 'center',
+      maskPosition: 'center',
+    }}
+  />
+
+  {/* Light mode soft glows */}
+  <div className="absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full bg-emerald-300/20 blur-3xl dark:hidden" />
+  <div className="absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full bg-emerald-200/25 blur-3xl dark:hidden" />
+
+  {/* Dark mode soft glows */}
+  <div className="absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl dark:block" />
+  <div className="absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full bg-emerald-400/5 blur-3xl dark:block" />
+
+  {/* Dark mode vignette only */}
+  <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
+</div>
 
       {/* Sidebar Navigation */}
-      <aside className={cn("w-full md:w-20 md:h-full bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md border-b md:border-b-0 md:border-r border-slate-200 dark:border-emerald-900/40 flex md:flex-col items-center py-4 md:py-8 px-6 md:px-0 gap-6 md:gap-10 z-20 shrink-0", isRtl ? "md:border-l md:border-r-0" : "md:border-r")}>
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+<aside
+  className={cn(
+    "w-full md:w-20",
+    "bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md",
+    "border border-slate-200 dark:border-emerald-900/40",
+    "flex md:flex-col items-center",
+    "py-4 md:py-8 px-6 md:px-0 gap-6 md:gap-10",
+    "z-20 shrink-0",
+    "m-4",
+    "rounded-3xl",
+    "shadow-xl",
+    "transition-all duration-300",
+    "self-start",
+    isRtl ? "md:border-l" : "md:border-r"
+  )}
+>       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]">
           <Fingerprint className="w-6 h-6 md:w-8 md:h-8 text-white dark:text-[#020617]" />
         </div>
         <nav className="flex md:flex-col gap-4 md:gap-6 w-full items-center justify-center md:justify-start">
@@ -231,7 +284,7 @@ const toggleTheme = () => {
             <div className="flex-1 space-y-6 max-w-full">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden md:flex items-center gap-2 mb-2 border-b border-slate-200 dark:border-emerald-900/40 pb-4">
+                <div className="hidden md:flex items-center gap-2 mb-2">
                     <button 
                        onClick={() => setActiveTab('geofence')}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'geofence' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
@@ -434,8 +487,7 @@ const toggleTheme = () => {
             {/* Sidebar (Right) / Stats & Insights */}
             <div className="w-full xl:w-80 flex flex-col gap-6 shrink-0 z-10">
                  {/* Replaced Org CTE Box with something more fitting or just Advanced Params */}
-                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl flex-1 max-h-[300px]">
-                    <button 
+<div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl h-fit overflow-hidden">                    <button 
                         onClick={() => setShowAdvanced(!showAdvanced)}
                         className="flex items-center justify-between w-full group"
                     >
@@ -472,8 +524,7 @@ const toggleTheme = () => {
                  </div>
 
                  {/* Active Managers Pill (Bottom) */}
-                 <div className="hidden xl:flex bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 backdrop-blur-xl px-4 py-3 rounded-full items-center gap-3 shadow-xl w-fit">
-                    <div className="flex -space-x-2">
+<div className="hidden xl:flex relative z-20 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 backdrop-blur-xl px-4 py-3 rounded-full items-center gap-3 shadow-xl w-fit">                    <div className="flex -space-x-2">
                         <div className="w-6 h-6 rounded-full bg-emerald-300 dark:bg-emerald-900 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
                         <div className="w-6 h-6 rounded-full bg-emerald-200 dark:bg-emerald-800 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
                     </div>
