@@ -1,11 +1,3 @@
--- Horizon HR: Enterprise PostgreSQL Architecture Blueprint
--- Requirements Met:
--- - PostGIS via GiST
--- - RLS for multi-tenancy
--- - Recursive CTEs
--- - B-Tree indexes for tenant-scoped lookups
--- - Tenant-safe composite foreign keys
--- - Attendance summary table for background job workflows
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
@@ -69,6 +61,41 @@ USING (
 WITH CHECK (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 );
+
+
+-- =========================================================
+-- . Forget Password Tokens Table
+-- =========================================================
+
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID,
+
+    email VARCHAR(255) NOT NULL,
+    recovery_method VARCHAR(30) NOT NULL DEFAULT 'email',
+
+    token_hash TEXT NOT NULL,
+    dev_reset_code VARCHAR(12),
+
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT password_reset_tokens_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS password_reset_tokens_email_idx
+ON password_reset_tokens (email);
+
+CREATE INDEX IF NOT EXISTS password_reset_tokens_active_idx
+ON password_reset_tokens (email, expires_at)
+WHERE used_at IS NULL;
 
 -- =========================================================
 -- 3. Geofences / Operating Zones
@@ -340,3 +367,4 @@ CREATE TABLE outbox_events (
 CREATE INDEX outbox_events_unprocessed_idx
 ON outbox_events(processed_at)
 WHERE processed_at IS NULL;
+

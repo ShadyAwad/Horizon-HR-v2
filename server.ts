@@ -1,15 +1,18 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import {
   enqueueAttendanceRollup,
   enqueueAuditLog,
+  getDbPool,
   getHrQueue,
   HR_QUEUE_NAME,
   hasDatabaseConfig,
   withTenant,
 } from './src/lib/hr-background';
+
 
 type ClockInBody = {
   tenantId?: string;
@@ -17,6 +20,27 @@ type ClockInBody = {
   latitude?: number;
   longitude?: number;
 };
+
+function generateResetCode() {
+  return crypto.randomInt(100000, 999999).toString();
+}
+
+function hashResetCode(code: string) {
+  return crypto
+    .createHash('sha256')
+    .update(code)
+    .digest('hex');
+}
+
+function generatePasswordHash(password: string) {
+  const salt = crypto.randomBytes(16).toString('hex');
+
+  const hash = crypto
+    .scryptSync(password, salt, 64)
+    .toString('hex');
+
+  return `scrypt:${salt}:${hash}`;
+}
 
 function toWorkDate(value: Date) {
   return value.toISOString().slice(0, 10);
@@ -33,12 +57,6 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
-
-  console.log('[ENV DEBUG]', {
-    cwd: process.cwd(),
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    databaseUrlStart: process.env.DATABASE_URL?.slice(0, 35),
-  });
 
   app.use(express.json());
 
@@ -66,30 +84,337 @@ async function startServer() {
     }
   });
 
-  // 1. Auth Endpoint (Simulates secure iron-session check)
-  app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
-    
-    // Simulate database lookup latency for biometric UI experience
-    await new Promise(resolve => setTimeout(resolve, 800));
 
-    if (email === 'admin@horizon.com' && password === 'admin') {
-      res.json({
-        success: true,
-        user: { 
-          id: 'u-1', 
-          name: 'Sarah Connor', 
-          role: 'HR Admin', 
-          tenant: 'Cyberdyne Systems'
-        }
-      });
-    } else {
-      res.status(401).json({
+// yet another helper function to verify password against stored hash
+function verifyPassword(password: string, storedHash: string | null) {
+  if (!storedHash) return false;
+
+  const [algorithm, salt, originalHash] = storedHash.split(':');
+
+  if (algorithm !== 'scrypt' || !salt || !originalHash) {
+    return false;
+  }
+
+  const testHash = crypto
+    .scryptSync(password, salt, 64)
+    .toString('hex');
+
+  const testBuffer = Buffer.from(testHash, 'hex');
+  const originalBuffer = Buffer.from(originalHash, 'hex');
+
+  if (testBuffer.length !== originalBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(testBuffer, originalBuffer);
+}
+
+  // 1. Auth Endpoint (Simulates secure iron-session check)
+
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body as {
+    email?: string;
+    password?: string;
+  };
+
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and password are required.',
+    });
+  }
+
+  // Simulate database lookup latency for biometric UI experience
+  await new Promise(resolve => setTimeout(resolve, 800));
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({
+      success: false,
+      error: 'DATABASE_URL is required for database-backed login.',
+    });
+  }
+
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const result = await getDbPool().query<{
+      id: string;
+      tenant_id: string;
+      email: string;
+      full_name: string;
+      role: string;
+      password_hash: string | null;
+      company_name: string;
+    }>(
+      `
+        SELECT
+          employees.id,
+          employees.tenant_id,
+          employees.email,
+          employees.full_name,
+          employees.role,
+          employees.password_hash,
+          tenants.company_name
+        FROM employees
+        INNER JOIN tenants
+          ON tenants.id = employees.tenant_id
+        WHERE LOWER(employees.email) = $1
+        LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(401).json({
         success: false,
-        error: 'Invalid biometric pattern or credentials'
+        error: 'Invalid biometric pattern or credentials',
       });
     }
-  });
+
+    const employee = result.rows[0];
+    const passwordValid = verifyPassword(password, employee.password_hash);
+
+    if (!passwordValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid biometric pattern or credentials',
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: employee.id,
+        email: employee.email,
+        name: employee.full_name,
+        role: employee.role,
+        tenantId: employee.tenant_id,
+        tenant: employee.company_name,
+      },
+    });
+  } catch (error) {
+    console.error('[Login] Failed:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Unable to authenticate user.',
+    });
+  }
+});
+
+app.post('/api/auth/request-password-reset', async (req, res) => {
+  const { email, method } = req.body as {
+    email?: string;
+    method?: 'email' | 'admin' | 'security';
+  };
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email is required for password recovery.',
+    });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({
+      success: false,
+      error: 'DATABASE_URL is required for password recovery.',
+    });
+  }
+
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const resetCode = generateResetCode();
+    const tokenHash = hashResetCode(resetCode);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    const result = await getDbPool().query<{
+      tenant_id: string;
+      employee_id: string;
+    }>(
+      `
+        SELECT
+          tenant_id,
+          id AS employee_id
+        FROM employees
+        WHERE LOWER(email) = $1
+        LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    /*
+      Important security behavior:
+      We return success even if the email does not exist.
+      This prevents account enumeration.
+    */
+    if (result.rowCount === 0) {
+      return res.json({
+        success: true,
+        message: 'If the account exists, recovery instructions have been generated.',
+      });
+    }
+
+    const employee = result.rows[0];
+
+    await getDbPool().query(
+      `
+        INSERT INTO password_reset_tokens (
+          tenant_id,
+          employee_id,
+          email,
+          recovery_method,
+          token_hash,
+          dev_reset_code,
+          expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        employee.tenant_id,
+        employee.employee_id,
+        normalizedEmail,
+        method || 'email',
+        tokenHash,
+        resetCode,
+        expiresAt,
+      ],
+    );
+
+    console.log('[Password Reset] Dev reset code:', {
+      email: normalizedEmail,
+      resetCode,
+      expiresAt,
+    });
+
+    res.json({
+      success: true,
+      message: 'Recovery instructions generated. Dev reset code printed in server logs.',
+      devResetCode: resetCode,
+    });
+  } catch (error) {
+    console.error('[Password Reset] Failed to create reset token:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Unable to start recovery flow.',
+    });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, resetCode, newPassword } = req.body as {
+    email?: string;
+    resetCode?: string;
+    newPassword?: string;
+  };
+
+  if (!email || !resetCode || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email, reset code, and new password are required.',
+    });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({
+      success: false,
+      error: 'Password must be at least 8 characters long.',
+    });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({
+      success: false,
+      error: 'DATABASE_URL is required for password reset.',
+    });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const resetCodeHash = hashResetCode(resetCode.trim());
+  const newPasswordHash = generatePasswordHash(newPassword);
+
+  const pool = getDbPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const tokenResult = await client.query<{
+      id: string;
+      tenant_id: string;
+      employee_id: string;
+    }>(
+      `
+        SELECT
+          id,
+          tenant_id,
+          employee_id
+        FROM password_reset_tokens
+        WHERE LOWER(email) = $1
+          AND token_hash = $2
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [normalizedEmail, resetCodeHash],
+    );
+
+    if (tokenResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired reset code.',
+      });
+    }
+
+    const token = tokenResult.rows[0];
+
+    await client.query(
+      `
+        UPDATE employees
+        SET
+          password_hash = $1,
+          updated_at = NOW()
+        WHERE id = $2
+          AND tenant_id = $3
+      `,
+      [newPasswordHash, token.employee_id, token.tenant_id],
+    );
+
+    await client.query(
+      `
+        UPDATE password_reset_tokens
+        SET used_at = NOW()
+        WHERE id = $1
+      `,
+      [token.id],
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. You can now sign in with the new password.',
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('[Password Reset] Failed to reset password:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Unable to reset password.',
+    });
+  } finally {
+    client.release();
+  }
+});
+
 
   // 2. Geofenced Clock-In Simulator
   // In production, this would execute PostGIS: 
