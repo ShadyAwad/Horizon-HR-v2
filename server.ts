@@ -14,12 +14,29 @@ import {
 } from './src/lib/hr-background';
 
 
-type ClockInBody = {
+type ClockInBody = {  
   tenantId?: string;
   employeeId?: string;
   latitude?: number;
   longitude?: number;
 };
+
+type EmployeeRole = 'owner' | 'hr_admin' | 'manager' | 'employee';
+
+type AuthenticatedUser = {
+  employeeId: string;
+  tenantId: string;
+  email: string;
+  role: EmployeeRole;
+};
+
+declare global {
+  namespace Express {
+    interface Request {
+      authUser?: AuthenticatedUser;
+    }
+  }
+}
 
 function generateResetCode() {
   return crypto.randomInt(100000, 999999).toString();
@@ -54,37 +71,95 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
   }
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+async function demoAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const employeeId = req.header('x-employee-id');
+  const tenantId = req.header('x-tenant-id');
 
-  app.use(express.json());
+  if (!employeeId || !tenantId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required.',
+    });
+  }
 
-  // === HORIZON HR API ROUTES ===
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({
+      success: false,
+      error: 'DATABASE_URL is required for authenticated routes.',
+    });
+  }
 
-  // Registration Route for multi-tenant wizard
-  app.post('/api/auth/register-tenant', async (req, res) => {
-    // In production:
-    // 1. BEGIN TRANSACTION
-    // 2. INSERT INTO tenants (company_name, slug, default_currency, capacity_tier, allows_company_loans) 
-    //      VALUES (req.body.companyName, req.body.tenantSlug, ...) RETURNING id;
-    // 3. INSERT INTO employees (tenant_id, email, password_hash, role)
-    //      VALUES (tenant.id, req.body.adminEmail, hash(req.body.adminPassword), 'hr_admin');
-    // 4. INSERT INTO geofences (tenant_id, name, boundary)
-    //      VALUES (tenant.id, 'HQ', ST_Buffer(ST_MakePoint(req.body.lng, req.body.lat)::geography, req.body.radius)::geometry);
-    // 5. COMMIT
-    
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
+  try {
+    const result = await getDbPool().query<AuthenticatedUser>(
+      `
+        SELECT
+          id AS "employeeId",
+          tenant_id AS "tenantId",
+          email,
+          role
+        FROM employees
+        WHERE id = $1
+          AND tenant_id = $2
+        LIMIT 1
+      `,
+      [employeeId, tenantId],
+    );
 
-    // For demo: pretend it worked always, unless slug is exactly 'taken'
-    if (req.body.tenantSlug === 'taken') {
-      res.status(400).json({ success: false, error: 'Tenant slug is already taken.' });
-    } else {
-      res.json({ success: true, message: 'Tenant sandbox initialized successfully.' });
+    if (result.rowCount === 0) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid authentication context.',
+      });
     }
-  });
 
+    const user = result.rows[0];
 
+    if (!['owner', 'hr_admin', 'manager', 'employee'].includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid employee role.',
+      });
+    }
+
+    req.authUser = user;
+    next();
+  } catch (error) {
+    console.error('[Auth] Failed to resolve authenticated user:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Unable to authenticate request.',
+    });
+  }
+}
+
+function requireRole(allowedRoles: EmployeeRole[]) {
+  return (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    if (!req.authUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required.',
+      });
+    }
+
+    if (!allowedRoles.includes(req.authUser.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have permission to perform this action.',
+      });
+    }
+
+    next();
+  };
+}
 // yet another helper function to verify password against stored hash
 function verifyPassword(password: string, storedHash: string | null) {
   if (!storedHash) return false;
@@ -108,6 +183,39 @@ function verifyPassword(password: string, storedHash: string | null) {
 
   return crypto.timingSafeEqual(testBuffer, originalBuffer);
 }
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json());
+
+  // === HORIZON HR API ROUTES ===
+
+  // Registration Route for multi-tenant wizard
+  app.post('/api/auth/register-tenant', async (req, res) => {
+    // In production:
+    // 1. BEGIN TRANSACTION
+    // 2. INSERT INTO tenants (company_name, slug, default_currency, capacity_tier, allows_company_loans) 
+    //      VALUES (req.body.companyName, req.body.tenantSlug, ...) RETURNING id;
+    // 3. INSERT INTO employees (tenant_id, email, password_hash, role)
+    //      VALUES (tenant.id, req.body.adminEmail, hash(req.body.adminPassword), 'hr_admin');
+    // 4. INSERT INTO geofences (tenant_id, name, boundary)
+    //      VALUES (tenant.id, 'HQ', ST_Buffer(ST_MakePoint(req.body.lng, req.body.lat)::geography, req.body.radius)::geometry);
+    // 5. COMMIT
+    
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
+
+
+    if (req.body.tenantSlug === 'taken') {
+      res.status(400).json({ success: false, error: 'Tenant slug is already taken.' });
+    } else {
+      res.json({ success: true, message: 'Tenant sandbox initialized successfully.' });
+    }
+  });
+
+
+
 
   // 1. Auth Endpoint (Simulates secure iron-session check)
 
@@ -599,12 +707,19 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-  app.post('/api/leave-requests', async (req, res) => {
-    const { tenantId, employeeId, startDate, endDate, reason } = req.body;
+app.post(
+  '/api/leave-requests',
+  demoAuth,
+  requireRole(['owner', 'hr_admin', 'manager', 'employee']),
+  async (req, res) => {
+    const { startDate, endDate, reason } = req.body;
 
-    if (!tenantId || !employeeId || !startDate || !endDate || !reason) {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!startDate || !endDate || !reason) {
       return res.status(400).json({
-        error: 'tenantId, employeeId, startDate, endDate, and reason are required',
+        error: 'startDate, endDate, and reason are required',
       });
     }
 
@@ -651,15 +766,22 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
   });
 
-  app.patch('/api/leave-requests/:id/status', async (req, res) => {
+app.patch(
+  '/api/leave-requests/:id/status',
+  demoAuth,
+  requireRole(['owner', 'hr_admin', 'manager']),
+  async (req, res) => {
     const { id } = req.params;
-    const { tenantId, actorEmployeeId, status } = req.body;
+    const { status } = req.body;
 
-    if (!tenantId || !actorEmployeeId || !status) {
-      return res.status(400).json({
-        error: 'tenantId, actorEmployeeId, and status are required',
-      });
-    }
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+
+if (!status) {
+  return res.status(400).json({
+    error: 'status is required',
+  });
+}
 
     if (!['approved', 'rejected', 'cancelled'].includes(status)) {
       return res.status(400).json({ error: 'status must be approved, rejected, or cancelled' });
@@ -672,16 +794,19 @@ app.post('/api/auth/reset-password', async (req, res) => {
     try {
       const leaveRequest = await withTenant(tenantId, async (client) => {
         const result = await client.query<{ id: string; employee_id: string; status: string }>(
-          `
-            UPDATE leave_requests
-            SET
-              status = $3,
-              approved_by = CASE WHEN $3 = 'approved' THEN $2 ELSE approved_by END,
-              updated_at = NOW()
-            WHERE tenant_id = $1
-              AND id = $4
-            RETURNING id, employee_id, status
-          `,
+`
+  UPDATE leave_requests
+  SET
+    status = $3::varchar,
+    approved_by = CASE 
+      WHEN $3::varchar = 'approved' THEN $2
+      ELSE approved_by
+    END,
+    updated_at = NOW()
+  WHERE tenant_id = $1
+    AND id = $4
+  RETURNING id, employee_id, status
+`,
           [tenantId, actorEmployeeId, status, id],
         );
 
