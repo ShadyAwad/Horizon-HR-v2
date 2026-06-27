@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
+import { useTheme } from '../lib/ThemeContext';
 
 // Helper hook for Geolocation fetching
 function useGeolocation() {
@@ -46,19 +47,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [clockMessage, setClockMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const [isDark, setIsDark] = useState(() =>
-  document.documentElement.classList.contains('dark')
-);
-
-const toggleTheme = () => {
-  const next = !isDark;
-  setIsDark(next);
-  document.documentElement.classList.toggle('dark', next);
-};
-
   const geo = useGeolocation();
 
   const { t, lang, setLang, isRtl } = useLanguage();
+  const { isDark, toggleTheme } = useTheme();
 
   const handleClockIn = async () => {
     setClockInState('locating');

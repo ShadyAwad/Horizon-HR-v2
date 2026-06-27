@@ -1,19 +1,17 @@
-import { useState, useEffect , useLayoutEffect } from 'react';
+import { useState } from 'react';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Signup } from './pages/Signup';
 import { LanguageProvider } from './lib/LanguageContext';
+import { ThemeProvider } from './lib/ThemeContext';
 
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
 
-useLayoutEffect(() => {
-  document.documentElement.classList.add('dark');
-}, []);
-
   return (
-    <LanguageProvider>
-      <div className="w-full min-h-screen bg-slate-50 dark:bg-[#020617] transition-colors duration-300">
+    <ThemeProvider>
+      <LanguageProvider>
+        <div className="w-full min-h-screen bg-slate-50 dark:bg-[#020617] transition-colors duration-300">
          {authState === 'authenticated' ? (
            <Dashboard onLogout={() => setAuthState('login')} />
          ) : authState === 'signup' ? (
@@ -27,7 +25,8 @@ useLayoutEffect(() => {
              onNavigateSignup={() => setAuthState('signup')} 
            />
          )}
-      </div>
-    </LanguageProvider>
+        </div>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }

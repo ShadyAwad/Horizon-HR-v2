@@ -1,9 +1,10 @@
 import { useState, FormEvent } from 'react';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
-import { Fingerprint, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Fingerprint, CheckCircle2, AlertCircle, ArrowRight, Sun, Moon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../lib/LanguageContext';
+import { useTheme } from '../lib/ThemeContext';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -21,7 +22,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [recoveryMethod, setRecoveryMethod] = useState<'email' | 'admin' | 'security'>('email');
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
-  const { t, isRtl } = useLanguage();
+  const { t, lang, setLang, isRtl } = useLanguage();
+  const { isDark, toggleTheme } = useTheme();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -81,7 +83,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   }
 };
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
+<div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
       <FingerprintCanvas 
         pulseState={pulseState} 
         onPulseComplete={() => {
@@ -90,22 +92,64 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
         }} 
       />
 
+      <div className={cn("absolute top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35", isRtl ? "left-4" : "right-4")}>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-all duration-150 hover:scale-105 hover:text-emerald-600 active:scale-90 dark:text-slate-400 dark:hover:text-emerald-300"
+          title="Toggle Light/Dark Mode"
+          aria-label="Toggle Light/Dark Mode"
+        >
+          {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        </button>
+
+        <div className="h-3 w-px bg-slate-200 dark:bg-emerald-500/20"></div>
+
+        <button
+          type="button"
+          onClick={() => setLang('en')}
+          className={cn(
+            "text-xs font-bold transition-colors",
+            lang === 'en'
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
+          )}
+        >
+          EN-US
+        </button>
+
+        <div className="h-3 w-px bg-slate-200 dark:bg-emerald-500/20"></div>
+
+        <button
+          type="button"
+          onClick={() => setLang('ar')}
+          className={cn(
+            "text-xs font-bold transition-colors",
+            lang === 'ar'
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
+          )}
+        >
+          AR-AE
+        </button>
+      </div>
+
       {/* Main Login Panel */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         layout={false}
-className="relative z-10 w-full max-w-sm px-8 py-10 bg-black/55 backdrop-blur-xl border border-emerald-500/15 rounded-2xl shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
+className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
         <div className="flex flex-col items-center mb-8">
-<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <Fingerprint className="w-8 h-8" />
+<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <Fingerprint className="w-8 h-8" />
           </div>
-<h1 className="text-2xl font-semibold tracking-tight text-white">{t('login.title')}</h1>
-<p className="text-sm text-emerald-100/55 mt-1">{t('login.subtitle')}</p>
+<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t('login.title')}</h1>
+<p className="text-sm text-emerald-700/70 dark:text-emerald-100/55 mt-1">{t('login.subtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-medium text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
+            <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
             <input 
               type="text" 
               required
@@ -113,13 +157,13 @@ className="relative z-10 w-full max-w-sm px-8 py-10 bg-black/55 backdrop-blur-xl
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@horizon.com"
 className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
   isRtl && "text-right"
 )}            />
           </div>
 
          <div className="space-y-2">
-  <label className="text-xs font-medium text-emerald-100/70 tracking-wide uppercase px-1">
+  <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">
     {t('login.biometricKey')}
   </label>
 
@@ -130,7 +174,7 @@ className={cn(
     onChange={(e) => setPassword(e.target.value)}
     placeholder="••••••••"
     className={cn(
-      "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
+      "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
       isRtl && "text-right"
     )}
   />
@@ -140,7 +184,7 @@ className={cn(
   <button
     type="button"
     onClick={() => setShowRecovery(true)}
-    className="text-[10px] font-bold text-emerald-100/45 hover:text-emerald-400 uppercase tracking-widest transition-colors"
+    className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 uppercase tracking-widest transition-colors"
   >
     Forgot Password?
   </button>
