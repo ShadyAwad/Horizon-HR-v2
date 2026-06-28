@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
+import type { PoolClient } from 'pg';
 import {
   enqueueAttendanceRollup,
   enqueueAuditLog,
@@ -21,7 +22,7 @@ type ClockInBody = {
   longitude?: number;
 };
 
-type EmployeeRole = 'owner' | 'hr_admin' | 'manager' | 'employee';
+type EmployeeRole = 'hr_admin' | 'manager' | 'employee';
 
 type AuthenticatedUser = {
   employeeId: string;
@@ -47,6 +48,14 @@ function hashResetCode(code: string) {
     .createHash('sha256')
     .update(code)
     .digest('hex');
+}
+
+function isTileCoordinate(value: string | undefined) {
+  return typeof value === 'string' && /^\d+$/.test(value);
+}
+
+function getMapTilerMapId() {
+  return process.env.MAPTILER_MAP_ID || 'streets-v4';
 }
 
 function generatePasswordHash(password: string) {
@@ -118,7 +127,7 @@ async function demoAuth(
 
     const user = result.rows[0];
 
-    if (!['owner', 'hr_admin', 'manager', 'employee'].includes(user.role)) {
+    if (!['hr_admin', 'manager', 'employee'].includes(user.role)) {
       return res.status(403).json({
         success: false,
         error: 'Invalid employee role.',
@@ -192,25 +201,304 @@ async function startServer() {
 
   // === HORIZON HR API ROUTES ===
 
+  app.get('/api/map-tiles/:z/:x/:y.png', async (req, res) => {
+    const { z, x, y } = req.params;
+    const maptilerKey = process.env.MAPTILER_KEY;
+
+    if (!maptilerKey) {
+      return res.status(503).json({
+        success: false,
+        error: 'Map tile provider is not configured.',
+      });
+    }
+
+    if (!isTileCoordinate(z) || !isTileCoordinate(x) || !isTileCoordinate(y)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid tile coordinates.',
+      });
+    }
+
+    const tileUrl = new URL(
+      `https://api.maptiler.com/maps/${getMapTilerMapId()}/256/${z}/${x}/${y}.png`,
+    );
+
+    tileUrl.searchParams.set('key', maptilerKey);
+
+    try {
+      const upstreamResponse = await fetch(tileUrl);
+
+      if (!upstreamResponse.ok || !upstreamResponse.body) {
+        return res.status(upstreamResponse.status || 502).json({
+          success: false,
+          error: 'Unable to load map tile.',
+        });
+      }
+
+      res.setHeader(
+        'Cache-Control',
+        'public, max-age=86400, stale-while-revalidate=604800',
+      );
+      res.setHeader(
+        'Content-Type',
+        upstreamResponse.headers.get('content-type') || 'image/png',
+      );
+
+      const tileBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
+      res.send(tileBuffer);
+    } catch (error) {
+      console.error('[Map Tiles] Failed to proxy tile:', error);
+
+      res.status(502).json({
+        success: false,
+        error: 'Unable to load map tile.',
+      });
+    }
+  });
+
   // Registration Route for multi-tenant wizard
   app.post('/api/auth/register-tenant', async (req, res) => {
-    // In production:
-    // 1. BEGIN TRANSACTION
-    // 2. INSERT INTO tenants (company_name, slug, default_currency, capacity_tier, allows_company_loans) 
-    //      VALUES (req.body.companyName, req.body.tenantSlug, ...) RETURNING id;
-    // 3. INSERT INTO employees (tenant_id, email, password_hash, role)
-    //      VALUES (tenant.id, req.body.adminEmail, hash(req.body.adminPassword), 'hr_admin');
-    // 4. INSERT INTO geofences (tenant_id, name, boundary)
-    //      VALUES (tenant.id, 'HQ', ST_Buffer(ST_MakePoint(req.body.lng, req.body.lat)::geography, req.body.radius)::geometry);
-    // 5. COMMIT
-    
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate work
+    const allowedAdminRoles: EmployeeRole[] = ['employee', 'manager', 'hr_admin'];
 
+    const {
+      companyName,
+      tenantSlug,
+      adminFullName,
+      adminEmail,
+      adminPassword,
+      adminRole,
+      currency,
+      capacity,
+      allowsLoans,
+      lat,
+      lng,
+      radius,
+    } = req.body as {
+      companyName?: string;
+      tenantSlug?: string;
+      adminFullName?: string;
+      adminEmail?: string;
+      adminPassword?: string;
+      adminRole?: string;
+      currency?: string;
+      capacity?: string;
+      allowsLoans?: boolean;
+      lat?: number | string;
+      lng?: number | string;
+      radius?: number | string;
+    };
 
-    if (req.body.tenantSlug === 'taken') {
-      res.status(400).json({ success: false, error: 'Tenant slug is already taken.' });
-    } else {
-      res.json({ success: true, message: 'Tenant sandbox initialized successfully.' });
+    const normalizedCompanyName = companyName?.trim() || '';
+    const normalizedTenantSlug = tenantSlug?.trim().toLowerCase() || '';
+    const normalizedAdminFullName = adminFullName?.trim() || '';
+    const normalizedAdminEmail = adminEmail?.trim().toLowerCase() || '';
+    const normalizedCurrency = currency?.trim() || '';
+    const normalizedCapacity = capacity?.trim() || '';
+    const normalizedAdminRole = allowedAdminRoles.includes(adminRole as EmployeeRole)
+      ? adminRole as EmployeeRole
+      : 'hr_admin';
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+    const geofenceRadius = Number(radius);
+
+    if (
+      !normalizedCompanyName ||
+      !normalizedTenantSlug ||
+      !normalizedAdminFullName ||
+      !normalizedAdminEmail ||
+      !adminPassword ||
+      !normalizedCurrency ||
+      !normalizedCapacity
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'companyName, tenantSlug, adminFullName, adminEmail, adminPassword, currency, and capacity are required.',
+      });
+    }
+
+    if (adminPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'adminPassword must be at least 8 characters.',
+      });
+    }
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(geofenceRadius)) {
+      return res.status(400).json({
+        success: false,
+        error: 'lat, lng, and radius must be valid numbers.',
+      });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({
+        success: false,
+        error: 'DATABASE_URL is required for tenant registration.',
+      });
+    }
+
+    let client: PoolClient | undefined;
+
+    try {
+      client = await getDbPool().connect();
+      await client.query('BEGIN');
+
+      const tenantResult = await client.query<{
+        id: string;
+        company_name: string;
+        slug: string;
+      }>(
+        `
+          INSERT INTO tenants (
+            company_name,
+            slug,
+            default_currency,
+            capacity_tier,
+            allows_company_loans
+          )
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING id, company_name, slug
+        `,
+        [
+          normalizedCompanyName,
+          normalizedTenantSlug,
+          normalizedCurrency,
+          normalizedCapacity,
+          Boolean(allowsLoans),
+        ],
+      );
+
+      const tenant = tenantResult.rows[0];
+
+      await client.query("SELECT set_config('app.current_tenant', $1, true)", [tenant.id]);
+
+      const passwordHash = generatePasswordHash(adminPassword);
+
+      const employeeResult = await client.query<{
+        id: string;
+        email: string;
+        full_name: string;
+        role: EmployeeRole;
+        tenant_id: string;
+      }>(
+        `
+          INSERT INTO employees (
+            tenant_id,
+            full_name,
+            email,
+            password_hash,
+            role
+          )
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING id, email, full_name, role, tenant_id
+        `,
+        [
+          tenant.id,
+          normalizedAdminFullName,
+          normalizedAdminEmail,
+          passwordHash,
+          normalizedAdminRole,
+        ],
+      );
+
+      const employee = employeeResult.rows[0];
+
+      await client.query(
+        `
+          INSERT INTO geofences (
+            tenant_id,
+            name,
+            boundary
+          )
+          VALUES (
+            $1,
+            $2,
+            ST_Buffer(
+              ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+              $5
+            )::geometry
+          )
+        `,
+        [tenant.id, 'HQ', longitude, latitude, geofenceRadius],
+      );
+
+      await client.query(
+        `
+          INSERT INTO audit_logs (
+            tenant_id,
+            actor_employee_id,
+            action,
+            entity_type,
+            entity_id,
+            metadata
+          )
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        `,
+        [
+          tenant.id,
+          employee.id,
+          'tenant_registered',
+          'tenant',
+          tenant.id,
+          JSON.stringify({
+            tenantSlug: tenant.slug,
+            companyName: tenant.company_name,
+            adminEmail: employee.email,
+            adminRole: employee.role,
+            geofence: {
+              lat: latitude,
+              lng: longitude,
+              radius: geofenceRadius,
+            },
+          }),
+        ],
+      );
+
+      await client.query('COMMIT');
+
+      const responseTenant = {
+        id: tenant.id,
+        slug: tenant.slug,
+        companyName: tenant.company_name,
+      };
+
+      res.status(201).json({
+        success: true,
+        message: 'Tenant registered successfully.',
+        tenant: responseTenant,
+        user: {
+          id: employee.id,
+          email: employee.email,
+          name: employee.full_name,
+          role: employee.role,
+          tenantId: employee.tenant_id,
+          tenant: responseTenant,
+        },
+      });
+    } catch (error) {
+      if (client) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('[Register Tenant] Rollback failed:', rollbackError);
+        }
+      }
+
+      console.error('[Register Tenant] Failed:', error);
+
+      if ((error as { code?: string }).code === '23505') {
+        return res.status(409).json({
+          success: false,
+          error: 'The tenant slug or admin email is already in use.',
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Unable to register tenant.',
+      });
+    } finally {
+      client?.release();
     }
   });
 
@@ -710,7 +998,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.post(
   '/api/leave-requests',
   demoAuth,
-  requireRole(['owner', 'hr_admin', 'manager', 'employee']),
+  requireRole(['hr_admin', 'manager', 'employee']),
   async (req, res) => {
     const { startDate, endDate, reason } = req.body;
 
@@ -769,7 +1057,7 @@ app.post(
 app.patch(
   '/api/leave-requests/:id/status',
   demoAuth,
-  requireRole(['owner', 'hr_admin', 'manager']),
+  requireRole(['hr_admin', 'manager']),
   async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;

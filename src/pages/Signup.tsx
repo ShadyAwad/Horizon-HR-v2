@@ -1,40 +1,295 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState ,useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Settings2, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
 
-// For map demonstration purposes
-const InteractiveMap = ({ lat, lng, radius, setLat, setLng, setRadius }: any) => {
+
+type InteractiveMapProps = {
+  lat: number;
+  lng: number;
+  radius: number;
+  setLat: (value: number) => void;
+  setLng: (value: number) => void;
+  setRadius: (value: number) => void;
+};
+
+const InteractiveMap = ({
+  lat,
+  lng,
+  radius,
+  setLat,
+  setLng,
+  setRadius,
+}: InteractiveMapProps) => {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const circleRef = useRef<L.Circle | null>(null);
+
+  const [manualMode, setManualMode] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
+  const [tileStatus, setTileStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = L.map(mapContainerRef.current, {
+      center: [lat, lng],
+      zoom: 15,
+      zoomControl: true,
+      attributionControl: true,
+    });
+
+    mapInstanceRef.current = map;
+
+    const tileLayer = L.tileLayer('/api/map-tiles/{z}/{x}/{y}.png', {
+      tileSize: 256,
+      zoomOffset: 0,
+      minZoom: 1,
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    });
+
+    tileLayer
+      .on('load', () => setTileStatus('ready'))
+      .on('tileerror', () => setTileStatus('error'))
+      .addTo(map);
+
+    const worksiteIcon = L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 26px;
+          height: 26px;
+          border-radius: 9999px;
+          background: #10b981;
+          border: 3px solid #020403;
+          box-shadow: 0 0 0 4px rgba(16,185,129,0.25), 0 0 28px rgba(16,185,129,0.65);
+        "></div>
+      `,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
+
+    const marker = L.marker([lat, lng], {
+      draggable: true,
+      icon: worksiteIcon,
+    }).addTo(map);
+
+    markerRef.current = marker;
+
+    const circle = L.circle([lat, lng], {
+      radius,
+      color: '#10b981',
+      fillColor: '#10b981',
+      fillOpacity: 0.16,
+      weight: 2,
+    }).addTo(map);
+
+    circleRef.current = circle;
+
+    marker.on('dragend', () => {
+      const position = marker.getLatLng();
+
+      setLat(Number(position.lat.toFixed(6)));
+      setLng(Number(position.lng.toFixed(6)));
+    });
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+      circleRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!markerRef.current || !circleRef.current) return;
+
+    const nextPosition: [number, number] = [lat, lng];
+
+    markerRef.current.setLatLng(nextPosition);
+    circleRef.current.setLatLng(nextPosition);
+    circleRef.current.setRadius(radius);
+  }, [lat, lng, radius]);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('error');
+      return;
+    }
+
+    setLocationStatus('loading');
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLat = Number(position.coords.latitude.toFixed(6));
+        const nextLng = Number(position.coords.longitude.toFixed(6));
+
+        setLat(nextLat);
+        setLng(nextLng);
+
+        mapInstanceRef.current?.setView([nextLat, nextLng], 16);
+
+        setLocationStatus('success');
+      },
+      () => {
+        setLocationStatus('error');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
   return (
-<div className="relative w-full h-[250px] bg-[#04110d]/80 rounded-xl border border-emerald-500/15 overflow-hidden flex flex-col items-center justify-center font-mono text-xs">      {/* Mock Map Grid */}
-      <div className="absolute inset-0 opacity-20 dark:opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, #888 1px, transparent 1px), linear-gradient(to bottom, #888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-      
-      <Globe className="w-16 h-16 text-emerald-500/25 mb-2" />
-<span className="text-emerald-100/50 mb-4 tracking-widest uppercase font-bold">
-  Interactive Geo-Fence Configurator
-</span>
-      
-      <div className="z-10 flex gap-2">
-         <div className="flex flex-col gap-1 items-center bg-black/35 p-2 rounded border border-emerald-500/15 shadow-sm backdrop-blur-sm">
-           <span className="text-emerald-500 uppercase">Latitude</span>
-           <input type="number" step="0.001" value={lat} onChange={e => setLat(Number(e.target.value))} className="w-20 bg-transparent text-center focus:outline-none dark:text-slate-200 font-bold" />
-         </div>
-         <div className="flex flex-col gap-1 items-center bg-black/35 p-2 rounded border border-emerald-500/15 shadow-sm backdrop-blur-sm">
-           <span className="text-emerald-500 uppercase">Longitude</span>
-           <input type="number" step="0.001" value={lng} onChange={e => setLng(Number(e.target.value))} className="w-20 bg-transparent text-center focus:outline-none dark:text-slate-200 font-bold" />
-         </div>
-         <div className="flex flex-col gap-1 items-center bg-emerald-500/10 p-2 rounded border border-emerald-500/20 shadow-sm backdrop-blur-sm text-emerald-600 dark:text-emerald-400">
-           <span className="uppercase">Radius (m)</span>
-           <input type="number" value={radius} onChange={e => setRadius(Number(e.target.value))} className="w-20 bg-transparent text-center focus:outline-none font-bold" />
-         </div>
+    <div className="space-y-4">
+      <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-[#04110d]/80">
+        <div ref={mapContainerRef} className="h-[330px] w-full" />
+
+        {tileStatus === 'error' && (
+          <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                Map provider unavailable
+              </p>
+              <p className="mt-2 text-[11px] text-emerald-100/50">
+                Check the server map tile configuration, then restart the dev server.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-0 rounded-xl border border-emerald-500/10 shadow-[inset_0_0_45px_rgba(16,185,129,0.12)]" />
+
+        <div className="absolute left-4 top-4 z-[500] rounded-lg border border-emerald-500/15 bg-black/70 px-3 py-2 backdrop-blur-md">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+            Worksite Geofence
+          </p>
+          <p className="text-[10px] text-emerald-100/45">
+            Drag the pin, use your current location, or enter coordinates manually.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={useCurrentLocation}
+          className="absolute right-4 top-4 z-[500] rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400"
+        >
+          {locationStatus === 'loading' ? 'Locating...' : 'Use My Location'}
+        </button>
+
+        {locationStatus === 'error' && (
+          <div className="absolute bottom-4 left-4 right-4 z-[500] rounded-lg border border-red-500/30 bg-red-950/80 px-3 py-2 text-[11px] text-red-200 backdrop-blur-md">
+            Unable to access location. You can still enter coordinates manually.
+          </div>
+        )}
+
+        {locationStatus === 'success' && (
+          <div className="absolute bottom-4 left-4 right-4 z-[500] rounded-lg border border-emerald-500/20 bg-black/70 px-3 py-2 text-[11px] text-emerald-200 backdrop-blur-md">
+            Location detected. Drag the pin if you need to fine-tune the worksite.
+          </div>
+        )}
       </div>
 
-      {/* Target Reticle */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160px] h-[160px] rounded-full border-2 border-emerald-500/50 bg-emerald-500/10 pointer-events-none flex items-center justify-center">
-        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+      <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+              Geofence Radius
+            </p>
+            <p className="text-[11px] text-emerald-100/45">
+              Controls the allowed clock-in zone around the selected worksite.
+            </p>
+          </div>
+
+          <span className="rounded-lg border border-emerald-500/20 bg-black/35 px-3 py-1 text-xs font-bold text-emerald-300">
+            {radius}m
+          </span>
+        </div>
+
+        <input
+          type="range"
+          min="25"
+          max="1000"
+          step="25"
+          value={radius}
+          onChange={(e) => setRadius(Number(e.target.value))}
+          className="mt-4 w-full accent-emerald-500"
+        />
+
+        <div className="mt-2 flex justify-between text-[10px] text-emerald-100/35">
+          <span>25m</span>
+          <span>1000m</span>
+        </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setManualMode((prev) => !prev)}
+        className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/45 transition hover:text-emerald-400"
+      >
+        {manualMode ? 'Hide Manual Coordinates' : 'Enter Coordinates Manually'}
+      </button>
+
+      {manualMode && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
+              Latitude
+            </label>
+            <input
+              type="number"
+              step="0.000001"
+              value={lat}
+              onChange={(e) => setLat(Number(e.target.value))}
+              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
+              Longitude
+            </label>
+            <input
+              type="number"
+              step="0.000001"
+              value={lng}
+              onChange={(e) => setLng(Number(e.target.value))}
+              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
+              Radius
+            </label>
+            <input
+              type="number"
+              min="25"
+              max="1000"
+              value={radius}
+              onChange={(e) => setRadius(Number(e.target.value))}
+              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -46,18 +301,20 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Form State
-  const [formData, setFormData] = useState({
-    companyName: '',
-    tenantSlug: '',
-    adminEmail: '',
-    adminPassword: '',
-    currency: 'USD',
-    capacity: '100-500',
-    allowsLoans: false,
-    lat: 25.197,
-    lng: 55.274,
-    radius: 100
-  });
+const [formData, setFormData] = useState({
+  companyName: '',
+  tenantSlug: '',
+  adminFullName: '',
+  adminEmail: '',
+  adminPassword: '',
+  adminRole: 'hr_admin',
+  currency: 'USD',
+  capacity: '100-500',
+  allowsLoans: false,
+  lat: 25.197,
+  lng: 55.274,
+  radius: 100
+});
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -98,20 +355,20 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   };
 
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      
+<div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      
       <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => { if(isSubmitting) onSignupComplete(); }} />
 
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdrop-blur-xl border border-emerald-500/15 rounded-2xl shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
+className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
         <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-4">
-<div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">              <Building2 className="w-6 h-6" />
+<div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">              <Building2 className="w-6 h-6" />
             </div>
             <div>
-<h1 className="text-2xl font-bold tracking-tight text-white">{t('signup.title')}</h1>
-<p className="text-sm text-emerald-100/55">{t('signup.subtitle')}</p>
+<h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t('signup.title')}</h1>
+<p className="text-sm text-emerald-700/70 dark:text-emerald-100/55">{t('signup.subtitle')}</p>
             </div>
           </div>
           
@@ -130,16 +387,16 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.companyName')}</label>
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.companyName')}</label>
                     <input required name="companyName" value={formData.companyName} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.tenantSlug')}</label>
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.tenantSlug')}</label>
                     <input required name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
@@ -147,19 +404,51 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.adminEmail')}</label>
-                    <input type="email" required name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">Admin Full Name</label>
+                    <input required name="adminFullName" value={formData.adminFullName} onChange={handleChange} className={cn(
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
-                    <input type="password" required name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminEmail')}</label>
+                    <input type="email" required name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
+                    <input type="password" required minLength={8} name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+  isRtl && "text-right"
+)} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">
+                    Initial Account Role
+                  </label>
+
+                  <select
+                    required
+                    name="adminRole"
+                    value={formData.adminRole}
+                    onChange={handleChange}
+                    className={cn(
+                      "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 transition-all",
+                      isRtl && "text-right"
+                    )}
+                  >
+                    <option value="hr_admin">HR Admin</option>
+                    <option value="manager">Manager</option>
+                    <option value="employee">Employee</option>
+                  </select>
+
+                  <p className="text-[10px] text-emerald-700/50 dark:text-emerald-100/40 px-1">
+                    Choose the role for the first account created under this tenant.
+                  </p>
                 </div>
               </motion.div>
             )}
@@ -170,9 +459,9 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1 flex items-center gap-2"><Wallet className="w-4 h-4"/>{t('signup.currency')}</label>
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1 flex items-center gap-2"><Wallet className="w-4 h-4"/>{t('signup.currency')}</label>
                     <select name="currency" value={formData.currency} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 transition-all",
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 transition-all",
   isRtl && "text-right"
 )}>
                       <option value="USD">USD ($)</option>
@@ -185,9 +474,9 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-100/70 uppercase px-1">{t('signup.capacity')}</label>
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.capacity')}</label>
                     <select name="capacity" value={formData.capacity} onChange={handleChange} className={cn(
-  "w-full bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-emerald-50 transition-all",
+  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 transition-all",
   isRtl && "text-right"
 )}>
                       <option value="1-50">1 - 50</option>
@@ -199,7 +488,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                 </div>
 
                 <div className="pt-4">
-                  <label className="flex items-center gap-3 p-4 border border-emerald-500/15 rounded-xl bg-[#04110d]/60 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                  <label className="flex items-center gap-3 p-4 border border-emerald-500/15 rounded-xl bg-white/70 dark:bg-[#04110d]/60 cursor-pointer hover:border-emerald-500/50 transition-colors">
                     <div className="relative flex items-center justify-center">
                       <input type="checkbox" name="allowsLoans" checked={formData.allowsLoans} onChange={handleChange} className="sr-only" />
                       <div className={cn("w-6 h-6 rounded border flex items-center justify-center transition-colors", formData.allowsLoans ? "bg-emerald-500 border-emerald-500" : "bg-transparent border-slate-300 dark:border-slate-600")}>
@@ -207,8 +496,8 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                       </div>
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-white">{t('signup.loans')}</h3>
-<p className="text-xs text-emerald-100/45">Enable payroll deductions and standard corporate loan requests.</p>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">{t('signup.loans')}</h3>
+<p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">Enable payroll deductions and standard corporate loan requests.</p>
                     </div>
                   </label>
                 </div>
@@ -226,8 +515,8 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
                   setRadius={(val: number) => setFormData(p => ({ ...p, radius: val }))}
                 />
 
-                <div className="mt-4 p-4 bg-[#04110d]/60 border border-emerald-500/15 rounded-xl">
-                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-emerald-100/55 uppercase tracking-widest hover:text-emerald-400 transition-colors">
+                <div className="mt-4 p-4 bg-white/70 dark:bg-[#04110d]/60 border border-emerald-500/15 rounded-xl">
+                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-emerald-700/70 dark:text-emerald-100/55 uppercase tracking-widest hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
                     <Settings2 className="w-4 h-4"/> Advanced Spatial Parameters
                   </button>
                   <AnimatePresence>
@@ -251,7 +540,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
 <div className="flex items-center justify-between pt-6 border-t border-emerald-500/10">             <button 
                type="button" 
                onClick={prevStep}
-               className={cn("px-4 py-2 font-bold text-sm text-emerald-100/45 hover:text-emerald-300 transition-colors flex items-center gap-2 uppercase tracking-widest", step === 1 && "invisible")}
+               className={cn("px-4 py-2 font-bold text-sm text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-300 transition-colors flex items-center gap-2 uppercase tracking-widest", step === 1 && "invisible")}
              >
                <ArrowLeft className="w-4 h-4" /> {t('signup.back')}
              </button>
@@ -283,7 +572,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-black/55 backdro
         </form>
 
         <div className="mt-6 text-center">
-            <button onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-100/45 hover:text-emerald-400 tracking-widest uppercase transition-colors">
+            <button onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 tracking-widest uppercase transition-colors">
               {t('signup.login')}
             </button>
         </div>

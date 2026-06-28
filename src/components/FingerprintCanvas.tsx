@@ -78,7 +78,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       const cy = height / 2;
 
       // Solid background filling to optimize canvas operations
-      ctx.fillStyle = '#020403';
+      ctx.fillStyle = isDark ? '#020403' : '#f8fafc';
       ctx.fillRect(0, 0, width, height);
 
       const maxRadius = Math.max(width, height) * 0.8;

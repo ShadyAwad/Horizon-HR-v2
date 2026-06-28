@@ -186,7 +186,7 @@ className={cn(
     onClick={() => setShowRecovery(true)}
     className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 uppercase tracking-widest transition-colors"
   >
-    Forgot Password?
+    {t('login.forgotPassword')}
   </button>
 </div>
 
@@ -234,7 +234,6 @@ className={cn(
         </form>
 
 <div className="mt-8 pt-6 border-t border-emerald-500/10 text-center flex flex-col space-y-4">           <div className="flex flex-col space-y-2">
-             <span className="text-xs text-slate-500">Hint: admin@horizon.com / admin</span>
 <span className="text-[10px] text-slate-600 font-mono tracking-widest uppercase">System Operational • V2.4</span>
            </div>
            
@@ -243,7 +242,7 @@ className={cn(
              type="button"
              className="text-xs font-semibold text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors"
            >
-             Register New Corporate Tenant
+             {t('login.registerTenant')}
            </button>
         </div>
       </motion.div>
@@ -267,10 +266,10 @@ className={cn(
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest text-emerald-300">
-                    Recovery Protocol
+                    {t('login.recoveryTitle')}
                   </h3>
                   <p className="mt-1 text-[11px] text-emerald-100/45">
-                    Choose how this corporate account should recover access.
+                    {t('login.recoverySubtitle')}
                   </p>
                 </div>
 
@@ -282,7 +281,7 @@ className={cn(
                   }}
                   className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/35 hover:text-emerald-300 transition-colors"
                 >
-                  Close
+                  {t('login.recoveryClose')}
                 </button>
               </div>
 
@@ -309,10 +308,10 @@ className={cn(
                   )}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
-                    Email reset link
+                    {t('login.recoveryEmailTitle')}
                   </span>
                   <span className="block text-[10px] opacity-70 mt-0.5">
-                    Generate a secure recovery token for the account email.
+                    {t('login.recoveryEmailDescription')}
                   </span>
                 </button>
 
@@ -327,10 +326,10 @@ className={cn(
                   )}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
-                    Tenant admin reset
+                    {t('login.recoveryAdminTitle')}
                   </span>
                   <span className="block text-[10px] opacity-70 mt-0.5">
-                    Route recovery through the company owner or HR administrator.
+                    {t('login.recoveryAdminDescription')}
                   </span>
                 </button>
 
@@ -345,10 +344,10 @@ className={cn(
                   )}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
-                    Security verification
+                    {t('login.recoverySecurityTitle')}
                   </span>
                   <span className="block text-[10px] opacity-70 mt-0.5">
-                    Use internal identity verification before password reset.
+                    {t('login.recoverySecurityDescription')}
                   </span>
                 </button>
 
@@ -358,7 +357,7 @@ className={cn(
                   disabled={isRecovering}
                   className="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-black transition-all hover:bg-emerald-400 disabled:opacity-60"
                 >
-                  {isRecovering ? 'Generating Recovery...' : 'Start Recovery'}
+                  {isRecovering ? t('login.recoveryGenerating') : t('login.recoveryStart')}
                 </button>
 
                 {recoveryMessage && (
