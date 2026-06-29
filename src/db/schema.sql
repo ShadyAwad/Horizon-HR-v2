@@ -345,7 +345,71 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 9. Attendance Daily Summaries
+-- 9. Grievances
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS grievances (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+    assigned_to UUID REFERENCES employees(id) ON DELETE SET NULL,
+
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,
+    category VARCHAR(80) NOT NULL DEFAULT 'general',
+    priority VARCHAR(30) NOT NULL DEFAULT 'normal',
+    status VARCHAR(30) NOT NULL DEFAULT 'open',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+
+    CONSTRAINT grievances_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT grievances_priority_chk
+        CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+
+    CONSTRAINT grievances_status_chk
+        CHECK (status IN ('open', 'under_review', 'resolved', 'rejected', 'closed')),
+
+    CONSTRAINT grievances_title_not_empty_chk
+        CHECK (length(btrim(title)) > 0),
+
+    CONSTRAINT grievances_description_not_empty_chk
+        CHECK (length(btrim(description)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS grievances_tenant_created_idx
+ON grievances(tenant_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS grievances_tenant_employee_created_idx
+ON grievances(tenant_id, employee_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS grievances_tenant_status_created_idx
+ON grievances(tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS grievances_tenant_assigned_created_idx
+ON grievances(tenant_id, assigned_to, created_at DESC);
+
+ALTER TABLE grievances ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS grievances_tenant_isolation ON grievances;
+
+CREATE POLICY grievances_tenant_isolation
+ON grievances
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 10. Attendance Daily Summaries
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
@@ -396,7 +460,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 10. Audit Logs
+-- 11. Audit Logs
 -- =========================================================
 
 CREATE TABLE audit_logs (

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign
+  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -51,6 +51,34 @@ type PayrollFormState = {
   deductions: string;
 };
 
+type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
+type GrievanceStatus = 'open' | 'under_review' | 'resolved' | 'rejected' | 'closed';
+
+type GrievanceRecord = {
+  id: string;
+  employee_id: string;
+  full_name?: string;
+  email?: string;
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  assigned_to_email?: string | null;
+  title: string;
+  description: string;
+  category: string;
+  priority: GrievancePriority;
+  status: GrievanceStatus;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string | null;
+};
+
+type GrievanceFormState = {
+  title: string;
+  category: string;
+  priority: GrievancePriority;
+  description: string;
+};
+
 const defaultSchedule: ShiftRow[] = [
   { day: 'Mon', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
   { day: 'Tue', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
@@ -71,6 +99,15 @@ const defaultPayrollForm: PayrollFormState = {
   bonuses: '0',
   deductions: '0',
 };
+
+const defaultGrievanceForm: GrievanceFormState = {
+  title: '',
+  category: 'general',
+  priority: 'normal',
+  description: '',
+};
+
+const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 
 function readStoredSchedule() {
   if (typeof window === 'undefined') return defaultSchedule;
@@ -115,6 +152,20 @@ function formatPayrollDate(value: string) {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function formatShortDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function notifyEmployee(title: string, body: string) {
@@ -171,6 +222,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollMessage, setPayrollMessage] = useState('');
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(defaultPayrollForm);
+  const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
+  const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
+  const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
+  const [grievanceLoading, setGrievanceLoading] = useState(false);
+  const [grievanceMessage, setGrievanceMessage] = useState('');
+  const [grievanceForm, setGrievanceForm] = useState<GrievanceFormState>(defaultGrievanceForm);
 
   const geo = useGeolocation();
 
@@ -347,6 +404,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
   };
+  const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
   const loadPayrollRecords = async () => {
     setPayrollLoading(true);
@@ -409,6 +467,104 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       loadPayrollRecords();
     }
   }, [activeTab, showPayrollPanel, user.id, user.role, user.tenantId]);
+
+  const loadGrievances = async (clearMessage = true) => {
+    setGrievanceLoading(true);
+    if (clearMessage) {
+      setGrievanceMessage('');
+    }
+
+    try {
+      const myResponse = await fetch('/api/grievances/me', { headers: payrollHeaders });
+      const myData = await myResponse.json();
+
+      if (!myResponse.ok || !myData.success) {
+        setGrievanceMessage(myData.error || 'Unable to load grievances.');
+        return;
+      }
+
+      setMyGrievances(myData.grievances || []);
+
+      if (canManageGrievances) {
+        const tenantResponse = await fetch('/api/grievances', { headers: payrollHeaders });
+        const tenantData = await tenantResponse.json();
+
+        if (!tenantResponse.ok || !tenantData.success) {
+          setGrievanceMessage(tenantData.error || 'Unable to load tenant grievances.');
+          return;
+        }
+
+        setTenantGrievances(tenantData.grievances || []);
+      } else {
+        setTenantGrievances([]);
+      }
+    } catch {
+      setGrievanceMessage('Server disconnection. Unable to load grievances.');
+    } finally {
+      setGrievanceLoading(false);
+    }
+  };
+
+  const updateGrievanceForm = (field: keyof GrievanceFormState, value: string) => {
+    setGrievanceForm((current) => ({ ...current, [field]: value as GrievancePriority }));
+  };
+
+  const submitGrievance = async () => {
+    setGrievanceLoading(true);
+    setGrievanceMessage('');
+
+    try {
+      const res = await fetch('/api/grievances', {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify(grievanceForm),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setGrievanceForm(defaultGrievanceForm);
+        await loadGrievances(false);
+        setGrievanceMessage('Grievance filed successfully.');
+      } else {
+        setGrievanceMessage(data.error || 'Unable to file grievance.');
+      }
+    } catch {
+      setGrievanceMessage('Server disconnection. Unable to file grievance.');
+    } finally {
+      setGrievanceLoading(false);
+    }
+  };
+
+  const updateGrievanceStatus = async (grievanceId: string, status: GrievanceStatus) => {
+    setGrievanceLoading(true);
+    setGrievanceMessage('');
+
+    try {
+      const res = await fetch(`/api/grievances/${grievanceId}/status`, {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadGrievances(false);
+        setGrievanceMessage('Grievance status updated.');
+      } else {
+        setGrievanceMessage(data.error || 'Unable to update grievance status.');
+      }
+    } catch {
+      setGrievanceMessage('Server disconnection. Unable to update grievance status.');
+    } finally {
+      setGrievanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'profile' && showGrievancesPanel) {
+      loadGrievances();
+    }
+  }, [activeTab, showGrievancesPanel, user.id, user.role, user.tenantId]);
 
   return (
 <div className="min-h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
@@ -486,6 +642,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             onClick={() => {
               setActiveTab('geofence');
               setShowPayrollPanel(false);
+              setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
@@ -495,6 +652,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             onClick={() => {
               setActiveTab('roster');
               setShowPayrollPanel(false);
+              setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
@@ -504,8 +662,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             onClick={() => {
               setActiveTab('profile');
               setShowPayrollPanel(false);
+              setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
              <User className="w-5 h-5" />
           </button>
@@ -513,11 +672,23 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             onClick={() => {
               setActiveTab('profile');
               setShowPayrollPanel(true);
+              setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Payroll"
           >
              <DollarSign className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              setActiveTab('profile');
+              setShowPayrollPanel(false);
+              setShowGrievancesPanel(true);
+            }}
+            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Grievances"
+          >
+             <MessageSquare className="w-5 h-5" />
           </button>
         </nav>
       </aside>
@@ -605,6 +776,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        onClick={() => {
                          setActiveTab('geofence');
                          setShowPayrollPanel(false);
+                         setShowGrievancesPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'geofence' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
@@ -615,6 +787,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        onClick={() => {
                          setActiveTab('roster');
                          setShowPayrollPanel(false);
+                         setShowGrievancesPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'roster' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
@@ -625,8 +798,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        onClick={() => {
                          setActiveTab('profile');
                          setShowPayrollPanel(false);
+                         setShowGrievancesPanel(false);
                        }}
-                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && !showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <User className="w-4 h-4 hidden sm:block" />
                        {t('dash.profile')}
@@ -635,11 +809,23 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        onClick={() => {
                          setActiveTab('profile');
                          setShowPayrollPanel(true);
+                         setShowGrievancesPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <DollarSign className="w-4 h-4 hidden sm:block" />
                        Payroll
+                    </button>
+                    <button 
+                       onClick={() => {
+                         setActiveTab('profile');
+                         setShowPayrollPanel(false);
+                         setShowGrievancesPanel(true);
+                       }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                    >
+                       <MessageSquare className="w-4 h-4 hidden sm:block" />
+                       Grievances
                     </button>
                 </div>
 
@@ -980,6 +1166,187 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </table>
                           </div>
                         </div>
+                      ) : showGrievancesPanel ? (
+                        <div className="space-y-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                                <MessageSquare className="h-4 w-4 text-emerald-500" />
+                                Grievances
+                              </h3>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {canManageGrievances ? 'File a grievance and manage tenant cases.' : 'File and track your own grievance cases.'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowGrievancesPanel(false)}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-800 dark:text-slate-300"
+                            >
+                              Back
+                            </button>
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                              <input
+                                value={grievanceForm.title}
+                                onChange={(event) => updateGrievanceForm('title', event.target.value)}
+                                placeholder="Title"
+                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                              />
+                              <input
+                                value={grievanceForm.category}
+                                onChange={(event) => updateGrievanceForm('category', event.target.value)}
+                                placeholder="Category"
+                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              />
+                              <select
+                                value={grievanceForm.priority}
+                                onChange={(event) => updateGrievanceForm('priority', event.target.value)}
+                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              >
+                                <option value="low">Low</option>
+                                <option value="normal">Normal</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                              </select>
+                              <textarea
+                                value={grievanceForm.description}
+                                onChange={(event) => updateGrievanceForm('description', event.target.value)}
+                                placeholder="Description"
+                                rows={4}
+                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-4"
+                              />
+                              <button
+                                type="button"
+                                onClick={submitGrievance}
+                                disabled={grievanceLoading}
+                                className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
+                              >
+                                Submit Grievance
+                              </button>
+                            </div>
+                          </div>
+
+                          {grievanceMessage && (
+                            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                              {grievanceMessage}
+                            </p>
+                          )}
+
+                          <div className="rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">My Grievances</h4>
+                              <button
+                                type="button"
+                                onClick={() => loadGrievances()}
+                                disabled={grievanceLoading}
+                                className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 disabled:opacity-60 dark:text-emerald-300"
+                              >
+                                Refresh
+                              </button>
+                            </div>
+
+                            <div className="space-y-3">
+                              {myGrievances.map((grievance) => (
+                                <div key={grievance.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{grievance.title}</p>
+                                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{grievance.description}</p>
+                                    </div>
+                                    <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                                      {formatLabel(grievance.status)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                    <span>{formatLabel(grievance.category)}</span>
+                                    <span>{formatLabel(grievance.priority)}</span>
+                                    <span>{formatShortDateTime(grievance.created_at)}</span>
+                                  </div>
+                                </div>
+                              ))}
+
+                              {!grievanceLoading && myGrievances.length === 0 && (
+                                <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                                  No grievances filed yet.
+                                </p>
+                              )}
+
+                              {grievanceLoading && (
+                                <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                                  Loading grievances...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {canManageGrievances && (
+                            <div className="rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                              <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Tenant Grievances</h4>
+                              <div className="overflow-x-auto">
+                                <table className={cn("w-full min-w-[860px]", isRtl ? "text-right" : "text-left")}>
+                                  <thead>
+                                    <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800">
+                                      <th className="p-3">Employee</th>
+                                      <th className="p-3">Case</th>
+                                      <th className="p-3">Priority</th>
+                                      <th className="p-3">Status</th>
+                                      <th className="p-3">Created</th>
+                                      <th className="p-3">Update</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="text-xs">
+                                    {tenantGrievances.map((grievance) => (
+                                      <tr key={grievance.id} className="border-b border-slate-100 text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-300">
+                                        <td className="p-3 font-semibold">
+                                          {grievance.full_name || 'Employee'}
+                                          <span className="block text-[10px] font-normal text-slate-500">{grievance.email || grievance.employee_id}</span>
+                                        </td>
+                                        <td className="p-3">
+                                          <span className="block font-bold text-slate-800 dark:text-slate-100">{grievance.title}</span>
+                                          <span className="mt-1 block max-w-[280px] truncate text-[10px] text-slate-500">{grievance.description}</span>
+                                        </td>
+                                        <td className="p-3">{formatLabel(grievance.priority)}</td>
+                                        <td className="p-3">{formatLabel(grievance.status)}</td>
+                                        <td className="p-3 font-mono text-[11px]">{formatShortDateTime(grievance.created_at)}</td>
+                                        <td className="p-3">
+                                          <select
+                                            value={grievance.status}
+                                            onChange={(event) => updateGrievanceStatus(grievance.id, event.target.value as GrievanceStatus)}
+                                            disabled={grievanceLoading}
+                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                          >
+                                            {grievanceStatuses.map((status) => (
+                                              <option key={status} value={status}>{formatLabel(status)}</option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                      </tr>
+                                    ))}
+
+                                    {!grievanceLoading && tenantGrievances.length === 0 && (
+                                      <tr>
+                                        <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
+                                          No grievances filed yet.
+                                        </td>
+                                      </tr>
+                                    )}
+
+                                    {grievanceLoading && (
+                                      <tr>
+                                        <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
+                                          Loading tenant grievances...
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl md:col-span-2">
@@ -1058,10 +1425,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.payroll')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                          </button>
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                         <button
+                            type="button"
+                            onClick={() => {
+                              setShowPayrollPanel(false);
+                              setShowGrievancesPanel(true);
+                            }}
+                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                         >
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.grievance')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                         </div>
+                         </button>
                       </div>
                       )}
                    </motion.div>
