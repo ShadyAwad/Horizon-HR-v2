@@ -133,7 +133,69 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 5. Clock-in / Time Logs
+-- 5. Company Locations
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS company_locations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+
+    name VARCHAR(255) NOT NULL,
+    location_type VARCHAR(50) NOT NULL DEFAULT 'branch',
+
+    address TEXT,
+
+    latitude NUMERIC(10, 7) NOT NULL,
+    longitude NUMERIC(10, 7) NOT NULL,
+    radius_meters INTEGER NOT NULL DEFAULT 100,
+
+    boundary GEOMETRY(Polygon, 4326) NOT NULL,
+
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT company_locations_name_not_empty_chk
+        CHECK (length(btrim(name)) > 0),
+
+    CONSTRAINT company_locations_radius_chk
+        CHECK (radius_meters BETWEEN 25 AND 5000),
+
+    CONSTRAINT company_locations_type_chk
+        CHECK (location_type IN ('headquarters', 'branch', 'warehouse', 'remote_site', 'other'))
+);
+
+CREATE INDEX IF NOT EXISTS company_locations_tenant_active_idx
+ON company_locations(tenant_id, is_active);
+
+CREATE INDEX IF NOT EXISTS company_locations_tenant_primary_idx
+ON company_locations(tenant_id, is_primary);
+
+CREATE INDEX IF NOT EXISTS company_locations_boundary_gix
+ON company_locations
+USING GIST (boundary);
+
+ALTER TABLE company_locations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS company_locations_tenant_isolation ON company_locations;
+
+CREATE POLICY company_locations_tenant_isolation
+ON company_locations
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- Existing geofences do not store the original lat/lng/radius, so they are left
+-- untouched. New tenants and location management use company_locations.
+
+-- =========================================================
+-- 6. Clock-in / Time Logs
 -- =========================================================
 
 CREATE TABLE time_logs (

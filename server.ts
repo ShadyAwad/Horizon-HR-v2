@@ -22,6 +22,19 @@ type ClockInBody = {
   longitude?: number;
 };
 
+type CompanyLocationType = 'headquarters' | 'branch' | 'warehouse' | 'remote_site' | 'other';
+
+type CompanyLocationInput = {
+  name?: string;
+  locationType?: CompanyLocationType;
+  address?: string;
+  lat?: number | string;
+  lng?: number | string;
+  radius?: number | string;
+  isPrimary?: boolean;
+  isActive?: boolean;
+};
+
 type PayrollRunBody = {
   payPeriodStart?: string;
   payPeriodEnd?: string;
@@ -60,6 +73,17 @@ type DemoTimeLog = {
   employeeId: string;
   clockInTime: Date;
   clockOutTime?: Date;
+};
+
+type NormalizedCompanyLocation = {
+  name: string;
+  locationType: CompanyLocationType;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  isPrimary: boolean;
+  isActive: boolean;
 };
 
 const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
@@ -273,6 +297,7 @@ function isNonNegativeAmount(value: unknown): value is number {
 
 const grievancePriorities: GrievancePriority[] = ['low', 'normal', 'high', 'urgent'];
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
+const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
 
 function isGrievancePriority(value: unknown): value is GrievancePriority {
   return typeof value === 'string' && grievancePriorities.includes(value as GrievancePriority);
@@ -280,6 +305,64 @@ function isGrievancePriority(value: unknown): value is GrievancePriority {
 
 function isGrievanceStatus(value: unknown): value is GrievanceStatus {
   return typeof value === 'string' && grievanceStatuses.includes(value as GrievanceStatus);
+}
+
+function isCompanyLocationType(value: unknown): value is CompanyLocationType {
+  return typeof value === 'string' && companyLocationTypes.includes(value as CompanyLocationType);
+}
+
+function normalizeCompanyLocations(
+  locations: CompanyLocationInput[] | undefined,
+  fallbackLocation?: CompanyLocationInput,
+) {
+  const rawLocations = Array.isArray(locations) && locations.length > 0
+    ? locations
+    : fallbackLocation?.lat !== undefined || fallbackLocation?.lng !== undefined || fallbackLocation?.radius !== undefined
+      ? [{ ...fallbackLocation, name: fallbackLocation.name || 'Headquarters', locationType: 'headquarters' as const, isPrimary: true }]
+      : [];
+
+  if (rawLocations.length === 0) {
+    return { ok: false as const, error: 'At least one company location is required.' };
+  }
+
+  const primaryIndex = rawLocations.findIndex((location) => location.isPrimary);
+
+  for (const [index, location] of rawLocations.entries()) {
+    const name = location.name?.trim() || '';
+    const locationType = location.locationType || (index === 0 ? 'headquarters' : 'branch');
+    const latitude = Number(location.lat);
+    const longitude = Number(location.lng);
+    const radiusMeters = Number(location.radius);
+
+    if (!name) {
+      return { ok: false as const, error: 'Each location requires a name.' };
+    }
+
+    if (!isCompanyLocationType(locationType)) {
+      return { ok: false as const, error: 'locationType must be headquarters, branch, warehouse, remote_site, or other.' };
+    }
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return { ok: false as const, error: 'Each location requires valid lat and lng numbers.' };
+    }
+
+    if (!Number.isFinite(radiusMeters) || radiusMeters < 25 || radiusMeters > 5000) {
+      return { ok: false as const, error: 'Each location radius must be between 25 and 5000 meters.' };
+    }
+  }
+
+  const normalizedLocations: NormalizedCompanyLocation[] = rawLocations.map((location, index) => ({
+    name: location.name!.trim(),
+    locationType: location.locationType || (index === 0 ? 'headquarters' : 'branch'),
+    address: location.address?.trim() || null,
+    latitude: Number(location.lat),
+    longitude: Number(location.lng),
+    radiusMeters: Number(location.radius),
+    isPrimary: primaryIndex === -1 ? index === 0 : index === primaryIndex,
+    isActive: location.isActive ?? true,
+  }));
+
+  return { ok: true as const, locations: normalizedLocations };
 }
 
 async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
@@ -497,6 +580,7 @@ async function startServer() {
       currency,
       capacity,
       allowsLoans,
+      locations,
       lat,
       lng,
       radius,
@@ -510,6 +594,7 @@ async function startServer() {
       currency?: string;
       capacity?: string;
       allowsLoans?: boolean;
+      locations?: CompanyLocationInput[];
       lat?: number | string;
       lng?: number | string;
       radius?: number | string;
@@ -524,9 +609,14 @@ async function startServer() {
     const normalizedAdminRole = allowedAdminRoles.includes(adminRole as EmployeeRole)
       ? adminRole as EmployeeRole
       : 'hr_admin';
-    const latitude = Number(lat);
-    const longitude = Number(lng);
-    const geofenceRadius = Number(radius);
+    const normalizedLocations = normalizeCompanyLocations(locations, {
+      name: 'Headquarters',
+      locationType: 'headquarters',
+      lat,
+      lng,
+      radius,
+      isPrimary: true,
+    });
 
     if (
       !normalizedCompanyName ||
@@ -550,10 +640,10 @@ async function startServer() {
       });
     }
 
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(geofenceRadius)) {
+    if (!normalizedLocations.ok) {
       return res.status(400).json({
         success: false,
-        error: 'lat, lng, and radius must be valid numbers.',
+        error: normalizedLocations.error,
       });
     }
 
@@ -629,6 +719,7 @@ async function startServer() {
       );
 
       const employee = employeeResult.rows[0];
+      const primaryLocation = normalizedLocations.locations.find((location) => location.isPrimary) || normalizedLocations.locations[0];
 
       await client.query(
         `
@@ -646,8 +737,67 @@ async function startServer() {
             )::geometry
           )
         `,
-        [tenant.id, 'HQ', longitude, latitude, geofenceRadius],
+        [tenant.id, primaryLocation.name, primaryLocation.longitude, primaryLocation.latitude, primaryLocation.radiusMeters],
       );
+
+      const createdLocations = [];
+
+      for (const location of normalizedLocations.locations) {
+        const locationResult = await client.query<{
+          id: string;
+          name: string;
+          location_type: CompanyLocationType;
+          latitude: string;
+          longitude: string;
+          radius_meters: number;
+          is_primary: boolean;
+          is_active: boolean;
+        }>(
+          `
+            INSERT INTO company_locations (
+              tenant_id,
+              name,
+              location_type,
+              address,
+              latitude,
+              longitude,
+              radius_meters,
+              boundary,
+              is_primary,
+              is_active
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              ST_Buffer(
+                ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography,
+                $7
+              )::geometry,
+              $8,
+              $9
+            )
+            RETURNING id, name, location_type, latitude, longitude, radius_meters, is_primary, is_active
+          `,
+          [
+            tenant.id,
+            location.name,
+            location.locationType,
+            location.address,
+            location.latitude,
+            location.longitude,
+            location.radiusMeters,
+            location.isPrimary,
+            location.isActive,
+          ],
+        );
+
+        createdLocations.push(locationResult.rows[0]);
+      }
 
       await client.query(
         `
@@ -672,11 +822,15 @@ async function startServer() {
             companyName: tenant.company_name,
             adminEmail: employee.email,
             adminRole: employee.role,
-            geofence: {
-              lat: latitude,
-              lng: longitude,
-              radius: geofenceRadius,
-            },
+            locations: createdLocations.map((location) => ({
+              id: location.id,
+              name: location.name,
+              locationType: location.location_type,
+              lat: location.latitude,
+              lng: location.longitude,
+              radius: location.radius_meters,
+              isPrimary: location.is_primary,
+            })),
           }),
         ],
       );
@@ -693,6 +847,7 @@ async function startServer() {
         success: true,
         message: 'Tenant registered successfully.',
         tenant: responseTenant,
+        locations: createdLocations,
         user: {
           id: employee.id,
           email: employee.email,
@@ -1058,20 +1213,20 @@ app.post('/api/auth/reset-password', async (req, res) => {
   // 2. Geofenced Clock-In Simulator
   // In production, this would execute PostGIS: 
   // ST_DWithin(employee_location, geofence.boundary, radius)
-  app.post('/api/clock-in', async (req, res) => {
+app.post('/api/clock-in', async (req, res) => {
     const { tenantId, employeeId, latitude, longitude } = req.body as ClockInBody;
     
     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
       return res.status(400).json({ error: 'Geolocation required for clock-in' });
     }
 
-    // Mock HQ Location: 37.7749, -122.4194 (San Francisco)
-    // Accept anything within a loose bounding box for the demo
+    // Mock HQ Location: 37.7749, -122.4194 (San Francisco).
+    // Used only when DATABASE_URL is not configured.
     const hqLat = 37.7749;
     const hqLng = -122.4194;
     
-    // Math.abs diff logic purely to mock PostGIS in this runtime
-    const isWithinGeofence = Math.abs(latitude - hqLat) < 0.5 && Math.abs(longitude - hqLng) < 0.5;
+    let isWithinGeofence = Math.abs(latitude - hqLat) < 0.5 && Math.abs(longitude - hqLng) < 0.5;
+    let matchedLocation: { id: string; name: string; locationType: string } | undefined;
     const clockedIn = new Date();
 
     if (hasDatabaseConfig()) {
@@ -1083,6 +1238,36 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
       try {
         const timeLog = await withTenant(tenantId, async (client) => {
+          const locationResult = await client.query<{
+            id: string;
+            name: string;
+            location_type: string;
+          }>(
+            `
+              SELECT id, name, location_type
+              FROM company_locations
+              WHERE tenant_id = $1
+                AND is_active = true
+                AND ST_Intersects(
+                  boundary,
+                  ST_SetSRID(ST_MakePoint($2, $3), 4326)
+                )
+              ORDER BY is_primary DESC, created_at ASC
+              LIMIT 1
+            `,
+            [tenantId, longitude, latitude],
+          );
+
+          const location = locationResult.rows[0];
+          isWithinGeofence = Boolean(location);
+          matchedLocation = location
+            ? {
+                id: location.id,
+                name: location.name,
+                locationType: location.location_type,
+              }
+            : undefined;
+
           const result = await client.query<{ id: string; clock_in_time: Date }>(
             `
               INSERT INTO time_logs (
@@ -1126,6 +1311,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
                 latitude,
                 longitude,
                 locationValid: isWithinGeofence,
+                matchedLocation,
                 workDate,
               },
             }),
@@ -1137,6 +1323,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
           timeLogId: timeLog.id,
           clockedIn: timeLog.clock_in_time,
           locationValid: isWithinGeofence,
+          isValidGeofence: isWithinGeofence,
+          matchedLocation,
           message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.',
         });
       } catch (error) {
@@ -1163,9 +1351,352 @@ app.post('/api/auth/reset-password', async (req, res) => {
       timeLogId: demoClockIn.body.id,
       clockedIn: clockedIn.toISOString(),
       locationValid: isWithinGeofence,
+      isValidGeofence: isWithinGeofence,
       message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.'
     });
   });
+
+app.get(
+  '/api/company-locations',
+  demoAuth,
+  requireRole(['employee', 'manager', 'hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company locations' });
+    }
+
+    try {
+      const locations = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              id,
+              name,
+              location_type,
+              address,
+              latitude,
+              longitude,
+              radius_meters,
+              is_primary,
+              is_active,
+              created_at,
+              updated_at
+            FROM company_locations
+            WHERE tenant_id = $1
+              AND is_active = true
+            ORDER BY is_primary DESC, created_at DESC
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, locations });
+    } catch (error) {
+      console.error('[Company Locations] Failed to load locations:', error);
+      res.status(500).json({ success: false, error: 'Unable to load company locations' });
+    }
+  },
+);
+
+app.post(
+  '/api/company-locations',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const normalized = normalizeCompanyLocations([req.body as CompanyLocationInput]);
+
+    if (!normalized.ok) {
+      return res.status(400).json({ success: false, error: normalized.error });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company locations' });
+    }
+
+    const location = normalized.locations[0];
+
+    try {
+      const createdLocation = await withTenant(tenantId, async (client) => {
+        if (location.isPrimary) {
+          await client.query(
+            `
+              UPDATE company_locations
+              SET is_primary = false, updated_at = NOW()
+              WHERE tenant_id = $1
+            `,
+            [tenantId],
+          );
+        }
+
+        const result = await client.query(
+          `
+            INSERT INTO company_locations (
+              tenant_id,
+              name,
+              location_type,
+              address,
+              latitude,
+              longitude,
+              radius_meters,
+              boundary,
+              is_primary,
+              is_active
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              ST_Buffer(
+                ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography,
+                $7
+              )::geometry,
+              $8,
+              $9
+            )
+            RETURNING
+              id,
+              name,
+              location_type,
+              address,
+              latitude,
+              longitude,
+              radius_meters,
+              is_primary,
+              is_active,
+              created_at,
+              updated_at
+          `,
+          [
+            tenantId,
+            location.name,
+            location.locationType,
+            location.address,
+            location.latitude,
+            location.longitude,
+            location.radiusMeters,
+            location.isPrimary,
+            location.isActive,
+          ],
+        );
+
+        const created = result.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'company_location_created',
+            'company_location',
+            created.id,
+            JSON.stringify({
+              name: location.name,
+              locationType: location.locationType,
+              radius: location.radiusMeters,
+              isPrimary: location.isPrimary,
+            }),
+          ],
+        );
+
+        return created;
+      });
+
+      res.status(201).json({ success: true, location: createdLocation });
+    } catch (error) {
+      console.error('[Company Locations] Failed to create location:', error);
+      res.status(500).json({ success: false, error: 'Unable to create company location' });
+    }
+  },
+);
+
+app.patch(
+  '/api/company-locations/:id',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const { id } = req.params;
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company locations' });
+    }
+
+    try {
+      const updatedLocation = await withTenant(tenantId, async (client) => {
+        const existingResult = await client.query<{
+          name: string;
+          location_type: CompanyLocationType;
+          address: string | null;
+          latitude: string;
+          longitude: string;
+          radius_meters: number;
+          is_primary: boolean;
+          is_active: boolean;
+        }>(
+          `
+            SELECT name, location_type, address, latitude, longitude, radius_meters, is_primary, is_active
+            FROM company_locations
+            WHERE tenant_id = $1
+              AND id = $2
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [tenantId, id],
+        );
+
+        if (existingResult.rowCount === 0) {
+          throw Object.assign(new Error('Company location not found.'), { statusCode: 404 });
+        }
+
+        const existing = existingResult.rows[0];
+        const body = req.body as CompanyLocationInput;
+        const normalized = normalizeCompanyLocations([
+          {
+            name: body.name ?? existing.name,
+            locationType: body.locationType ?? existing.location_type,
+            address: body.address ?? existing.address ?? undefined,
+            lat: body.lat ?? existing.latitude,
+            lng: body.lng ?? existing.longitude,
+            radius: body.radius ?? existing.radius_meters,
+            isPrimary: body.isPrimary ?? existing.is_primary,
+            isActive: body.isActive ?? existing.is_active,
+          },
+        ]);
+
+        if (!normalized.ok) {
+          throw Object.assign(new Error(normalized.error), { statusCode: 400 });
+        }
+
+        const location = normalized.locations[0];
+
+        if (location.isPrimary) {
+          await client.query(
+            `
+              UPDATE company_locations
+              SET is_primary = false, updated_at = NOW()
+              WHERE tenant_id = $1
+                AND id <> $2
+            `,
+            [tenantId, id],
+          );
+        }
+
+        const result = await client.query(
+          `
+            UPDATE company_locations
+            SET
+              name = $3,
+              location_type = $4,
+              address = $5,
+              latitude = $6,
+              longitude = $7,
+              radius_meters = $8,
+              boundary = ST_Buffer(
+                ST_SetSRID(ST_MakePoint($7, $6), 4326)::geography,
+                $8
+              )::geometry,
+              is_primary = $9,
+              is_active = $10,
+              updated_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+            RETURNING
+              id,
+              name,
+              location_type,
+              address,
+              latitude,
+              longitude,
+              radius_meters,
+              is_primary,
+              is_active,
+              created_at,
+              updated_at
+          `,
+          [
+            tenantId,
+            id,
+            location.name,
+            location.locationType,
+            location.address,
+            location.latitude,
+            location.longitude,
+            location.radiusMeters,
+            location.isPrimary,
+            location.isActive,
+          ],
+        );
+
+        const updated = result.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'company_location_updated',
+            'company_location',
+            id,
+            JSON.stringify({
+              name: location.name,
+              locationType: location.locationType,
+              radius: location.radiusMeters,
+              isPrimary: location.isPrimary,
+              isActive: location.isActive,
+            }),
+          ],
+        );
+
+        return updated;
+      });
+
+      res.json({ success: true, location: updatedLocation });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+
+      if (statusCode === 400 || statusCode === 404) {
+        return res.status(statusCode).json({
+          success: false,
+          error: (error as Error).message,
+        });
+      }
+
+      console.error('[Company Locations] Failed to update location:', error);
+      res.status(500).json({ success: false, error: 'Unable to update company location' });
+    }
+  },
+);
 
   app.post('/api/clock-out', async (req, res) => {
   const { tenantId, employeeId } = req.body;

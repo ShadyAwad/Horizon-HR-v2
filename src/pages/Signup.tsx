@@ -18,6 +18,26 @@ type InteractiveMapProps = {
   setRadius: (value: number) => void;
 };
 
+type SignupLocationType = 'headquarters' | 'branch' | 'warehouse' | 'remote_site' | 'other';
+
+type SignupLocation = {
+  name: string;
+  locationType: SignupLocationType;
+  address: string;
+  lat: number;
+  lng: number;
+  radius: number;
+  isPrimary: boolean;
+};
+
+const locationTypeOptions: Array<{ value: SignupLocationType; label: string }> = [
+  { value: 'headquarters', label: 'Headquarters' },
+  { value: 'branch', label: 'Branch Office' },
+  { value: 'warehouse', label: 'Warehouse' },
+  { value: 'remote_site', label: 'Remote Site' },
+  { value: 'other', label: 'Other' },
+];
+
 const InteractiveMap = ({
   lat,
   lng,
@@ -227,7 +247,7 @@ const InteractiveMap = ({
         <input
           type="range"
           min="25"
-          max="1000"
+          max="5000"
           step="25"
           value={radius}
           onChange={(e) => setRadius(Number(e.target.value))}
@@ -236,7 +256,7 @@ const InteractiveMap = ({
 
         <div className="mt-2 flex justify-between text-[10px] text-emerald-100/35">
           <span>25m</span>
-          <span>1000m</span>
+          <span>5000m</span>
         </div>
       </div>
 
@@ -283,7 +303,7 @@ const InteractiveMap = ({
             <input
               type="number"
               min="25"
-              max="1000"
+              max="5000"
               value={radius}
               onChange={(e) => setRadius(Number(e.target.value))}
               className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
@@ -316,6 +336,67 @@ const [formData, setFormData] = useState({
   lng: 55.274,
   radius: 100
 });
+  const [locations, setLocations] = useState<SignupLocation[]>([
+    {
+      name: 'Headquarters',
+      locationType: 'headquarters',
+      address: '',
+      lat: 25.197,
+      lng: 55.274,
+      radius: 100,
+      isPrimary: true,
+    },
+  ]);
+  const [selectedLocationIndex, setSelectedLocationIndex] = useState(0);
+
+  const selectedLocation = locations[selectedLocationIndex] || locations[0];
+
+  const updateLocation = (index: number, updates: Partial<SignupLocation>) => {
+    setLocations((current) => current.map((location, locationIndex) => (
+      locationIndex === index ? { ...location, ...updates } : location
+    )));
+  };
+
+  const addLocation = () => {
+    setLocations((current) => {
+      const nextLocation: SignupLocation = {
+        name: `Branch ${current.length}`,
+        locationType: 'branch',
+        address: '',
+        lat: selectedLocation?.lat || 25.197,
+        lng: selectedLocation?.lng || 55.274,
+        radius: selectedLocation?.radius || 100,
+        isPrimary: false,
+      };
+
+      setSelectedLocationIndex(current.length);
+      return [...current, nextLocation];
+    });
+  };
+
+  const removeLocation = (index: number) => {
+    if (locations.length === 1) return;
+
+    setLocations((current) => {
+      const removedWasPrimary = current[index]?.isPrimary;
+      const nextLocations = current.filter((_, locationIndex) => locationIndex !== index);
+
+      if (removedWasPrimary && nextLocations[0]) {
+        nextLocations[0] = { ...nextLocations[0], isPrimary: true };
+      }
+
+      setSelectedLocationIndex(Math.max(0, Math.min(index - 1, nextLocations.length - 1)));
+      return nextLocations;
+    });
+  };
+
+  const setPrimaryLocation = (index: number) => {
+    setLocations((current) => current.map((location, locationIndex) => ({
+      ...location,
+      isPrimary: locationIndex === index,
+      locationType: locationIndex === index && location.locationType === 'branch' && index === 0 ? 'headquarters' : location.locationType,
+    })));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -336,10 +417,17 @@ const [formData, setFormData] = useState({
     setIsSubmitting(true);
     
     try {
+      const primaryLocation = locations.find((location) => location.isPrimary) || locations[0];
       const res = await fetch(apiUrl('/api/auth/register-tenant'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          lat: primaryLocation.lat,
+          lng: primaryLocation.lng,
+          radius: primaryLocation.radius,
+          locations,
+        })
       });
       const data = await res.json();
       
@@ -508,13 +596,121 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
             {step === 3 && (
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4 border-b border-emerald-500/20 pb-2">{t('signup.step3')}</h2>
-                
-                <InteractiveMap 
-                  lat={formData.lat} lng={formData.lng} radius={formData.radius}
-                  setLat={(val: number) => setFormData(p => ({ ...p, lat: val }))}
-                  setLng={(val: number) => setFormData(p => ({ ...p, lng: val }))}
-                  setRadius={(val: number) => setFormData(p => ({ ...p, radius: val }))}
-                />
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/50">
+                        Locations
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addLocation}
+                        className="rounded-lg border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
+                      >
+                        Add Location
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {locations.map((location, index) => (
+                        <button
+                          key={`${location.name}-${index}`}
+                          type="button"
+                          onClick={() => setSelectedLocationIndex(index)}
+                          className={cn(
+                            "w-full rounded-xl border p-3 text-left transition",
+                            selectedLocationIndex === index
+                              ? "border-emerald-500/50 bg-emerald-500/10"
+                              : "border-emerald-500/15 bg-white/70 hover:border-emerald-500/35 dark:bg-[#04110d]/60"
+                          )}
+                        >
+                          <span className="block text-xs font-bold text-slate-900 dark:text-emerald-50">{location.name || 'Unnamed Location'}</span>
+                          <span className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700/60 dark:text-emerald-100/40">
+                            <span>{location.locationType.replace('_', ' ')}</span>
+                            <span>{location.radius}m</span>
+                            {location.isPrimary && <span className="text-emerald-500">Primary</span>}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Name</label>
+                          <input
+                            value={selectedLocation.name}
+                            onChange={(event) => updateLocation(selectedLocationIndex, { name: event.target.value })}
+                            className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Type</label>
+                          <select
+                            value={selectedLocation.locationType}
+                            onChange={(event) => updateLocation(selectedLocationIndex, { locationType: event.target.value as SignupLocationType })}
+                            className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
+                          >
+                            {locationTypeOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Address Optional</label>
+                          <input
+                            value={selectedLocation.address}
+                            onChange={(event) => updateLocation(selectedLocationIndex, { address: event.target.value })}
+                            placeholder="Street, city, country"
+                            className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
+                          />
+                        </div>
+
+                        <label className="flex items-center gap-3 rounded-lg border border-emerald-500/15 bg-black/10 px-3 py-2 dark:bg-black/20">
+                          <input
+                            type="checkbox"
+                            checked={selectedLocation.isPrimary}
+                            onChange={() => setPrimaryLocation(selectedLocationIndex)}
+                            className="h-4 w-4 accent-emerald-500"
+                          />
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">Primary Location</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => removeLocation(selectedLocationIndex)}
+                          disabled={locations.length === 1}
+                          className="rounded-lg border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Remove Location
+                        </button>
+                      </div>
+                    </div>
+                  
+                    <InteractiveMap 
+                      lat={selectedLocation.lat}
+                      lng={selectedLocation.lng}
+                      radius={selectedLocation.radius}
+                      setLat={(val: number) => {
+                        updateLocation(selectedLocationIndex, { lat: val });
+                        setFormData(p => ({ ...p, lat: val }));
+                      }}
+                      setLng={(val: number) => {
+                        updateLocation(selectedLocationIndex, { lng: val });
+                        setFormData(p => ({ ...p, lng: val }));
+                      }}
+                      setRadius={(val: number) => {
+                        updateLocation(selectedLocationIndex, { radius: val });
+                        setFormData(p => ({ ...p, radius: val }));
+                      }}
+                    />
+                  </div>
+                </div>
 
                 <div className="mt-4 p-4 bg-white/70 dark:bg-[#04110d]/60 border border-emerald-500/15 rounded-xl">
                   <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-emerald-700/70 dark:text-emerald-100/55 uppercase tracking-widest hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
@@ -524,8 +720,8 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
                     {showAdvanced && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mt-3">
                         <div className="p-3 bg-white dark:bg-[#020617] rounded border border-slate-200 dark:border-emerald-900/40 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 space-y-1">
-                          <p>ST_MakePoint({formData.lng}, {formData.lat})</p>
-                          <p>ST_Buffer(geom, {formData.radius})</p>
+                          <p>ST_MakePoint({selectedLocation.lng}, {selectedLocation.lat})</p>
+                          <p>ST_Buffer(geom, {selectedLocation.radius})</p>
                           <p>CREATE INDEX geom_idx ON tenants USING GIST (boundary);</p>
                         </div>
                       </motion.div>

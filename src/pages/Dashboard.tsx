@@ -80,6 +80,18 @@ type GrievanceFormState = {
   description: string;
 };
 
+type CompanyLocationRecord = {
+  id: string;
+  name: string;
+  location_type: string;
+  address?: string | null;
+  latitude: string | number;
+  longitude: string | number;
+  radius_meters: number;
+  is_primary: boolean;
+  is_active: boolean;
+};
+
 const defaultSchedule: ShiftRow[] = [
   { day: 'Mon', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
   { day: 'Tue', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
@@ -235,6 +247,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [grievanceMessage, setGrievanceMessage] = useState('');
   const [grievanceMessageType, setGrievanceMessageType] = useState<'success' | 'error'>('success');
   const [grievanceForm, setGrievanceForm] = useState<GrievanceFormState>(defaultGrievanceForm);
+  const [companyLocations, setCompanyLocations] = useState<CompanyLocationRecord[]>([]);
+  const [locationsMessage, setLocationsMessage] = useState('');
 
   const geo = useGeolocation();
 
@@ -598,6 +612,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       loadGrievances();
     }
   }, [activeTab, showGrievancesPanel, user.id, user.role, user.tenantId]);
+
+  useEffect(() => {
+    const loadCompanyLocations = async () => {
+      try {
+        const res = await fetch(apiUrl('/api/company-locations'), { headers: payrollHeaders });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          setCompanyLocations(data.locations || []);
+          setLocationsMessage('');
+        } else {
+          setLocationsMessage(data.error || 'Unable to load locations.');
+        }
+      } catch {
+        setLocationsMessage('Unable to load locations.');
+      }
+    };
+
+    loadCompanyLocations();
+  }, [user.id, user.tenantId]);
 
   return (
 <div className="min-h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
@@ -1488,6 +1522,46 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
             {/* Sidebar (Right) / Stats & Insights */}
             <div className="w-full xl:w-80 flex flex-col gap-6 shrink-0 z-10">
+                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                        <MapPin className="w-5 h-5 text-emerald-500" /> Locations
+                      </span>
+                      <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                        {companyLocations.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {companyLocations.map((location) => (
+                        <div key={location.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                {location.location_type.replace('_', ' ')} - {location.radius_meters}m
+                              </p>
+                            </div>
+                            {location.is_primary && (
+                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                                HQ
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-[10px] text-slate-500">
+                            {location.is_active ? 'Active' : 'Inactive'}
+                          </p>
+                        </div>
+                      ))}
+
+                      {companyLocations.length === 0 && (
+                        <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                          {locationsMessage || 'No company locations found.'}
+                        </p>
+                      )}
+                    </div>
+                 </div>
+
                  {/* Replaced Org CTE Box with something more fitting or just Advanced Params */}
 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl h-fit overflow-hidden">                    <button 
                         onClick={() => setShowAdvanced(!showAdvanced)}
