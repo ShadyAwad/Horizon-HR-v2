@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'horizon-static-v1';
-const RUNTIME_CACHE = 'horizon-runtime-v1';
+const STATIC_CACHE = 'horizon-static-v2';
+const RUNTIME_CACHE = 'horizon-runtime-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -46,6 +46,21 @@ function isSensitiveApiPath(pathname) {
   return pathname.startsWith('/api/auth/');
 }
 
+function isApiRequest(url) {
+  return url.pathname.startsWith('/api/');
+}
+
+function isStaticAssetRequest(request, url) {
+  return (
+    url.origin === self.location.origin &&
+    (
+      url.pathname.startsWith('/assets/') ||
+      ['script', 'style', 'image', 'font', 'manifest'].includes(request.destination) ||
+      /\.(?:js|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|otf)$/.test(url.pathname)
+    )
+  );
+}
+
 async function networkFirstApi(request) {
   const cache = await caches.open(RUNTIME_CACHE);
 
@@ -63,9 +78,25 @@ async function networkFirstApi(request) {
   }
 }
 
-async function navigationResponse(request) {
+async function networkOnlyMutation(request) {
   try {
     return await fetch(request);
+  } catch {
+    return offlineJsonResponse();
+  }
+}
+
+async function navigationResponse(request) {
+  const cache = await caches.open(STATIC_CACHE);
+
+  try {
+    const response = await fetch(request);
+
+    if (response.ok) {
+      cache.put('/index.html', response.clone());
+    }
+
+    return response;
   } catch {
     const cachedShell = await caches.match('/index.html');
     const offlinePage = await caches.match('/offline.html');
@@ -74,13 +105,21 @@ async function navigationResponse(request) {
 }
 
 async function staticAssetResponse(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
   const cachedResponse = await caches.match(request);
 
   if (cachedResponse) {
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          cache.put(request, response);
+        }
+      })
+      .catch(() => undefined);
+
     return cachedResponse;
   }
 
-  const cache = await caches.open(RUNTIME_CACHE);
   const response = await fetch(request);
 
   if (response.ok) {
@@ -94,18 +133,20 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (url.origin !== self.location.origin) {
-    return;
-  }
+  if (isApiRequest(url)) {
+    // Mutating HR workflows are intentionally not cached or queued. Retrying login,
+    // password reset, payroll, grievance, clock, or leave writes offline could
+    // duplicate sensitive actions or replay stale credentials/payroll changes.
+    if (request.method !== 'GET') {
+      event.respondWith(networkOnlyMutation(request));
+      return;
+    }
 
-  // Mutating HR workflows are intentionally not cached or queued. Retrying payroll,
-  // grievance, auth, clock, or leave writes offline could duplicate sensitive actions.
-  if (request.method !== 'GET') {
-    return;
-  }
-
-  if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirstApi(request));
+    return;
+  }
+
+  if (url.origin !== self.location.origin || request.method !== 'GET') {
     return;
   }
 
@@ -114,5 +155,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(staticAssetResponse(request));
+  if (isStaticAssetRequest(request, url)) {
+    event.respondWith(staticAssetResponse(request));
+  }
 });

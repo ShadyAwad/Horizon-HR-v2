@@ -160,6 +160,19 @@ function clearFailedLogins(key: string) {
   loginAttemptStore.delete(key);
 }
 
+function getAllowedCorsOrigins() {
+  return new Set(
+    [
+      process.env.APP_URL,
+      process.env.FRONTEND_URL,
+      'http://localhost:4173',
+      'http://127.0.0.1:4173',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ].filter(Boolean),
+  );
+}
+
 function getAttendanceKey(tenantId?: string, employeeId?: string) {
   return `${tenantId || 'demo-tenant'}:${employeeId || 'demo-employee'}`;
 }
@@ -395,6 +408,23 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use((req, res, next) => {
+    const origin = req.header('origin');
+    const allowedOrigins = getAllowedCorsOrigins();
+
+    if (origin && allowedOrigins.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-employee-id, x-tenant-id');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    next();
+  });
 
   // === HORIZON HR API ROUTES ===
 

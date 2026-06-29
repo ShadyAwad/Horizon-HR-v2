@@ -7,6 +7,7 @@ import {
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
+import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
 
 type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
@@ -329,7 +330,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const verifyClockIn = async (lat: number, lng: number) => {
     setClockInState('verifying');
     try {
-        const res = await fetch('/api/clock-in', {
+        const res = await fetch(apiUrl('/api/clock-in'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -367,7 +368,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setClockInState('verifying');
 
     try {
-      const res = await fetch('/api/clock-out', {
+      const res = await fetch(apiUrl('/api/clock-out'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -420,7 +421,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     try {
       const endpoint = user.role === 'hr_admin' ? '/api/payroll' : '/api/payroll/me';
-      const res = await fetch(endpoint, { headers: payrollHeaders });
+      const res = await fetch(apiUrl(endpoint), { headers: payrollHeaders });
       const data = await res.json();
 
       if (res.ok && data.success) {
@@ -448,7 +449,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setPayrollMessage('');
 
     try {
-      const res = await fetch('/api/payroll/run', {
+      const res = await fetch(apiUrl('/api/payroll/run'), {
         method: 'POST',
         headers: payrollHeaders,
         body: JSON.stringify({
@@ -491,7 +492,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
 
     try {
-      const myResponse = await fetch('/api/grievances/me', { headers: payrollHeaders });
+      const myResponse = await fetch(apiUrl('/api/grievances/me'), { headers: payrollHeaders });
       const myData = await myResponse.json();
 
       if (!myResponse.ok || !myData.success) {
@@ -505,7 +506,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       if (canManageGrievances) {
         setTenantGrievanceLoading(true);
-        const tenantResponse = await fetch('/api/grievances', { headers: payrollHeaders });
+        const tenantResponse = await fetch(apiUrl('/api/grievances'), { headers: payrollHeaders });
         const tenantData = await tenantResponse.json();
 
         if (!tenantResponse.ok || !tenantData.success) {
@@ -538,7 +539,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setGrievanceMessage('');
 
     try {
-      const res = await fetch('/api/grievances', {
+      const res = await fetch(apiUrl('/api/grievances'), {
         method: 'POST',
         headers: payrollHeaders,
         body: JSON.stringify(grievanceForm),
@@ -569,7 +570,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setGrievanceMessage('');
 
     try {
-      const res = await fetch(`/api/grievances/${grievanceId}/status`, {
+      const res = await fetch(apiUrl(`/api/grievances/${grievanceId}/status`), {
         method: 'PATCH',
         headers: payrollHeaders,
         body: JSON.stringify({ status }),

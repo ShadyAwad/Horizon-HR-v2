@@ -6,6 +6,7 @@ import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wa
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
+import { apiUrl } from '../lib/api';
 
 
 type InteractiveMapProps = {
@@ -50,7 +51,7 @@ const InteractiveMap = ({
 
     mapInstanceRef.current = map;
 
-    const tileLayer = L.tileLayer('/api/map-tiles/{z}/{x}/{y}.png', {
+    const tileLayer = L.tileLayer(apiUrl('/api/map-tiles/{z}/{x}/{y}.png'), {
       tileSize: 256,
       zoomOffset: 0,
       minZoom: 1,
@@ -335,7 +336,7 @@ const [formData, setFormData] = useState({
     setIsSubmitting(true);
     
     try {
-      const res = await fetch('/api/auth/register-tenant', {
+      const res = await fetch(apiUrl('/api/auth/register-tenant'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

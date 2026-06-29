@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
+import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
 
 interface LoginProps {
@@ -34,7 +35,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     setPulseState('idle');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -54,7 +55,11 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       }
     } catch (err) {
       setPulseState('error');
-      setErrorMsg('Network anomaly detected.');
+      setErrorMsg(
+        !navigator.onLine
+          ? 'You appear to be offline. Reconnect to sign in.'
+          : 'Unable to reach the HR API. Check the backend connection and try again.'
+      );
       setIsLoading(false);
     }
   };
@@ -64,7 +69,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   setRecoveryMessage('');
 
   try {
-    const res = await fetch('/api/auth/request-password-reset', {
+    const res = await fetch(apiUrl('/api/auth/request-password-reset'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,7 +86,11 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       setRecoveryMessage(data.error || 'Unable to start recovery flow.');
     }
   } catch (error) {
-    setRecoveryMessage('Server disconnection. Unable to start recovery flow.');
+    setRecoveryMessage(
+      !navigator.onLine
+        ? 'You appear to be offline. Reconnect to start recovery.'
+        : 'Server disconnection. Unable to start recovery flow.'
+    );
   } finally {
     setIsRecovering(false);
   }
