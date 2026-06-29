@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save
+  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -483,22 +483,41 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </div>
         <nav className="flex md:flex-col gap-4 md:gap-6 w-full items-center justify-center md:justify-start">
           <button 
-            onClick={() => setActiveTab('geofence')}
+            onClick={() => {
+              setActiveTab('geofence');
+              setShowPayrollPanel(false);
+            }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
              <Map className="w-5 h-5" />
           </button>
           <button 
-            onClick={() => setActiveTab('roster')}
+            onClick={() => {
+              setActiveTab('roster');
+              setShowPayrollPanel(false);
+            }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
              <Calendar className="w-5 h-5" />
           </button>
           <button 
-            onClick={() => setActiveTab('profile')}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            onClick={() => {
+              setActiveTab('profile');
+              setShowPayrollPanel(false);
+            }}
+            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
              <User className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              setActiveTab('profile');
+              setShowPayrollPanel(true);
+            }}
+            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Payroll"
+          >
+             <DollarSign className="w-5 h-5" />
           </button>
         </nav>
       </aside>
@@ -583,25 +602,44 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
                 <div className="hidden md:flex items-center gap-2 mb-2">
                     <button 
-                       onClick={() => setActiveTab('geofence')}
+                       onClick={() => {
+                         setActiveTab('geofence');
+                         setShowPayrollPanel(false);
+                       }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'geofence' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <MapPin className="w-4 h-4 hidden sm:block" />
                        {t('dash.geoOp')}
                     </button>
                     <button 
-                       onClick={() => setActiveTab('roster')}
+                       onClick={() => {
+                         setActiveTab('roster');
+                         setShowPayrollPanel(false);
+                       }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'roster' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <Calendar className="w-4 h-4 hidden sm:block" />
                        {t('dash.roster')}
                     </button>
                     <button 
-                       onClick={() => setActiveTab('profile')}
-                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                       onClick={() => {
+                         setActiveTab('profile');
+                         setShowPayrollPanel(false);
+                       }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && !showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <User className="w-4 h-4 hidden sm:block" />
                        {t('dash.profile')}
+                    </button>
+                    <button 
+                       onClick={() => {
+                         setActiveTab('profile');
+                         setShowPayrollPanel(true);
+                       }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                    >
+                       <DollarSign className="w-4 h-4 hidden sm:block" />
+                       Payroll
                     </button>
                 </div>
 
@@ -829,18 +867,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 md:grid-cols-5">
                               <input
                                 type="date"
+                                aria-label="Pay period start"
                                 value={payrollForm.payPeriodStart}
                                 onChange={(event) => updatePayrollForm('payPeriodStart', event.target.value)}
                                 className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                               />
                               <input
                                 type="date"
+                                aria-label="Pay period end"
                                 value={payrollForm.payPeriodEnd}
                                 onChange={(event) => updatePayrollForm('payPeriodEnd', event.target.value)}
                                 className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                               />
                               <input
                                 type="number"
+                                aria-label="Default base salary"
                                 min="0"
                                 step="0.01"
                                 placeholder="Base salary"
@@ -851,6 +892,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <div className="grid grid-cols-2 gap-2">
                                 <input
                                   type="number"
+                                  aria-label="Bonuses"
                                   min="0"
                                   step="0.01"
                                   placeholder="Bonuses"
@@ -860,6 +902,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 />
                                 <input
                                   type="number"
+                                  aria-label="Deductions"
                                   min="0"
                                   step="0.01"
                                   placeholder="Deductions"
@@ -922,7 +965,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 {!payrollLoading && payrollRecords.length === 0 && (
                                   <tr>
                                     <td colSpan={7} className="p-6 text-center text-xs text-slate-500">
-                                      No payroll records found.
+                                      No payroll records yet.
                                     </td>
                                   </tr>
                                 )}
