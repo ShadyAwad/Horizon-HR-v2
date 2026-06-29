@@ -93,11 +93,13 @@ type CompanyLocationRecord = {
 };
 
 const defaultSchedule: ShiftRow[] = [
-  { day: 'Mon', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
-  { day: 'Tue', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
-  { day: 'Wed', date: '26', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '12:30', breakEnd: '13:00', type: 'Remote' },
-  { day: 'Thu', date: '27', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Annual Leave' },
-  { day: 'Fri', date: '28', shiftStart: '09:00', shiftEnd: '14:00', breakStart: '11:30', breakEnd: '12:00', type: 'Office HQ' },
+  { day: 'Monday', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
+  { day: 'Tuesday', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
+  { day: 'Wednesday', date: '26', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '12:30', breakEnd: '13:00', type: 'Remote' },
+  { day: 'Thursday', date: '27', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Annual Leave' },
+  { day: 'Friday', date: '28', shiftStart: '09:00', shiftEnd: '14:00', breakStart: '11:30', breakEnd: '12:00', type: 'Office HQ' },
+  { day: 'Saturday', date: '29', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Unscheduled' },
+  { day: 'Sunday', date: '30', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Unscheduled' },
 ];
 
 const defaultNotificationSettings: NotificationSettings = {
@@ -127,7 +129,19 @@ function readStoredSchedule() {
 
   try {
     const storedSchedule = window.localStorage.getItem('horizon-roster');
-    return storedSchedule ? JSON.parse(storedSchedule) as ShiftRow[] : defaultSchedule;
+    if (!storedSchedule) return defaultSchedule;
+
+    const parsedSchedule = JSON.parse(storedSchedule) as ShiftRow[];
+    const normalizedSchedule = defaultSchedule.map((defaultShift) => {
+      const storedShift = parsedSchedule.find((shift) => (
+        shift.day === defaultShift.day ||
+        shift.day.slice(0, 3) === defaultShift.day.slice(0, 3)
+      ));
+
+      return storedShift ? { ...defaultShift, ...storedShift, day: defaultShift.day } : defaultShift;
+    });
+
+    return normalizedSchedule;
   } catch {
     return defaultSchedule;
   }
@@ -150,6 +164,11 @@ function getShiftFrame(shift: ShiftRow) {
 
 function formatRole(role: AuthUser['role']) {
   return role === 'hr_admin' ? 'HR Admin' : role === 'manager' ? 'Manager' : 'Employee';
+}
+
+function getTenantName(user: AuthUser) {
+  if (!user.tenant) return 'Company workspace';
+  return typeof user.tenant === 'string' ? user.tenant : user.tenant.companyName;
 }
 
 function formatPayrollAmount(value: string | number, currency: string) {
@@ -224,7 +243,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'profile'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
@@ -300,7 +319,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
     const todayCode = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date());
-    const todaysShift = schedule.find((shift) => shift.day === todayCode);
+    const todaysShift = schedule.find((shift) => shift.day.slice(0, 3) === todayCode);
     const timers: number[] = [];
 
     const scheduleBreakReminder = (
@@ -634,7 +653,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   }, [user.id, user.tenantId]);
 
   return (
-<div className="min-h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
+<div className="h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
@@ -688,23 +707,23 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       {/* Sidebar Navigation */}
 <aside
   className={cn(
-    "w-[calc(100%-2rem)] md:w-20 max-w-full",
+    "w-[calc(100%-1rem)] md:w-16 lg:w-[72px] max-w-full",
     "bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md",
     "border border-slate-200 dark:border-emerald-900/40",
     "flex md:flex-col items-center",
-    "py-4 md:py-8 px-6 md:px-0 gap-6 md:gap-10",
+    "py-3 md:py-5 px-4 md:px-0 gap-4 md:gap-6",
     "z-20 shrink-0",
-    "my-4 mx-auto md:mx-4",
-    "rounded-3xl",
+    "my-2 mx-auto md:mx-2 lg:mx-3",
+    "rounded-2xl",
     "shadow-xl",
     "transition-all duration-300",
     "self-start",
     isRtl ? "md:border-l" : "md:border-r"
   )}
->       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-          <Fingerprint className="w-6 h-6 md:w-8 md:h-8 text-white dark:text-[#020617]" />
+>       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+          <Fingerprint className="w-6 h-6 text-white dark:text-[#020617]" />
         </div>
-        <nav className="flex md:flex-col gap-4 md:gap-6 w-full items-center justify-center md:justify-start">
+        <nav className="flex md:flex-col gap-3 md:gap-4 w-full items-center justify-center md:justify-start">
           <button 
             onClick={() => {
               setActiveTab('geofence');
@@ -760,18 +779,67 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </nav>
       </aside>
 
-      <main className="flex-1 flex flex-col p-4 md:p-8 z-10 overflow-y-auto">
+      <main className="min-w-0 flex-1 flex flex-col p-3 md:p-4 lg:p-5 z-10 overflow-y-auto">
         
         {/* Header Pipeline */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
+        <header className="flex flex-col lg:flex-row lg:items-start justify-between mb-4 gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
                {t('login.title')} <span className={cn("text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 font-mono text-xs px-2 py-0.5 border border-emerald-500/30 rounded uppercase hidden sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{t('dash.auth')}: {user.name} • Tenant ID: {user.tenantId} • {formatRole(user.role)}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{t('dash.auth')}: {user.name} • {formatRole(user.role)}</p>
+
+            <div className="mt-3 flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm backdrop-blur-xl dark:border-emerald-500/15 dark:bg-slate-950/70 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 p-0.5 shrink-0 bg-white dark:bg-[#020617]">
+                  <div className="w-full h-full rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-white tracking-widest">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-200">{user.name}</p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{getTenantName(user)} • {formatRole(user.role)}</p>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-3 sm:ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowAccountDetails((current) => !current)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-300 dark:hover:text-emerald-300"
+                >
+                  Details
+                </button>
+                <button onClick={onLogout} className="text-[10px] text-emerald-600 dark:text-emerald-500 font-bold hover:text-emerald-700 dark:hover:text-emerald-400 uppercase flex items-center gap-1 transition-colors">
+                  <LogOut className="w-3 h-3" /> {t('dash.terminate')}
+                </button>
+              </div>
+            </div>
+
+            {showAccountDetails && (
+              <div className="mt-2 grid w-full max-w-[520px] grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-300 sm:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tenant</p>
+                  <p className="mt-1 truncate">{getTenantName(user)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Role</p>
+                  <p className="mt-1">{formatRole(user.role)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tenant ID</p>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(user.tenantId)}
+                    className="mt-1 max-w-full truncate font-mono text-[11px] text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
+                    title="Click to copy tenant ID"
+                  >
+                    {user.tenantId}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 lg:justify-end">
             {/* Locale Toggle & Theme Toggle */}
             <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-lg shrink-0 shadow-sm">
               <span className={cn("hidden md:inline-block text-xs font-semibold text-slate-500 uppercase tracking-widest", isRtl ? "ml-2" : "mr-2")}>{t('dash.core')}</span>
@@ -815,30 +883,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   AR-AE
 </button>
             </div>
-
-            {/* Profile Element */}
-            <div className="flex items-center gap-3">
-              <div className={cn("hidden sm:block", isRtl ? "text-left" : "text-right")}>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-200">{user.name}</p>
-                <button onClick={onLogout} className={cn("text-[10px] text-emerald-600 dark:text-emerald-500 font-mono hover:text-emerald-700 dark:hover:text-emerald-400 uppercase flex items-center gap-1 transition-colors", isRtl ? "justify-start" : "justify-end")}>
-                  <LogOut className="w-3 h-3" /> {t('dash.terminate')}
-                </button>
-              </div>
-              <div className="w-10 h-10 rounded-full border-2 border-emerald-500 p-0.5 shrink-0 bg-white dark:bg-[#020617]">
-                <div className="w-full h-full rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-white tracking-widest">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
-              </div>
-            </div>
           </div>
         </header>
 
         {/* Dashboard Grid Container */}
-        <div className="flex flex-col xl:flex-row gap-6 flex-1 max-w-[1400px] mx-auto w-full">
+        <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full items-start">
             
             {/* Main Action Area (Left / Center) */}
-            <div className="flex-1 space-y-6 max-w-full">
+            <div className="flex-1 space-y-4 max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden md:flex items-center gap-2 mb-2">
+                <div className="hidden md:flex items-center gap-2">
                     <button 
                        onClick={() => {
                          setActiveTab('geofence');
@@ -898,9 +953,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                 {/* Tab Contents */}
                 {activeTab === 'geofence' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
+                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
                        <div className="absolute inset-0 bg-slate-50/50 dark:bg-emerald-500/5 group-hover:bg-slate-100/50 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
-                       <div className="w-full flex items-start justify-between mb-6 z-10 relative">
+                       <div className="w-full flex items-start justify-between mb-4 z-10 relative">
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <MapPin className="w-5 h-5 text-emerald-500" />
@@ -910,14 +965,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </div>
                        </div>
                        
-                       <div className="relative z-10 w-full flex flex-col items-center justify-center py-12 px-8 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl min-h-[400px]">
-                           <div className="w-40 h-40 rounded-full border-4 border-dashed border-emerald-900 flex items-center justify-center mb-6 relative">
+                       <div className="relative z-10 w-full flex flex-col items-center justify-center py-8 px-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl min-h-[320px]">
+                           <div className="w-36 h-36 rounded-full border-4 border-dashed border-emerald-900 flex items-center justify-center mb-4 relative">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                onClick={handleClockAction}
                                disabled={clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
-                                   "w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 transition-all duration-300 font-black tracking-tighter hover:scale-105 active:scale-95 z-10 relative",
+                                   "w-28 h-28 rounded-full flex flex-col items-center justify-center gap-1 transition-all duration-300 font-black tracking-tighter hover:scale-105 active:scale-95 z-10 relative",
                                    clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-slate-800 text-slate-400 animate-pulse border border-slate-700 shadow-none" :
@@ -1036,8 +1091,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 )}                
 
                 {activeTab === 'roster' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-slate-200 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[400px]">
-                       <div className="p-5 border-b border-slate-200 dark:border-emerald-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-slate-200 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
+                       <div className="p-4 border-b border-slate-200 dark:border-emerald-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                              <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
                              {t('dash.rosterHub')}
@@ -1058,20 +1113,20 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                          <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                            <thead>
                              <tr className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-900/20">
-                               <th className="p-4">{t('dash.dayDate')}</th>
-                               <th className="p-4">{t('dash.shiftFrame')}</th>
-                               <th className="p-4">Break Time</th>
-                               <th className="p-4">{t('dash.locationRole')}</th>
-                               <th className={cn("p-4", isRtl ? "text-left" : "text-right")}>{t('dash.status')}</th>
+                               <th className="p-3">{t('dash.dayDate')}</th>
+                               <th className="p-3">{t('dash.shiftFrame')}</th>
+                               <th className="p-3">Break Time</th>
+                               <th className="p-3">{t('dash.locationRole')}</th>
+                               <th className={cn("p-3", isRtl ? "text-left" : "text-right")}>{t('dash.status')}</th>
                              </tr>
                            </thead>
                            <tbody className="text-sm">
                              {schedule.map((s, i) => (
                                <tr key={i} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
-                                 <td className="p-4">
+                                 <td className="p-3">
                                    <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{s.day}, {s.date}</div>
                                  </td>
-                                 <td className="p-4 font-mono text-xs text-slate-500 dark:text-slate-400">
+                                 <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                                    {canManageRoster ? (
                                      <div className="flex items-center gap-2">
                                        <input
@@ -1090,7 +1145,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      </div>
                                    ) : getShiftFrame(s)}
                                  </td>
-                                 <td className="p-4 font-mono text-xs text-slate-500 dark:text-slate-400">
+                                 <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                                    {canManageRoster ? (
                                      <div className="flex items-center gap-2">
                                        <Coffee className="h-4 w-4 text-emerald-500" />
@@ -1110,7 +1165,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      </div>
                                    ) : s.breakStart && s.breakEnd ? `${s.breakStart} - ${s.breakEnd}` : 'No break'}
                                  </td>
-                                 <td className="p-4 text-xs text-slate-600 dark:text-slate-300">
+                                 <td className="p-3 text-xs text-slate-600 dark:text-slate-300">
                                    {canManageRoster ? (
                                      <input
                                        value={s.type}
@@ -1121,7 +1176,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      <span className="opacity-80">{s.type}</span>
                                    )}
                                  </td>
-                                 <td className={cn("p-4", isRtl ? "text-left" : "text-right")}>
+                                 <td className={cn("p-3", isRtl ? "text-left" : "text-right")}>
                                    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", !s.shiftStart || !s.shiftEnd ? "bg-slate-100 dark:bg-slate-800 text-slate-500" : "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30")}>
                                      {!s.shiftStart || !s.shiftEnd ? t('dash.abstained') : t('dash.scheduled')}
                                    </span>
@@ -1135,9 +1190,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 )}
 
                 {activeTab === 'profile' && (
-                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-6 shadow-xl backdrop-blur-sm min-h-[400px]">
-                      <div className="flex items-center gap-4 mb-8">
-                          <User className="w-8 h-8 text-emerald-600 dark:text-emerald-500" />
+                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                      <div className="flex items-center gap-3 mb-5">
+                          <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />
                           <div>
                             <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('profile.title')}</h2>
                             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono uppercase tracking-widest">{t('profile.subtitle')}</p>
@@ -1471,9 +1526,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                           )}
                         </div>
                       ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl md:col-span-2">
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl md:col-span-2">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div>
                                 <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
                                   <Bell className="h-4 w-4 text-emerald-500" />
@@ -1496,8 +1551,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               </button>
                             </div>
 
-                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
                                 <span>
                                   <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break starts</span>
                                   <span className="block text-[10px] text-slate-500">Notify when break time begins.</span>
@@ -1510,7 +1565,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 />
                               </label>
 
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
                                 <span>
                                   <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break ends</span>
                                   <span className="block text-[10px] text-slate-500">Notify before returning to shift.</span>
@@ -1525,14 +1580,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </div>
                          </div>
 
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex flex-col justify-between">
+                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex flex-col justify-between">
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.leaveName')}</p>
                             <p className="text-3xl font-bold text-slate-800 dark:text-white">24.5 <span className="text-sm text-slate-500 font-normal">{t('profile.leaveDays')}</span></p>
                             <div className="w-full h-1 bg-slate-200 dark:bg-slate-800 mt-3 rounded-full overflow-hidden">
                               <div className="w-[70%] h-full bg-emerald-500"></div>
                             </div>
                          </div>
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex flex-col justify-between">
+                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex flex-col justify-between">
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.loan')}</p>
                             <p className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
@@ -1543,7 +1598,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                          <button
                             type="button"
                             onClick={() => setShowPayrollPanel(true)}
-                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
                          >
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.payroll')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
@@ -1554,7 +1609,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               setShowPayrollPanel(false);
                               setShowGrievancesPanel(true);
                             }}
-                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-5 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
                          >
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.grievance')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
@@ -1567,8 +1622,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             </div>
 
             {/* Sidebar (Right) / Stats & Insights */}
-            <div className="w-full xl:w-80 flex flex-col gap-6 shrink-0 z-10">
-                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
+            <div className="w-full xl:w-80 2xl:w-96 flex flex-col gap-4 shrink-0 z-10">
+                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
                     <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
                         <MapPin className="w-5 h-5 text-emerald-500" /> Locations
@@ -1578,7 +1633,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                       </span>
                     </div>
 
-                    <div className="mt-4 space-y-3">
+                    <div className="mt-3 space-y-2.5">
                       {companyLocations.map((location) => (
                         <div key={location.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
                           <div className="flex items-start justify-between gap-3">
@@ -1608,45 +1663,34 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                     </div>
                  </div>
 
-                 {/* Replaced Org CTE Box with something more fitting or just Advanced Params */}
-<div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-6 backdrop-blur-sm shadow-xl h-fit overflow-hidden">                    <button 
-                        onClick={() => setShowAdvanced(!showAdvanced)}
-                        className="flex items-center justify-between w-full group"
-                    >
-                        <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                           <Settings2 className="w-5 h-5"/> {t('dash.advParams')}
-                        </span>
-                        <span className="text-lg font-mono text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">{showAdvanced ? '-' : '+'}</span>
-                    </button>
-                    
-                    <div className="mt-8 border-t border-slate-200 dark:border-slate-800 pt-6">
-                        <p className="text-[10px] text-slate-500 font-mono mb-2 uppercase tracking-widest">System Architecture Info</p>
-                        <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-3 font-mono">
-                           <li className="flex justify-between border-b border-slate-100 dark:border-slate-800 pb-2"><span>Network Node</span> <span className="text-emerald-600 dark:text-emerald-400">#X-901</span></li>
-                           <li className="flex justify-between border-b border-slate-100 dark:border-slate-800 pb-2"><span>Query Performance</span> <span className="text-emerald-600 dark:text-emerald-400">2.4ms</span></li>
-                           <li className="flex justify-between pb-2"><span>RDS Status</span> <span className="text-emerald-600 dark:text-emerald-400">Sync Optimal</span></li>
-                        </ul>
+                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500" /> {t('dash.advParams')}
+                      </span>
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                        Ready
+                      </span>
                     </div>
 
-                    <AnimatePresence>
-                        {showAdvanced && (
-                            <motion.div 
-                                initial={{height:0, opacity:0}} animate={{height:'auto', opacity:1}} exit={{height:0, opacity:0}}
-                                className="overflow-hidden mt-6"
-                            >
-                                <div className="p-4 bg-slate-50 dark:bg-[#0a1a17]/50 border border-slate-200 dark:border-emerald-900/50 rounded-lg text-xs text-emerald-700 dark:text-emerald-400 font-mono space-y-2 opacity-80">
-                                    <p>&gt; GiST_INDEX: <span className="text-emerald-600 dark:text-emerald-300">ONLINE</span></p>
-                                    <p>&gt; RLS_BOUND: <span className="text-emerald-600 dark:text-emerald-300">tenant_sys_49</span></p>
-                                    <p>&gt; JWT_TTL: <span className="text-emerald-600 dark:text-emerald-300">3600s</span></p>
-                                    <p>&gt; LOC: <span className="text-emerald-600 dark:text-emerald-300">[{geo.coords?.lat?.toFixed(3) || '0.000'}, {geo.coords?.lng?.toFixed(3) || '0.000'}]</span></p>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                    <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2.5 dark:border-slate-800">
+                        <span>Locations configured</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2.5 dark:border-slate-800">
+                        <span>Current shift</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? 'Open' : 'Not clocked in'}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span>Last attendance event</span>
+                        <span className="max-w-[190px] truncate text-right font-medium text-slate-700 dark:text-slate-300">{lastClockEvent}</span>
+                      </div>
+                    </div>
                  </div>
 
                  {/* Active Managers Pill (Bottom) */}
-<div className="hidden xl:flex relative z-20 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 backdrop-blur-xl px-4 py-3 rounded-full items-center gap-3 shadow-xl w-fit">                    <div className="flex -space-x-2">
+<div className="hidden xl:flex relative z-20 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 backdrop-blur-xl px-4 py-2.5 rounded-full items-center gap-3 shadow-xl w-full">                    <div className="flex -space-x-2">
                         <div className="w-6 h-6 rounded-full bg-emerald-300 dark:bg-emerald-900 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
                         <div className="w-6 h-6 rounded-full bg-emerald-200 dark:bg-emerald-800 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
                     </div>
