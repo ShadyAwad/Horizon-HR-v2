@@ -2,11 +2,12 @@ import React, { useEffect, useState ,useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'motion/react';
-import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Settings2, Globe } from 'lucide-react';
+import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
 import { apiUrl } from '../lib/api';
+import type { AuthUser } from '../App';
 
 
 type InteractiveMapProps = {
@@ -145,6 +146,10 @@ const InteractiveMap = ({
     markerRef.current.setLatLng(nextPosition);
     circleRef.current.setLatLng(nextPosition);
     circleRef.current.setRadius(radius);
+    mapInstanceRef.current?.setView(nextPosition, Math.max(mapInstanceRef.current.getZoom(), 15), {
+      animate: true,
+    });
+    setTimeout(() => mapInstanceRef.current?.invalidateSize(), 50);
   }, [lat, lng, radius]);
 
   const useCurrentLocation = () => {
@@ -205,6 +210,9 @@ const InteractiveMap = ({
           <p className="text-[10px] text-emerald-100/45">
             Drag the pin, use your current location, or enter coordinates manually.
           </p>
+          <p className="mt-1 text-[9px] text-emerald-100/35">
+            Map labels are MapTiler/OpenStreetMap; saved coordinates define the geofence.
+          </p>
         </div>
 
         <button
@@ -229,6 +237,17 @@ const InteractiveMap = ({
       </div>
 
       <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
+        <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-100/35">Latitude</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lat.toFixed(7)}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-100/35">Longitude</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lng.toFixed(7)}</p>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
@@ -315,11 +334,10 @@ const InteractiveMap = ({
   );
 };
 
-export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin: () => void, onSignupComplete: () => void }) {
+export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin: () => void, onSignupComplete: (user?: AuthUser) => void }) {
   const { t, isRtl } = useLanguage();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Form State
 const [formData, setFormData] = useState({
@@ -432,7 +450,10 @@ const [formData, setFormData] = useState({
       const data = await res.json();
       
       if (data.success) {
-        onSignupComplete();
+        if (data.user) {
+          window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
+        }
+        onSignupComplete(data.user);
       } else {
         alert(data.error || 'Registration failed');
         setIsSubmitting(false);
@@ -445,7 +466,7 @@ const [formData, setFormData] = useState({
 
   return (
 <div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      
-      <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => { if(isSubmitting) onSignupComplete(); }} />
+      <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => undefined} />
 
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
@@ -710,23 +731,6 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
                       }}
                     />
                   </div>
-                </div>
-
-                <div className="mt-4 p-4 bg-white/70 dark:bg-[#04110d]/60 border border-emerald-500/15 rounded-xl">
-                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-xs font-bold text-emerald-700/70 dark:text-emerald-100/55 uppercase tracking-widest hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-                    <Settings2 className="w-4 h-4"/> Advanced Spatial Parameters
-                  </button>
-                  <AnimatePresence>
-                    {showAdvanced && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mt-3">
-                        <div className="p-3 bg-white dark:bg-[#020617] rounded border border-slate-200 dark:border-emerald-900/40 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 space-y-1">
-                          <p>ST_MakePoint({selectedLocation.lng}, {selectedLocation.lat})</p>
-                          <p>ST_Buffer(geom, {selectedLocation.radius})</p>
-                          <p>CREATE INDEX geom_idx ON tenants USING GIST (boundary);</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
 
               </motion.div>

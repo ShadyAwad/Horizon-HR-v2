@@ -53,8 +53,10 @@ export default function App() {
          ) : authState === 'signup' ? (
            <Signup 
              onNavigateLogin={() => setAuthState('login')} 
-             onSignupComplete={() => {
-               setAuthUser(fallbackUser);
+             onSignupComplete={(user) => {
+               const nextUser = user || fallbackUser;
+               setAuthUser(nextUser);
+               window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
                setAuthState('authenticated');
              }} 
            />

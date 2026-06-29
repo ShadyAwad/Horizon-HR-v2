@@ -986,6 +986,52 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {lastClockEvent}
                            </p>
                        </div>
+
+                       <div className="relative z-10 mt-4 w-full rounded-2xl border border-slate-200 bg-white/70 p-4 text-left dark:border-slate-800/50 dark:bg-slate-900/30">
+                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                           <div>
+                             <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                               <MapPin className="h-4 w-4 text-emerald-500" />
+                               Company Locations
+                             </h3>
+                             <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                               Clock-in is valid inside any active company location.
+                             </p>
+                           </div>
+                           <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                             {companyLocations.length} Active
+                           </span>
+                         </div>
+
+                         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                           {companyLocations.slice(0, 4).map((location) => (
+                             <div key={location.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+                               <div className="flex items-start justify-between gap-3">
+                                 <div>
+                                   <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
+                                   <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                     {location.location_type.replace('_', ' ')} - {location.radius_meters}m
+                                   </p>
+                                 </div>
+                                 {location.is_primary && (
+                                   <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                                     Primary
+                                   </span>
+                                 )}
+                               </div>
+                               <p className="mt-2 font-mono text-[10px] text-slate-500">
+                                 {Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}
+                               </p>
+                             </div>
+                           ))}
+
+                           {companyLocations.length === 0 && (
+                             <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800 md:col-span-2">
+                               {locationsMessage || 'No active company locations found.'}
+                             </p>
+                           )}
+                         </div>
+                       </div>
                     </motion.div>
                 )}                
 
