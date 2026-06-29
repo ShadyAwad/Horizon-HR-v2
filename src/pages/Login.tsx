@@ -5,9 +5,10 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
+import type { AuthUser } from '../App';
 
 interface LoginProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user?: AuthUser) => void;
   onNavigateSignup: () => void;
 }
 
@@ -22,6 +23,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [recoveryMethod, setRecoveryMethod] = useState<'email' | 'admin' | 'security'>('email');
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
+  const [pendingUser, setPendingUser] = useState<AuthUser | undefined>();
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
 
@@ -41,7 +43,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const data = await res.json();
       
       if (data.success) {
+        setPendingUser(data.user);
         setPulseState('success');
+        window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
         // Will transition to dashboard after pulse finishes via onPulseComplete
       } else {
         setPulseState('error');
@@ -87,7 +91,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       <FingerprintCanvas 
         pulseState={pulseState} 
         onPulseComplete={() => {
-          if (pulseState === 'success') onLoginSuccess();
+          if (pulseState === 'success') onLoginSuccess(pendingUser);
           if (pulseState === 'error') setPulseState('idle'); // Reset after error pulse
         }} 
       />

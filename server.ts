@@ -22,6 +22,14 @@ type ClockInBody = {
   longitude?: number;
 };
 
+type PayrollRunBody = {
+  payPeriodStart?: string;
+  payPeriodEnd?: string;
+  defaultBaseSalary?: number;
+  bonuses?: number;
+  deductions?: number;
+};
+
 type EmployeeRole = 'hr_admin' | 'manager' | 'employee';
 
 type AuthenticatedUser = {
@@ -30,6 +38,16 @@ type AuthenticatedUser = {
   email: string;
   role: EmployeeRole;
 };
+
+type DemoTimeLog = {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  clockInTime: Date;
+  clockOutTime?: Date;
+};
+
+const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
 
 declare global {
   namespace Express {
@@ -58,6 +76,79 @@ function getMapTilerMapId() {
   return process.env.MAPTILER_MAP_ID || 'streets-v4';
 }
 
+function getAttendanceKey(tenantId?: string, employeeId?: string) {
+  return `${tenantId || 'demo-tenant'}:${employeeId || 'demo-employee'}`;
+}
+
+function recordDemoClockIn(
+  tenantId: string | undefined,
+  employeeId: string | undefined,
+  clockedIn: Date,
+) {
+  const attendanceKey = getAttendanceKey(tenantId, employeeId);
+  const existingOpenLog = demoOpenTimeLogs.get(attendanceKey);
+
+  if (existingOpenLog && !existingOpenLog.clockOutTime) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        success: false,
+        timeLogId: existingOpenLog.id,
+        clockedIn: existingOpenLog.clockInTime.toISOString(),
+        error: 'This employee already has an open shift.',
+      },
+    };
+  }
+
+  const demoTimeLog: DemoTimeLog = {
+    id: crypto.randomUUID(),
+    tenantId: tenantId || 'demo-tenant',
+    employeeId: employeeId || 'demo-employee',
+    clockInTime: clockedIn,
+  };
+
+  demoOpenTimeLogs.set(attendanceKey, demoTimeLog);
+
+  return {
+    ok: true as const,
+    status: 200,
+    body: demoTimeLog,
+  };
+}
+
+function recordDemoClockOut(tenantId: string | undefined, employeeId: string | undefined) {
+  const clockOutTime = new Date();
+  const attendanceKey = getAttendanceKey(tenantId, employeeId);
+  const openLog = demoOpenTimeLogs.get(attendanceKey);
+
+  if (!openLog || openLog.clockOutTime) {
+    return {
+      ok: false as const,
+      status: 404,
+      body: {
+        success: false,
+        error: 'No open shift found for this employee',
+      },
+    };
+  }
+
+  openLog.clockOutTime = clockOutTime;
+  demoOpenTimeLogs.delete(attendanceKey);
+
+  return {
+    ok: true as const,
+    status: 200,
+    body: {
+      success: true,
+      timeLogId: openLog.id,
+      clockedIn: openLog.clockInTime.toISOString(),
+      clockedOut: clockOutTime.toISOString(),
+      message: 'Clock-out recorded successfully.',
+    },
+  };
+}
+
 function generatePasswordHash(password: string) {
   const salt = crypto.randomBytes(16).toString('hex');
 
@@ -70,6 +161,17 @@ function generatePasswordHash(password: string) {
 
 function toWorkDate(value: Date) {
   return value.toISOString().slice(0, 10);
+}
+
+function isValidDateInput(value: string | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isNonNegativeAmount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
@@ -898,12 +1000,26 @@ app.post('/api/auth/reset-password', async (req, res) => {
         });
       } catch (error) {
         console.error('[Clock-In] Failed to persist clock-in:', error);
-        return res.status(500).json({ error: 'Unable to record clock-in' });
+
+        if ((error as { code?: string }).code === '23505') {
+          return res.status(409).json({
+            error: 'This employee already has an open shift.',
+          });
+        }
+
+        console.warn('[Clock-In] Falling back to demo attendance store.');
       }
     }
 
-    res.json({
+    const demoClockIn = recordDemoClockIn(tenantId, employeeId, clockedIn);
+
+    if (!demoClockIn.ok) {
+      return res.status(demoClockIn.status).json(demoClockIn.body);
+    }
+
+    res.status(demoClockIn.status).json({
       success: true,
+      timeLogId: demoClockIn.body.id,
       clockedIn: clockedIn.toISOString(),
       locationValid: isWithinGeofence,
       message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.'
@@ -913,20 +1029,19 @@ app.post('/api/auth/reset-password', async (req, res) => {
   app.post('/api/clock-out', async (req, res) => {
   const { tenantId, employeeId } = req.body;
 
-  if (!tenantId || !employeeId) {
+  if (hasDatabaseConfig() && (!tenantId || !employeeId)) {
     return res.status(400).json({
-      error: 'tenantId and employeeId are required',
-    });
-  }
-
-  if (!hasDatabaseConfig()) {
-    return res.status(503).json({
-      error: 'DATABASE_URL is required for clock-out',
+      error: 'tenantId and employeeId are required when DATABASE_URL is configured',
     });
   }
 
   try {
     const clockOutTime = new Date();
+
+    if (!hasDatabaseConfig()) {
+      const demoClockOut = recordDemoClockOut(tenantId, employeeId);
+      return res.status(demoClockOut.status).json(demoClockOut.body);
+    }
 
     const updatedLog = await withTenant(tenantId, async (client) => {
       const result = await client.query<{
@@ -989,9 +1104,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
   } catch (error) {
     console.error('[Clock-Out] Failed to record clock-out:', error);
 
-    res.status(500).json({
-      error: 'Unable to record clock-out',
-    });
+    console.warn('[Clock-Out] Falling back to demo attendance store.');
+    const demoClockOut = recordDemoClockOut(tenantId, employeeId);
+    res.status(demoClockOut.status).json(demoClockOut.body);
   }
 });
 
@@ -1126,6 +1241,268 @@ if (!status) {
       res.status(500).json({ error: 'Unable to update leave request status' });
     }
   });
+
+app.get(
+  '/api/payroll/me',
+  demoAuth,
+  requireRole(['employee', 'manager', 'hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ error: 'DATABASE_URL is required for payroll records' });
+    }
+
+    try {
+      const payroll = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              id,
+              employee_id,
+              pay_period_start,
+              pay_period_end,
+              base_salary,
+              bonuses,
+              deductions,
+              net_pay,
+              currency,
+              status,
+              generated_at,
+              paid_at
+            FROM payroll_records
+            WHERE tenant_id = $1
+              AND employee_id = $2
+            ORDER BY pay_period_end DESC, pay_period_start DESC, generated_at DESC
+            LIMIT 12
+          `,
+          [tenantId, employeeId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, payroll });
+    } catch (error) {
+      console.error('[Payroll] Failed to load employee payroll:', error);
+      res.status(500).json({ error: 'Unable to load payroll records' });
+    }
+  },
+);
+
+app.get(
+  '/api/payroll',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ error: 'DATABASE_URL is required for payroll records' });
+    }
+
+    try {
+      const payroll = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              payroll_records.id,
+              payroll_records.employee_id,
+              employees.full_name,
+              employees.email,
+              payroll_records.pay_period_start,
+              payroll_records.pay_period_end,
+              payroll_records.base_salary,
+              payroll_records.bonuses,
+              payroll_records.deductions,
+              payroll_records.net_pay,
+              payroll_records.currency,
+              payroll_records.status,
+              payroll_records.generated_at,
+              payroll_records.paid_at
+            FROM payroll_records
+            INNER JOIN employees
+              ON employees.id = payroll_records.employee_id
+             AND employees.tenant_id = payroll_records.tenant_id
+            WHERE payroll_records.tenant_id = $1
+            ORDER BY payroll_records.generated_at DESC, payroll_records.pay_period_end DESC
+            LIMIT 100
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, payroll });
+    } catch (error) {
+      console.error('[Payroll] Failed to load tenant payroll:', error);
+      res.status(500).json({ error: 'Unable to load payroll records' });
+    }
+  },
+);
+
+app.post(
+  '/api/payroll/run',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const {
+      payPeriodStart,
+      payPeriodEnd,
+      defaultBaseSalary,
+      bonuses = 0,
+      deductions = 0,
+    } = req.body as PayrollRunBody;
+
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+
+    if (
+      !isValidDateInput(payPeriodStart) ||
+      !isValidDateInput(payPeriodEnd) ||
+      !isNonNegativeAmount(defaultBaseSalary)
+    ) {
+      return res.status(400).json({
+        error: 'payPeriodStart, payPeriodEnd, and defaultBaseSalary are required.',
+      });
+    }
+
+    if (!isNonNegativeAmount(bonuses) || !isNonNegativeAmount(deductions)) {
+      return res.status(400).json({
+        error: 'Payroll amounts cannot be negative.',
+      });
+    }
+
+    if (payPeriodEnd! < payPeriodStart!) {
+      return res.status(400).json({
+        error: 'payPeriodEnd must not be before payPeriodStart.',
+      });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ error: 'DATABASE_URL is required to run payroll' });
+    }
+
+    try {
+      const recordsGenerated = await withTenant(tenantId, async (client) => {
+        const tenantResult = await client.query<{ default_currency: string | null }>(
+          `
+            SELECT default_currency
+            FROM tenants
+            WHERE id = $1
+            LIMIT 1
+          `,
+          [tenantId],
+        );
+        const currency = tenantResult.rows[0]?.default_currency || 'USD';
+        const netPay = defaultBaseSalary + bonuses - deductions;
+
+        const payrollResult = await client.query(
+          `
+            INSERT INTO payroll_records (
+              tenant_id,
+              employee_id,
+              pay_period_start,
+              pay_period_end,
+              base_salary,
+              bonuses,
+              deductions,
+              net_pay,
+              currency,
+              status,
+              generated_by,
+              generated_at,
+              updated_at
+            )
+            SELECT
+              employees.tenant_id,
+              employees.id,
+              $2::date,
+              $3::date,
+              $4::numeric,
+              $5::numeric,
+              $6::numeric,
+              $7::numeric,
+              $8::varchar,
+              'draft',
+              $9::uuid,
+              NOW(),
+              NOW()
+            FROM employees
+            WHERE employees.tenant_id = $1
+            ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end)
+            DO UPDATE SET
+              base_salary = EXCLUDED.base_salary,
+              bonuses = EXCLUDED.bonuses,
+              deductions = EXCLUDED.deductions,
+              net_pay = EXCLUDED.net_pay,
+              currency = EXCLUDED.currency,
+              status = 'draft',
+              generated_by = EXCLUDED.generated_by,
+              generated_at = NOW(),
+              updated_at = NOW()
+            RETURNING id
+          `,
+          [
+            tenantId,
+            payPeriodStart,
+            payPeriodEnd,
+            defaultBaseSalary,
+            bonuses,
+            deductions,
+            netPay,
+            currency,
+            actorEmployeeId,
+          ],
+        );
+
+        const generatedCount = payrollResult.rowCount || 0;
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'payroll_run_generated',
+            'payroll',
+            actorEmployeeId,
+            JSON.stringify({
+              payPeriodStart,
+              payPeriodEnd,
+              defaultBaseSalary,
+              bonuses,
+              deductions,
+              recordsGenerated: generatedCount,
+            }),
+          ],
+        );
+
+        return generatedCount;
+      });
+
+      res.json({
+        success: true,
+        message: 'Payroll run generated successfully.',
+        recordsGenerated,
+      });
+    } catch (error) {
+      console.error('[Payroll] Failed to run payroll:', error);
+      res.status(500).json({ error: 'Unable to run payroll' });
+    }
+  },
+);
 
   app.get('/api/system/health', async (req, res) => {
   try {

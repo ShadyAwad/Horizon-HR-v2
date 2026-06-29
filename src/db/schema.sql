@@ -64,7 +64,7 @@ WITH CHECK (
 
 
 -- =========================================================
--- . Forget Password Tokens Table
+-- 3. Forget Password Tokens Table
 -- =========================================================
 
 
@@ -98,7 +98,7 @@ ON password_reset_tokens (email, expires_at)
 WHERE used_at IS NULL;
 
 -- =========================================================
--- 3. Geofences / Operating Zones
+-- 4. Geofences / Operating Zones
 -- =========================================================
 
 CREATE TABLE geofences (
@@ -133,7 +133,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 4. Clock-in / Time Logs
+-- 5. Clock-in / Time Logs
 -- =========================================================
 
 CREATE TABLE time_logs (
@@ -180,7 +180,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 5. Reporting Chain / Recursive CTE View
+-- 6. Reporting Chain / Recursive CTE View
 -- =========================================================
 
 CREATE OR REPLACE VIEW vw_employee_hierarchy AS
@@ -215,7 +215,7 @@ SELECT *
 FROM org_tree;
 
 -- =========================================================
--- 6. Leave Requests
+-- 7. Leave Requests
 -- =========================================================
 
 CREATE TABLE leave_requests (
@@ -263,7 +263,89 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 7. Attendance Daily Summaries
+-- 8. Payroll Records
+-- =========================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN LATERAL (
+            SELECT array_agg(a.attname ORDER BY cols.ordinality) AS column_names
+            FROM unnest(c.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
+            JOIN pg_attribute a
+                ON a.attrelid = c.conrelid
+               AND a.attnum = cols.attnum
+        ) unique_columns ON true
+        WHERE c.conrelid = 'employees'::regclass
+          AND c.contype = 'u'
+          AND unique_columns.column_names = ARRAY['id', 'tenant_id']::name[]
+    ) THEN
+        ALTER TABLE employees
+        ADD CONSTRAINT employees_id_tenant_unique UNIQUE (id, tenant_id);
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS payroll_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    pay_period_start DATE NOT NULL,
+    pay_period_end DATE NOT NULL,
+
+    base_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
+    bonuses NUMERIC(12,2) NOT NULL DEFAULT 0,
+    deductions NUMERIC(12,2) NOT NULL DEFAULT 0,
+    net_pay NUMERIC(12,2) NOT NULL DEFAULT 0,
+
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+
+    generated_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    paid_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT payroll_records_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT payroll_records_date_order_chk
+        CHECK (pay_period_end >= pay_period_start),
+
+    CONSTRAINT payroll_records_status_chk
+        CHECK (status IN ('draft', 'approved', 'paid', 'cancelled')),
+
+    UNIQUE (tenant_id, employee_id, pay_period_start, pay_period_end)
+);
+
+CREATE INDEX IF NOT EXISTS payroll_records_tenant_period_idx
+ON payroll_records(tenant_id, pay_period_start, pay_period_end);
+
+CREATE INDEX IF NOT EXISTS payroll_records_tenant_employee_generated_idx
+ON payroll_records(tenant_id, employee_id, generated_at DESC);
+
+ALTER TABLE payroll_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS payroll_records_tenant_isolation ON payroll_records;
+
+CREATE POLICY payroll_records_tenant_isolation
+ON payroll_records
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 9. Attendance Daily Summaries
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
@@ -314,7 +396,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 8. Audit Logs
+-- 10. Audit Logs
 -- =========================================================
 
 CREATE TABLE audit_logs (
@@ -367,4 +449,3 @@ CREATE TABLE outbox_events (
 CREATE INDEX outbox_events_unprocessed_idx
 ON outbox_events(processed_at)
 WHERE processed_at IS NULL;
-
