@@ -220,13 +220,19 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [showPayrollPanel, setShowPayrollPanel] = useState(false);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollSubmitting, setPayrollSubmitting] = useState(false);
   const [payrollMessage, setPayrollMessage] = useState('');
+  const [payrollMessageType, setPayrollMessageType] = useState<'success' | 'error'>('success');
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(defaultPayrollForm);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
   const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
   const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
   const [grievanceLoading, setGrievanceLoading] = useState(false);
+  const [tenantGrievanceLoading, setTenantGrievanceLoading] = useState(false);
+  const [grievanceSubmitting, setGrievanceSubmitting] = useState(false);
+  const [grievanceUpdatingId, setGrievanceUpdatingId] = useState<string | null>(null);
   const [grievanceMessage, setGrievanceMessage] = useState('');
+  const [grievanceMessageType, setGrievanceMessageType] = useState<'success' | 'error'>('success');
   const [grievanceForm, setGrievanceForm] = useState<GrievanceFormState>(defaultGrievanceForm);
 
   const geo = useGeolocation();
@@ -406,9 +412,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
-  const loadPayrollRecords = async () => {
+  const loadPayrollRecords = async (clearMessage = true) => {
     setPayrollLoading(true);
-    setPayrollMessage('');
+    if (clearMessage) {
+      setPayrollMessage('');
+    }
 
     try {
       const endpoint = user.role === 'hr_admin' ? '/api/payroll' : '/api/payroll/me';
@@ -418,9 +426,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         setPayrollRecords(data.payroll || []);
       } else {
+        setPayrollMessageType('error');
         setPayrollMessage(data.error || 'Unable to load payroll records.');
       }
     } catch {
+      setPayrollMessageType('error');
       setPayrollMessage('Server disconnection. Unable to load payroll records.');
     } finally {
       setPayrollLoading(false);
@@ -432,7 +442,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const runPayroll = async () => {
-    setPayrollLoading(true);
+    if (payrollSubmitting) return;
+
+    setPayrollSubmitting(true);
     setPayrollMessage('');
 
     try {
@@ -450,15 +462,18 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const data = await res.json();
 
       if (res.ok && data.success) {
+        await loadPayrollRecords(false);
+        setPayrollMessageType('success');
         setPayrollMessage(`${data.message} Records: ${data.recordsGenerated}`);
-        await loadPayrollRecords();
       } else {
+        setPayrollMessageType('error');
         setPayrollMessage(data.error || 'Unable to run payroll.');
       }
     } catch {
+      setPayrollMessageType('error');
       setPayrollMessage('Server disconnection. Unable to run payroll.');
     } finally {
-      setPayrollLoading(false);
+      setPayrollSubmitting(false);
     }
   };
 
@@ -470,6 +485,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
+    setTenantGrievanceLoading(false);
     if (clearMessage) {
       setGrievanceMessage('');
     }
@@ -479,17 +495,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const myData = await myResponse.json();
 
       if (!myResponse.ok || !myData.success) {
+        setGrievanceMessageType('error');
         setGrievanceMessage(myData.error || 'Unable to load grievances.');
         return;
       }
 
       setMyGrievances(myData.grievances || []);
+      setGrievanceLoading(false);
 
       if (canManageGrievances) {
+        setTenantGrievanceLoading(true);
         const tenantResponse = await fetch('/api/grievances', { headers: payrollHeaders });
         const tenantData = await tenantResponse.json();
 
         if (!tenantResponse.ok || !tenantData.success) {
+          setGrievanceMessageType('error');
           setGrievanceMessage(tenantData.error || 'Unable to load tenant grievances.');
           return;
         }
@@ -499,9 +519,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setTenantGrievances([]);
       }
     } catch {
+      setGrievanceMessageType('error');
       setGrievanceMessage('Server disconnection. Unable to load grievances.');
     } finally {
       setGrievanceLoading(false);
+      setTenantGrievanceLoading(false);
     }
   };
 
@@ -510,7 +532,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const submitGrievance = async () => {
-    setGrievanceLoading(true);
+    if (grievanceSubmitting) return;
+
+    setGrievanceSubmitting(true);
     setGrievanceMessage('');
 
     try {
@@ -524,19 +548,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         setGrievanceForm(defaultGrievanceForm);
         await loadGrievances(false);
+        setGrievanceMessageType('success');
         setGrievanceMessage('Grievance filed successfully.');
       } else {
+        setGrievanceMessageType('error');
         setGrievanceMessage(data.error || 'Unable to file grievance.');
       }
     } catch {
+      setGrievanceMessageType('error');
       setGrievanceMessage('Server disconnection. Unable to file grievance.');
     } finally {
-      setGrievanceLoading(false);
+      setGrievanceSubmitting(false);
     }
   };
 
   const updateGrievanceStatus = async (grievanceId: string, status: GrievanceStatus) => {
-    setGrievanceLoading(true);
+    if (grievanceUpdatingId) return;
+
+    setGrievanceUpdatingId(grievanceId);
     setGrievanceMessage('');
 
     try {
@@ -549,14 +578,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       if (res.ok && data.success) {
         await loadGrievances(false);
+        setGrievanceMessageType('success');
         setGrievanceMessage('Grievance status updated.');
       } else {
+        setGrievanceMessageType('error');
         setGrievanceMessage(data.error || 'Unable to update grievance status.');
       }
     } catch {
+      setGrievanceMessageType('error');
       setGrievanceMessage('Server disconnection. Unable to update grievance status.');
     } finally {
-      setGrievanceLoading(false);
+      setGrievanceUpdatingId(null);
     }
   };
 
@@ -1100,16 +1132,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={runPayroll}
-                                disabled={payrollLoading}
+                                disabled={payrollSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                               >
-                                Run Payroll
+                                {payrollSubmitting ? 'Generating payroll...' : 'Run Payroll'}
                               </button>
                             </div>
                           )}
 
                           {payrollMessage && (
-                            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <p className={cn(
+                              "rounded-lg border px-3 py-2 text-xs font-semibold",
+                              payrollMessageType === 'success'
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                            )}>
                               {payrollMessage}
                             </p>
                           )}
@@ -1221,16 +1258,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={submitGrievance}
-                                disabled={grievanceLoading}
+                                disabled={grievanceSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                               >
-                                Submit Grievance
+                                {grievanceSubmitting ? 'Submitting...' : 'Submit Grievance'}
                               </button>
                             </div>
                           </div>
 
                           {grievanceMessage && (
-                            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <p className={cn(
+                              "rounded-lg border px-3 py-2 text-xs font-semibold",
+                              grievanceMessageType === 'success'
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                            )}>
                               {grievanceMessage}
                             </p>
                           )}
@@ -1241,7 +1283,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={() => loadGrievances()}
-                                disabled={grievanceLoading}
+                                disabled={grievanceLoading || tenantGrievanceLoading}
                                 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 disabled:opacity-60 dark:text-emerald-300"
                               >
                                 Refresh
@@ -1276,7 +1318,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                               {grievanceLoading && (
                                 <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
-                                  Loading grievances...
+                                  Loading your grievances...
                                 </p>
                               )}
                             </div>
@@ -1315,7 +1357,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                           <select
                                             value={grievance.status}
                                             onChange={(event) => updateGrievanceStatus(grievance.id, event.target.value as GrievanceStatus)}
-                                            disabled={grievanceLoading}
+                                            disabled={grievanceUpdatingId !== null}
                                             className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                                           >
                                             {grievanceStatuses.map((status) => (
@@ -1326,15 +1368,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       </tr>
                                     ))}
 
-                                    {!grievanceLoading && tenantGrievances.length === 0 && (
+                                    {!tenantGrievanceLoading && tenantGrievances.length === 0 && (
                                       <tr>
                                         <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
-                                          No grievances filed yet.
+                                          No tenant grievances yet.
                                         </td>
                                       </tr>
                                     )}
 
-                                    {grievanceLoading && (
+                                    {tenantGrievanceLoading && (
                                       <tr>
                                         <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
                                           Loading tenant grievances...

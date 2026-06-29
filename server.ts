@@ -64,6 +64,19 @@ type DemoTimeLog = {
 
 const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_LOCK_MS = 5 * 60 * 1000;
+
+type LoginAttemptState = {
+  failedAttempts: number;
+  firstFailedAt: number;
+  lockedUntil?: number;
+};
+
+// In-memory limiter is fine for this single-process app. Use Redis later for multi-instance deployments.
+const loginAttemptStore = new Map<string, LoginAttemptState>();
+
 declare global {
   namespace Express {
     interface Request {
@@ -89,6 +102,62 @@ function isTileCoordinate(value: string | undefined) {
 
 function getMapTilerMapId() {
   return process.env.MAPTILER_MAP_ID || 'streets-v4';
+}
+
+function getRequestIp(req: express.Request) {
+  const forwardedFor = req.header('x-forwarded-for');
+  const forwardedIp = forwardedFor?.split(',')[0]?.trim();
+  return forwardedIp || req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+function getLoginRateLimitKey(req: express.Request, normalizedEmail: string) {
+  return `${normalizedEmail}:${getRequestIp(req)}`;
+}
+
+function checkLoginRateLimit(key: string) {
+  const now = Date.now();
+  const attemptState = loginAttemptStore.get(key);
+
+  if (!attemptState) {
+    return { locked: false as const };
+  }
+
+  if (attemptState.lockedUntil && attemptState.lockedUntil > now) {
+    return {
+      locked: true as const,
+      retryAfterSeconds: Math.ceil((attemptState.lockedUntil - now) / 1000),
+    };
+  }
+
+  if (attemptState.lockedUntil || now - attemptState.firstFailedAt > LOGIN_WINDOW_MS) {
+    loginAttemptStore.delete(key);
+  }
+
+  return { locked: false as const };
+}
+
+function recordFailedLogin(key: string) {
+  const now = Date.now();
+  const attemptState = loginAttemptStore.get(key);
+
+  if (!attemptState || now - attemptState.firstFailedAt > LOGIN_WINDOW_MS) {
+    loginAttemptStore.set(key, {
+      failedAttempts: 1,
+      firstFailedAt: now,
+    });
+    return;
+  }
+
+  const failedAttempts = attemptState.failedAttempts + 1;
+  loginAttemptStore.set(key, {
+    failedAttempts,
+    firstFailedAt: attemptState.firstFailedAt,
+    lockedUntil: failedAttempts >= MAX_LOGIN_ATTEMPTS ? now + LOGIN_LOCK_MS : attemptState.lockedUntil,
+  });
+}
+
+function clearFailedLogins(key: string) {
+  loginAttemptStore.delete(key);
 }
 
 function getAttendanceKey(tenantId?: string, employeeId?: string) {
@@ -649,6 +718,18 @@ app.post('/api/auth/login', async (req, res) => {
     });
   }
 
+  const normalizedEmail = email.toLowerCase().trim();
+  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+
+  if (rateLimit.locked) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+  }
+
   // Simulate database lookup latency for biometric UI experience
   await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -660,8 +741,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const normalizedEmail = email.toLowerCase().trim();
-
     const result = await getDbPool().query<{
       id: string;
       tenant_id: string;
@@ -690,6 +769,8 @@ app.post('/api/auth/login', async (req, res) => {
     );
 
     if (result.rowCount === 0) {
+      recordFailedLogin(loginRateLimitKey);
+
       return res.status(401).json({
         success: false,
         error: 'Invalid biometric pattern or credentials',
@@ -700,11 +781,15 @@ app.post('/api/auth/login', async (req, res) => {
     const passwordValid = verifyPassword(password, employee.password_hash);
 
     if (!passwordValid) {
+      recordFailedLogin(loginRateLimitKey);
+
       return res.status(401).json({
         success: false,
         error: 'Invalid biometric pattern or credentials',
       });
     }
+
+    clearFailedLogins(loginRateLimitKey);
 
     res.json({
       success: true,
