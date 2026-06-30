@@ -50,6 +50,10 @@ function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
 }
 
+function isPayrollPdfPath(pathname) {
+  return /^\/api\/payroll\/[^/]+\/pdf$/.test(pathname);
+}
+
 function isStaticAssetRequest(request, url) {
   return (
     url.origin === self.location.origin &&
@@ -134,6 +138,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (isApiRequest(url)) {
+    if (isPayrollPdfPath(url.pathname)) {
+      event.respondWith(networkOnlyMutation(request));
+      return;
+    }
+
     // Mutating HR workflows are intentionally not cached or queued. Retrying login,
     // password reset, payroll, grievance, company feed, clock, or leave writes offline could
     // duplicate sensitive actions or replay stale credentials/payroll changes.

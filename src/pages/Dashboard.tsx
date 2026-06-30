@@ -295,6 +295,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollSubmitting, setPayrollSubmitting] = useState(false);
+  const [payrollExportingId, setPayrollExportingId] = useState<string | null>(null);
   const [payrollMessage, setPayrollMessage] = useState('');
   const [payrollMessageType, setPayrollMessageType] = useState<'success' | 'error'>('success');
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(defaultPayrollForm);
@@ -559,6 +560,51 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       setPayrollMessage('Server disconnection. Unable to run payroll.');
     } finally {
       setPayrollSubmitting(false);
+    }
+  };
+
+  const exportPayrollPdf = async (recordId: string) => {
+    if (payrollExportingId) return;
+
+    setPayrollExportingId(recordId);
+    setPayrollMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/payroll/${recordId}/pdf`), {
+        headers: {
+          'x-employee-id': user.id,
+          'x-tenant-id': user.tenantId,
+        },
+      });
+
+      if (!res.ok) {
+        let errorMessage = 'Unable to export payroll PDF.';
+        try {
+          const data = await res.json();
+          errorMessage = data.error || errorMessage;
+        } catch {
+          // PDF responses are binary; failed responses may still be plain text.
+        }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filenameMatch?.[1] || `payroll-${recordId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setPayrollMessageType('error');
+      setPayrollMessage(error instanceof Error ? error.message : 'Unable to export payroll PDF.');
+    } finally {
+      setPayrollExportingId(null);
     }
   };
 
@@ -1682,6 +1728,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <th className="p-3">Deductions</th>
                                   <th className="p-3">Net</th>
                                   <th className="p-3">Status</th>
+                                  <th className="p-3">Export</th>
                                 </tr>
                               </thead>
                               <tbody className="text-xs">
@@ -1703,18 +1750,28 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         {record.status}
                                       </span>
                                     </td>
+                                    <td className="p-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => exportPayrollPdf(record.id)}
+                                        disabled={payrollExportingId !== null}
+                                        className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
+                                      >
+                                        {payrollExportingId === record.id ? 'Exporting...' : 'Export PDF'}
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                                 {!payrollLoading && payrollRecords.length === 0 && (
                                   <tr>
-                                    <td colSpan={7} className="p-6 text-center text-xs text-slate-500">
+                                    <td colSpan={8} className="p-6 text-center text-xs text-slate-500">
                                       No payroll records yet.
                                     </td>
                                   </tr>
                                 )}
                                 {payrollLoading && (
                                   <tr>
-                                    <td colSpan={7} className="p-6 text-center text-xs text-slate-500">
+                                    <td colSpan={8} className="p-6 text-center text-xs text-slate-500">
                                       Loading payroll records...
                                     </td>
                                   </tr>
