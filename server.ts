@@ -4846,7 +4846,7 @@ app.get(
 app.post(
   '/api/company-feed/posts',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('feed.publish'),
   async (req, res) => {
     const {
       title,
@@ -4983,7 +4983,7 @@ app.post(
             normalizedTitle,
             postType,
             normalizedContent,
-            contentJson === undefined ? null : JSON.stringify(contentJson),
+            contentJson == null ? null : JSON.stringify(contentJson),
             normalizedStartsAt,
             normalizedEndsAt,
             status,
@@ -5044,6 +5044,8 @@ app.post(
 
         return {
           ...createdPost,
+          contentText: createdPost.content_text,
+          contentJson: createdPost.content_json,
           visibility: normalizedVisibility.visibility,
         };
       });
@@ -5072,7 +5074,7 @@ app.post(
 app.get(
   '/api/company-feed',
   demoAuth,
-  requireRole(['employee', 'manager', 'hr_admin']),
+  requirePermission('feed.read'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const role = req.authUser!.role;
@@ -5130,7 +5132,11 @@ app.get(
           [tenantId, role],
         );
 
-        return result.rows;
+        return result.rows.map((post) => ({
+          ...post,
+          contentText: post.content_text,
+          contentJson: post.content_json,
+        }));
       });
 
       res.json({ success: true, posts });
@@ -5144,7 +5150,7 @@ app.get(
 app.get(
   '/api/company-feed/admin',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('feed.publish'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
 
@@ -5197,7 +5203,11 @@ app.get(
           [tenantId],
         );
 
-        return result.rows;
+        return result.rows.map((post) => ({
+          ...post,
+          contentText: post.content_text,
+          contentJson: post.content_json,
+        }));
       });
 
       res.json({ success: true, posts });
@@ -5211,7 +5221,7 @@ app.get(
 app.patch(
   '/api/company-feed/posts/:id/status',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('feed.publish'),
   async (req, res) => {
     const { id } = req.params;
     const { status } = req.body as UpdateFeedPostStatusBody;

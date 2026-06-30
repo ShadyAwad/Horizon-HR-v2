@@ -9,6 +9,7 @@ import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
+import { RichFeedContent, RichTextEditor } from '../components/RichTextEditor';
 import type { AuthUser } from '../App';
 
 type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
@@ -170,6 +171,8 @@ type FeedPost = {
   title: string;
   post_type: FeedPostType;
   content_text: string;
+  content_json?: unknown | null;
+  contentJson?: unknown | null;
   event_starts_at?: string | null;
   event_ends_at?: string | null;
   status: FeedPostStatus;
@@ -188,6 +191,7 @@ type FeedFormState = {
   title: string;
   postType: FeedPostType;
   contentText: string;
+  contentJson: unknown | null;
   status: 'draft' | 'published';
   visibility: FeedVisibilityValue;
 };
@@ -282,6 +286,7 @@ const defaultFeedForm: FeedFormState = {
   title: '',
   postType: 'announcement',
   contentText: '',
+  contentJson: null,
   status: 'published',
   visibility: 'all',
 };
@@ -476,6 +481,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [feedMessage, setFeedMessage] = useState('');
   const [feedMessageType, setFeedMessageType] = useState<'success' | 'error'>('success');
   const [feedForm, setFeedForm] = useState<FeedFormState>(defaultFeedForm);
+  const [feedEditorKey, setFeedEditorKey] = useState(0);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationRecord[]>([]);
   const [locationsMessage, setLocationsMessage] = useState('');
   const [tenantRoles, setTenantRoles] = useState<TenantRole[]>([]);
@@ -499,6 +505,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
   const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
   const canManageRoles = user.role === 'hr_admin' || Boolean(user.permissions?.includes('roles.manage'));
+  const canPublishFeed = hasPermission(user, 'feed.publish');
   const canViewAllPayroll = hasPermission(user, 'payroll.view_all');
   const canViewOwnPayroll = hasPermission(user, 'payroll.view_self');
   const canRunPayroll = hasPermission(user, 'payroll.run');
@@ -1339,7 +1346,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const loadAdminFeed = async () => {
-    if (user.role !== 'hr_admin') return;
+    if (!canPublishFeed) return;
 
     setAdminFeedLoading(true);
 
@@ -1359,6 +1366,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setFeedForm((current) => ({ ...current, [field]: value }));
   };
 
+  const updateFeedContent = (payload: { json: unknown; text: string }) => {
+    setFeedForm((current) => ({
+      ...current,
+      contentText: payload.text,
+      contentJson: payload.json,
+    }));
+  };
+
   const getFeedVisibilityPayload = () => {
     if (feedForm.visibility === 'all') {
       return [{ type: 'all' }];
@@ -1376,7 +1391,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const submitFeedPost = async () => {
-    if (feedSubmitting) return;
+    if (feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()) return;
 
     setFeedSubmitting(true);
     setFeedMessage('');
@@ -1389,6 +1404,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           title: feedForm.title,
           postType: feedForm.postType,
           contentText: feedForm.contentText,
+          contentJson: feedForm.contentJson,
           status: feedForm.status,
           visibility: getFeedVisibilityPayload(),
         }),
@@ -1397,6 +1413,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       if (res.ok && data.success) {
         setFeedForm(defaultFeedForm);
+        setFeedEditorKey((current) => current + 1);
         await Promise.all([loadFeed(false), loadAdminFeed()]);
         setFeedMessageType('success');
         setFeedMessage(feedForm.status === 'published' ? 'Post published.' : 'Draft saved.');
@@ -2067,7 +2084,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         </button>
                       </div>
 
-                      {user.role === 'hr_admin' && (
+                      {canPublishFeed && (
                         <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                             <input
@@ -2109,17 +2126,18 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 </option>
                               ))}
                             </select>
-                            <textarea
-                              value={feedForm.contentText}
-                              onChange={(event) => updateFeedForm('contentText', event.target.value)}
-                              placeholder="Write the announcement..."
-                              rows={4}
-                              className="resize-none rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
-                            />
+                            <div className="md:col-span-4">
+                              <RichTextEditor
+                                key={feedEditorKey}
+                                valueJson={feedForm.contentJson}
+                                onChange={updateFeedContent}
+                                placeholder="Write the announcement..."
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={submitFeedPost}
-                              disabled={feedSubmitting}
+                              disabled={feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()}
                               className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                             >
                               {feedSubmitting ? 'Saving...' : feedForm.status === 'published' ? 'Publish Post' : 'Save Draft'}
@@ -2159,7 +2177,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 {post.event_ends_at ? ` - ${formatShortDateTime(post.event_ends_at)}` : ''}
                               </p>
                             )}
-                            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{post.content_text}</p>
+                            <RichFeedContent contentJson={post.content_json ?? post.contentJson} contentText={post.content_text} />
                           </article>
                         ))}
 
@@ -2176,7 +2194,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         )}
                       </div>
 
-                      {user.role === 'hr_admin' && (
+                      {canPublishFeed && (
                         <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                           <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Manage Posts</h3>
                           <div className="space-y-2">
