@@ -236,6 +236,7 @@ JOIN (
         ('employee', 'attendance.clock'),
         ('employee', 'leave.create'),
         ('employee', 'payroll.view_self'),
+        ('employee', 'payroll.export_pdf'),
         ('employee', 'loans.view_self'),
         ('employee', 'grievances.create'),
         ('employee', 'feed.read'),
@@ -243,6 +244,7 @@ JOIN (
         ('manager', 'attendance.view'),
         ('manager', 'leave.review'),
         ('manager', 'payroll.view_self'),
+        ('manager', 'payroll.export_pdf'),
         ('manager', 'loans.view_self'),
         ('manager', 'grievances.review'),
         ('manager', 'feed.read')

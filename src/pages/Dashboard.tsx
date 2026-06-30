@@ -376,6 +376,18 @@ function getNextPayrollStatuses(status: PayrollStatus): PayrollStatus[] {
   return [];
 }
 
+const legacyRolePermissionFallback: Record<AuthUser['role'], string[]> = {
+  employee: ['payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
+  manager: ['payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
+  hr_admin: [],
+};
+
+function hasPermission(user: AuthUser, permissionKey: string) {
+  if (user.role === 'hr_admin') return true;
+  if (user.permissions) return user.permissions.includes(permissionKey);
+  return legacyRolePermissionFallback[user.role].includes(permissionKey);
+}
+
 function notifyEmployee(title: string, body: string) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -487,6 +499,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
   const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
   const canManageRoles = user.role === 'hr_admin' || Boolean(user.permissions?.includes('roles.manage'));
+  const canViewAllPayroll = hasPermission(user, 'payroll.view_all');
+  const canViewOwnPayroll = hasPermission(user, 'payroll.view_self');
+  const canRunPayroll = hasPermission(user, 'payroll.run');
+  const canApprovePayroll = hasPermission(user, 'payroll.approve');
+  const canMarkPayrollPaid = hasPermission(user, 'payroll.mark_paid');
+  const canExportPayrollPdf = hasPermission(user, 'payroll.export_pdf');
+  const canManageCompensation = hasPermission(user, 'compensation.manage');
+  const canManageLoans = hasPermission(user, 'loans.manage');
+  const canViewOwnLoans = hasPermission(user, 'loans.view_self');
+  const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
+  const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
+  const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
+  const canExportPayrollRecord = (record: PayrollRecord) => (
+    canExportPayrollPdf && (canViewAllPayroll || record.employee_id === user.id || user.role === 'hr_admin')
+  );
+  const getAllowedPayrollStatuses = (status: PayrollStatus) => (
+    getNextPayrollStatuses(status).filter((nextStatus) => (
+      nextStatus === 'paid' ? canMarkPayrollPaid : canApprovePayroll
+    ))
+  );
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window) || Notification.permission !== 'default') return;
@@ -801,6 +833,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const loadPayrollRecords = async (clearMessage = true) => {
+    if (!canViewAllPayroll && !canViewOwnPayroll) {
+      setPayrollRecords([]);
+      return;
+    }
+
     setPayrollLoading(true);
     if (clearMessage) {
       setPayrollMessage('');
@@ -808,7 +845,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
 
     try {
-      const endpoint = user.role === 'hr_admin' ? '/api/payroll' : '/api/payroll/me';
+      const endpoint = canViewAllPayroll ? '/api/payroll' : '/api/payroll/me';
       const res = await fetch(apiUrl(endpoint), { headers: payrollHeaders });
       const data = await res.json();
 
@@ -827,7 +864,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const loadCompensationProfiles = async () => {
-    if (user.role !== 'hr_admin') return;
+    if (!canManageCompensation) return;
 
     setCompensationLoading(true);
 
@@ -862,17 +899,22 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const loadEmployeeLoans = async () => {
+    if (!canManageLoans && !canViewOwnLoans) {
+      setEmployeeLoans([]);
+      return;
+    }
+
     setLoanLoading(true);
 
     try {
-      const endpoint = user.role === 'hr_admin' ? '/api/employee-loans' : '/api/employee-loans/me';
+      const endpoint = canManageLoans ? '/api/employee-loans' : '/api/employee-loans/me';
       const res = await fetch(apiUrl(endpoint), { headers: payrollHeaders });
       const data = await res.json();
 
       if (res.ok && data.success) {
         setEmployeeLoans(data.loans || []);
         setLoanForm((current) => {
-          if (current.employeeId || user.role !== 'hr_admin' || compensationProfiles.length === 0) return current;
+          if (current.employeeId || !canManageLoans || compensationProfiles.length === 0) return current;
           return { ...current, employeeId: compensationProfiles[0].employee_id };
         });
       } else {
@@ -912,7 +954,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const saveCompensationProfile = async () => {
-    if (compensationSaving || !compensationForm.employeeId) return;
+    if (compensationSaving || !compensationForm.employeeId || !canManageCompensation) return;
 
     setCompensationSaving(true);
     setPayrollMessage('');
@@ -947,7 +989,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const createEmployeeLoan = async () => {
-    if (loanSaving || !loanForm.employeeId) return;
+    if (loanSaving || !loanForm.employeeId || !canManageLoans) return;
 
     setLoanSaving(true);
     setPayrollMessage('');
@@ -991,7 +1033,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const updateEmployeeLoanStatus = async (loanId: string, status: LoanStatus) => {
-    if (loanUpdatingId) return;
+    if (loanUpdatingId || !canManageLoans) return;
 
     setLoanUpdatingId(loanId);
     setPayrollMessage('');
@@ -1022,6 +1064,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
   const updatePayrollStatus = async (recordId: string, status: PayrollStatus) => {
     if (payrollStatusUpdatingId) return;
+    if (status === 'paid' && !canMarkPayrollPaid) return;
+    if ((status === 'approved' || status === 'cancelled') && !canApprovePayroll) return;
 
     setPayrollStatusUpdatingId(recordId);
     setPayrollMessage('');
@@ -1051,7 +1095,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const runPayroll = async () => {
-    if (payrollSubmitting) return;
+    if (payrollSubmitting || !canRunPayroll) return;
 
     setPayrollSubmitting(true);
     setPayrollMessage('');
@@ -1103,7 +1147,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const exportPayrollPdf = async (recordId: string) => {
-    if (payrollExportingId) return;
+    if (payrollExportingId || !canExportPayrollPdf) return;
 
     setPayrollExportingId(recordId);
     setPayrollMessage('');
@@ -2190,7 +2234,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <div>
                               <h3 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Payroll</h3>
                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {user.role === 'hr_admin' ? 'Tenant payroll records and run controls.' : 'Your recent payroll records.'}
+                                {canViewAllPayroll || canRunPayroll ? 'Tenant payroll records and run controls.' : 'Your recent payroll records.'}
                               </p>
                             </div>
                             <button
@@ -2202,8 +2246,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </button>
                           </div>
 
-                          {user.role === 'hr_admin' && (
+                          {(canManageCompensation || canRunPayroll) && (
                             <div className="space-y-3">
+                              {canManageCompensation && (
                               <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
@@ -2315,7 +2360,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   )}
                                 </div>
                               </div>
+                              )}
 
+                              {canRunPayroll && (
                               <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                                 <p className="mb-3 text-[11px] font-semibold text-neutral-500 dark:text-emerald-100/45">
                                   Payroll uses each employee's active compensation profile. Fallback Base Salary is optional, and active loan repayments are automatically included in deductions for new payroll records.
@@ -2377,6 +2424,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               </button>
                                 </div>
                               </div>
+                              )}
                             </div>
                           )}
 
@@ -2385,7 +2433,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <div>
                                 <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Employee Loans</h4>
                                 <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">
-                                  {user.role === 'hr_admin' ? 'Create tenant loans and manage repayment status.' : 'Your active and historical employee loans.'}
+                                  {canManageLoans ? 'Create tenant loans and manage repayment status.' : 'Your active and historical employee loans.'}
                                 </p>
                               </div>
                               <button
@@ -2398,7 +2446,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               </button>
                             </div>
 
-                            {user.role === 'hr_admin' && (
+                            {canManageLoans && (
                               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-6">
                                 <select
                                   value={loanForm.employeeId}
@@ -2475,10 +2523,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     <div>
                                       <p className="font-bold text-neutral-800 dark:text-emerald-50">{loan.loan_name}</p>
                                       <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">
-                                        {user.role === 'hr_admin' ? `${loan.full_name || loan.email} • ` : ''}{formatLabel(loan.repayment_frequency)}
+                                        {canManageLoans ? `${loan.full_name || loan.email} - ` : ''}{formatLabel(loan.repayment_frequency)}
                                       </p>
                                     </div>
-                                    {user.role === 'hr_admin' ? (
+                                    {canManageLoans ? (
                                       <select
                                         value={loan.status}
                                         onChange={(event) => updateEmployeeLoanStatus(loan.id, event.target.value as LoanStatus)}
@@ -2552,7 +2600,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <th className="p-3">Deductions</th>
                                   <th className="p-3">Net</th>
                                   <th className="p-3">Status</th>
-                                  {user.role === 'hr_admin' && <th className="p-3">Actions</th>}
+                                  {canShowPayrollActions && <th className="p-3">Actions</th>}
                                   <th className="p-3">Export</th>
                                 </tr>
                               </thead>
@@ -2590,11 +2638,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         </span>
                                       )}
                                     </td>
-                                    {user.role === 'hr_admin' && (
+                                    {canShowPayrollActions && (
                                       <td className="p-3">
-                                        {getNextPayrollStatuses(record.status).length > 0 ? (
+                                        {getAllowedPayrollStatuses(record.status).length > 0 ? (
                                           <div className="flex flex-wrap gap-2">
-                                            {getNextPayrollStatuses(record.status).map((status) => (
+                                            {getAllowedPayrollStatuses(record.status).map((status) => (
                                               <button
                                                 key={status}
                                                 type="button"
@@ -2612,27 +2660,31 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       </td>
                                     )}
                                     <td className="p-3">
-                                      <button
-                                        type="button"
-                                        onClick={() => exportPayrollPdf(record.id)}
-                                        disabled={payrollExportingId !== null}
-                                        className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
-                                      >
-                                        {payrollExportingId === record.id ? 'Exporting...' : 'Export PDF'}
-                                      </button>
+                                      {canExportPayrollRecord(record) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => exportPayrollPdf(record.id)}
+                                          disabled={payrollExportingId !== null}
+                                          className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
+                                        >
+                                          {payrollExportingId === record.id ? 'Exporting...' : 'Export PDF'}
+                                        </button>
+                                      ) : (
+                                        <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">No access</span>
+                                      )}
                                     </td>
                                   </tr>
                                 ))}
                                 {!payrollLoading && payrollRecords.length === 0 && (
                                   <tr>
-                                    <td colSpan={user.role === 'hr_admin' ? 9 : 8} className="p-6 text-center text-xs text-slate-500">
-                                      No payroll records yet.
+                                    <td colSpan={payrollTableColSpan} className="p-6 text-center text-xs text-slate-500">
+                                      {canUsePayrollPanel ? 'No payroll records yet.' : 'No payroll access assigned yet.'}
                                     </td>
                                   </tr>
                                 )}
                                 {payrollLoading && (
                                   <tr>
-                                    <td colSpan={user.role === 'hr_admin' ? 9 : 8} className="p-6 text-center text-xs text-slate-500">
+                                    <td colSpan={payrollTableColSpan} className="p-6 text-center text-xs text-slate-500">
                                       Loading payroll records...
                                     </td>
                                   </tr>

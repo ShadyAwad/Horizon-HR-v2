@@ -632,6 +632,7 @@ async function seedTenantRolesAndPermissions(
           ('employee', 'attendance.clock'),
           ('employee', 'leave.create'),
           ('employee', 'payroll.view_self'),
+          ('employee', 'payroll.export_pdf'),
           ('employee', 'loans.view_self'),
           ('employee', 'grievances.create'),
           ('employee', 'feed.read'),
@@ -639,6 +640,7 @@ async function seedTenantRolesAndPermissions(
           ('manager', 'attendance.view'),
           ('manager', 'leave.review'),
           ('manager', 'payroll.view_self'),
+          ('manager', 'payroll.export_pdf'),
           ('manager', 'loans.view_self'),
           ('manager', 'grievances.review'),
           ('manager', 'feed.read')
@@ -3060,7 +3062,7 @@ if (!status) {
 app.get(
   '/api/compensation-profiles',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('compensation.manage'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
 
@@ -3167,7 +3169,7 @@ app.get(
 app.put(
   '/api/compensation-profiles/:employeeId',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('compensation.manage'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const actorEmployeeId = req.authUser!.employeeId;
@@ -3338,7 +3340,7 @@ app.put(
 app.get(
   '/api/employee-loans',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('loans.manage'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
 
@@ -3391,7 +3393,7 @@ app.get(
 app.get(
   '/api/employee-loans/me',
   demoAuth,
-  requireRole(['employee', 'manager', 'hr_admin']),
+  requirePermission('loans.view_self'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const employeeId = req.authUser!.employeeId;
@@ -3441,7 +3443,7 @@ app.get(
 app.post(
   '/api/employee-loans',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('loans.manage'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const actorEmployeeId = req.authUser!.employeeId;
@@ -3620,7 +3622,7 @@ app.post(
 app.patch(
   '/api/employee-loans/:id/status',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('loans.manage'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const actorEmployeeId = req.authUser!.employeeId;
@@ -3731,7 +3733,7 @@ app.patch(
 app.get(
   '/api/payroll/me',
   demoAuth,
-  requireRole(['employee', 'manager', 'hr_admin']),
+  requirePermission('payroll.view_self'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const employeeId = req.authUser!.employeeId;
@@ -3783,7 +3785,7 @@ app.get(
 app.get(
   '/api/payroll',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('payroll.view_all'),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
 
@@ -3838,7 +3840,23 @@ app.get(
 app.patch(
   '/api/payroll/:id/status',
   demoAuth,
-  requireRole(['hr_admin']),
+  (req, res, next) => {
+    const { status } = req.body as UpdatePayrollStatusBody;
+    const hasPermission = (permissionKey: string) => (
+      req.authUser?.role === 'hr_admin' ||
+      Boolean(req.authUser?.permissions?.includes(permissionKey))
+    );
+
+    if (status === 'paid' && !hasPermission('payroll.mark_paid')) {
+      return res.status(403).json({ success: false, error: 'Permission payroll.mark_paid is required.' });
+    }
+
+    if ((status === 'approved' || status === 'cancelled') && !hasPermission('payroll.approve')) {
+      return res.status(403).json({ success: false, error: 'Permission payroll.approve is required.' });
+    }
+
+    next();
+  },
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const actorEmployeeId = req.authUser!.employeeId;
@@ -3975,7 +3993,7 @@ app.patch(
 app.post(
   '/api/payroll/run',
   demoAuth,
-  requireRole(['hr_admin']),
+  requirePermission('payroll.run'),
   async (req, res) => {
     const {
       payPeriodStart,
@@ -4672,12 +4690,13 @@ app.patch(
 app.get(
   '/api/payroll/:id/pdf',
   demoAuth,
-  requireRole(['employee', 'manager', 'hr_admin']),
+  requirePermission('payroll.export_pdf'),
   async (req, res) => {
     const { id } = req.params;
     const tenantId = req.authUser!.tenantId;
     const employeeId = req.authUser!.employeeId;
     const role = req.authUser!.role;
+    const canViewAllPayroll = role === 'hr_admin' || Boolean(req.authUser!.permissions?.includes('payroll.view_all'));
 
     if (!hasDatabaseConfig()) {
       return res.status(503).json({ success: false, error: 'DATABASE_URL is required for payroll PDF export' });
@@ -4726,7 +4745,7 @@ app.get(
         return res.status(404).json({ success: false, error: 'Payroll record not found.' });
       }
 
-      if (role !== 'hr_admin' && payrollRecord.employee_id !== employeeId) {
+      if (!canViewAllPayroll && payrollRecord.employee_id !== employeeId) {
         return res.status(403).json({ success: false, error: 'You do not have permission to export this payroll record.' });
       }
 
