@@ -27,6 +27,8 @@ type NotificationSettings = {
   breakEnd: boolean;
 };
 
+type PayrollStatus = 'draft' | 'approved' | 'paid' | 'cancelled';
+
 type PayrollRecord = {
   id: string;
   employee_id: string;
@@ -39,9 +41,11 @@ type PayrollRecord = {
   deductions: string | number;
   net_pay: string | number;
   currency: string;
-  status: string;
+  status: PayrollStatus;
   generated_at: string;
+  approved_at?: string | null;
   paid_at?: string | null;
+  cancelled_at?: string | null;
 };
 
 type PayrollFormState = {
@@ -80,6 +84,37 @@ type SkippedPayrollEmployee = {
   employeeId: string;
   email: string;
   reason: string;
+};
+
+type LoanStatus = 'active' | 'paid' | 'cancelled';
+type LoanRepaymentFrequency = 'monthly' | 'weekly' | 'one_time';
+
+type EmployeeLoan = {
+  id: string;
+  employee_id: string;
+  full_name?: string;
+  email?: string;
+  loan_name: string;
+  principal_amount: string | number;
+  outstanding_balance: string | number;
+  currency: string;
+  repayment_amount: string | number;
+  repayment_frequency: LoanRepaymentFrequency;
+  status: LoanStatus;
+  issued_at: string;
+  due_date?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type LoanFormState = {
+  employeeId: string;
+  loanName: string;
+  principalAmount: string;
+  repaymentAmount: string;
+  currency: string;
+  repaymentFrequency: LoanRepaymentFrequency;
+  dueDate: string;
 };
 
 type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -187,6 +222,16 @@ const defaultCompensationForm: CompensationFormState = {
   effectiveFrom: '',
 };
 
+const defaultLoanForm: LoanFormState = {
+  employeeId: '',
+  loanName: '',
+  principalAmount: '',
+  repaymentAmount: '',
+  currency: '',
+  repaymentFrequency: 'monthly',
+  dueDate: '',
+};
+
 const defaultGrievanceForm: GrievanceFormState = {
   title: '',
   category: 'general',
@@ -280,6 +325,12 @@ function formatLabel(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getNextPayrollStatuses(status: PayrollStatus): PayrollStatus[] {
+  if (status === 'draft') return ['approved', 'cancelled'];
+  if (status === 'approved') return ['paid', 'cancelled'];
+  return [];
+}
+
 function notifyEmployee(title: string, body: string) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -342,6 +393,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [compensationSaving, setCompensationSaving] = useState(false);
   const [compensationForm, setCompensationForm] = useState<CompensationFormState>(defaultCompensationForm);
   const [skippedPayrollEmployees, setSkippedPayrollEmployees] = useState<SkippedPayrollEmployee[]>([]);
+  const [employeeLoans, setEmployeeLoans] = useState<EmployeeLoan[]>([]);
+  const [loanLoading, setLoanLoading] = useState(false);
+  const [loanSaving, setLoanSaving] = useState(false);
+  const [loanUpdatingId, setLoanUpdatingId] = useState<string | null>(null);
+  const [loanForm, setLoanForm] = useState<LoanFormState>(defaultLoanForm);
+  const [loanDeductionsApplied, setLoanDeductionsApplied] = useState(0);
+  const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
   const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
   const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
@@ -371,6 +429,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const canManageRoster = user.role === 'hr_admin' || user.role === 'manager';
   const missingCompensationProfiles = compensationProfiles.filter((profile) => !profile.id);
   const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
+  const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
+  const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window) || Notification.permission !== 'default') return;
@@ -604,6 +664,32 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   };
 
+  const loadEmployeeLoans = async () => {
+    setLoanLoading(true);
+
+    try {
+      const endpoint = user.role === 'hr_admin' ? '/api/employee-loans' : '/api/employee-loans/me';
+      const res = await fetch(apiUrl(endpoint), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setEmployeeLoans(data.loans || []);
+        setLoanForm((current) => {
+          if (current.employeeId || user.role !== 'hr_admin' || compensationProfiles.length === 0) return current;
+          return { ...current, employeeId: compensationProfiles[0].employee_id };
+        });
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to load employee loans.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to load employee loans.');
+    } finally {
+      setLoanLoading(false);
+    }
+  };
+
   const updatePayrollForm = (field: keyof PayrollFormState, value: string) => {
     setPayrollForm((current) => ({ ...current, [field]: value }));
   };
@@ -622,6 +708,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
   const updateCompensationForm = (field: keyof CompensationFormState, value: string) => {
     setCompensationForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateLoanForm = (field: keyof LoanFormState, value: string) => {
+    setLoanForm((current) => ({ ...current, [field]: value }));
   };
 
   const saveCompensationProfile = async () => {
@@ -659,12 +749,117 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   };
 
+  const createEmployeeLoan = async () => {
+    if (loanSaving || !loanForm.employeeId) return;
+
+    setLoanSaving(true);
+    setPayrollMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/employee-loans'), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          employeeId: loanForm.employeeId,
+          loanName: loanForm.loanName || undefined,
+          principalAmount: Number(loanForm.principalAmount),
+          repaymentAmount: Number(loanForm.repaymentAmount),
+          currency: loanForm.currency || undefined,
+          repaymentFrequency: loanForm.repaymentFrequency,
+          dueDate: loanForm.dueDate || null,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadEmployeeLoans();
+        setLoanForm((current) => ({
+          ...defaultLoanForm,
+          employeeId: current.employeeId,
+          currency: current.currency,
+          repaymentFrequency: current.repaymentFrequency,
+        }));
+        setPayrollMessageType('success');
+        setPayrollMessage('Employee loan created.');
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to create employee loan.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to create employee loan.');
+    } finally {
+      setLoanSaving(false);
+    }
+  };
+
+  const updateEmployeeLoanStatus = async (loanId: string, status: LoanStatus) => {
+    if (loanUpdatingId) return;
+
+    setLoanUpdatingId(loanId);
+    setPayrollMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/employee-loans/${loanId}/status`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadEmployeeLoans();
+        setPayrollMessageType('success');
+        setPayrollMessage('Loan status updated.');
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to update loan status.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to update loan status.');
+    } finally {
+      setLoanUpdatingId(null);
+    }
+  };
+
+  const updatePayrollStatus = async (recordId: string, status: PayrollStatus) => {
+    if (payrollStatusUpdatingId) return;
+
+    setPayrollStatusUpdatingId(recordId);
+    setPayrollMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/payroll/${recordId}/status`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadPayrollRecords(false);
+        setPayrollMessageType('success');
+        setPayrollMessage(`Payroll marked ${formatLabel(status)}.`);
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to update payroll status.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to update payroll status.');
+    } finally {
+      setPayrollStatusUpdatingId(null);
+    }
+  };
+
   const runPayroll = async () => {
     if (payrollSubmitting) return;
 
     setPayrollSubmitting(true);
     setPayrollMessage('');
     setSkippedPayrollEmployees([]);
+    setLoanDeductionsApplied(0);
 
     const payrollPayload: {
       payPeriodStart: string;
@@ -693,7 +888,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       if (res.ok && data.success) {
         await loadPayrollRecords(false);
+        await loadEmployeeLoans();
         setSkippedPayrollEmployees(data.skippedEmployees || []);
+        setLoanDeductionsApplied(Number(data.loanDeductionsApplied || 0));
         setPayrollMessageType('success');
         setPayrollMessage(`${data.message} Records: ${data.recordsGenerated}`);
       } else {
@@ -757,6 +954,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     if (activeTab === 'profile' && showPayrollPanel) {
       loadPayrollRecords();
       loadCompensationProfiles();
+      loadEmployeeLoans();
     }
   }, [activeTab, showPayrollPanel, user.id, user.role, user.tenantId]);
 
@@ -1917,7 +2115,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                               <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                                 <p className="mb-3 text-[11px] font-semibold text-neutral-500 dark:text-emerald-100/45">
-                                  Payroll uses each employee's active compensation profile. Fallback Base Salary is optional and only applies to employees without a profile.
+                                  Payroll uses each employee's active compensation profile. Fallback Base Salary is optional, and active loan repayments are automatically included in deductions for new payroll records.
                                 </p>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
                                   <input
@@ -1979,6 +2177,137 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </div>
                           )}
 
+                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+                            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Employee Loans</h4>
+                                <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">
+                                  {user.role === 'hr_admin' ? 'Create tenant loans and manage repayment status.' : 'Your active and historical employee loans.'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={loadEmployeeLoans}
+                                disabled={loanLoading}
+                                className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
+                              >
+                                {loanLoading ? 'Loading...' : 'Refresh'}
+                              </button>
+                            </div>
+
+                            {user.role === 'hr_admin' && (
+                              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-6">
+                                <select
+                                  value={loanForm.employeeId}
+                                  onChange={(event) => updateLoanForm('employeeId', event.target.value)}
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
+                                >
+                                  <option value="">Select employee</option>
+                                  {compensationProfiles.map((profile) => (
+                                    <option key={profile.employee_id} value={profile.employee_id}>
+                                      {profile.full_name || profile.email || profile.employee_id}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  value={loanForm.loanName}
+                                  onChange={(event) => updateLoanForm('loanName', event.target.value)}
+                                  placeholder="Loan name"
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={loanForm.principalAmount}
+                                  onChange={(event) => updateLoanForm('principalAmount', event.target.value)}
+                                  placeholder="Principal"
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={loanForm.repaymentAmount}
+                                  onChange={(event) => updateLoanForm('repaymentAmount', event.target.value)}
+                                  placeholder="Repayment"
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                                <input
+                                  value={loanForm.currency}
+                                  onChange={(event) => updateLoanForm('currency', event.target.value.toUpperCase().slice(0, 3))}
+                                  placeholder="USD"
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                                <select
+                                  value={loanForm.repaymentFrequency}
+                                  onChange={(event) => updateLoanForm('repaymentFrequency', event.target.value as LoanRepaymentFrequency)}
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
+                                >
+                                  {loanRepaymentFrequencies.map((frequency) => (
+                                    <option key={frequency} value={frequency}>{formatLabel(frequency)}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="date"
+                                  value={loanForm.dueDate}
+                                  onChange={(event) => updateLoanForm('dueDate', event.target.value)}
+                                  className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={createEmployeeLoan}
+                                  disabled={loanSaving || !loanForm.employeeId}
+                                  className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-3"
+                                >
+                                  {loanSaving ? 'Creating...' : 'Create Loan'}
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              {employeeLoans.map((loan) => (
+                                <div key={loan.id} className="rounded-lg border border-emerald-500/10 bg-white/50 p-3 text-xs dark:bg-black/25">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-bold text-neutral-800 dark:text-emerald-50">{loan.loan_name}</p>
+                                      <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">
+                                        {user.role === 'hr_admin' ? `${loan.full_name || loan.email} • ` : ''}{formatLabel(loan.repayment_frequency)}
+                                      </p>
+                                    </div>
+                                    {user.role === 'hr_admin' ? (
+                                      <select
+                                        value={loan.status}
+                                        onChange={(event) => updateEmployeeLoanStatus(loan.id, event.target.value as LoanStatus)}
+                                        disabled={loanUpdatingId === loan.id}
+                                        className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-700 outline-none focus:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                      >
+                                        {loanStatuses.map((status) => (
+                                          <option key={status} value={status}>{formatLabel(status)}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                        {loan.status}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600 dark:text-emerald-100/60">
+                                    <p>Principal <span className="block font-mono">{formatPayrollAmount(loan.principal_amount, loan.currency)}</span></p>
+                                    <p>Outstanding <span className="block font-mono">{formatPayrollAmount(loan.outstanding_balance, loan.currency)}</span></p>
+                                    <p>Repayment <span className="block font-mono">{formatPayrollAmount(loan.repayment_amount, loan.currency)}</span></p>
+                                    <p>Due <span className="block font-mono">{loan.due_date ? formatPayrollDate(loan.due_date) : 'Not set'}</span></p>
+                                  </div>
+                                </div>
+                              ))}
+                              {!loanLoading && employeeLoans.length === 0 && (
+                                <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-neutral-500 dark:text-emerald-100/45">
+                                  No employee loans yet.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
                           {payrollMessage && (
                             <p className={cn(
                               "rounded-lg border px-3 py-2 text-xs font-semibold",
@@ -1987,6 +2316,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
                             )}>
                               {payrollMessage}
+                            </p>
+                          )}
+
+                          {loanDeductionsApplied > 0 && (
+                            <p className="rounded-lg border border-emerald-500/20 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                              Loan deductions applied: {formatPayrollAmount(loanDeductionsApplied, payrollRecords[0]?.currency || 'USD')}
                             </p>
                           )}
 
@@ -2014,6 +2349,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <th className="p-3">Deductions</th>
                                   <th className="p-3">Net</th>
                                   <th className="p-3">Status</th>
+                                  {user.role === 'hr_admin' && <th className="p-3">Actions</th>}
                                   <th className="p-3">Export</th>
                                 </tr>
                               </thead>
@@ -2035,7 +2371,43 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
                                         {record.status}
                                       </span>
+                                      {record.approved_at && (
+                                        <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
+                                          Approved {formatPayrollDate(record.approved_at)}
+                                        </span>
+                                      )}
+                                      {record.paid_at && (
+                                        <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
+                                          Paid {formatPayrollDate(record.paid_at)}
+                                        </span>
+                                      )}
+                                      {record.cancelled_at && (
+                                        <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
+                                          Cancelled {formatPayrollDate(record.cancelled_at)}
+                                        </span>
+                                      )}
                                     </td>
+                                    {user.role === 'hr_admin' && (
+                                      <td className="p-3">
+                                        {getNextPayrollStatuses(record.status).length > 0 ? (
+                                          <div className="flex flex-wrap gap-2">
+                                            {getNextPayrollStatuses(record.status).map((status) => (
+                                              <button
+                                                key={status}
+                                                type="button"
+                                                onClick={() => updatePayrollStatus(record.id, status)}
+                                                disabled={payrollStatusUpdatingId === record.id}
+                                                className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
+                                              >
+                                                {payrollStatusUpdatingId === record.id ? 'Updating...' : formatLabel(status)}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">Final</span>
+                                        )}
+                                      </td>
+                                    )}
                                     <td className="p-3">
                                       <button
                                         type="button"
@@ -2050,14 +2422,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 ))}
                                 {!payrollLoading && payrollRecords.length === 0 && (
                                   <tr>
-                                    <td colSpan={8} className="p-6 text-center text-xs text-slate-500">
+                                    <td colSpan={user.role === 'hr_admin' ? 9 : 8} className="p-6 text-center text-xs text-slate-500">
                                       No payroll records yet.
                                     </td>
                                   </tr>
                                 )}
                                 {payrollLoading && (
                                   <tr>
-                                    <td colSpan={8} className="p-6 text-center text-xs text-slate-500">
+                                    <td colSpan={user.role === 'hr_admin' ? 9 : 8} className="p-6 text-center text-xs text-slate-500">
                                       Loading payroll records...
                                     </td>
                                   </tr>

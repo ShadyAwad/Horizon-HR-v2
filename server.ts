@@ -44,6 +44,12 @@ type PayrollRunBody = {
   deductions?: number;
 };
 
+type PayrollStatus = 'draft' | 'approved' | 'paid' | 'cancelled';
+
+type UpdatePayrollStatusBody = {
+  status?: PayrollStatus;
+};
+
 type CompensationPayType = 'monthly' | 'hourly' | 'weekly' | 'annual';
 
 type UpsertCompensationProfileBody = {
@@ -51,6 +57,24 @@ type UpsertCompensationProfileBody = {
   baseAmount?: number | string;
   currency?: string;
   effectiveFrom?: string;
+};
+
+type LoanStatus = 'active' | 'paid' | 'cancelled';
+type LoanRepaymentFrequency = 'monthly' | 'weekly' | 'one_time';
+
+type CreateEmployeeLoanBody = {
+  employeeId?: string;
+  loanName?: string;
+  principalAmount?: number | string;
+  repaymentAmount?: number | string;
+  currency?: string;
+  repaymentFrequency?: LoanRepaymentFrequency;
+  issuedAt?: string;
+  dueDate?: string | null;
+};
+
+type UpdateEmployeeLoanStatusBody = {
+  status?: LoanStatus;
 };
 
 type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -338,7 +362,10 @@ function isNonNegativeAmount(value: unknown): value is number {
 const grievancePriorities: GrievancePriority[] = ['low', 'normal', 'high', 'urgent'];
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
+const payrollStatuses: PayrollStatus[] = ['draft', 'approved', 'paid', 'cancelled'];
 const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
+const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
+const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
 const feedPostTypes: FeedPostType[] = ['announcement', 'event', 'policy_update', 'general'];
 const feedPostStatuses: FeedPostStatus[] = ['draft', 'published', 'archived'];
 const feedVisibilityTypes: FeedVisibilityType[] = ['all', 'role', 'location'];
@@ -356,8 +383,20 @@ function isCompanyLocationType(value: unknown): value is CompanyLocationType {
   return typeof value === 'string' && companyLocationTypes.includes(value as CompanyLocationType);
 }
 
+function isPayrollStatus(value: unknown): value is PayrollStatus {
+  return typeof value === 'string' && payrollStatuses.includes(value as PayrollStatus);
+}
+
 function isCompensationPayType(value: unknown): value is CompensationPayType {
   return typeof value === 'string' && compensationPayTypes.includes(value as CompensationPayType);
+}
+
+function isLoanStatus(value: unknown): value is LoanStatus {
+  return typeof value === 'string' && loanStatuses.includes(value as LoanStatus);
+}
+
+function isLoanRepaymentFrequency(value: unknown): value is LoanRepaymentFrequency {
+  return typeof value === 'string' && loanRepaymentFrequencies.includes(value as LoanRepaymentFrequency);
 }
 
 function isFeedPostType(value: unknown): value is FeedPostType {
@@ -2348,6 +2387,399 @@ app.put(
 );
 
 app.get(
+  '/api/employee-loans',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for employee loans' });
+    }
+
+    try {
+      const loans = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              employee_loans.id,
+              employee_loans.employee_id,
+              employees.full_name,
+              employees.email,
+              employee_loans.loan_name,
+              employee_loans.principal_amount,
+              employee_loans.outstanding_balance,
+              employee_loans.currency,
+              employee_loans.repayment_amount,
+              employee_loans.repayment_frequency,
+              employee_loans.status,
+              employee_loans.issued_at,
+              employee_loans.due_date,
+              employee_loans.created_at,
+              employee_loans.updated_at
+            FROM employee_loans
+            INNER JOIN employees
+              ON employees.id = employee_loans.employee_id
+             AND employees.tenant_id = employee_loans.tenant_id
+            WHERE employee_loans.tenant_id = $1
+            ORDER BY employee_loans.created_at DESC
+            LIMIT 200
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, loans });
+    } catch (error) {
+      console.error('[Loans] Failed to load tenant loans:', error);
+      res.status(500).json({ success: false, error: 'Unable to load employee loans' });
+    }
+  },
+);
+
+app.get(
+  '/api/employee-loans/me',
+  demoAuth,
+  requireRole(['employee', 'manager', 'hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for employee loans' });
+    }
+
+    try {
+      const loans = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              id,
+              employee_id,
+              loan_name,
+              principal_amount,
+              outstanding_balance,
+              currency,
+              repayment_amount,
+              repayment_frequency,
+              status,
+              issued_at,
+              due_date,
+              created_at,
+              updated_at
+            FROM employee_loans
+            WHERE tenant_id = $1
+              AND employee_id = $2
+            ORDER BY created_at DESC
+            LIMIT 100
+          `,
+          [tenantId, employeeId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, loans });
+    } catch (error) {
+      console.error('[Loans] Failed to load employee loans:', error);
+      res.status(500).json({ success: false, error: 'Unable to load employee loans' });
+    }
+  },
+);
+
+app.post(
+  '/api/employee-loans',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const {
+      employeeId,
+      loanName,
+      principalAmount,
+      repaymentAmount,
+      currency,
+      repaymentFrequency = 'monthly',
+      issuedAt,
+      dueDate,
+    } = req.body as CreateEmployeeLoanBody;
+
+    const normalizedPrincipalAmount = Number(principalAmount);
+    const normalizedRepaymentAmount = Number(repaymentAmount);
+    const normalizedCurrency = currency?.trim().toUpperCase();
+    const normalizedIssuedAt = issuedAt || toWorkDate(new Date());
+    const normalizedDueDate = dueDate || null;
+    const normalizedLoanName = loanName?.trim() || 'Employee Loan';
+
+    if (!employeeId) {
+      return res.status(400).json({ success: false, error: 'employeeId is required.' });
+    }
+
+    if (!Number.isFinite(normalizedPrincipalAmount) || normalizedPrincipalAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'principalAmount must be greater than zero.' });
+    }
+
+    if (!Number.isFinite(normalizedRepaymentAmount) || normalizedRepaymentAmount < 0) {
+      return res.status(400).json({ success: false, error: 'repaymentAmount must be a non-negative number.' });
+    }
+
+    if (normalizedCurrency && !/^[A-Z]{3}$/.test(normalizedCurrency)) {
+      return res.status(400).json({ success: false, error: 'currency must be a 3-letter code.' });
+    }
+
+    if (!isLoanRepaymentFrequency(repaymentFrequency)) {
+      return res.status(400).json({ success: false, error: 'repaymentFrequency must be monthly, weekly, or one_time.' });
+    }
+
+    if (!isValidDateInput(normalizedIssuedAt) || (normalizedDueDate !== null && !isValidDateInput(normalizedDueDate))) {
+      return res.status(400).json({ success: false, error: 'issuedAt and dueDate must be valid YYYY-MM-DD dates.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for employee loans' });
+    }
+
+    try {
+      const loan = await withTenant(tenantId, async (client) => {
+        const employeeResult = await client.query<{ id: string; default_currency: string | null }>(
+          `
+            SELECT employees.id, tenants.default_currency
+            FROM employees
+            INNER JOIN tenants
+              ON tenants.id = employees.tenant_id
+            WHERE employees.tenant_id = $1
+              AND employees.id = $2
+            LIMIT 1
+          `,
+          [tenantId, employeeId],
+        );
+
+        const employee = employeeResult.rows[0];
+        if (!employee) {
+          return null;
+        }
+
+        const loanCurrency = normalizedCurrency || employee.default_currency || 'USD';
+        const loanResult = await client.query(
+          `
+            INSERT INTO employee_loans (
+              tenant_id,
+              employee_id,
+              loan_name,
+              principal_amount,
+              outstanding_balance,
+              currency,
+              repayment_amount,
+              repayment_frequency,
+              status,
+              issued_at,
+              due_date,
+              created_by,
+              updated_by
+            )
+            VALUES (
+              $1,
+              $2,
+              $3::varchar,
+              $4::numeric,
+              $4::numeric,
+              $5::varchar,
+              $6::numeric,
+              $7::varchar,
+              'active',
+              $8::date,
+              $9::date,
+              $10,
+              $10
+            )
+            RETURNING
+              id,
+              employee_id,
+              loan_name,
+              principal_amount,
+              outstanding_balance,
+              currency,
+              repayment_amount,
+              repayment_frequency,
+              status,
+              issued_at,
+              due_date,
+              created_at,
+              updated_at
+          `,
+          [
+            tenantId,
+            employeeId,
+            normalizedLoanName,
+            normalizedPrincipalAmount,
+            loanCurrency,
+            normalizedRepaymentAmount,
+            repaymentFrequency,
+            normalizedIssuedAt,
+            normalizedDueDate,
+            actorEmployeeId,
+          ],
+        );
+
+        const createdLoan = loanResult.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_loan_created',
+            'employee_loan',
+            createdLoan.id,
+            JSON.stringify({
+              employeeId,
+              principalAmount: normalizedPrincipalAmount,
+              repaymentAmount: normalizedRepaymentAmount,
+              currency: loanCurrency,
+            }),
+          ],
+        );
+
+        return createdLoan;
+      });
+
+      if (!loan) {
+        return res.status(404).json({ success: false, error: 'Employee not found for this tenant.' });
+      }
+
+      res.status(201).json({ success: true, loan });
+    } catch (error) {
+      console.error('[Loans] Failed to create employee loan:', error);
+      res.status(500).json({ success: false, error: 'Unable to create employee loan' });
+    }
+  },
+);
+
+app.patch(
+  '/api/employee-loans/:id/status',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { id } = req.params;
+    const { status } = req.body as UpdateEmployeeLoanStatusBody;
+
+    if (!isLoanStatus(status)) {
+      return res.status(400).json({ success: false, error: 'status must be active, paid, or cancelled.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for employee loans' });
+    }
+
+    try {
+      const loan = await withTenant(tenantId, async (client) => {
+        const existingResult = await client.query<{
+          id: string;
+          employee_id: string;
+          status: LoanStatus;
+        }>(
+          `
+            SELECT id, employee_id, status
+            FROM employee_loans
+            WHERE tenant_id = $1
+              AND id = $2
+            LIMIT 1
+          `,
+          [tenantId, id],
+        );
+
+        const existingLoan = existingResult.rows[0];
+        if (!existingLoan) {
+          return null;
+        }
+
+        const updateResult = await client.query(
+          `
+            UPDATE employee_loans
+            SET
+              status = $3::varchar,
+              outstanding_balance = CASE WHEN $3::varchar = 'paid' THEN 0 ELSE outstanding_balance END,
+              updated_by = $4,
+              updated_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+            RETURNING
+              id,
+              employee_id,
+              loan_name,
+              principal_amount,
+              outstanding_balance,
+              currency,
+              repayment_amount,
+              repayment_frequency,
+              status,
+              issued_at,
+              due_date,
+              created_at,
+              updated_at
+          `,
+          [tenantId, id, status, actorEmployeeId],
+        );
+
+        const updatedLoan = updateResult.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_loan_status_updated',
+            'employee_loan',
+            id,
+            JSON.stringify({
+              employeeId: existingLoan.employee_id,
+              previousStatus: existingLoan.status,
+              newStatus: status,
+            }),
+          ],
+        );
+
+        return updatedLoan;
+      });
+
+      if (!loan) {
+        return res.status(404).json({ success: false, error: 'Employee loan not found.' });
+      }
+
+      res.json({ success: true, loan });
+    } catch (error) {
+      console.error('[Loans] Failed to update employee loan status:', error);
+      res.status(500).json({ success: false, error: 'Unable to update employee loan status' });
+    }
+  },
+);
+
+app.get(
   '/api/payroll/me',
   demoAuth,
   requireRole(['employee', 'manager', 'hr_admin']),
@@ -2375,7 +2807,10 @@ app.get(
               currency,
               status,
               generated_at,
-              paid_at
+              approved_by,
+              approved_at,
+              paid_at,
+              cancelled_at
             FROM payroll_records
             WHERE tenant_id = $1
               AND employee_id = $2
@@ -2425,7 +2860,10 @@ app.get(
               payroll_records.currency,
               payroll_records.status,
               payroll_records.generated_at,
-              payroll_records.paid_at
+              payroll_records.approved_by,
+              payroll_records.approved_at,
+              payroll_records.paid_at,
+              payroll_records.cancelled_at
             FROM payroll_records
             INNER JOIN employees
               ON employees.id = payroll_records.employee_id
@@ -2444,6 +2882,143 @@ app.get(
     } catch (error) {
       console.error('[Payroll] Failed to load tenant payroll:', error);
       res.status(500).json({ error: 'Unable to load payroll records' });
+    }
+  },
+);
+
+app.patch(
+  '/api/payroll/:id/status',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { id } = req.params;
+    const { status } = req.body as UpdatePayrollStatusBody;
+
+    if (!isPayrollStatus(status)) {
+      return res.status(400).json({ success: false, error: 'status must be draft, approved, paid, or cancelled.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for payroll records' });
+    }
+
+    try {
+      const payrollRecord = await withTenant(tenantId, async (client) => {
+        const existingResult = await client.query<{
+          id: string;
+          employee_id: string;
+          pay_period_start: string;
+          pay_period_end: string;
+          status: PayrollStatus;
+        }>(
+          `
+            SELECT id, employee_id, pay_period_start, pay_period_end, status
+            FROM payroll_records
+            WHERE tenant_id = $1
+              AND id = $2
+            LIMIT 1
+          `,
+          [tenantId, id],
+        );
+
+        const existingRecord = existingResult.rows[0];
+        if (!existingRecord) {
+          return null;
+        }
+
+        const allowedTransitions: Record<PayrollStatus, PayrollStatus[]> = {
+          draft: ['approved', 'cancelled'],
+          approved: ['paid', 'cancelled'],
+          paid: [],
+          cancelled: [],
+        };
+
+        if (existingRecord.status !== status && !allowedTransitions[existingRecord.status].includes(status)) {
+          const error = new Error(`Cannot change payroll status from ${existingRecord.status} to ${status}.`);
+          (error as { statusCode?: number }).statusCode = 400;
+          throw error;
+        }
+
+        const updateResult = await client.query(
+          `
+            UPDATE payroll_records
+            SET
+              status = $3::varchar,
+              approved_by = CASE WHEN $3::varchar = 'approved' THEN $4 ELSE approved_by END,
+              approved_at = CASE WHEN $3::varchar = 'approved' THEN NOW() ELSE approved_at END,
+              paid_at = CASE WHEN $3::varchar = 'paid' THEN NOW() ELSE paid_at END,
+              cancelled_at = CASE WHEN $3::varchar = 'cancelled' THEN NOW() ELSE cancelled_at END,
+              updated_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+            RETURNING
+              id,
+              employee_id,
+              pay_period_start,
+              pay_period_end,
+              base_salary,
+              bonuses,
+              deductions,
+              net_pay,
+              currency,
+              status,
+              generated_at,
+              approved_by,
+              approved_at,
+              paid_at,
+              cancelled_at
+          `,
+          [tenantId, id, status, actorEmployeeId],
+        );
+
+        const updatedRecord = updateResult.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'payroll_status_updated',
+            'payroll_record',
+            id,
+            JSON.stringify({
+              previousStatus: existingRecord.status,
+              newStatus: status,
+              employeeId: existingRecord.employee_id,
+              payPeriodStart: existingRecord.pay_period_start,
+              payPeriodEnd: existingRecord.pay_period_end,
+            }),
+          ],
+        );
+
+        return updatedRecord;
+      });
+
+      if (!payrollRecord) {
+        return res.status(404).json({ success: false, error: 'Payroll record not found.' });
+      }
+
+      res.json({ success: true, payrollRecord });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 400) {
+        return res.status(400).json({ success: false, error: (error as Error).message });
+      }
+
+      console.error('[Payroll] Failed to update payroll status:', error);
+      res.status(500).json({ success: false, error: 'Unable to update payroll status' });
     }
   },
 );
@@ -2497,171 +3072,278 @@ app.post(
 
     try {
       const payrollRunResult = await withTenant(tenantId, async (client) => {
-        const tenantResult = await client.query<{ default_currency: string | null }>(
-          `
-            SELECT default_currency
-            FROM tenants
-            WHERE id = $1
-            LIMIT 1
-          `,
-          [tenantId],
-        );
-        const tenantCurrency = tenantResult.rows[0]?.default_currency || 'USD';
-        const employeeResult = await client.query<{
-          id: string;
-          email: string;
-          base_amount: string | null;
-          currency: string | null;
-          pay_type: CompensationPayType | null;
-          compensation_profile_id: string | null;
-        }>(
-          `
-            SELECT
-              employees.id,
-              employees.email,
-              active_profiles.base_amount,
-              active_profiles.currency,
-              active_profiles.pay_type,
-              active_profiles.id AS compensation_profile_id
-            FROM employees
-            LEFT JOIN LATERAL (
-              SELECT id, base_amount, currency, pay_type
-              FROM employee_compensation_profiles
-              WHERE tenant_id = employees.tenant_id
-                AND employee_id = employees.id
-                AND is_active = true
-                AND effective_from <= $2::date
-                AND (effective_to IS NULL OR effective_to >= $2::date)
-              ORDER BY effective_from DESC, created_at DESC
-              LIMIT 1
-            ) active_profiles ON true
-            WHERE employees.tenant_id = $1
-          `,
-          [
-            tenantId,
-            payPeriodStart,
-          ],
-        );
+        await client.query('BEGIN');
 
-        const skippedEmployees: Array<{ employeeId: string; email: string; reason: string }> = [];
-        let generatedCount = 0;
-        let fallbackUsed = false;
-
-        for (const employee of employeeResult.rows) {
-          const profileBaseAmount = employee.base_amount === null ? null : Number(employee.base_amount);
-          const usesProfile = profileBaseAmount !== null && Number.isFinite(profileBaseAmount);
-          const baseSalary = usesProfile ? profileBaseAmount : fallbackBaseSalary;
-
-          if (baseSalary === null || !Number.isFinite(baseSalary)) {
-            skippedEmployees.push({
-              employeeId: employee.id,
-              email: employee.email,
-              reason: 'Missing active compensation profile and no fallback base salary was provided.',
-            });
-            continue;
-          }
-
-          const payrollCurrency = usesProfile ? (employee.currency || tenantCurrency) : tenantCurrency;
-          const netPay = baseSalary + bonuses - deductions;
-
-          if (!usesProfile) {
-            fallbackUsed = true;
-          }
-
-          const payrollResult = await client.query(
+        try {
+          const tenantResult = await client.query<{ default_currency: string | null }>(
             `
-              INSERT INTO payroll_records (
-                tenant_id,
-                employee_id,
-                pay_period_start,
-                pay_period_end,
-                base_salary,
-                bonuses,
-                deductions,
-                net_pay,
-                currency,
-                status,
-                generated_by,
-                generated_at,
-                updated_at
-              )
-              VALUES (
-                $1,
-                $2,
-                $3::date,
-                $4::date,
-                $5::numeric,
-                $6::numeric,
-                $7::numeric,
-                $8::numeric,
-                $9::varchar,
-                'draft',
-                $10::uuid,
-                NOW(),
-                NOW()
-              )
-              ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end)
-              DO UPDATE SET
-                base_salary = EXCLUDED.base_salary,
-                bonuses = EXCLUDED.bonuses,
-                deductions = EXCLUDED.deductions,
-                net_pay = EXCLUDED.net_pay,
-                currency = EXCLUDED.currency,
-                status = 'draft',
-                generated_by = EXCLUDED.generated_by,
-                generated_at = NOW(),
-                updated_at = NOW()
-              RETURNING id
+              SELECT default_currency
+              FROM tenants
+              WHERE id = $1
+              LIMIT 1
+            `,
+            [tenantId],
+          );
+          const tenantCurrency = tenantResult.rows[0]?.default_currency || 'USD';
+          const employeeResult = await client.query<{
+            id: string;
+            email: string;
+            base_amount: string | null;
+            currency: string | null;
+            pay_type: CompensationPayType | null;
+            compensation_profile_id: string | null;
+          }>(
+            `
+              SELECT
+                employees.id,
+                employees.email,
+                active_profiles.base_amount,
+                active_profiles.currency,
+                active_profiles.pay_type,
+                active_profiles.id AS compensation_profile_id
+              FROM employees
+              LEFT JOIN LATERAL (
+                SELECT id, base_amount, currency, pay_type
+                FROM employee_compensation_profiles
+                WHERE tenant_id = employees.tenant_id
+                  AND employee_id = employees.id
+                  AND is_active = true
+                  AND effective_from <= $2::date
+                  AND (effective_to IS NULL OR effective_to >= $2::date)
+                ORDER BY effective_from DESC, created_at DESC
+                LIMIT 1
+              ) active_profiles ON true
+              WHERE employees.tenant_id = $1
             `,
             [
               tenantId,
-              employee.id,
               payPeriodStart,
-              payPeriodEnd,
-              baseSalary,
-              bonuses,
-              deductions,
-              netPay,
-              payrollCurrency,
-              actorEmployeeId,
             ],
           );
 
-          generatedCount += payrollResult.rowCount || 0;
+          const skippedEmployees: Array<{ employeeId: string; email: string; reason: string }> = [];
+          let generatedCount = 0;
+          let fallbackUsed = false;
+          let loanDeductionsApplied = 0;
+
+          for (const employee of employeeResult.rows) {
+            const profileBaseAmount = employee.base_amount === null ? null : Number(employee.base_amount);
+            const usesProfile = profileBaseAmount !== null && Number.isFinite(profileBaseAmount);
+            const baseSalary = usesProfile ? profileBaseAmount : fallbackBaseSalary;
+
+            if (baseSalary === null || !Number.isFinite(baseSalary)) {
+              skippedEmployees.push({
+                employeeId: employee.id,
+                email: employee.email,
+                reason: 'Missing active compensation profile and no fallback base salary was provided.',
+              });
+              continue;
+            }
+
+            const existingPayrollResult = await client.query<{ id: string }>(
+              `
+                SELECT id
+                FROM payroll_records
+                WHERE tenant_id = $1
+                  AND employee_id = $2
+                  AND pay_period_start = $3::date
+                  AND pay_period_end = $4::date
+                FOR UPDATE
+              `,
+              [tenantId, employee.id, payPeriodStart, payPeriodEnd],
+            );
+
+            const existingPayrollRecord = existingPayrollResult.rows[0];
+            let employeeLoanDeduction = 0;
+            const loanPayments: Array<{ loanId: string; amount: number }> = [];
+
+            // Loan repayments are applied only when creating a new payroll record
+            // for this employee/period. Re-running the same period updates payroll
+            // values without double-deducting loan balances.
+            if (!existingPayrollRecord) {
+              const loanResult = await client.query<{
+                id: string;
+                outstanding_balance: string;
+                repayment_amount: string;
+              }>(
+                `
+                  SELECT id, outstanding_balance, repayment_amount
+                  FROM employee_loans
+                  WHERE tenant_id = $1
+                    AND employee_id = $2
+                    AND status = 'active'
+                    AND outstanding_balance > 0
+                  ORDER BY created_at ASC
+                  FOR UPDATE
+                `,
+                [tenantId, employee.id],
+              );
+
+              for (const loan of loanResult.rows) {
+                const outstandingBalance = Number(loan.outstanding_balance);
+                const repaymentAmount = Number(loan.repayment_amount);
+                const paymentAmount = Math.min(
+                  Number.isFinite(repaymentAmount) ? repaymentAmount : 0,
+                  Number.isFinite(outstandingBalance) ? outstandingBalance : 0,
+                );
+
+                if (paymentAmount > 0) {
+                  employeeLoanDeduction += paymentAmount;
+                  loanPayments.push({ loanId: loan.id, amount: paymentAmount });
+                }
+              }
+            }
+
+            const payrollCurrency = usesProfile ? (employee.currency || tenantCurrency) : tenantCurrency;
+            const totalDeductions = deductions + employeeLoanDeduction;
+            const netPay = baseSalary + bonuses - totalDeductions;
+
+            if (!usesProfile) {
+              fallbackUsed = true;
+            }
+
+            const payrollResult = await client.query<{ id: string }>(
+              `
+                INSERT INTO payroll_records (
+                  tenant_id,
+                  employee_id,
+                  pay_period_start,
+                  pay_period_end,
+                  base_salary,
+                  bonuses,
+                  deductions,
+                  net_pay,
+                  currency,
+                  status,
+                  generated_by,
+                  generated_at,
+                  updated_at
+                )
+                VALUES (
+                  $1,
+                  $2,
+                  $3::date,
+                  $4::date,
+                  $5::numeric,
+                  $6::numeric,
+                  $7::numeric,
+                  $8::numeric,
+                  $9::varchar,
+                  'draft',
+                  $10::uuid,
+                  NOW(),
+                  NOW()
+                )
+                ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end)
+                DO UPDATE SET
+                  base_salary = EXCLUDED.base_salary,
+                  bonuses = EXCLUDED.bonuses,
+                  deductions = EXCLUDED.deductions,
+                  net_pay = EXCLUDED.net_pay,
+                  currency = EXCLUDED.currency,
+                  status = 'draft',
+                  generated_by = EXCLUDED.generated_by,
+                  generated_at = NOW(),
+                  approved_by = NULL,
+                  approved_at = NULL,
+                  paid_at = NULL,
+                  cancelled_at = NULL,
+                  updated_at = NOW()
+                RETURNING id
+              `,
+              [
+                tenantId,
+                employee.id,
+                payPeriodStart,
+                payPeriodEnd,
+                baseSalary,
+                bonuses,
+                totalDeductions,
+                netPay,
+                payrollCurrency,
+                actorEmployeeId,
+              ],
+            );
+
+            generatedCount += payrollResult.rowCount || 0;
+            const payrollRecordId = payrollResult.rows[0]?.id;
+
+            if (!existingPayrollRecord && payrollRecordId) {
+              for (const payment of loanPayments) {
+                await client.query(
+                  `
+                    UPDATE employee_loans
+                    SET
+                      outstanding_balance = GREATEST(outstanding_balance - $3::numeric, 0),
+                      status = CASE
+                        WHEN GREATEST(outstanding_balance - $3::numeric, 0) = 0 THEN 'paid'
+                        ELSE status
+                      END,
+                      updated_by = $4,
+                      updated_at = NOW()
+                    WHERE tenant_id = $1
+                      AND id = $2
+                  `,
+                  [tenantId, payment.loanId, payment.amount, actorEmployeeId],
+                );
+
+                await client.query(
+                  `
+                    INSERT INTO employee_loan_payments (
+                      tenant_id,
+                      loan_id,
+                      payroll_record_id,
+                      amount
+                    )
+                    VALUES ($1, $2, $3, $4::numeric)
+                  `,
+                  [tenantId, payment.loanId, payrollRecordId, payment.amount],
+                );
+
+                loanDeductionsApplied += payment.amount;
+              }
+            }
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (
+                tenant_id,
+                actor_employee_id,
+                action,
+                entity_type,
+                entity_id,
+                metadata
+              )
+              VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              actorEmployeeId,
+              'payroll_run_generated',
+              'payroll',
+              actorEmployeeId,
+              JSON.stringify({
+                payPeriodStart,
+                payPeriodEnd,
+                fallbackDefaultBaseSalary: hasFallbackBaseSalary ? fallbackBaseSalary : null,
+                bonuses,
+                deductions,
+                loanDeductionsApplied,
+                recordsGenerated: generatedCount,
+                skippedEmployeesCount: skippedEmployees.length,
+                fallbackUsed,
+                loanRepaymentsAppliedOnlyToNewRecords: true,
+              }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return { recordsGenerated: generatedCount, skippedEmployees, loanDeductionsApplied };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
         }
-
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'payroll_run_generated',
-            'payroll',
-            actorEmployeeId,
-            JSON.stringify({
-              payPeriodStart,
-              payPeriodEnd,
-              fallbackDefaultBaseSalary: hasFallbackBaseSalary ? fallbackBaseSalary : null,
-              bonuses,
-              deductions,
-              recordsGenerated: generatedCount,
-              skippedEmployeesCount: skippedEmployees.length,
-              fallbackUsed,
-            }),
-          ],
-        );
-
-        return { recordsGenerated: generatedCount, skippedEmployees };
       });
 
       res.json({
@@ -2669,6 +3351,7 @@ app.post(
         message: 'Payroll run generated successfully.',
         recordsGenerated: payrollRunResult.recordsGenerated,
         skippedEmployees: payrollRunResult.skippedEmployees,
+        loanDeductionsApplied: payrollRunResult.loanDeductionsApplied,
       });
     } catch (error) {
       console.error('[Payroll] Failed to run payroll:', error);
@@ -3067,7 +3750,9 @@ app.get(
               payroll_records.currency,
               payroll_records.status,
               payroll_records.generated_at,
+              payroll_records.approved_at,
               payroll_records.paid_at,
+              payroll_records.cancelled_at,
               employees.full_name,
               employees.email,
               tenants.company_name,
@@ -3145,8 +3830,14 @@ app.get(
       drawRow('Period', `${formatPdfDate(payrollRecord.pay_period_start)} to ${formatPdfDate(payrollRecord.pay_period_end)}`);
       drawRow('Status', payrollRecord.status);
       drawRow('Generated', formatPdfDateTime(payrollRecord.generated_at));
+      if (payrollRecord.approved_at) {
+        drawRow('Approved', formatPdfDateTime(payrollRecord.approved_at));
+      }
       if (payrollRecord.paid_at) {
         drawRow('Paid', formatPdfDateTime(payrollRecord.paid_at));
+      }
+      if (payrollRecord.cancelled_at) {
+        drawRow('Cancelled', formatPdfDateTime(payrollRecord.cancelled_at));
       }
 
       y -= 12;

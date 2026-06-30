@@ -367,8 +367,11 @@ CREATE TABLE IF NOT EXISTS payroll_records (
     status VARCHAR(30) NOT NULL DEFAULT 'draft',
 
     generated_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    approved_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
     generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     paid_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -386,6 +389,15 @@ CREATE TABLE IF NOT EXISTS payroll_records (
 
     UNIQUE (tenant_id, employee_id, pay_period_start, pay_period_end)
 );
+
+ALTER TABLE payroll_records
+ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES employees(id) ON DELETE SET NULL;
+
+ALTER TABLE payroll_records
+ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+
+ALTER TABLE payroll_records
+ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS payroll_records_tenant_period_idx
 ON payroll_records(tenant_id, pay_period_start, pay_period_end);
@@ -472,7 +484,110 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 10. Grievances
+-- 10. Employee Loans
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS employee_loans (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    loan_name VARCHAR(160) NOT NULL DEFAULT 'Employee Loan',
+    principal_amount NUMERIC(12,2) NOT NULL,
+    outstanding_balance NUMERIC(12,2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+
+    repayment_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+    repayment_frequency VARCHAR(30) NOT NULL DEFAULT 'monthly',
+
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+
+    issued_at DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE,
+
+    created_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT employee_loans_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT employee_loans_principal_amount_chk
+        CHECK (principal_amount > 0),
+
+    CONSTRAINT employee_loans_outstanding_balance_chk
+        CHECK (outstanding_balance >= 0),
+
+    CONSTRAINT employee_loans_repayment_amount_chk
+        CHECK (repayment_amount >= 0),
+
+    CONSTRAINT employee_loans_status_chk
+        CHECK (status IN ('active', 'paid', 'cancelled')),
+
+    CONSTRAINT employee_loans_repayment_frequency_chk
+        CHECK (repayment_frequency IN ('monthly', 'weekly', 'one_time'))
+);
+
+CREATE INDEX IF NOT EXISTS employee_loans_tenant_employee_status_idx
+ON employee_loans(tenant_id, employee_id, status);
+
+CREATE INDEX IF NOT EXISTS employee_loans_tenant_status_created_idx
+ON employee_loans(tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS employee_loans_tenant_due_date_idx
+ON employee_loans(tenant_id, due_date);
+
+ALTER TABLE employee_loans ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS employee_loans_tenant_isolation ON employee_loans;
+
+CREATE POLICY employee_loans_tenant_isolation
+ON employee_loans
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS employee_loan_payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    loan_id UUID NOT NULL REFERENCES employee_loans(id) ON DELETE CASCADE,
+    payroll_record_id UUID REFERENCES payroll_records(id) ON DELETE SET NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT employee_loan_payments_amount_chk
+        CHECK (amount > 0)
+);
+
+CREATE INDEX IF NOT EXISTS employee_loan_payments_tenant_loan_idx
+ON employee_loan_payments(tenant_id, loan_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS employee_loan_payments_tenant_payroll_idx
+ON employee_loan_payments(tenant_id, payroll_record_id);
+
+ALTER TABLE employee_loan_payments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS employee_loan_payments_tenant_isolation ON employee_loan_payments;
+
+CREATE POLICY employee_loan_payments_tenant_isolation
+ON employee_loan_payments
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 11. Grievances
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS grievances (
@@ -536,7 +651,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 11. Company Feed
+-- 12. Company Feed
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS company_feed_posts (
@@ -668,7 +783,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 12. Attendance Daily Summaries
+-- 13. Attendance Daily Summaries
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
@@ -719,7 +834,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 13. Audit Logs
+-- 14. Audit Logs
 -- =========================================================
 
 CREATE TABLE audit_logs (
