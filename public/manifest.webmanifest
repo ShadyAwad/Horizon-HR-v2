@@ -1,7 +1,7 @@
 {
-  "name": "Horizon HR",
-  "short_name": "Horizon",
-  "description": "Secure HR workflows for Horizon HR.",
+  "name": "Stanza",
+  "short_name": "Stanza",
+  "description": "Secure HR workflows for Stanza.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

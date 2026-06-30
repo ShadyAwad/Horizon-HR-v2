@@ -168,7 +168,7 @@ className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@horizon.com"
+              placeholder="admin@stanza.com"
 className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
   isRtl && "text-right"
@@ -303,7 +303,7 @@ className={cn(
                   type="email"
                   value={recoveryEmail}
                   onChange={(e) => setRecoveryEmail(e.target.value)}
-                  placeholder={email || 'admin@horizon.com'}
+                  placeholder={email || 'admin@stanza.com'}
                   className={cn(
                     "w-full bg-black/35 border border-emerald-500/15 rounded-lg px-3 py-2.5 text-xs text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
                     isRtl && "text-right"

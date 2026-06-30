@@ -1,5 +1,5 @@
 {
-  "name": "Horizon HR",
+  "name": "Stanza",
   "description": "Enterprise-grade multi-tenant HR progressive web application focusing on core operational systems including biometric geofenced clock-ins and native workflows.",
   "requestFramePermissions": [
     "geolocation"

@@ -6,9 +6,9 @@
   --font-sans: "Inter", "Geist", "SF Pro", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Deep Emerald & Slate Corporate Theme */
-  --color-horizon-dark: #020617; /* slate-950 */
-  --color-horizon-panel: #0f172a; /* slate-900 */
+  /* Deep Emerald & Neutral Corporate Theme */
+  --color-horizon-dark: #020403;
+  --color-horizon-panel: #04110d;
   --color-horizon-emerald: #10b981; /* emerald-500 */
   --color-horizon-emerald-deep: #064e3b; /* emerald-900 */
   --color-horizon-alert: #ef4444; /* red-500 */
@@ -17,14 +17,14 @@
 @layer base {
   :root {
     --bg-primary: #f8fafc;
-    --text-primary: #0f172a;
+    --text-primary: #171717;
     --panel-border: #e2e8f0;
   }
   
   .dark {
-    --bg-primary: #020617;
+    --bg-primary: #020403;
     --text-primary: #f8fafc;
-    --panel-border: #1e293b;
+    --panel-border: rgb(16 185 129 / 0.15);
   }
 
   body {
@@ -45,10 +45,10 @@
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
   input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 1000px rgb(2 6 23 / 0.5) inset !important;
-    -webkit-text-fill-color: #f1f5f9 !important;
-    caret-color: #f1f5f9;
-    border-color: #1e293b !important;
+    -webkit-box-shadow: 0 0 0 1000px rgb(2 4 3 / 0.72) inset !important;
+    -webkit-text-fill-color: #ecfdf5 !important;
+    caret-color: #ecfdf5;
+    border-color: rgb(16 185 129 / 0.18) !important;
     transition: background-color 9999s ease-in-out 0s;
   }
 }

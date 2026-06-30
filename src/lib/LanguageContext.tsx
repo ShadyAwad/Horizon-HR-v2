@@ -5,7 +5,7 @@ type Language = 'en' | 'ar';
 const translations = {
   en: {
     // Login
-    'login.title': 'Horizon HR',
+    'login.title': 'Stanza',
     'login.subtitle': 'Enterprise Authentication',
     'login.corporateId': 'Corporate ID',
     'login.biometricKey': 'Biometric Key',
@@ -13,7 +13,7 @@ const translations = {
     'login.accessGranted': 'Access Granted',
     'login.enterSector': 'Log In',
     'login.forgotPassword': 'Forgot Password?',
-    'login.registerTenant': 'Register New Corporate Tenant',
+    'login.registerTenant': 'Register New Company',
     'login.recoveryTitle': 'Recovery Protocol',
     'login.recoverySubtitle': 'Choose how this corporate account should recover access.',
     'login.recoveryClose': 'Close',
@@ -66,7 +66,7 @@ const translations = {
 
     // Signup
     'signup.title': 'Corporate Onboarding',
-    'signup.subtitle': 'Register your Horizon instance',
+    'signup.subtitle': 'Register your Stanza workspace',
     'signup.step1': 'Corporate Details',
     'signup.step2': 'Operations & Finance',
     'signup.step3': 'Geo-Perimeter',

@@ -941,7 +941,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   className={cn(
     "w-[calc(100%-1rem)] md:w-16 lg:w-[72px] max-w-full",
     "bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md",
-    "border border-slate-200 dark:border-emerald-900/40",
+    "border border-emerald-500/15 dark:border-emerald-900/40",
     "flex md:flex-col items-center",
     "py-3 md:py-5 px-4 md:px-0 gap-4 md:gap-6",
     "z-20 shrink-0",
@@ -963,6 +963,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Geo-Operations"
+            aria-label="Geo-Operations"
           >
              <Map className="w-5 h-5" />
           </button>
@@ -973,6 +975,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Weekly Roster"
+            aria-label="Weekly Roster"
           >
              <Calendar className="w-5 h-5" />
           </button>
@@ -984,6 +988,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'feed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Company Feed"
+            aria-label="Company Feed"
           >
              <Newspaper className="w-5 h-5" />
           </button>
@@ -994,6 +999,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Profile"
+            aria-label="Profile"
           >
              <User className="w-5 h-5" />
           </button>
@@ -1005,6 +1012,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Payroll"
+            aria-label="Payroll"
           >
              <DollarSign className="w-5 h-5" />
           </button>
@@ -1016,6 +1024,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             }}
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Grievances"
+            aria-label="Grievances"
           >
              <MessageSquare className="w-5 h-5" />
           </button>
@@ -1030,12 +1039,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
                {t('login.title')} <span className={cn("text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 font-mono text-xs px-2 py-0.5 border border-emerald-500/30 rounded uppercase hidden sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{t('dash.auth')}: {user.name} • {formatRole(user.role)}</p>
 
-            <div className="mt-3 flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm backdrop-blur-xl dark:border-emerald-500/15 dark:bg-slate-950/70 sm:flex-row sm:items-center">
+            <div className="mt-3 flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-emerald-500/15 bg-white/80 p-3 shadow-sm backdrop-blur-xl dark:border-emerald-500/15 dark:bg-black/55 sm:flex-row sm:items-center">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 p-0.5 shrink-0 bg-white dark:bg-[#020617]">
-                  <div className="w-full h-full rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-white tracking-widest">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
+                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 p-0.5 shrink-0 bg-white dark:bg-black">
+                  <div className="w-full h-full rounded-full bg-emerald-500/10 dark:bg-emerald-950/50 flex items-center justify-center text-xs font-bold text-neutral-800 dark:text-white tracking-widest">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-200">{user.name}</p>
@@ -1047,7 +1055,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 <button
                   type="button"
                   onClick={() => setShowAccountDetails((current) => !current)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-300 dark:hover:text-emerald-300"
+                  className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-100/60 dark:hover:text-emerald-300"
                 >
                   Details
                 </button>
@@ -1058,7 +1066,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             </div>
 
             {showAccountDetails && (
-              <div className="mt-2 grid w-full max-w-[520px] grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-300 sm:grid-cols-3">
+              <div className="mt-2 grid w-full max-w-[520px] grid-cols-1 gap-2 rounded-xl border border-emerald-500/15 bg-white/70 p-3 text-xs text-neutral-600 dark:border-emerald-500/15 dark:bg-black/35 dark:text-emerald-100/60 sm:grid-cols-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tenant</p>
                   <p className="mt-1 truncate">{getTenantName(user)}</p>
@@ -1084,7 +1092,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           
           <div className="flex items-center gap-3 lg:justify-end">
             {/* Locale Toggle & Theme Toggle */}
-            <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-lg shrink-0 shadow-sm">
+            <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white dark:bg-black/40 border border-emerald-500/15 dark:border-emerald-500/15 rounded-lg shrink-0 shadow-sm">
               <span className={cn("hidden md:inline-block text-xs font-semibold text-slate-500 uppercase tracking-widest", isRtl ? "ml-2" : "mr-2")}>{t('dash.core')}</span>
 
               <button
@@ -1111,7 +1119,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   EN-US
 </button>
 
-<div className="w-px h-3 bg-slate-200 dark:bg-slate-700"></div>
+<div className="w-px h-3 bg-emerald-500/15 dark:bg-emerald-500/20"></div>
 
 <button 
   type="button"
@@ -1207,8 +1215,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                 {/* Tab Contents */}
                 {activeTab === 'geofence' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
-                       <div className="absolute inset-0 bg-slate-50/50 dark:bg-emerald-500/5 group-hover:bg-slate-100/50 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
+                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
+                       <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1219,7 +1227,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </div>
                        </div>
                        
-                       <div className="relative z-10 w-full flex flex-col items-center justify-center py-8 px-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl min-h-[320px]">
+                       <div className="relative z-10 w-full flex flex-col items-center justify-center py-8 px-6 bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl min-h-[320px]">
                            <div className="w-36 h-36 rounded-full border-4 border-dashed border-emerald-900 flex items-center justify-center mb-4 relative">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
@@ -1229,7 +1237,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                    "w-28 h-28 rounded-full flex flex-col items-center justify-center gap-1 transition-all duration-300 font-black tracking-tighter hover:scale-105 active:scale-95 z-10 relative",
                                    clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
-                                   clockInState === 'locating' || clockInState === 'verifying' ? "bg-slate-800 text-slate-400 animate-pulse border border-slate-700 shadow-none" :
+                                   clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
                                    clockInState === 'success' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    "bg-red-500 text-white shadow-[0_0_40px_rgba(239,68,68,0.6)]"
                                )}
@@ -1282,21 +1290,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     <motion.div 
                                         key="idle"
                                         initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
-                                        className="flex items-center gap-2 text-slate-500"
+                                        className="flex items-center gap-2 text-neutral-500 dark:text-emerald-100/45"
                                     >
-                                        <span className="flex h-2 w-2 rounded-full bg-slate-600 animate-pulse"></span>
+                                        <span className="flex h-2 w-2 rounded-full bg-emerald-500/60 animate-pulse"></span>
                                         <span className="text-[10px] uppercase tracking-widest">{isClockedIn ? 'Active shift open' : t('dash.awaitingInput')}</span>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                            </div>
 
-                           <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-slate-500">
+                           <p className="mt-3 text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
                              {lastClockEvent}
                            </p>
                        </div>
 
-                       <div className="relative z-10 mt-4 w-full rounded-2xl border border-slate-200 bg-white/70 p-4 text-left dark:border-slate-800/50 dark:bg-slate-900/30">
+                       <div className="relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 text-left dark:border-emerald-500/15 dark:bg-black/30">
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                            <div>
                              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -1314,7 +1322,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                            {companyLocations.slice(0, 4).map((location) => (
-                             <div key={location.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+                             <div key={location.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/35">
                                <div className="flex items-start justify-between gap-3">
                                  <div>
                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
@@ -1335,7 +1343,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            ))}
 
                            {companyLocations.length === 0 && (
-                             <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800 md:col-span-2">
+                             <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45 md:col-span-2">
                                {locationsMessage || 'No active company locations found.'}
                              </p>
                            )}
@@ -1345,8 +1353,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 )}                
 
                 {activeTab === 'roster' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-slate-200 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
-                       <div className="p-4 border-b border-slate-200 dark:border-emerald-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
+                       <div className="p-4 border-b border-emerald-500/15 dark:border-emerald-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                              <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
                              {t('dash.rosterHub')}
@@ -1366,7 +1374,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        <div className="w-full overflow-x-auto flex-1">
                          <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                            <thead>
-                             <tr className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-900/20">
+                             <tr className="text-[10px] text-neutral-500 dark:text-emerald-100/45 uppercase font-bold border-b border-emerald-500/15 dark:border-emerald-500/15 bg-white/70 dark:bg-black/25">
                                <th className="p-3">{t('dash.dayDate')}</th>
                                <th className="p-3">{t('dash.shiftFrame')}</th>
                                <th className="p-3">Break Time</th>
@@ -1376,7 +1384,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </thead>
                            <tbody className="text-sm">
                              {schedule.map((s, i) => (
-                               <tr key={i} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
+                               <tr key={i} className="border-b border-emerald-500/10 dark:border-emerald-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
                                  <td className="p-3">
                                    <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{s.day}, {s.date}</div>
                                  </td>
@@ -1387,14 +1395,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          type="time"
                                          value={s.shiftStart}
                                          onChange={(event) => updateShift(i, 'shiftStart', event.target.value)}
-                                         className="w-24 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                        <span>-</span>
                                        <input
                                          type="time"
                                          value={s.shiftEnd}
                                          onChange={(event) => updateShift(i, 'shiftEnd', event.target.value)}
-                                         className="w-24 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
                                    ) : getShiftFrame(s)}
@@ -1407,14 +1415,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          type="time"
                                          value={s.breakStart}
                                          onChange={(event) => updateShift(i, 'breakStart', event.target.value)}
-                                         className="w-24 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                        <span>-</span>
                                        <input
                                          type="time"
                                          value={s.breakEnd}
                                          onChange={(event) => updateShift(i, 'breakEnd', event.target.value)}
-                                         className="w-24 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
                                    ) : s.breakStart && s.breakEnd ? `${s.breakStart} - ${s.breakEnd}` : 'No break'}
@@ -1424,14 +1432,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      <input
                                        value={s.type}
                                        onChange={(event) => updateShift(i, 'type', event.target.value)}
-                                       className="w-36 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                       className="w-36 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                      />
                                    ) : (
                                      <span className="opacity-80">{s.type}</span>
                                    )}
                                  </td>
                                  <td className={cn("p-3", isRtl ? "text-left" : "text-right")}>
-                                   <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", !s.shiftStart || !s.shiftEnd ? "bg-slate-100 dark:bg-slate-800 text-slate-500" : "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30")}>
+                                   <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", !s.shiftStart || !s.shiftEnd ? "bg-neutral-100 dark:bg-black/45 text-neutral-500 dark:text-emerald-100/45" : "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30")}>
                                      {!s.shiftStart || !s.shiftEnd ? t('dash.abstained') : t('dash.scheduled')}
                                    </span>
                                  </td>
@@ -1444,7 +1452,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 )}
 
                 {activeTab === 'feed' && (
-                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
@@ -1462,25 +1470,25 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             loadAdminFeed();
                           }}
                           disabled={feedLoading || adminFeedLoading}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-slate-800 dark:text-slate-300"
+                          className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
                         >
                           Refresh
                         </button>
                       </div>
 
                       {user.role === 'hr_admin' && (
-                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                             <input
                               value={feedForm.title}
                               onChange={(event) => updateFeedForm('title', event.target.value)}
                               placeholder="Post title"
-                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                             />
                             <select
                               value={feedForm.postType}
                               onChange={(event) => updateFeedForm('postType', event.target.value)}
-                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                             >
                               <option value="announcement">Announcement</option>
                               <option value="event">Event</option>
@@ -1490,7 +1498,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <select
                               value={feedForm.status}
                               onChange={(event) => updateFeedForm('status', event.target.value)}
-                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                             >
                               <option value="published">Published</option>
                               <option value="draft">Draft</option>
@@ -1498,7 +1506,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <select
                               value={feedForm.visibility}
                               onChange={(event) => updateFeedForm('visibility', event.target.value)}
-                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                             >
                               <option value="all">Everyone</option>
                               <option value="role:employee">Role: Employee</option>
@@ -1515,7 +1523,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               onChange={(event) => updateFeedForm('contentText', event.target.value)}
                               placeholder="Write the announcement..."
                               rows={4}
-                              className="resize-none rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-4"
+                              className="resize-none rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
                             />
                             <button
                               type="button"
@@ -1542,7 +1550,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                       <div className="mt-4 space-y-3">
                         {feedPosts.map((post) => (
-                          <article key={post.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/35">
+                          <article key={post.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div>
                                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{post.title}</h3>
@@ -1565,24 +1573,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         ))}
 
                         {!feedLoading && feedPosts.length === 0 && (
-                          <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                          <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                             No company announcements yet.
                           </p>
                         )}
 
                         {feedLoading && (
-                          <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                          <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                             Loading company feed...
                           </p>
                         )}
                       </div>
 
                       {user.role === 'hr_admin' && (
-                        <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                           <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Manage Posts</h3>
                           <div className="space-y-2">
                             {adminFeedPosts.map((post) => (
-                              <div key={post.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40 sm:flex-row sm:items-center sm:justify-between">
+                              <div key={post.id} className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
                                   <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{post.title}</p>
                                   <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
@@ -1593,7 +1601,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   value={post.status}
                                   onChange={(event) => updateFeedStatus(post.id, event.target.value as FeedPostStatus)}
                                   disabled={feedUpdatingId !== null}
-                                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                  className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 >
                                   <option value="draft">Draft</option>
                                   <option value="published">Published</option>
@@ -1603,13 +1611,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             ))}
 
                             {!adminFeedLoading && adminFeedPosts.length === 0 && (
-                              <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                              <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                                 No posts to manage yet.
                               </p>
                             )}
 
                             {adminFeedLoading && (
-                              <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                              <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                                 Loading posts...
                               </p>
                             )}
@@ -1620,7 +1628,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 )}
 
                 {activeTab === 'profile' && (
-                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex items-center gap-3 mb-5">
                           <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />
                           <div>
@@ -1641,27 +1649,27 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <button
                               type="button"
                               onClick={() => setShowPayrollPanel(false)}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-800 dark:text-slate-300"
+                              className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/15 dark:text-emerald-100/60"
                             >
                               Back
                             </button>
                           </div>
 
                           {user.role === 'hr_admin' && (
-                            <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 md:grid-cols-5">
+                            <div className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35 md:grid-cols-5">
                               <input
                                 type="date"
                                 aria-label="Pay period start"
                                 value={payrollForm.payPeriodStart}
                                 onChange={(event) => updatePayrollForm('payPeriodStart', event.target.value)}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               />
                               <input
                                 type="date"
                                 aria-label="Pay period end"
                                 value={payrollForm.payPeriodEnd}
                                 onChange={(event) => updatePayrollForm('payPeriodEnd', event.target.value)}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               />
                               <input
                                 type="number"
@@ -1671,7 +1679,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 placeholder="Base salary"
                                 value={payrollForm.defaultBaseSalary}
                                 onChange={(event) => updatePayrollForm('defaultBaseSalary', event.target.value)}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               />
                               <div className="grid grid-cols-2 gap-2">
                                 <input
@@ -1682,7 +1690,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   placeholder="Bonuses"
                                   value={payrollForm.bonuses}
                                   onChange={(event) => updatePayrollForm('bonuses', event.target.value)}
-                                  className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                  className="min-w-0 rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                                 <input
                                   type="number"
@@ -1692,7 +1700,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   placeholder="Deductions"
                                   value={payrollForm.deductions}
                                   onChange={(event) => updatePayrollForm('deductions', event.target.value)}
-                                  className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                  className="min-w-0 rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                               </div>
                               <button
@@ -1717,10 +1725,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </p>
                           )}
 
-                          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                          <div className="overflow-x-auto rounded-xl border border-emerald-500/15 dark:border-emerald-500/15">
                             <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                               <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-900/40">
+                                <tr className="border-b border-emerald-500/15 bg-white/70 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:border-emerald-500/15 dark:bg-black/35 dark:text-emerald-100/45">
                                   <th className="p-3">Employee</th>
                                   <th className="p-3">Period</th>
                                   <th className="p-3">Base</th>
@@ -1733,7 +1741,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               </thead>
                               <tbody className="text-xs">
                                 {payrollRecords.map((record) => (
-                                  <tr key={record.id} className="border-b border-slate-100 text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-300">
+                                  <tr key={record.id} className="border-b border-emerald-500/10 text-neutral-700 last:border-0 dark:border-emerald-500/10 dark:text-emerald-100/65">
                                     <td className="p-3 font-semibold">
                                       {record.full_name || user.name}
                                       <span className="block text-[10px] font-normal text-slate-500">{record.email || user.email}</span>
@@ -1795,30 +1803,30 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <button
                               type="button"
                               onClick={() => setShowGrievancesPanel(false)}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-800 dark:text-slate-300"
+                              className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/15 dark:text-emerald-100/60"
                             >
                               Back
                             </button>
                           </div>
 
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                               <input
                                 value={grievanceForm.title}
                                 onChange={(event) => updateGrievanceForm('title', event.target.value)}
                                 placeholder="Title"
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                               />
                               <input
                                 value={grievanceForm.category}
                                 onChange={(event) => updateGrievanceForm('category', event.target.value)}
                                 placeholder="Category"
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               />
                               <select
                                 value={grievanceForm.priority}
                                 onChange={(event) => updateGrievanceForm('priority', event.target.value)}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               >
                                 <option value="low">Low</option>
                                 <option value="normal">Normal</option>
@@ -1830,7 +1838,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 onChange={(event) => updateGrievanceForm('description', event.target.value)}
                                 placeholder="Description"
                                 rows={4}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-4"
+                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
                               />
                               <button
                                 type="button"
@@ -1854,7 +1862,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </p>
                           )}
 
-                          <div className="rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                             <div className="mb-3 flex items-center justify-between gap-3">
                               <h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">My Grievances</h4>
                               <button
@@ -1869,7 +1877,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                             <div className="space-y-3">
                               {myGrievances.map((grievance) => (
-                                <div key={grievance.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                                <div key={grievance.id} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/40">
                                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
                                       <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{grievance.title}</p>
@@ -1888,13 +1896,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               ))}
 
                               {!grievanceLoading && myGrievances.length === 0 && (
-                                <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                                <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                                   No grievances filed yet.
                                 </p>
                               )}
 
                               {grievanceLoading && (
-                                <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                                <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                                   Loading your grievances...
                                 </p>
                               )}
@@ -1902,12 +1910,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                           </div>
 
                           {canManageGrievances && (
-                            <div className="rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                            <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                               <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Tenant Grievances</h4>
                               <div className="overflow-x-auto">
                                 <table className={cn("w-full min-w-[860px]", isRtl ? "text-right" : "text-left")}>
                                   <thead>
-                                    <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-800">
+                                    <tr className="border-b border-emerald-500/15 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                                       <th className="p-3">Employee</th>
                                       <th className="p-3">Case</th>
                                       <th className="p-3">Priority</th>
@@ -1918,7 +1926,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   </thead>
                                   <tbody className="text-xs">
                                     {tenantGrievances.map((grievance) => (
-                                      <tr key={grievance.id} className="border-b border-slate-100 text-slate-700 last:border-0 dark:border-slate-800 dark:text-slate-300">
+                                      <tr key={grievance.id} className="border-b border-emerald-500/10 text-neutral-700 last:border-0 dark:border-emerald-500/10 dark:text-emerald-100/65">
                                         <td className="p-3 font-semibold">
                                           {grievance.full_name || 'Employee'}
                                           <span className="block text-[10px] font-normal text-slate-500">{grievance.email || grievance.employee_id}</span>
@@ -1935,7 +1943,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                             value={grievance.status}
                                             onChange={(event) => updateGrievanceStatus(grievance.id, event.target.value as GrievanceStatus)}
                                             disabled={grievanceUpdatingId !== null}
-                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                            className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                           >
                                             {grievanceStatuses.map((status) => (
                                               <option key={status} value={status}>{formatLabel(status)}</option>
@@ -1968,7 +1976,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl md:col-span-2">
+                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl md:col-span-2">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div>
                                 <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -1984,7 +1992,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 type="button"
                                 onClick={async () => {
                                   await requestNotificationPermission();
-                                  notifyEmployee('Horizon HR', 'Break reminder notifications are ready.');
+                                  notifyEmployee('Stanza', 'Break reminder notifications are ready.');
                                 }}
                                 className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:text-emerald-300"
                               >
@@ -1993,7 +2001,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </div>
 
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+                              <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-500/15 bg-white px-3 py-2.5 dark:border-emerald-500/15 dark:bg-black/40">
                                 <span>
                                   <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break starts</span>
                                   <span className="block text-[10px] text-slate-500">Notify when break time begins.</span>
@@ -2006,7 +2014,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 />
                               </label>
 
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+                              <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-500/15 bg-white px-3 py-2.5 dark:border-emerald-500/15 dark:bg-black/40">
                                 <span>
                                   <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break ends</span>
                                   <span className="block text-[10px] text-slate-500">Notify before returning to shift.</span>
@@ -2021,14 +2029,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </div>
                          </div>
 
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex flex-col justify-between">
+                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex flex-col justify-between">
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.leaveName')}</p>
                             <p className="text-3xl font-bold text-slate-800 dark:text-white">24.5 <span className="text-sm text-slate-500 font-normal">{t('profile.leaveDays')}</span></p>
-                            <div className="w-full h-1 bg-slate-200 dark:bg-slate-800 mt-3 rounded-full overflow-hidden">
+                            <div className="w-full h-1 bg-neutral-200 dark:bg-black/60 mt-3 rounded-full overflow-hidden">
                               <div className="w-[70%] h-full bg-emerald-500"></div>
                             </div>
                          </div>
-                         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex flex-col justify-between">
+                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex flex-col justify-between">
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.loan')}</p>
                             <p className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
@@ -2039,7 +2047,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                          <button
                             type="button"
                             onClick={() => setShowPayrollPanel(true)}
-                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                            className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/25 transition-colors text-left"
                          >
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.payroll')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
@@ -2050,7 +2058,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               setShowPayrollPanel(false);
                               setShowGrievancesPanel(true);
                             }}
-                            className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                            className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/25 transition-colors text-left"
                          >
                             <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.grievance')}</p>
                             <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
@@ -2064,7 +2072,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
             {/* Sidebar (Right) / Stats & Insights */}
             <div className="w-full xl:w-80 2xl:w-96 flex flex-col gap-4 shrink-0 z-10">
-                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
+                 <div className="bg-white dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
                     <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
                         <MapPin className="w-5 h-5 text-emerald-500" /> Locations
@@ -2076,7 +2084,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                     <div className="mt-3 space-y-2.5">
                       {companyLocations.map((location) => (
-                        <div key={location.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+                        <div key={location.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/35">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
@@ -2097,14 +2105,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                       ))}
 
                       {companyLocations.length === 0 && (
-                        <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                        <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
                           {locationsMessage || 'No company locations found.'}
                         </p>
                       )}
                     </div>
                  </div>
 
-                 <div className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/50 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
+                 <div className="bg-white dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
                     <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
                         <CheckCircle2 className="w-5 h-5 text-emerald-500" /> {t('dash.advParams')}
@@ -2115,11 +2123,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                     </div>
 
                     <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
-                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2.5 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
                         <span>Locations configured</span>
                         <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
                       </div>
-                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2.5 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
                         <span>Current shift</span>
                         <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? 'Open' : 'Not clocked in'}</span>
                       </div>

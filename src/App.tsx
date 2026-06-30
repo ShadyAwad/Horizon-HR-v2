@@ -20,7 +20,7 @@ const fallbackUser: AuthUser = {
   name: 'Sarah Connor',
   role: 'hr_admin',
   tenantId: 'demo-tenant',
-  tenant: 'Horizon Demo',
+  tenant: 'Stanza Demo Company',
 };
 
 function getStoredUser() {

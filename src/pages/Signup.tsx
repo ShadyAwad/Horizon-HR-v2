@@ -601,7 +601,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
                   <label className="flex items-center gap-3 p-4 border border-emerald-500/15 rounded-xl bg-white/70 dark:bg-[#04110d]/60 cursor-pointer hover:border-emerald-500/50 transition-colors">
                     <div className="relative flex items-center justify-center">
                       <input type="checkbox" name="allowsLoans" checked={formData.allowsLoans} onChange={handleChange} className="sr-only" />
-                      <div className={cn("w-6 h-6 rounded border flex items-center justify-center transition-colors", formData.allowsLoans ? "bg-emerald-500 border-emerald-500" : "bg-transparent border-slate-300 dark:border-slate-600")}>
+                      <div className={cn("w-6 h-6 rounded border flex items-center justify-center transition-colors", formData.allowsLoans ? "bg-emerald-500 border-emerald-500" : "bg-transparent border-emerald-500/20 dark:border-emerald-500/20")}>
                         {formData.allowsLoans && <CheckCircle2 className="w-4 h-4 text-white" />}
                       </div>
                     </div>
