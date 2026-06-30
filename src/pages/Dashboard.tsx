@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare
+  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -92,6 +92,40 @@ type CompanyLocationRecord = {
   is_active: boolean;
 };
 
+type FeedPostType = 'announcement' | 'event' | 'policy_update' | 'general';
+type FeedPostStatus = 'draft' | 'published' | 'archived';
+type FeedVisibilityValue = 'all' | 'role:employee' | 'role:manager' | 'role:hr_admin' | `location:${string}`;
+
+type FeedPost = {
+  id: string;
+  author_employee_id: string;
+  author_name?: string;
+  author_email?: string;
+  title: string;
+  post_type: FeedPostType;
+  content_text: string;
+  event_starts_at?: string | null;
+  event_ends_at?: string | null;
+  status: FeedPostStatus;
+  created_at: string;
+  updated_at: string;
+  published_at: string;
+  archived_at?: string | null;
+  visibility?: Array<{
+    type: 'all' | 'role' | 'location';
+    role?: AuthUser['role'] | null;
+    locationId?: string | null;
+  }>;
+};
+
+type FeedFormState = {
+  title: string;
+  postType: FeedPostType;
+  contentText: string;
+  status: 'draft' | 'published';
+  visibility: FeedVisibilityValue;
+};
+
 const defaultSchedule: ShiftRow[] = [
   { day: 'Monday', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
   { day: 'Tuesday', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
@@ -120,6 +154,14 @@ const defaultGrievanceForm: GrievanceFormState = {
   category: 'general',
   priority: 'normal',
   description: '',
+};
+
+const defaultFeedForm: FeedFormState = {
+  title: '',
+  postType: 'announcement',
+  contentText: '',
+  status: 'published',
+  visibility: 'all',
 };
 
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
@@ -240,7 +282,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'profile'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [showAccountDetails, setShowAccountDetails] = useState(false);
@@ -266,6 +308,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [grievanceMessage, setGrievanceMessage] = useState('');
   const [grievanceMessageType, setGrievanceMessageType] = useState<'success' | 'error'>('success');
   const [grievanceForm, setGrievanceForm] = useState<GrievanceFormState>(defaultGrievanceForm);
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [adminFeedPosts, setAdminFeedPosts] = useState<FeedPost[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [adminFeedLoading, setAdminFeedLoading] = useState(false);
+  const [feedSubmitting, setFeedSubmitting] = useState(false);
+  const [feedUpdatingId, setFeedUpdatingId] = useState<string | null>(null);
+  const [feedMessage, setFeedMessage] = useState('');
+  const [feedMessageType, setFeedMessageType] = useState<'success' | 'error'>('success');
+  const [feedForm, setFeedForm] = useState<FeedFormState>(defaultFeedForm);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationRecord[]>([]);
   const [locationsMessage, setLocationsMessage] = useState('');
 
@@ -626,6 +677,141 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   };
 
+  const loadFeed = async (clearMessage = true) => {
+    setFeedLoading(true);
+    if (clearMessage) {
+      setFeedMessage('');
+    }
+
+    try {
+      const res = await fetch(apiUrl('/api/company-feed'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setFeedPosts(data.posts || []);
+      } else {
+        setFeedMessageType('error');
+        setFeedMessage(data.error || 'Unable to load company feed.');
+      }
+    } catch {
+      setFeedMessageType('error');
+      setFeedMessage('Server disconnection. Unable to load company feed.');
+    } finally {
+      setFeedLoading(false);
+    }
+  };
+
+  const loadAdminFeed = async () => {
+    if (user.role !== 'hr_admin') return;
+
+    setAdminFeedLoading(true);
+
+    try {
+      const res = await fetch(apiUrl('/api/company-feed/admin'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setAdminFeedPosts(data.posts || []);
+      }
+    } finally {
+      setAdminFeedLoading(false);
+    }
+  };
+
+  const updateFeedForm = (field: keyof FeedFormState, value: string) => {
+    setFeedForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const getFeedVisibilityPayload = () => {
+    if (feedForm.visibility === 'all') {
+      return [{ type: 'all' }];
+    }
+
+    if (feedForm.visibility.startsWith('role:')) {
+      return [{ type: 'role', role: feedForm.visibility.replace('role:', '') }];
+    }
+
+    if (feedForm.visibility.startsWith('location:')) {
+      return [{ type: 'location', locationId: feedForm.visibility.replace('location:', '') }];
+    }
+
+    return [{ type: 'all' }];
+  };
+
+  const submitFeedPost = async () => {
+    if (feedSubmitting) return;
+
+    setFeedSubmitting(true);
+    setFeedMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/company-feed/posts'), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          title: feedForm.title,
+          postType: feedForm.postType,
+          contentText: feedForm.contentText,
+          status: feedForm.status,
+          visibility: getFeedVisibilityPayload(),
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setFeedForm(defaultFeedForm);
+        await Promise.all([loadFeed(false), loadAdminFeed()]);
+        setFeedMessageType('success');
+        setFeedMessage(feedForm.status === 'published' ? 'Post published.' : 'Draft saved.');
+      } else {
+        setFeedMessageType('error');
+        setFeedMessage(data.error || 'Unable to save feed post.');
+      }
+    } catch {
+      setFeedMessageType('error');
+      setFeedMessage('Server disconnection. Unable to save feed post.');
+    } finally {
+      setFeedSubmitting(false);
+    }
+  };
+
+  const updateFeedStatus = async (postId: string, status: FeedPostStatus) => {
+    if (feedUpdatingId) return;
+
+    setFeedUpdatingId(postId);
+    setFeedMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/company-feed/posts/${postId}/status`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await Promise.all([loadFeed(false), loadAdminFeed()]);
+        setFeedMessageType('success');
+        setFeedMessage('Post status updated.');
+      } else {
+        setFeedMessageType('error');
+        setFeedMessage(data.error || 'Unable to update post status.');
+      }
+    } catch {
+      setFeedMessageType('error');
+      setFeedMessage('Server disconnection. Unable to update post status.');
+    } finally {
+      setFeedUpdatingId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'feed') {
+      loadFeed();
+      loadAdminFeed();
+    }
+  }, [activeTab, user.id, user.role, user.tenantId]);
+
   useEffect(() => {
     if (activeTab === 'profile' && showGrievancesPanel) {
       loadGrievances();
@@ -743,6 +929,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
           >
              <Calendar className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('feed');
+              setShowPayrollPanel(false);
+              setShowGrievancesPanel(false);
+            }}
+            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'feed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title="Company Feed"
+          >
+             <Newspaper className="w-5 h-5" />
           </button>
           <button 
             onClick={() => {
@@ -915,6 +1112,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                     >
                        <Calendar className="w-4 h-4 hidden sm:block" />
                        {t('dash.roster')}
+                    </button>
+                    <button
+                       onClick={() => {
+                         setActiveTab('feed');
+                         setShowPayrollPanel(false);
+                         setShowGrievancesPanel(false);
+                       }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'feed' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                    >
+                       <Newspaper className="w-4 h-4 hidden sm:block" />
+                       Company Feed
                     </button>
                     <button 
                        onClick={() => {
@@ -1187,6 +1395,182 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                          </table>
                        </div>
                     </motion.div>
+                )}
+
+                {activeTab === 'feed' && (
+                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-slate-200 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+                            <Newspaper className="h-5 w-5 text-emerald-500" />
+                            Company Feed
+                          </h2>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Announcements, events, and policy updates for your company.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            loadFeed();
+                            loadAdminFeed();
+                          }}
+                          disabled={feedLoading || adminFeedLoading}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-slate-800 dark:text-slate-300"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+
+                      {user.role === 'hr_admin' && (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                            <input
+                              value={feedForm.title}
+                              onChange={(event) => updateFeedForm('title', event.target.value)}
+                              placeholder="Post title"
+                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                            />
+                            <select
+                              value={feedForm.postType}
+                              onChange={(event) => updateFeedForm('postType', event.target.value)}
+                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                            >
+                              <option value="announcement">Announcement</option>
+                              <option value="event">Event</option>
+                              <option value="policy_update">Policy Update</option>
+                              <option value="general">General</option>
+                            </select>
+                            <select
+                              value={feedForm.status}
+                              onChange={(event) => updateFeedForm('status', event.target.value)}
+                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                            >
+                              <option value="published">Published</option>
+                              <option value="draft">Draft</option>
+                            </select>
+                            <select
+                              value={feedForm.visibility}
+                              onChange={(event) => updateFeedForm('visibility', event.target.value)}
+                              className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-2"
+                            >
+                              <option value="all">Everyone</option>
+                              <option value="role:employee">Role: Employee</option>
+                              <option value="role:manager">Role: Manager</option>
+                              <option value="role:hr_admin">Role: HR Admin</option>
+                              {companyLocations.map((location) => (
+                                <option key={location.id} value={`location:${location.id}`}>
+                                  Location: {location.name}
+                                </option>
+                              ))}
+                            </select>
+                            <textarea
+                              value={feedForm.contentText}
+                              onChange={(event) => updateFeedForm('contentText', event.target.value)}
+                              placeholder="Write the announcement..."
+                              rows={4}
+                              className="resize-none rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 md:col-span-4"
+                            />
+                            <button
+                              type="button"
+                              onClick={submitFeedPost}
+                              disabled={feedSubmitting}
+                              className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
+                            >
+                              {feedSubmitting ? 'Saving...' : feedForm.status === 'published' ? 'Publish Post' : 'Save Draft'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {feedMessage && (
+                        <p className={cn(
+                          "mt-4 rounded-lg border px-3 py-2 text-xs font-semibold",
+                          feedMessageType === 'success'
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                        )}>
+                          {feedMessage}
+                        </p>
+                      )}
+
+                      <div className="mt-4 space-y-3">
+                        {feedPosts.map((post) => (
+                          <article key={post.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/35">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{post.title}</h3>
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                  {post.author_name || 'HR Admin'} • {formatShortDateTime(post.published_at)}
+                                </p>
+                              </div>
+                              <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                                {formatLabel(post.post_type)}
+                              </span>
+                            </div>
+                            {post.post_type === 'event' && (post.event_starts_at || post.event_ends_at) && (
+                              <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                {post.event_starts_at ? formatShortDateTime(post.event_starts_at) : 'Event time TBD'}
+                                {post.event_ends_at ? ` - ${formatShortDateTime(post.event_ends_at)}` : ''}
+                              </p>
+                            )}
+                            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{post.content_text}</p>
+                          </article>
+                        ))}
+
+                        {!feedLoading && feedPosts.length === 0 && (
+                          <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                            No company announcements yet.
+                          </p>
+                        )}
+
+                        {feedLoading && (
+                          <p className="rounded-lg border border-slate-200 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                            Loading company feed...
+                          </p>
+                        )}
+                      </div>
+
+                      {user.role === 'hr_admin' && (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
+                          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Manage Posts</h3>
+                          <div className="space-y-2">
+                            {adminFeedPosts.map((post) => (
+                              <div key={post.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{post.title}</p>
+                                  <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
+                                    {formatLabel(post.post_type)} • {formatShortDateTime(post.created_at)}
+                                  </p>
+                                </div>
+                                <select
+                                  value={post.status}
+                                  onChange={(event) => updateFeedStatus(post.id, event.target.value as FeedPostStatus)}
+                                  disabled={feedUpdatingId !== null}
+                                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                >
+                                  <option value="draft">Draft</option>
+                                  <option value="published">Published</option>
+                                  <option value="archived">Archived</option>
+                                </select>
+                              </div>
+                            ))}
+
+                            {!adminFeedLoading && adminFeedPosts.length === 0 && (
+                              <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                                No posts to manage yet.
+                              </p>
+                            )}
+
+                            {adminFeedLoading && (
+                              <p className="rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-800">
+                                Loading posts...
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                   </motion.div>
                 )}
 
                 {activeTab === 'profile' && (

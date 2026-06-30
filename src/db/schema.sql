@@ -471,7 +471,139 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 10. Attendance Daily Summaries
+-- 10. Company Feed
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS company_feed_posts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    author_employee_id UUID NOT NULL,
+
+    title VARCHAR(200) NOT NULL,
+    post_type VARCHAR(40) NOT NULL DEFAULT 'announcement',
+
+    content_text TEXT NOT NULL,
+    content_json JSONB,
+
+    event_starts_at TIMESTAMPTZ,
+    event_ends_at TIMESTAMPTZ,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'published',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+
+    CONSTRAINT company_feed_posts_author_tenant_fk
+        FOREIGN KEY (author_employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT company_feed_posts_title_not_empty_chk
+        CHECK (length(btrim(title)) > 0),
+
+    CONSTRAINT company_feed_posts_content_not_empty_chk
+        CHECK (length(btrim(content_text)) > 0),
+
+    CONSTRAINT company_feed_posts_type_chk
+        CHECK (post_type IN ('announcement', 'event', 'policy_update', 'general')),
+
+    CONSTRAINT company_feed_posts_status_chk
+        CHECK (status IN ('draft', 'published', 'archived')),
+
+    CONSTRAINT company_feed_posts_event_order_chk
+        CHECK (
+            event_starts_at IS NULL
+            OR event_ends_at IS NULL
+            OR event_ends_at >= event_starts_at
+        )
+);
+
+CREATE INDEX IF NOT EXISTS company_feed_posts_tenant_status_published_idx
+ON company_feed_posts(tenant_id, status, published_at DESC);
+
+CREATE INDEX IF NOT EXISTS company_feed_posts_tenant_type_published_idx
+ON company_feed_posts(tenant_id, post_type, published_at DESC);
+
+CREATE INDEX IF NOT EXISTS company_feed_posts_tenant_author_created_idx
+ON company_feed_posts(tenant_id, author_employee_id, created_at DESC);
+
+ALTER TABLE company_feed_posts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS company_feed_posts_tenant_isolation ON company_feed_posts;
+
+CREATE POLICY company_feed_posts_tenant_isolation
+ON company_feed_posts
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS company_feed_visibility (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    post_id UUID NOT NULL REFERENCES company_feed_posts(id) ON DELETE CASCADE,
+
+    visibility_type VARCHAR(30) NOT NULL,
+    role VARCHAR(50),
+    location_id UUID REFERENCES company_locations(id) ON DELETE CASCADE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT company_feed_visibility_type_chk
+        CHECK (visibility_type IN ('all', 'role', 'location')),
+
+    CONSTRAINT company_feed_visibility_role_required_chk
+        CHECK (visibility_type <> 'role' OR role IS NOT NULL),
+
+    CONSTRAINT company_feed_visibility_location_required_chk
+        CHECK (visibility_type <> 'location' OR location_id IS NOT NULL),
+
+    CONSTRAINT company_feed_visibility_role_chk
+        CHECK (role IS NULL OR role IN ('employee', 'manager', 'hr_admin'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS company_feed_visibility_unique_rule_idx
+ON company_feed_visibility(
+    tenant_id,
+    post_id,
+    visibility_type,
+    COALESCE(role, ''),
+    COALESCE(location_id::text, '')
+);
+
+CREATE INDEX IF NOT EXISTS company_feed_visibility_tenant_post_idx
+ON company_feed_visibility(tenant_id, post_id);
+
+CREATE INDEX IF NOT EXISTS company_feed_visibility_tenant_type_idx
+ON company_feed_visibility(tenant_id, visibility_type);
+
+CREATE INDEX IF NOT EXISTS company_feed_visibility_tenant_role_idx
+ON company_feed_visibility(tenant_id, role);
+
+CREATE INDEX IF NOT EXISTS company_feed_visibility_tenant_location_idx
+ON company_feed_visibility(tenant_id, location_id);
+
+ALTER TABLE company_feed_visibility ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS company_feed_visibility_tenant_isolation ON company_feed_visibility;
+
+CREATE POLICY company_feed_visibility_tenant_isolation
+ON company_feed_visibility
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 11. Attendance Daily Summaries
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
@@ -522,7 +654,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 11. Audit Logs
+-- 12. Audit Logs
 -- =========================================================
 
 CREATE TABLE audit_logs (

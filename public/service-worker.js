@@ -135,7 +135,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isApiRequest(url)) {
     // Mutating HR workflows are intentionally not cached or queued. Retrying login,
-    // password reset, payroll, grievance, clock, or leave writes offline could
+    // password reset, payroll, grievance, company feed, clock, or leave writes offline could
     // duplicate sensitive actions or replay stale credentials/payroll changes.
     if (request.method !== 'GET') {
       event.respondWith(networkOnlyMutation(request));

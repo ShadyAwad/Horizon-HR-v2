@@ -45,6 +45,9 @@ type PayrollRunBody = {
 
 type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
 type GrievanceStatus = 'open' | 'under_review' | 'resolved' | 'rejected' | 'closed';
+type FeedPostType = 'announcement' | 'event' | 'policy_update' | 'general';
+type FeedPostStatus = 'draft' | 'published' | 'archived';
+type FeedVisibilityType = 'all' | 'role' | 'location';
 
 type CreateGrievanceBody = {
   title?: string;
@@ -56,6 +59,33 @@ type CreateGrievanceBody = {
 type UpdateGrievanceStatusBody = {
   status?: GrievanceStatus;
   assignedTo?: string | null;
+};
+
+type FeedVisibilityInput = {
+  type?: FeedVisibilityType;
+  role?: EmployeeRole;
+  locationId?: string;
+};
+
+type NormalizedFeedVisibility = {
+  type: FeedVisibilityType;
+  role?: EmployeeRole;
+  locationId?: string;
+};
+
+type CreateFeedPostBody = {
+  title?: string;
+  postType?: FeedPostType;
+  contentText?: string;
+  contentJson?: unknown;
+  eventStartsAt?: string | null;
+  eventEndsAt?: string | null;
+  status?: Exclude<FeedPostStatus, 'archived'>;
+  visibility?: FeedVisibilityInput[];
+};
+
+type UpdateFeedPostStatusBody = {
+  status?: FeedPostStatus;
 };
 
 type EmployeeRole = 'hr_admin' | 'manager' | 'employee';
@@ -298,6 +328,10 @@ function isNonNegativeAmount(value: unknown): value is number {
 const grievancePriorities: GrievancePriority[] = ['low', 'normal', 'high', 'urgent'];
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
+const feedPostTypes: FeedPostType[] = ['announcement', 'event', 'policy_update', 'general'];
+const feedPostStatuses: FeedPostStatus[] = ['draft', 'published', 'archived'];
+const feedVisibilityTypes: FeedVisibilityType[] = ['all', 'role', 'location'];
+const employeeRoles: EmployeeRole[] = ['employee', 'manager', 'hr_admin'];
 
 function isGrievancePriority(value: unknown): value is GrievancePriority {
   return typeof value === 'string' && grievancePriorities.includes(value as GrievancePriority);
@@ -309,6 +343,67 @@ function isGrievanceStatus(value: unknown): value is GrievanceStatus {
 
 function isCompanyLocationType(value: unknown): value is CompanyLocationType {
   return typeof value === 'string' && companyLocationTypes.includes(value as CompanyLocationType);
+}
+
+function isFeedPostType(value: unknown): value is FeedPostType {
+  return typeof value === 'string' && feedPostTypes.includes(value as FeedPostType);
+}
+
+function isFeedPostStatus(value: unknown): value is FeedPostStatus {
+  return typeof value === 'string' && feedPostStatuses.includes(value as FeedPostStatus);
+}
+
+function isFeedVisibilityType(value: unknown): value is FeedVisibilityType {
+  return typeof value === 'string' && feedVisibilityTypes.includes(value as FeedVisibilityType);
+}
+
+function isEmployeeRole(value: unknown): value is EmployeeRole {
+  return typeof value === 'string' && employeeRoles.includes(value as EmployeeRole);
+}
+
+function normalizeFeedDate(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function normalizeFeedVisibility(visibility: FeedVisibilityInput[] | undefined) {
+  const rawVisibility = Array.isArray(visibility) && visibility.length > 0
+    ? visibility
+    : [{ type: 'all' as const }];
+
+  if (rawVisibility.some((rule) => rule.type === 'all')) {
+    return { ok: true as const, visibility: [{ type: 'all' as const }] };
+  }
+
+  const normalizedVisibility: NormalizedFeedVisibility[] = [];
+
+  for (const rule of rawVisibility) {
+    if (!isFeedVisibilityType(rule.type)) {
+      return { ok: false as const, error: 'visibility type must be all, role, or location.' };
+    }
+
+    if (rule.type === 'role') {
+      if (!isEmployeeRole(rule.role)) {
+        return { ok: false as const, error: 'visibility role must be employee, manager, or hr_admin.' };
+      }
+
+      normalizedVisibility.push({ type: 'role', role: rule.role });
+    }
+
+    if (rule.type === 'location') {
+      if (!rule.locationId) {
+        return { ok: false as const, error: 'location visibility requires locationId.' };
+      }
+
+      normalizedVisibility.push({ type: 'location', locationId: rule.locationId });
+    }
+  }
+
+  return {
+    ok: true as const,
+    visibility: normalizedVisibility.length > 0 ? normalizedVisibility : [{ type: 'all' as const }],
+  };
 }
 
 function normalizeCompanyLocations(
@@ -2532,6 +2627,494 @@ app.patch(
 
       console.error('[Grievances] Failed to update grievance status:', error);
       res.status(500).json({ success: false, error: 'Unable to update grievance status' });
+    }
+  },
+);
+
+app.post(
+  '/api/company-feed/posts',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const {
+      title,
+      postType = 'announcement',
+      contentText,
+      contentJson,
+      eventStartsAt,
+      eventEndsAt,
+      status = 'published',
+      visibility,
+    } = req.body as CreateFeedPostBody;
+
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const normalizedTitle = title?.trim() || '';
+    const normalizedContent = contentText?.trim() || '';
+    const normalizedStartsAt = normalizeFeedDate(eventStartsAt);
+    const normalizedEndsAt = normalizeFeedDate(eventEndsAt);
+
+    if (!normalizedTitle || !normalizedContent) {
+      return res.status(400).json({
+        success: false,
+        error: 'title and contentText are required.',
+      });
+    }
+
+    if (!isFeedPostType(postType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'postType must be announcement, event, policy_update, or general.',
+      });
+    }
+
+    if (status !== 'draft' && status !== 'published') {
+      return res.status(400).json({
+        success: false,
+        error: 'status must be draft or published.',
+      });
+    }
+
+    if (normalizedStartsAt === undefined || normalizedEndsAt === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Event dates must be valid date/time values.',
+      });
+    }
+
+    if (normalizedStartsAt && normalizedEndsAt && new Date(normalizedEndsAt) < new Date(normalizedStartsAt)) {
+      return res.status(400).json({
+        success: false,
+        error: 'eventEndsAt must not be before eventStartsAt.',
+      });
+    }
+
+    const normalizedVisibility = normalizeFeedVisibility(visibility);
+    if (!normalizedVisibility.ok) {
+      return res.status(400).json({
+        success: false,
+        error: normalizedVisibility.error,
+      });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed' });
+    }
+
+    try {
+      const post = await withTenant(tenantId, async (client) => {
+        const locationIds = normalizedVisibility.visibility
+          .filter((rule) => rule.type === 'location')
+          .map((rule) => rule.locationId!);
+
+        if (locationIds.length > 0) {
+          const locationsResult = await client.query(
+            `
+              SELECT id
+              FROM company_locations
+              WHERE tenant_id = $1
+                AND id = ANY($2::uuid[])
+            `,
+            [tenantId, locationIds],
+          );
+
+          if (locationsResult.rowCount !== new Set(locationIds).size) {
+            throw Object.assign(new Error('One or more locations do not belong to this tenant.'), { statusCode: 400 });
+          }
+        }
+
+        const postResult = await client.query(
+          `
+            INSERT INTO company_feed_posts (
+              tenant_id,
+              author_employee_id,
+              title,
+              post_type,
+              content_text,
+              content_json,
+              event_starts_at,
+              event_ends_at,
+              status,
+              published_at
+            )
+            VALUES (
+              $1::uuid,
+              $2::uuid,
+              $3::varchar,
+              $4::varchar,
+              $5::text,
+              $6::jsonb,
+              $7::timestamptz,
+              $8::timestamptz,
+              $9::varchar,
+              CASE WHEN $9::varchar = 'published' THEN NOW() ELSE NOW() END
+            )
+            RETURNING
+              id,
+              tenant_id,
+              author_employee_id,
+              title,
+              post_type,
+              content_text,
+              content_json,
+              event_starts_at,
+              event_ends_at,
+              status,
+              created_at,
+              updated_at,
+              published_at,
+              archived_at
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            normalizedTitle,
+            postType,
+            normalizedContent,
+            contentJson === undefined ? null : JSON.stringify(contentJson),
+            normalizedStartsAt,
+            normalizedEndsAt,
+            status,
+          ],
+        );
+
+        const createdPost = postResult.rows[0];
+
+        for (const rule of normalizedVisibility.visibility) {
+          await client.query(
+            `
+              INSERT INTO company_feed_visibility (
+                tenant_id,
+                post_id,
+                visibility_type,
+                role,
+                location_id
+              )
+              VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT DO NOTHING
+            `,
+            [
+              tenantId,
+              createdPost.id,
+              rule.type,
+              rule.type === 'role' ? rule.role : null,
+              rule.type === 'location' ? rule.locationId : null,
+            ],
+          );
+        }
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'company_feed_post_created',
+            'company_feed_post',
+            createdPost.id,
+            JSON.stringify({
+              title: normalizedTitle,
+              postType,
+              status,
+              visibility: normalizedVisibility.visibility,
+            }),
+          ],
+        );
+
+        return {
+          ...createdPost,
+          visibility: normalizedVisibility.visibility,
+        };
+      });
+
+      res.status(201).json({
+        success: true,
+        postId: post.id,
+        post,
+      });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+
+      if (statusCode === 400) {
+        return res.status(400).json({
+          success: false,
+          error: (error as Error).message,
+        });
+      }
+
+      console.error('[Company Feed] Failed to create post:', error);
+      res.status(500).json({ success: false, error: 'Unable to create company feed post' });
+    }
+  },
+);
+
+app.get(
+  '/api/company-feed',
+  demoAuth,
+  requireRole(['employee', 'manager', 'hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const role = req.authUser!.role;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed' });
+    }
+
+    try {
+      const posts = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              company_feed_posts.id,
+              company_feed_posts.author_employee_id,
+              author.full_name AS author_name,
+              author.email AS author_email,
+              company_feed_posts.title,
+              company_feed_posts.post_type,
+              company_feed_posts.content_text,
+              company_feed_posts.content_json,
+              company_feed_posts.event_starts_at,
+              company_feed_posts.event_ends_at,
+              company_feed_posts.status,
+              company_feed_posts.created_at,
+              company_feed_posts.updated_at,
+              company_feed_posts.published_at,
+              company_feed_posts.archived_at
+            FROM company_feed_posts
+            INNER JOIN employees author
+              ON author.id = company_feed_posts.author_employee_id
+             AND author.tenant_id = company_feed_posts.tenant_id
+            WHERE company_feed_posts.tenant_id = $1
+              AND company_feed_posts.status = 'published'
+              AND (
+                EXISTS (
+                  SELECT 1
+                  FROM company_feed_visibility
+                  WHERE company_feed_visibility.tenant_id = company_feed_posts.tenant_id
+                    AND company_feed_visibility.post_id = company_feed_posts.id
+                    AND company_feed_visibility.visibility_type = 'all'
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM company_feed_visibility
+                  WHERE company_feed_visibility.tenant_id = company_feed_posts.tenant_id
+                    AND company_feed_visibility.post_id = company_feed_posts.id
+                    AND company_feed_visibility.visibility_type = 'role'
+                    AND company_feed_visibility.role = $2
+                )
+              )
+            ORDER BY company_feed_posts.published_at DESC, company_feed_posts.created_at DESC
+            LIMIT 50
+          `,
+          [tenantId, role],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, posts });
+    } catch (error) {
+      console.error('[Company Feed] Failed to load visible posts:', error);
+      res.status(500).json({ success: false, error: 'Unable to load company feed' });
+    }
+  },
+);
+
+app.get(
+  '/api/company-feed/admin',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed' });
+    }
+
+    try {
+      const posts = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              company_feed_posts.id,
+              company_feed_posts.author_employee_id,
+              author.full_name AS author_name,
+              author.email AS author_email,
+              company_feed_posts.title,
+              company_feed_posts.post_type,
+              company_feed_posts.content_text,
+              company_feed_posts.content_json,
+              company_feed_posts.event_starts_at,
+              company_feed_posts.event_ends_at,
+              company_feed_posts.status,
+              company_feed_posts.created_at,
+              company_feed_posts.updated_at,
+              company_feed_posts.published_at,
+              company_feed_posts.archived_at,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'type', company_feed_visibility.visibility_type,
+                    'role', company_feed_visibility.role,
+                    'locationId', company_feed_visibility.location_id
+                  )
+                ) FILTER (WHERE company_feed_visibility.id IS NOT NULL),
+                '[]'::json
+              ) AS visibility
+            FROM company_feed_posts
+            INNER JOIN employees author
+              ON author.id = company_feed_posts.author_employee_id
+             AND author.tenant_id = company_feed_posts.tenant_id
+            LEFT JOIN company_feed_visibility
+              ON company_feed_visibility.post_id = company_feed_posts.id
+             AND company_feed_visibility.tenant_id = company_feed_posts.tenant_id
+            WHERE company_feed_posts.tenant_id = $1
+            GROUP BY company_feed_posts.id, author.full_name, author.email
+            ORDER BY company_feed_posts.created_at DESC
+            LIMIT 100
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, posts });
+    } catch (error) {
+      console.error('[Company Feed] Failed to load admin posts:', error);
+      res.status(500).json({ success: false, error: 'Unable to load company feed posts' });
+    }
+  },
+);
+
+app.patch(
+  '/api/company-feed/posts/:id/status',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body as UpdateFeedPostStatusBody;
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+
+    if (!isFeedPostStatus(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'status must be draft, published, or archived.',
+      });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed' });
+    }
+
+    try {
+      const post = await withTenant(tenantId, async (client) => {
+        const existingResult = await client.query<{ status: FeedPostStatus; title: string }>(
+          `
+            SELECT status, title
+            FROM company_feed_posts
+            WHERE tenant_id = $1
+              AND id = $2
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [tenantId, id],
+        );
+
+        if (existingResult.rowCount === 0) {
+          throw Object.assign(new Error('Company feed post not found.'), { statusCode: 404 });
+        }
+
+        const previousStatus = existingResult.rows[0].status;
+        const updateResult = await client.query(
+          `
+            UPDATE company_feed_posts
+            SET
+              status = $3,
+              published_at = CASE
+                WHEN $3 = 'published' THEN COALESCE(published_at, NOW())
+                ELSE published_at
+              END,
+              archived_at = CASE
+                WHEN $3 = 'archived' THEN NOW()
+                WHEN $3 IN ('draft', 'published') THEN NULL
+                ELSE archived_at
+              END,
+              updated_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+            RETURNING
+              id,
+              author_employee_id,
+              title,
+              post_type,
+              content_text,
+              content_json,
+              event_starts_at,
+              event_ends_at,
+              status,
+              created_at,
+              updated_at,
+              published_at,
+              archived_at
+          `,
+          [tenantId, id, status],
+        );
+
+        const updatedPost = updateResult.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'company_feed_post_status_updated',
+            'company_feed_post',
+            id,
+            JSON.stringify({
+              previousStatus,
+              newStatus: status,
+              title: updatedPost.title,
+            }),
+          ],
+        );
+
+        return updatedPost;
+      });
+
+      res.json({ success: true, post });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+
+      if (statusCode === 404) {
+        return res.status(404).json({
+          success: false,
+          error: (error as Error).message,
+        });
+      }
+
+      console.error('[Company Feed] Failed to update post status:', error);
+      res.status(500).json({ success: false, error: 'Unable to update company feed post status' });
     }
   },
 );
