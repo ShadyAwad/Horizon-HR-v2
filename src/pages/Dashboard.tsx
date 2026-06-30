@@ -52,6 +52,36 @@ type PayrollFormState = {
   deductions: string;
 };
 
+type CompensationPayType = 'monthly' | 'hourly' | 'weekly' | 'annual';
+
+type CompensationProfile = {
+  id?: string | null;
+  employee_id: string;
+  full_name?: string;
+  email?: string;
+  role?: AuthUser['role'];
+  pay_type?: CompensationPayType | null;
+  base_amount?: string | number | null;
+  currency?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  is_active?: boolean | null;
+};
+
+type CompensationFormState = {
+  employeeId: string;
+  payType: CompensationPayType;
+  baseAmount: string;
+  currency: string;
+  effectiveFrom: string;
+};
+
+type SkippedPayrollEmployee = {
+  employeeId: string;
+  email: string;
+  reason: string;
+};
+
 type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
 type GrievanceStatus = 'open' | 'under_review' | 'resolved' | 'rejected' | 'closed';
 
@@ -147,6 +177,14 @@ const defaultPayrollForm: PayrollFormState = {
   defaultBaseSalary: '',
   bonuses: '0',
   deductions: '0',
+};
+
+const defaultCompensationForm: CompensationFormState = {
+  employeeId: '',
+  payType: 'monthly',
+  baseAmount: '',
+  currency: '',
+  effectiveFrom: '',
 };
 
 const defaultGrievanceForm: GrievanceFormState = {
@@ -299,6 +337,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [payrollMessage, setPayrollMessage] = useState('');
   const [payrollMessageType, setPayrollMessageType] = useState<'success' | 'error'>('success');
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(defaultPayrollForm);
+  const [compensationProfiles, setCompensationProfiles] = useState<CompensationProfile[]>([]);
+  const [compensationLoading, setCompensationLoading] = useState(false);
+  const [compensationSaving, setCompensationSaving] = useState(false);
+  const [compensationForm, setCompensationForm] = useState<CompensationFormState>(defaultCompensationForm);
+  const [skippedPayrollEmployees, setSkippedPayrollEmployees] = useState<SkippedPayrollEmployee[]>([]);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
   const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
   const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
@@ -326,6 +369,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const canManageRoster = user.role === 'hr_admin' || user.role === 'manager';
+  const missingCompensationProfiles = compensationProfiles.filter((profile) => !profile.id);
+  const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window) || Notification.permission !== 'default') return;
@@ -502,6 +547,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setPayrollLoading(true);
     if (clearMessage) {
       setPayrollMessage('');
+      setSkippedPayrollEmployees([]);
     }
 
     try {
@@ -523,8 +569,94 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   };
 
+  const loadCompensationProfiles = async () => {
+    if (user.role !== 'hr_admin') return;
+
+    setCompensationLoading(true);
+
+    try {
+      const res = await fetch(apiUrl('/api/compensation-profiles'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const profiles = data.profiles || [];
+        setCompensationProfiles(profiles);
+        setCompensationForm((current) => {
+          if (current.employeeId || profiles.length === 0) return current;
+          const firstProfile = profiles[0] as CompensationProfile;
+          return {
+            employeeId: firstProfile.employee_id,
+            payType: firstProfile.pay_type || 'monthly',
+            baseAmount: firstProfile.base_amount !== null && firstProfile.base_amount !== undefined ? String(firstProfile.base_amount) : '',
+            currency: firstProfile.currency || '',
+            effectiveFrom: new Date().toISOString().slice(0, 10),
+          };
+        });
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to load compensation profiles.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to load compensation profiles.');
+    } finally {
+      setCompensationLoading(false);
+    }
+  };
+
   const updatePayrollForm = (field: keyof PayrollFormState, value: string) => {
     setPayrollForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const selectCompensationEmployee = (employeeId: string) => {
+    const profile = compensationProfiles.find((item) => item.employee_id === employeeId);
+
+    setCompensationForm({
+      employeeId,
+      payType: profile?.pay_type || 'monthly',
+      baseAmount: profile?.base_amount !== null && profile?.base_amount !== undefined ? String(profile.base_amount) : '',
+      currency: profile?.currency || '',
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const updateCompensationForm = (field: keyof CompensationFormState, value: string) => {
+    setCompensationForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveCompensationProfile = async () => {
+    if (compensationSaving || !compensationForm.employeeId) return;
+
+    setCompensationSaving(true);
+    setPayrollMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/compensation-profiles/${compensationForm.employeeId}`), {
+        method: 'PUT',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          payType: compensationForm.payType,
+          baseAmount: Number(compensationForm.baseAmount),
+          currency: compensationForm.currency || undefined,
+          effectiveFrom: compensationForm.effectiveFrom || undefined,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadCompensationProfiles();
+        setPayrollMessageType('success');
+        setPayrollMessage('Compensation profile saved.');
+      } else {
+        setPayrollMessageType('error');
+        setPayrollMessage(data.error || 'Unable to save compensation profile.');
+      }
+    } catch {
+      setPayrollMessageType('error');
+      setPayrollMessage('Server disconnection. Unable to save compensation profile.');
+    } finally {
+      setCompensationSaving(false);
+    }
   };
 
   const runPayroll = async () => {
@@ -532,23 +664,36 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     setPayrollSubmitting(true);
     setPayrollMessage('');
+    setSkippedPayrollEmployees([]);
+
+    const payrollPayload: {
+      payPeriodStart: string;
+      payPeriodEnd: string;
+      defaultBaseSalary?: number;
+      bonuses: number;
+      deductions: number;
+    } = {
+      payPeriodStart: payrollForm.payPeriodStart,
+      payPeriodEnd: payrollForm.payPeriodEnd,
+      bonuses: Number(payrollForm.bonuses || 0),
+      deductions: Number(payrollForm.deductions || 0),
+    };
+
+    if (payrollForm.defaultBaseSalary.trim()) {
+      payrollPayload.defaultBaseSalary = Number(payrollForm.defaultBaseSalary);
+    }
 
     try {
       const res = await fetch(apiUrl('/api/payroll/run'), {
         method: 'POST',
         headers: payrollHeaders,
-        body: JSON.stringify({
-          payPeriodStart: payrollForm.payPeriodStart,
-          payPeriodEnd: payrollForm.payPeriodEnd,
-          defaultBaseSalary: Number(payrollForm.defaultBaseSalary),
-          bonuses: Number(payrollForm.bonuses || 0),
-          deductions: Number(payrollForm.deductions || 0),
-        }),
+        body: JSON.stringify(payrollPayload),
       });
       const data = await res.json();
 
       if (res.ok && data.success) {
         await loadPayrollRecords(false);
+        setSkippedPayrollEmployees(data.skippedEmployees || []);
         setPayrollMessageType('success');
         setPayrollMessage(`${data.message} Records: ${data.recordsGenerated}`);
       } else {
@@ -611,6 +756,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   useEffect(() => {
     if (activeTab === 'profile' && showPayrollPanel) {
       loadPayrollRecords();
+      loadCompensationProfiles();
     }
   }, [activeTab, showPayrollPanel, user.id, user.role, user.tenantId]);
 
@@ -1656,32 +1802,149 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                           </div>
 
                           {user.role === 'hr_admin' && (
-                            <div className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35 md:grid-cols-5">
-                              <input
-                                type="date"
-                                aria-label="Pay period start"
-                                value={payrollForm.payPeriodStart}
-                                onChange={(event) => updatePayrollForm('payPeriodStart', event.target.value)}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                              />
-                              <input
-                                type="date"
-                                aria-label="Pay period end"
-                                value={payrollForm.payPeriodEnd}
-                                onChange={(event) => updatePayrollForm('payPeriodEnd', event.target.value)}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                              />
-                              <input
-                                type="number"
-                                aria-label="Default base salary"
-                                min="0"
-                                step="0.01"
-                                placeholder="Base salary"
-                                value={payrollForm.defaultBaseSalary}
-                                onChange={(event) => updatePayrollForm('defaultBaseSalary', event.target.value)}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                              />
-                              <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-3">
+                              <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+                                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Compensation Profiles</h4>
+                                    <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">Saved profiles override the fallback salary when payroll runs.</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={loadCompensationProfiles}
+                                    disabled={compensationLoading}
+                                    className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
+                                  >
+                                    {compensationLoading ? 'Loading...' : 'Refresh'}
+                                  </button>
+                                </div>
+
+                                {missingCompensationProfiles.length > 0 && (
+                                  <p className="mb-3 rounded-lg border border-amber-400/25 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
+                                    {missingCompensationProfiles.length} employee{missingCompensationProfiles.length === 1 ? '' : 's'} missing active compensation profiles.
+                                  </p>
+                                )}
+
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                                  <select
+                                    value={compensationForm.employeeId}
+                                    onChange={(event) => selectCompensationEmployee(event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
+                                  >
+                                    <option value="">Select employee</option>
+                                    {compensationProfiles.map((profile) => (
+                                      <option key={profile.employee_id} value={profile.employee_id}>
+                                        {profile.full_name || profile.email || profile.employee_id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={compensationForm.payType}
+                                    onChange={(event) => updateCompensationForm('payType', event.target.value as CompensationPayType)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  >
+                                    {compensationPayTypes.map((payType) => (
+                                      <option key={payType} value={payType}>{formatLabel(payType)}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Base amount"
+                                    value={compensationForm.baseAmount}
+                                    onChange={(event) => updateCompensationForm('baseAmount', event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <input
+                                    placeholder="USD"
+                                    value={compensationForm.currency}
+                                    onChange={(event) => updateCompensationForm('currency', event.target.value.toUpperCase().slice(0, 3))}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <input
+                                    type="date"
+                                    value={compensationForm.effectiveFrom}
+                                    onChange={(event) => updateCompensationForm('effectiveFrom', event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={saveCompensationProfile}
+                                    disabled={compensationSaving || !compensationForm.employeeId}
+                                    className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-6"
+                                  >
+                                    {compensationSaving ? 'Saving...' : 'Save Compensation'}
+                                  </button>
+                                </div>
+
+                                <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                  {compensationProfiles.map((profile) => (
+                                    <div key={profile.employee_id} className="rounded-lg border border-emerald-500/10 bg-white/50 p-3 text-xs dark:bg-black/25">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="font-bold text-neutral-800 dark:text-emerald-50">{profile.full_name || profile.email}</p>
+                                          <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">{profile.email} • {profile.role ? formatRole(profile.role) : 'Employee'}</p>
+                                        </div>
+                                        <span className={cn(
+                                          "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                          profile.id
+                                            ? "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                                            : "border-amber-400/25 text-amber-700 dark:text-amber-200"
+                                        )}>
+                                          {profile.id ? 'Active' : 'Missing'}
+                                        </span>
+                                      </div>
+                                      <p className="mt-3 font-mono text-[11px] text-neutral-600 dark:text-emerald-100/60">
+                                        {profile.id && profile.base_amount !== null && profile.base_amount !== undefined
+                                          ? `${formatPayrollAmount(profile.base_amount, profile.currency || 'USD')} • ${formatLabel(profile.pay_type || 'monthly')}`
+                                          : 'No active compensation profile'}
+                                      </p>
+                                      {profile.effective_from && (
+                                        <p className="mt-1 text-[10px] text-neutral-500 dark:text-emerald-100/45">
+                                          Effective {formatPayrollDate(profile.effective_from)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {!compensationLoading && compensationProfiles.length === 0 && (
+                                    <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-neutral-500 dark:text-emerald-100/45">
+                                      No employees found for compensation profiles.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+                                <p className="mb-3 text-[11px] font-semibold text-neutral-500 dark:text-emerald-100/45">
+                                  Payroll uses each employee's active compensation profile. Fallback Base Salary is optional and only applies to employees without a profile.
+                                </p>
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+                                  <input
+                                    type="date"
+                                    aria-label="Pay period start"
+                                    value={payrollForm.payPeriodStart}
+                                    onChange={(event) => updatePayrollForm('payPeriodStart', event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <input
+                                    type="date"
+                                    aria-label="Pay period end"
+                                    value={payrollForm.payPeriodEnd}
+                                    onChange={(event) => updatePayrollForm('payPeriodEnd', event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <input
+                                    type="number"
+                                    aria-label="Fallback base salary"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Fallback base salary"
+                                    value={payrollForm.defaultBaseSalary}
+                                    onChange={(event) => updatePayrollForm('defaultBaseSalary', event.target.value)}
+                                    className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                  />
+                                  <div className="grid grid-cols-2 gap-2">
                                 <input
                                   type="number"
                                   aria-label="Bonuses"
@@ -1711,6 +1974,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               >
                                 {payrollSubmitting ? 'Generating payroll...' : 'Run Payroll'}
                               </button>
+                                </div>
+                              </div>
                             </div>
                           )}
 
@@ -1723,6 +1988,19 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             )}>
                               {payrollMessage}
                             </p>
+                          )}
+
+                          {skippedPayrollEmployees.length > 0 && (
+                            <div className="rounded-lg border border-amber-400/25 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
+                              <p className="font-bold uppercase tracking-widest">Skipped employees</p>
+                              <ul className="mt-2 space-y-1">
+                                {skippedPayrollEmployees.map((employee) => (
+                                  <li key={employee.employeeId}>
+                                    {employee.email}: {employee.reason}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
 
                           <div className="overflow-x-auto rounded-xl border border-emerald-500/15 dark:border-emerald-500/15">

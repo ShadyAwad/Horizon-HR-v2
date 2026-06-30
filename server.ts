@@ -44,6 +44,15 @@ type PayrollRunBody = {
   deductions?: number;
 };
 
+type CompensationPayType = 'monthly' | 'hourly' | 'weekly' | 'annual';
+
+type UpsertCompensationProfileBody = {
+  payType?: CompensationPayType;
+  baseAmount?: number | string;
+  currency?: string;
+  effectiveFrom?: string;
+};
+
 type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
 type GrievanceStatus = 'open' | 'under_review' | 'resolved' | 'rejected' | 'closed';
 type FeedPostType = 'announcement' | 'event' | 'policy_update' | 'general';
@@ -329,6 +338,7 @@ function isNonNegativeAmount(value: unknown): value is number {
 const grievancePriorities: GrievancePriority[] = ['low', 'normal', 'high', 'urgent'];
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
+const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
 const feedPostTypes: FeedPostType[] = ['announcement', 'event', 'policy_update', 'general'];
 const feedPostStatuses: FeedPostStatus[] = ['draft', 'published', 'archived'];
 const feedVisibilityTypes: FeedVisibilityType[] = ['all', 'role', 'location'];
@@ -344,6 +354,10 @@ function isGrievanceStatus(value: unknown): value is GrievanceStatus {
 
 function isCompanyLocationType(value: unknown): value is CompanyLocationType {
   return typeof value === 'string' && companyLocationTypes.includes(value as CompanyLocationType);
+}
+
+function isCompensationPayType(value: unknown): value is CompensationPayType {
+  return typeof value === 'string' && compensationPayTypes.includes(value as CompensationPayType);
 }
 
 function isFeedPostType(value: unknown): value is FeedPostType {
@@ -2056,6 +2070,284 @@ if (!status) {
   });
 
 app.get(
+  '/api/compensation-profiles',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for compensation profiles' });
+    }
+
+    try {
+      const profiles = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              employee_compensation_profiles.id,
+              employees.id AS employee_id,
+              employees.full_name,
+              employees.email,
+              employees.role,
+              employee_compensation_profiles.pay_type,
+              employee_compensation_profiles.base_amount,
+              employee_compensation_profiles.currency,
+              employee_compensation_profiles.effective_from,
+              employee_compensation_profiles.effective_to,
+              employee_compensation_profiles.is_active,
+              employee_compensation_profiles.created_by,
+              employee_compensation_profiles.updated_by,
+              employee_compensation_profiles.created_at,
+              employee_compensation_profiles.updated_at
+            FROM employees
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM employee_compensation_profiles
+              WHERE employee_compensation_profiles.tenant_id = employees.tenant_id
+                AND employee_compensation_profiles.employee_id = employees.id
+                AND employee_compensation_profiles.is_active = true
+              ORDER BY employee_compensation_profiles.effective_from DESC, employee_compensation_profiles.created_at DESC
+              LIMIT 1
+            ) employee_compensation_profiles ON true
+            WHERE employees.tenant_id = $1
+            ORDER BY employees.full_name ASC, employees.email ASC
+            LIMIT 200
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, profiles });
+    } catch (error) {
+      console.error('[Compensation] Failed to load profiles:', error);
+      res.status(500).json({ success: false, error: 'Unable to load compensation profiles' });
+    }
+  },
+);
+
+app.get(
+  '/api/compensation-profiles/me',
+  demoAuth,
+  requireRole(['employee', 'manager', 'hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for compensation profiles' });
+    }
+
+    try {
+      const profile = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              employee_compensation_profiles.id,
+              employee_compensation_profiles.employee_id,
+              employee_compensation_profiles.pay_type,
+              employee_compensation_profiles.base_amount,
+              employee_compensation_profiles.currency,
+              employee_compensation_profiles.effective_from,
+              employee_compensation_profiles.effective_to,
+              employee_compensation_profiles.is_active,
+              employee_compensation_profiles.created_at,
+              employee_compensation_profiles.updated_at
+            FROM employee_compensation_profiles
+            WHERE tenant_id = $1
+              AND employee_id = $2
+              AND is_active = true
+            ORDER BY effective_from DESC, created_at DESC
+            LIMIT 1
+          `,
+          [tenantId, employeeId],
+        );
+
+        return result.rows[0] || null;
+      });
+
+      res.json({ success: true, profile });
+    } catch (error) {
+      console.error('[Compensation] Failed to load employee profile:', error);
+      res.status(500).json({ success: false, error: 'Unable to load compensation profile' });
+    }
+  },
+);
+
+app.put(
+  '/api/compensation-profiles/:employeeId',
+  demoAuth,
+  requireRole(['hr_admin']),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const targetEmployeeId = req.params.employeeId;
+    const { payType = 'monthly', baseAmount, currency, effectiveFrom } = req.body as UpsertCompensationProfileBody;
+
+    const normalizedBaseAmount = Number(baseAmount);
+    const normalizedCurrency = currency?.trim().toUpperCase();
+    const normalizedEffectiveFrom = effectiveFrom || toWorkDate(new Date());
+
+    if (!targetEmployeeId) {
+      return res.status(400).json({ success: false, error: 'employeeId is required.' });
+    }
+
+    if (!isCompensationPayType(payType)) {
+      return res.status(400).json({ success: false, error: 'payType must be monthly, hourly, weekly, or annual.' });
+    }
+
+    if (!Number.isFinite(normalizedBaseAmount) || normalizedBaseAmount < 0) {
+      return res.status(400).json({ success: false, error: 'baseAmount must be a non-negative number.' });
+    }
+
+    if (normalizedCurrency && !/^[A-Z]{3}$/.test(normalizedCurrency)) {
+      return res.status(400).json({ success: false, error: 'currency must be a 3-letter code.' });
+    }
+
+    if (!isValidDateInput(normalizedEffectiveFrom)) {
+      return res.status(400).json({ success: false, error: 'effectiveFrom must be a valid YYYY-MM-DD date.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for compensation profiles' });
+    }
+
+    try {
+      const profile = await withTenant(tenantId, async (client) => {
+        const employeeResult = await client.query<{ id: string; default_currency: string | null }>(
+          `
+            SELECT employees.id, tenants.default_currency
+            FROM employees
+            INNER JOIN tenants
+              ON tenants.id = employees.tenant_id
+            WHERE employees.tenant_id = $1
+              AND employees.id = $2
+            LIMIT 1
+          `,
+          [tenantId, targetEmployeeId],
+        );
+
+        const employee = employeeResult.rows[0];
+        if (!employee) {
+          return null;
+        }
+
+        const profileCurrency = normalizedCurrency || employee.default_currency || 'USD';
+
+        await client.query(
+          `
+            UPDATE employee_compensation_profiles
+            SET
+              is_active = false,
+              effective_to = CASE
+                WHEN effective_from <= (($3::date - INTERVAL '1 day')::date)
+                  THEN (($3::date - INTERVAL '1 day')::date)
+                ELSE effective_from
+              END,
+              updated_by = $4,
+              updated_at = NOW()
+            WHERE tenant_id = $1
+              AND employee_id = $2
+              AND is_active = true
+          `,
+          [tenantId, targetEmployeeId, normalizedEffectiveFrom, actorEmployeeId],
+        );
+
+        const insertResult = await client.query(
+          `
+            INSERT INTO employee_compensation_profiles (
+              tenant_id,
+              employee_id,
+              pay_type,
+              base_amount,
+              currency,
+              effective_from,
+              is_active,
+              created_by,
+              updated_by
+            )
+            VALUES (
+              $1,
+              $2,
+              $3::varchar,
+              $4::numeric,
+              $5::varchar,
+              $6::date,
+              true,
+              $7,
+              $7
+            )
+            RETURNING
+              id,
+              employee_id,
+              pay_type,
+              base_amount,
+              currency,
+              effective_from,
+              effective_to,
+              is_active,
+              created_at,
+              updated_at
+          `,
+          [
+            tenantId,
+            targetEmployeeId,
+            payType,
+            normalizedBaseAmount,
+            profileCurrency,
+            normalizedEffectiveFrom,
+            actorEmployeeId,
+          ],
+        );
+
+        const insertedProfile = insertResult.rows[0];
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (
+              tenant_id,
+              actor_employee_id,
+              action,
+              entity_type,
+              entity_id,
+              metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_compensation_updated',
+            'employee_compensation_profile',
+            insertedProfile.id,
+            JSON.stringify({
+              employeeId: targetEmployeeId,
+              payType,
+              baseAmount: normalizedBaseAmount,
+              currency: profileCurrency,
+              effectiveFrom: normalizedEffectiveFrom,
+            }),
+          ],
+        );
+
+        return insertedProfile;
+      });
+
+      if (!profile) {
+        return res.status(404).json({ success: false, error: 'Employee not found for this tenant.' });
+      }
+
+      res.json({ success: true, profile });
+    } catch (error) {
+      console.error('[Compensation] Failed to save profile:', error);
+      res.status(500).json({ success: false, error: 'Unable to save compensation profile' });
+    }
+  },
+);
+
+app.get(
   '/api/payroll/me',
   demoAuth,
   requireRole(['employee', 'manager', 'hr_admin']),
@@ -2171,18 +2463,23 @@ app.post(
 
     const tenantId = req.authUser!.tenantId;
     const actorEmployeeId = req.authUser!.employeeId;
+    const hasFallbackBaseSalary = defaultBaseSalary !== undefined && defaultBaseSalary !== null;
+    const fallbackBaseSalary = hasFallbackBaseSalary ? Number(defaultBaseSalary) : null;
 
     if (
       !isValidDateInput(payPeriodStart) ||
-      !isValidDateInput(payPeriodEnd) ||
-      !isNonNegativeAmount(defaultBaseSalary)
+      !isValidDateInput(payPeriodEnd)
     ) {
       return res.status(400).json({
-        error: 'payPeriodStart, payPeriodEnd, and defaultBaseSalary are required.',
+        error: 'payPeriodStart and payPeriodEnd are required.',
       });
     }
 
-    if (!isNonNegativeAmount(bonuses) || !isNonNegativeAmount(deductions)) {
+    if (
+      (hasFallbackBaseSalary && !isNonNegativeAmount(fallbackBaseSalary)) ||
+      !isNonNegativeAmount(bonuses) ||
+      !isNonNegativeAmount(deductions)
+    ) {
       return res.status(400).json({
         error: 'Payroll amounts cannot be negative.',
       });
@@ -2199,7 +2496,7 @@ app.post(
     }
 
     try {
-      const recordsGenerated = await withTenant(tenantId, async (client) => {
+      const payrollRunResult = await withTenant(tenantId, async (client) => {
         const tenantResult = await client.query<{ default_currency: string | null }>(
           `
             SELECT default_currency
@@ -2209,69 +2506,129 @@ app.post(
           `,
           [tenantId],
         );
-        const currency = tenantResult.rows[0]?.default_currency || 'USD';
-        const netPay = defaultBaseSalary + bonuses - deductions;
-
-        const payrollResult = await client.query(
+        const tenantCurrency = tenantResult.rows[0]?.default_currency || 'USD';
+        const employeeResult = await client.query<{
+          id: string;
+          email: string;
+          base_amount: string | null;
+          currency: string | null;
+          pay_type: CompensationPayType | null;
+          compensation_profile_id: string | null;
+        }>(
           `
-            INSERT INTO payroll_records (
-              tenant_id,
-              employee_id,
-              pay_period_start,
-              pay_period_end,
-              base_salary,
-              bonuses,
-              deductions,
-              net_pay,
-              currency,
-              status,
-              generated_by,
-              generated_at,
-              updated_at
-            )
             SELECT
-              employees.tenant_id,
               employees.id,
-              $2::date,
-              $3::date,
-              $4::numeric,
-              $5::numeric,
-              $6::numeric,
-              $7::numeric,
-              $8::varchar,
-              'draft',
-              $9::uuid,
-              NOW(),
-              NOW()
+              employees.email,
+              active_profiles.base_amount,
+              active_profiles.currency,
+              active_profiles.pay_type,
+              active_profiles.id AS compensation_profile_id
             FROM employees
+            LEFT JOIN LATERAL (
+              SELECT id, base_amount, currency, pay_type
+              FROM employee_compensation_profiles
+              WHERE tenant_id = employees.tenant_id
+                AND employee_id = employees.id
+                AND is_active = true
+                AND effective_from <= $2::date
+                AND (effective_to IS NULL OR effective_to >= $2::date)
+              ORDER BY effective_from DESC, created_at DESC
+              LIMIT 1
+            ) active_profiles ON true
             WHERE employees.tenant_id = $1
-            ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end)
-            DO UPDATE SET
-              base_salary = EXCLUDED.base_salary,
-              bonuses = EXCLUDED.bonuses,
-              deductions = EXCLUDED.deductions,
-              net_pay = EXCLUDED.net_pay,
-              currency = EXCLUDED.currency,
-              status = 'draft',
-              generated_by = EXCLUDED.generated_by,
-              generated_at = NOW(),
-              updated_at = NOW()
-            RETURNING id
           `,
           [
             tenantId,
             payPeriodStart,
-            payPeriodEnd,
-            defaultBaseSalary,
-            bonuses,
-            deductions,
-            netPay,
-            currency,
-            actorEmployeeId,
           ],
         );
 
-        const generatedCount = payrollResult.rowCount || 0;
+        const skippedEmployees: Array<{ employeeId: string; email: string; reason: string }> = [];
+        let generatedCount = 0;
+        let fallbackUsed = false;
+
+        for (const employee of employeeResult.rows) {
+          const profileBaseAmount = employee.base_amount === null ? null : Number(employee.base_amount);
+          const usesProfile = profileBaseAmount !== null && Number.isFinite(profileBaseAmount);
+          const baseSalary = usesProfile ? profileBaseAmount : fallbackBaseSalary;
+
+          if (baseSalary === null || !Number.isFinite(baseSalary)) {
+            skippedEmployees.push({
+              employeeId: employee.id,
+              email: employee.email,
+              reason: 'Missing active compensation profile and no fallback base salary was provided.',
+            });
+            continue;
+          }
+
+          const payrollCurrency = usesProfile ? (employee.currency || tenantCurrency) : tenantCurrency;
+          const netPay = baseSalary + bonuses - deductions;
+
+          if (!usesProfile) {
+            fallbackUsed = true;
+          }
+
+          const payrollResult = await client.query(
+            `
+              INSERT INTO payroll_records (
+                tenant_id,
+                employee_id,
+                pay_period_start,
+                pay_period_end,
+                base_salary,
+                bonuses,
+                deductions,
+                net_pay,
+                currency,
+                status,
+                generated_by,
+                generated_at,
+                updated_at
+              )
+              VALUES (
+                $1,
+                $2,
+                $3::date,
+                $4::date,
+                $5::numeric,
+                $6::numeric,
+                $7::numeric,
+                $8::numeric,
+                $9::varchar,
+                'draft',
+                $10::uuid,
+                NOW(),
+                NOW()
+              )
+              ON CONFLICT (tenant_id, employee_id, pay_period_start, pay_period_end)
+              DO UPDATE SET
+                base_salary = EXCLUDED.base_salary,
+                bonuses = EXCLUDED.bonuses,
+                deductions = EXCLUDED.deductions,
+                net_pay = EXCLUDED.net_pay,
+                currency = EXCLUDED.currency,
+                status = 'draft',
+                generated_by = EXCLUDED.generated_by,
+                generated_at = NOW(),
+                updated_at = NOW()
+              RETURNING id
+            `,
+            [
+              tenantId,
+              employee.id,
+              payPeriodStart,
+              payPeriodEnd,
+              baseSalary,
+              bonuses,
+              deductions,
+              netPay,
+              payrollCurrency,
+              actorEmployeeId,
+            ],
+          );
+
+          generatedCount += payrollResult.rowCount || 0;
+        }
 
         await client.query(
           `
@@ -2294,21 +2651,24 @@ app.post(
             JSON.stringify({
               payPeriodStart,
               payPeriodEnd,
-              defaultBaseSalary,
+              fallbackDefaultBaseSalary: hasFallbackBaseSalary ? fallbackBaseSalary : null,
               bonuses,
               deductions,
               recordsGenerated: generatedCount,
+              skippedEmployeesCount: skippedEmployees.length,
+              fallbackUsed,
             }),
           ],
         );
 
-        return generatedCount;
+        return { recordsGenerated: generatedCount, skippedEmployees };
       });
 
       res.json({
         success: true,
         message: 'Payroll run generated successfully.',
-        recordsGenerated,
+        recordsGenerated: payrollRunResult.recordsGenerated,
+        skippedEmployees: payrollRunResult.skippedEmployees,
       });
     } catch (error) {
       console.error('[Payroll] Failed to run payroll:', error);

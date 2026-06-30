@@ -407,7 +407,72 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 9. Grievances
+-- 9. Employee Compensation Profiles
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS employee_compensation_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    pay_type VARCHAR(30) NOT NULL DEFAULT 'monthly',
+    base_amount NUMERIC(12,2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+
+    effective_from DATE NOT NULL DEFAULT CURRENT_DATE,
+    effective_to DATE,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+
+    created_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT employee_compensation_profiles_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT employee_compensation_profiles_base_amount_chk
+        CHECK (base_amount >= 0),
+
+    CONSTRAINT employee_compensation_profiles_pay_type_chk
+        CHECK (pay_type IN ('monthly', 'hourly', 'weekly', 'annual')),
+
+    CONSTRAINT employee_compensation_profiles_date_order_chk
+        CHECK (effective_to IS NULL OR effective_to >= effective_from)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS employee_compensation_profiles_one_active_idx
+ON employee_compensation_profiles(tenant_id, employee_id)
+WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS employee_compensation_profiles_tenant_employee_active_idx
+ON employee_compensation_profiles(tenant_id, employee_id, is_active);
+
+CREATE INDEX IF NOT EXISTS employee_compensation_profiles_tenant_effective_idx
+ON employee_compensation_profiles(tenant_id, effective_from DESC);
+
+CREATE INDEX IF NOT EXISTS employee_compensation_profiles_tenant_pay_type_idx
+ON employee_compensation_profiles(tenant_id, pay_type);
+
+ALTER TABLE employee_compensation_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS employee_compensation_profiles_tenant_isolation ON employee_compensation_profiles;
+
+CREATE POLICY employee_compensation_profiles_tenant_isolation
+ON employee_compensation_profiles
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 10. Grievances
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS grievances (
@@ -471,7 +536,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 10. Company Feed
+-- 11. Company Feed
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS company_feed_posts (
@@ -603,7 +668,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 11. Attendance Daily Summaries
+-- 12. Attendance Daily Summaries
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
@@ -654,7 +719,7 @@ WITH CHECK (
 );
 
 -- =========================================================
--- 12. Audit Logs
+-- 13. Audit Logs
 -- =========================================================
 
 CREATE TABLE audit_logs (
