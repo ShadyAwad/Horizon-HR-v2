@@ -38,6 +38,8 @@ CREATE TABLE employees (
     role VARCHAR(50) NOT NULL DEFAULT 'employee'
         CHECK (role IN ('employee', 'manager', 'hr_admin')),
 
+    job_title VARCHAR(120),
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -51,6 +53,9 @@ ON employees(email, tenant_id);
 CREATE INDEX employees_tenant_manager_idx
 ON employees(tenant_id, manager_id);
 
+ALTER TABLE employees
+ADD COLUMN IF NOT EXISTS job_title VARCHAR(120);
+
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY employee_tenant_isolation
@@ -61,6 +66,204 @@ USING (
 WITH CHECK (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 );
+
+-- =========================================================
+-- 2a. Tenant Roles & Permission Foundations
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS tenant_roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+
+    system_key VARCHAR(50),
+    is_system BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT tenant_roles_name_not_empty CHECK (length(trim(name)) > 0),
+    CONSTRAINT tenant_roles_system_key_check CHECK (
+        system_key IS NULL OR system_key IN ('employee', 'manager', 'hr_admin')
+    ),
+    CONSTRAINT tenant_roles_unique_name_per_tenant UNIQUE (tenant_id, name)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tenant_roles_unique_system_key_idx
+ON tenant_roles(tenant_id, system_key)
+WHERE system_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS tenant_roles_tenant_active_idx
+ON tenant_roles(tenant_id, is_active);
+
+CREATE INDEX IF NOT EXISTS tenant_roles_tenant_system_key_idx
+ON tenant_roles(tenant_id, system_key);
+
+ALTER TABLE tenant_roles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_roles_tenant_isolation ON tenant_roles;
+
+CREATE POLICY tenant_roles_tenant_isolation
+ON tenant_roles
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS tenant_permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    permission_key VARCHAR(120) NOT NULL UNIQUE,
+    label VARCHAR(160) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS tenant_role_permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES tenant_roles(id) ON DELETE CASCADE,
+    permission_key VARCHAR(120) NOT NULL REFERENCES tenant_permissions(permission_key) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT tenant_role_permissions_unique_rule UNIQUE (tenant_id, role_id, permission_key)
+);
+
+CREATE INDEX IF NOT EXISTS tenant_role_permissions_tenant_role_idx
+ON tenant_role_permissions(tenant_id, role_id);
+
+CREATE INDEX IF NOT EXISTS tenant_role_permissions_tenant_permission_idx
+ON tenant_role_permissions(tenant_id, permission_key);
+
+ALTER TABLE tenant_role_permissions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_role_permissions_tenant_isolation ON tenant_role_permissions;
+
+CREATE POLICY tenant_role_permissions_tenant_isolation
+ON tenant_role_permissions
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS employee_role_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+    role_id UUID NOT NULL REFERENCES tenant_roles(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT employee_role_assignments_unique_rule UNIQUE (tenant_id, employee_id, role_id),
+
+    CONSTRAINT employee_role_assignments_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE
+);
+
+DROP INDEX IF EXISTS employee_role_assignments_one_primary_idx;
+
+CREATE INDEX IF NOT EXISTS employee_role_assignments_tenant_employee_idx
+ON employee_role_assignments(tenant_id, employee_id);
+
+CREATE INDEX IF NOT EXISTS employee_role_assignments_tenant_role_idx
+ON employee_role_assignments(tenant_id, role_id);
+
+ALTER TABLE employee_role_assignments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS employee_role_assignments_tenant_isolation ON employee_role_assignments;
+
+CREATE POLICY employee_role_assignments_tenant_isolation
+ON employee_role_assignments
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+INSERT INTO tenant_permissions (permission_key, label, description)
+VALUES
+    ('locations.read', 'Read locations', 'View company locations.'),
+    ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
+    ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
+    ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
+    ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
+    ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
+    ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
+    ('payroll.view_all', 'View all payroll', 'View tenant payroll records.'),
+    ('payroll.run', 'Run payroll', 'Generate tenant payroll.'),
+    ('payroll.approve', 'Approve payroll', 'Approve or cancel payroll records.'),
+    ('payroll.mark_paid', 'Mark payroll paid', 'Mark approved payroll as paid.'),
+    ('payroll.export_pdf', 'Export payroll PDF', 'Export payroll statements as PDF.'),
+    ('compensation.manage', 'Manage compensation', 'Create and update compensation profiles.'),
+    ('loans.view_self', 'View own loans', 'View personal employee loans.'),
+    ('loans.manage', 'Manage loans', 'Create and update employee loans.'),
+    ('grievances.create', 'Create grievances', 'File grievance cases.'),
+    ('grievances.review', 'Review grievances', 'Review tenant grievance cases.'),
+    ('feed.read', 'Read company feed', 'Read company feed posts.'),
+    ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
+    ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.')
+ON CONFLICT (permission_key) DO UPDATE SET
+    label = EXCLUDED.label,
+    description = EXCLUDED.description;
+
+INSERT INTO tenant_roles (tenant_id, name, description, system_key, is_system)
+SELECT tenants.id, role_seed.name, role_seed.description, role_seed.system_key, true
+FROM tenants
+CROSS JOIN (
+    VALUES
+        ('Employee', 'Default employee access.', 'employee'),
+        ('Manager', 'Default manager access.', 'manager'),
+        ('HR Admin', 'Default HR administrator access.', 'hr_admin')
+) AS role_seed(name, description, system_key)
+ON CONFLICT (tenant_id, name) DO NOTHING;
+
+INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+SELECT tenant_roles.tenant_id, tenant_roles.id, permission_seed.permission_key
+FROM tenant_roles
+JOIN (
+    VALUES
+        ('employee', 'locations.read'),
+        ('employee', 'attendance.clock'),
+        ('employee', 'leave.create'),
+        ('employee', 'payroll.view_self'),
+        ('employee', 'loans.view_self'),
+        ('employee', 'grievances.create'),
+        ('employee', 'feed.read'),
+        ('manager', 'locations.read'),
+        ('manager', 'attendance.view'),
+        ('manager', 'leave.review'),
+        ('manager', 'payroll.view_self'),
+        ('manager', 'loans.view_self'),
+        ('manager', 'grievances.review'),
+        ('manager', 'feed.read')
+) AS permission_seed(system_key, permission_key)
+    ON permission_seed.system_key = tenant_roles.system_key
+ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING;
+
+INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+SELECT tenant_roles.tenant_id, tenant_roles.id, tenant_permissions.permission_key
+FROM tenant_roles
+CROSS JOIN tenant_permissions
+WHERE tenant_roles.system_key = 'hr_admin'
+ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING;
+
+INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id)
+SELECT employees.tenant_id, employees.id, tenant_roles.id
+FROM employees
+INNER JOIN tenant_roles
+    ON tenant_roles.tenant_id = employees.tenant_id
+   AND tenant_roles.system_key = employees.role
+ON CONFLICT (tenant_id, employee_id) DO NOTHING;
 
 
 -- =========================================================

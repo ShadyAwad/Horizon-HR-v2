@@ -46,6 +46,20 @@
         line-height: 1.1;
       }
 
+      .brand-wordmark {
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+
+      .brand-wordmark .brand-s {
+        color: #34d399;
+        text-shadow: 0 0 10px rgba(52, 211, 153, 0.55);
+      }
+
+      .brand-wordmark .brand-rest {
+        color: #ecfdf5;
+      }
+
       p:last-child {
         margin: 14px 0 0;
         color: #a3a3a3;
@@ -57,7 +71,7 @@
   <body>
     <main>
       <p>Offline mode</p>
-      <h1>Stanza is offline</h1>
+      <h1><span class="brand-wordmark"><span class="brand-s">S</span><span class="brand-rest">tanza</span></span> is offline</h1>
       <p>Reconnect to continue using live HR workflows.</p>
     </main>
   </body>

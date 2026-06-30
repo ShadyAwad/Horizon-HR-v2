@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
+import { BrandWordmark } from '../components/BrandWordmark';
 import type { AuthUser } from '../App';
 
 type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
@@ -191,6 +192,44 @@ type FeedFormState = {
   visibility: FeedVisibilityValue;
 };
 
+type TenantPermission = {
+  permission_key: string;
+  label: string;
+  description?: string | null;
+};
+
+type TenantRole = {
+  id: string;
+  name: string;
+  description?: string | null;
+  system_key?: AuthUser['role'] | null;
+  is_system: boolean;
+  is_active: boolean;
+  permissions: string[];
+  assigned_employee_count?: number;
+};
+
+type RoleAssignmentEmployee = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: AuthUser['role'];
+  job_title?: string | null;
+  assigned_roles: Array<{
+    id: string;
+    name: string;
+    systemKey?: AuthUser['role'] | null;
+  }>;
+};
+
+type RoleFormState = {
+  name: string;
+  description: string;
+  permissionKeys: string[];
+};
+
+type TitleDrafts = Record<string, string>;
+
 const defaultSchedule: ShiftRow[] = [
   { day: 'Monday', date: '24', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
   { day: 'Tuesday', date: '25', shiftStart: '09:00', shiftEnd: '17:00', breakStart: '13:00', breakEnd: '13:30', type: 'Office HQ' },
@@ -245,6 +284,12 @@ const defaultFeedForm: FeedFormState = {
   contentText: '',
   status: 'published',
   visibility: 'all',
+};
+
+const defaultRoleForm: RoleFormState = {
+  name: '',
+  description: '',
+  permissionKeys: [],
 };
 
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
@@ -421,6 +466,16 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [feedForm, setFeedForm] = useState<FeedFormState>(defaultFeedForm);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationRecord[]>([]);
   const [locationsMessage, setLocationsMessage] = useState('');
+  const [tenantRoles, setTenantRoles] = useState<TenantRole[]>([]);
+  const [tenantPermissions, setTenantPermissions] = useState<TenantPermission[]>([]);
+  const [roleEmployees, setRoleEmployees] = useState<RoleAssignmentEmployee[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [roleUpdatingEmployeeId, setRoleUpdatingEmployeeId] = useState<string | null>(null);
+  const [roleMessage, setRoleMessage] = useState('');
+  const [roleMessageType, setRoleMessageType] = useState<'success' | 'error'>('success');
+  const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
+  const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
 
   const geo = useGeolocation();
 
@@ -431,6 +486,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
   const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
   const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
+  const canManageRoles = user.role === 'hr_admin' || Boolean(user.permissions?.includes('roles.manage'));
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window) || Notification.permission !== 'default') return;
@@ -602,6 +658,147 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     'x-tenant-id': user.tenantId,
   };
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
+
+  const loadRoleManagement = async () => {
+    if (!canManageRoles) return;
+
+    setRolesLoading(true);
+    setRoleMessage('');
+
+    try {
+      const [rolesResponse, permissionsResponse, employeesResponse] = await Promise.all([
+        fetch(apiUrl('/api/roles'), { headers: payrollHeaders }),
+        fetch(apiUrl('/api/permissions'), { headers: payrollHeaders }),
+        fetch(apiUrl('/api/employees/role-assignments'), { headers: payrollHeaders }),
+      ]);
+      const rolesData = await rolesResponse.json();
+      const permissionsData = await permissionsResponse.json();
+      const employeesData = await employeesResponse.json();
+
+      if (!rolesResponse.ok || !rolesData.success) {
+        throw new Error(rolesData.error || 'Unable to load roles.');
+      }
+      if (!permissionsResponse.ok || !permissionsData.success) {
+        throw new Error(permissionsData.error || 'Unable to load permissions.');
+      }
+      if (!employeesResponse.ok || !employeesData.success) {
+        throw new Error(employeesData.error || 'Unable to load role assignments.');
+      }
+
+      setTenantRoles(rolesData.roles || []);
+      setTenantPermissions(permissionsData.permissions || []);
+      setRoleEmployees(employeesData.employees || []);
+      setTitleDrafts((employeesData.employees || []).reduce((drafts: TitleDrafts, employee: RoleAssignmentEmployee) => ({
+        ...drafts,
+        [employee.id]: employee.job_title || '',
+      }), {}));
+    } catch (error) {
+      setRoleMessageType('error');
+      setRoleMessage(error instanceof Error ? error.message : 'Unable to load role management.');
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
+  const toggleRolePermission = (permissionKey: string) => {
+    setRoleForm((current) => ({
+      ...current,
+      permissionKeys: current.permissionKeys.includes(permissionKey)
+        ? current.permissionKeys.filter((key) => key !== permissionKey)
+        : [...current.permissionKeys, permissionKey],
+    }));
+  };
+
+  const createTenantRole = async () => {
+    if (roleSaving) return;
+
+    setRoleSaving(true);
+    setRoleMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/roles'), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify(roleForm),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setRoleForm(defaultRoleForm);
+        await loadRoleManagement();
+        setRoleMessageType('success');
+        setRoleMessage('Custom role created.');
+      } else {
+        setRoleMessageType('error');
+        setRoleMessage(data.error || 'Unable to create role.');
+      }
+    } catch {
+      setRoleMessageType('error');
+      setRoleMessage('Server disconnection. Unable to create role.');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const assignEmployeeRole = async (employeeId: string, roleId: string) => {
+    if (!roleId || roleUpdatingEmployeeId) return;
+
+    setRoleUpdatingEmployeeId(employeeId);
+    setRoleMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/employees/${employeeId}/roles`), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({ roleId }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadRoleManagement();
+        setRoleMessageType('success');
+        setRoleMessage('Role assigned.');
+      } else {
+        setRoleMessageType('error');
+        setRoleMessage(data.error || 'Unable to assign role.');
+      }
+    } catch {
+      setRoleMessageType('error');
+      setRoleMessage('Server disconnection. Unable to assign role.');
+    } finally {
+      setRoleUpdatingEmployeeId(null);
+    }
+  };
+
+  const saveEmployeeTitle = async (employeeId: string) => {
+    if (roleUpdatingEmployeeId) return;
+
+    setRoleUpdatingEmployeeId(employeeId);
+    setRoleMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/employees/${employeeId}/title`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({ jobTitle: titleDrafts[employeeId] || null }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        await loadRoleManagement();
+        setRoleMessageType('success');
+        setRoleMessage('Job title updated.');
+      } else {
+        setRoleMessageType('error');
+        setRoleMessage(data.error || 'Unable to update job title.');
+      }
+    } catch {
+      setRoleMessageType('error');
+      setRoleMessage('Server disconnection. Unable to update job title.');
+    } finally {
+      setRoleUpdatingEmployeeId(null);
+    }
+  };
 
   const loadPayrollRecords = async (clearMessage = true) => {
     setPayrollLoading(true);
@@ -957,6 +1154,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       loadEmployeeLoans();
     }
   }, [activeTab, showPayrollPanel, user.id, user.role, user.tenantId]);
+
+  useEffect(() => {
+    if (activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel && canManageRoles) {
+      loadRoleManagement();
+    }
+  }, [activeTab, showPayrollPanel, showGrievancesPanel, canManageRoles, user.id, user.tenantId]);
 
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
@@ -1381,7 +1584,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <header className="flex flex-col lg:flex-row lg:items-start justify-between mb-4 gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
-               {t('login.title')} <span className={cn("text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 font-mono text-xs px-2 py-0.5 border border-emerald-500/30 rounded uppercase hidden sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
+               <BrandWordmark /> <span className={cn("text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 font-mono text-xs px-2 py-0.5 border border-emerald-500/30 rounded uppercase hidden sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
             </h1>
 
             <div className="mt-3 flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-emerald-500/15 bg-white/80 p-3 shadow-sm backdrop-blur-xl dark:border-emerald-500/15 dark:bg-black/55 sm:flex-row sm:items-center">
@@ -2678,6 +2881,159 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               </label>
                             </div>
                          </div>
+
+                         {canManageRoles && (
+                           <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl md:col-span-2">
+                             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                               <div>
+                                 <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Roles & Permissions</p>
+                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Foundation controls for tenant roles, permission keys, and employee job titles.</p>
+                               </div>
+                               <button
+                                 type="button"
+                                 onClick={loadRoleManagement}
+                                 disabled={rolesLoading}
+                                 className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
+                               >
+                                 {rolesLoading ? 'Loading...' : 'Refresh'}
+                               </button>
+                             </div>
+
+                             {roleMessage && (
+                               <p className={cn(
+                                 "mb-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+                                 roleMessageType === 'success'
+                                   ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                   : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                               )}>
+                                 {roleMessage}
+                               </p>
+                             )}
+
+                             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+                               <div className="space-y-3">
+                                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                   {tenantRoles.map((role) => (
+                                     <div key={role.id} className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 text-xs dark:bg-black/25">
+                                       <div className="flex items-start justify-between gap-3">
+                                         <div>
+                                           <p className="font-bold text-neutral-800 dark:text-emerald-50">{role.name}</p>
+                                           <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">
+                                             {role.is_system ? 'System role' : 'Custom role'} • {role.assigned_employee_count || 0} assigned
+                                           </p>
+                                         </div>
+                                         <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                           {role.system_key ? formatRole(role.system_key) : 'Custom'}
+                                         </span>
+                                       </div>
+                                       <div className="mt-3 flex flex-wrap gap-1">
+                                         {role.permissions.map((permission) => (
+                                           <span key={permission} className="rounded border border-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-neutral-500 dark:text-emerald-100/45">
+                                             {permission}
+                                           </span>
+                                         ))}
+                                         {role.permissions.length === 0 && (
+                                           <span className="text-[10px] text-neutral-500 dark:text-emerald-100/40">No permissions yet.</span>
+                                         )}
+                                       </div>
+                                     </div>
+                                   ))}
+                                 </div>
+
+                                 <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+                                   <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Employee Assignments</p>
+                                   <div className="space-y-2">
+                                     {roleEmployees.map((employee) => (
+                                       <div key={employee.id} className="rounded border border-emerald-500/10 p-3">
+                                         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                           <div>
+                                             <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{employee.full_name}</p>
+                                             <p className="text-[10px] text-neutral-500 dark:text-emerald-100/45">
+                                               {employee.email} • {formatRole(employee.role)}
+                                             </p>
+                                             <p className="mt-1 text-[10px] text-emerald-700/70 dark:text-emerald-100/55">
+                                               {employee.assigned_roles.map((role) => role.name).join(', ') || 'No custom assignments'}
+                                             </p>
+                                           </div>
+                                           <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] lg:w-[420px]">
+                                             <select
+                                               defaultValue=""
+                                               onChange={(event) => assignEmployeeRole(employee.id, event.target.value)}
+                                               disabled={roleUpdatingEmployeeId === employee.id}
+                                               className="rounded border border-emerald-500/15 bg-white px-2 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                             >
+                                               <option value="">Assign role</option>
+                                               {tenantRoles.map((role) => (
+                                                 <option key={role.id} value={role.id}>{role.name}</option>
+                                               ))}
+                                             </select>
+                                             <button
+                                               type="button"
+                                               onClick={() => saveEmployeeTitle(employee.id)}
+                                               disabled={roleUpdatingEmployeeId === employee.id}
+                                               className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
+                                             >
+                                               Save Title
+                                             </button>
+                                             <input
+                                               value={titleDrafts[employee.id] || ''}
+                                               onChange={(event) => setTitleDrafts((current) => ({ ...current, [employee.id]: event.target.value }))}
+                                               placeholder="Job title"
+                                               className="rounded border border-emerald-500/15 bg-white px-2 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 sm:col-span-2"
+                                             />
+                                           </div>
+                                         </div>
+                                       </div>
+                                     ))}
+                                   </div>
+                                 </div>
+                               </div>
+
+                               <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+                                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Create Custom Role</p>
+                                 <div className="space-y-2">
+                                   <input
+                                     value={roleForm.name}
+                                     onChange={(event) => setRoleForm((current) => ({ ...current, name: event.target.value }))}
+                                     placeholder="Role name"
+                                     className="w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                   />
+                                   <textarea
+                                     value={roleForm.description}
+                                     onChange={(event) => setRoleForm((current) => ({ ...current, description: event.target.value }))}
+                                     placeholder="Description"
+                                     rows={3}
+                                     className="w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                   />
+                                   <div className="max-h-56 space-y-1 overflow-y-auto rounded border border-emerald-500/10 p-2">
+                                     {tenantPermissions.map((permission) => (
+                                       <label key={permission.permission_key} className="flex items-start gap-2 rounded px-2 py-1 text-xs text-neutral-600 hover:bg-emerald-500/5 dark:text-emerald-100/60">
+                                         <input
+                                           type="checkbox"
+                                           checked={roleForm.permissionKeys.includes(permission.permission_key)}
+                                           onChange={() => toggleRolePermission(permission.permission_key)}
+                                           className="mt-0.5 h-3.5 w-3.5 accent-emerald-500"
+                                         />
+                                         <span>
+                                           <span className="block font-bold text-neutral-700 dark:text-emerald-50">{permission.permission_key}</span>
+                                           <span className="block text-[10px] text-neutral-500 dark:text-emerald-100/40">{permission.label}</span>
+                                         </span>
+                                       </label>
+                                     ))}
+                                   </div>
+                                   <button
+                                     type="button"
+                                     onClick={createTenantRole}
+                                     disabled={roleSaving || !roleForm.name.trim()}
+                                     className="w-full rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                                   >
+                                     {roleSaving ? 'Creating...' : 'Create Role'}
+                                   </button>
+                                 </div>
+                               </div>
+                             </div>
+                           </div>
+                         )}
 
                          <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex flex-col justify-between">
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.leaveName')}</p>

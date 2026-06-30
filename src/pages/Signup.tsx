@@ -31,6 +31,11 @@ type SignupLocation = {
   isPrimary: boolean;
 };
 
+type SignupCustomRole = {
+  name: string;
+  description: string;
+};
+
 const locationTypeOptions: Array<{ value: SignupLocationType; label: string }> = [
   { value: 'headquarters', label: 'Headquarters' },
   { value: 'branch', label: 'Branch Office' },
@@ -365,6 +370,7 @@ const [formData, setFormData] = useState({
       isPrimary: true,
     },
   ]);
+  const [customRoles, setCustomRoles] = useState<SignupCustomRole[]>([]);
   const [selectedLocationIndex, setSelectedLocationIndex] = useState(0);
 
   const selectedLocation = locations[selectedLocationIndex] || locations[0];
@@ -416,6 +422,20 @@ const [formData, setFormData] = useState({
     })));
   };
 
+  const addCustomRole = () => {
+    setCustomRoles((current) => [...current, { name: '', description: '' }]);
+  };
+
+  const updateCustomRole = (index: number, updates: Partial<SignupCustomRole>) => {
+    setCustomRoles((current) => current.map((role, roleIndex) => (
+      roleIndex === index ? { ...role, ...updates } : role
+    )));
+  };
+
+  const removeCustomRole = (index: number) => {
+    setCustomRoles((current) => current.filter((_, roleIndex) => roleIndex !== index));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
@@ -445,6 +465,7 @@ const [formData, setFormData] = useState({
           lng: primaryLocation.lng,
           radius: primaryLocation.radius,
           locations,
+          customRoles: customRoles.filter((role) => role.name.trim()),
         })
       });
       const data = await res.json();
@@ -610,6 +631,53 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
 <p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">Enable payroll deductions and standard corporate loan requests.</p>
                     </div>
                   </label>
+                </div>
+
+                <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">Custom Roles</h3>
+                      <p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">Optional. Defaults are created automatically.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addCustomRole}
+                      className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
+                    >
+                      Add Role
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {customRoles.map((role, index) => (
+                      <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-emerald-500/10 p-3 md:grid-cols-[1fr_1fr_auto]">
+                        <input
+                          value={role.name}
+                          onChange={(event) => updateCustomRole(index, { name: event.target.value })}
+                          placeholder="Role name"
+                          className="rounded border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
+                        />
+                        <input
+                          value={role.description}
+                          onChange={(event) => updateCustomRole(index, { description: event.target.value })}
+                          placeholder="Description"
+                          className="rounded border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeCustomRole(index)}
+                          className="rounded border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {customRoles.length === 0 && (
+                      <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-emerald-700/50 dark:text-emerald-100/40">
+                        No custom roles defined. Employee, Manager, and HR Admin will be created.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )}

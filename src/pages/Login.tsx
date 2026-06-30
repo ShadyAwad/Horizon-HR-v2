@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
+import { BrandWordmark } from '../components/BrandWordmark';
 import type { AuthUser } from '../App';
 
 interface LoginProps {
@@ -156,7 +157,9 @@ className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55
         <div className="flex flex-col items-center mb-8">
 <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <Fingerprint className="w-8 h-8" />
           </div>
-<h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t('login.title')}</h1>
+<h1 className="text-2xl font-semibold tracking-tight">
+  <BrandWordmark />
+</h1>
 <p className="text-sm text-emerald-700/70 dark:text-emerald-100/55 mt-1">{t('login.subtitle')}</p>
         </div>
 

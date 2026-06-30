@@ -36,6 +36,12 @@ type CompanyLocationInput = {
   isActive?: boolean;
 };
 
+type CustomTenantRoleInput = {
+  name?: string;
+  description?: string;
+  permissionKeys?: string[];
+};
+
 type PayrollRunBody = {
   payPeriodStart?: string;
   payPeriodEnd?: string;
@@ -129,6 +135,9 @@ type AuthenticatedUser = {
   tenantId: string;
   email: string;
   role: EmployeeRole;
+  jobTitle?: string | null;
+  roleNames?: string[];
+  permissions?: string[];
 };
 
 type DemoTimeLog = {
@@ -559,6 +568,149 @@ function normalizeCompanyLocations(
   return { ok: true as const, locations: normalizedLocations };
 }
 
+function normalizeCustomTenantRoles(customRoles: CustomTenantRoleInput[] | undefined) {
+  if (!Array.isArray(customRoles)) return { ok: true as const, roles: [] };
+  if (customRoles.length > 20) {
+    return { ok: false as const, error: 'customRoles cannot include more than 20 roles.' };
+  }
+
+  const seenNames = new Set<string>();
+  const normalizedRoles: Array<{ name: string; description: string | null; permissionKeys: string[] }> = [];
+
+  for (const role of customRoles) {
+    const name = role.name?.trim() || '';
+    if (!name) continue;
+    if (name.length > 100) {
+      return { ok: false as const, error: 'Custom role names must be 100 characters or fewer.' };
+    }
+
+    const dedupeKey = name.toLowerCase();
+    if (seenNames.has(dedupeKey)) {
+      return { ok: false as const, error: 'Custom role names must be unique.' };
+    }
+    seenNames.add(dedupeKey);
+
+    const permissionKeys = Array.isArray(role.permissionKeys)
+      ? [...new Set(role.permissionKeys.filter((key) => typeof key === 'string' && key.trim()).map((key) => key.trim()))]
+      : [];
+
+    normalizedRoles.push({
+      name: name.slice(0, 100),
+      description: role.description?.trim() ? role.description.trim().slice(0, 500) : null,
+      permissionKeys,
+    });
+  }
+
+  return { ok: true as const, roles: normalizedRoles };
+}
+
+async function seedTenantRolesAndPermissions(
+  client: PoolClient,
+  tenantId: string,
+  customRoles: Array<{ name: string; description: string | null; permissionKeys: string[] }> = [],
+) {
+  await client.query(
+    `
+      INSERT INTO tenant_roles (tenant_id, name, description, system_key, is_system)
+      VALUES
+        ($1, 'Employee', 'Default employee access.', 'employee', true),
+        ($1, 'Manager', 'Default manager access.', 'manager', true),
+        ($1, 'HR Admin', 'Default HR administrator access.', 'hr_admin', true)
+      ON CONFLICT (tenant_id, name) DO NOTHING
+    `,
+    [tenantId],
+  );
+
+  await client.query(
+    `
+      INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+      SELECT tenant_roles.tenant_id, tenant_roles.id, permission_seed.permission_key
+      FROM tenant_roles
+      JOIN (
+        VALUES
+          ('employee', 'locations.read'),
+          ('employee', 'attendance.clock'),
+          ('employee', 'leave.create'),
+          ('employee', 'payroll.view_self'),
+          ('employee', 'loans.view_self'),
+          ('employee', 'grievances.create'),
+          ('employee', 'feed.read'),
+          ('manager', 'locations.read'),
+          ('manager', 'attendance.view'),
+          ('manager', 'leave.review'),
+          ('manager', 'payroll.view_self'),
+          ('manager', 'loans.view_self'),
+          ('manager', 'grievances.review'),
+          ('manager', 'feed.read')
+      ) AS permission_seed(system_key, permission_key)
+        ON permission_seed.system_key = tenant_roles.system_key
+      WHERE tenant_roles.tenant_id = $1
+      ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
+    `,
+    [tenantId],
+  );
+
+  await client.query(
+    `
+      INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+      SELECT tenant_roles.tenant_id, tenant_roles.id, tenant_permissions.permission_key
+      FROM tenant_roles
+      CROSS JOIN tenant_permissions
+      WHERE tenant_roles.tenant_id = $1
+        AND tenant_roles.system_key = 'hr_admin'
+      ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
+    `,
+    [tenantId],
+  );
+
+  const requestedCustomPermissionKeys = [...new Set(customRoles.flatMap((role) => role.permissionKeys))];
+  if (requestedCustomPermissionKeys.length > 0) {
+    const permissionsResult = await client.query<{ permission_key: string }>(
+      `
+        SELECT permission_key
+        FROM tenant_permissions
+        WHERE permission_key = ANY($1::varchar[])
+      `,
+      [requestedCustomPermissionKeys],
+    );
+    const validPermissionKeys = new Set(permissionsResult.rows.map((row) => row.permission_key));
+    const invalidPermissionKeys = requestedCustomPermissionKeys.filter((key) => !validPermissionKeys.has(key));
+
+    if (invalidPermissionKeys.length > 0) {
+      throw Object.assign(new Error(`Invalid custom role permission keys: ${invalidPermissionKeys.join(', ')}`), { statusCode: 400 });
+    }
+  }
+
+  for (const role of customRoles) {
+    const roleResult = await client.query<{ id: string }>(
+      `
+        INSERT INTO tenant_roles (tenant_id, name, description, is_system)
+        VALUES ($1, $2::varchar, $3::text, false)
+        ON CONFLICT (tenant_id, name)
+        DO UPDATE SET
+          description = EXCLUDED.description,
+          updated_at = NOW()
+        RETURNING id
+      `,
+      [tenantId, role.name, role.description],
+    );
+
+    const roleId = roleResult.rows[0]?.id;
+    if (roleId && role.permissionKeys.length > 0) {
+      await client.query(
+        `
+          INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+          SELECT $1, $2, tenant_permissions.permission_key
+          FROM tenant_permissions
+          WHERE tenant_permissions.permission_key = ANY($3::varchar[])
+          ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
+        `,
+        [tenantId, roleId, role.permissionKeys],
+      );
+    }
+  }
+}
+
 async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
   try {
     await task();
@@ -593,13 +745,32 @@ async function demoAuth(
     const result = await getDbPool().query<AuthenticatedUser>(
       `
         SELECT
-          id AS "employeeId",
-          tenant_id AS "tenantId",
-          email,
-          role
+          employees.id AS "employeeId",
+          employees.tenant_id AS "tenantId",
+          employees.email,
+          employees.role,
+          employees.job_title AS "jobTitle",
+          COALESCE(
+            array_remove(array_agg(DISTINCT assigned_role.name), NULL),
+            ARRAY[]::varchar[]
+          ) AS "roleNames",
+          COALESCE(
+            array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
+            ARRAY[]::varchar[]
+          ) AS permissions
         FROM employees
-        WHERE id = $1
-          AND tenant_id = $2
+        LEFT JOIN employee_role_assignments
+          ON employee_role_assignments.tenant_id = employees.tenant_id
+         AND employee_role_assignments.employee_id = employees.id
+        LEFT JOIN tenant_roles assigned_role
+          ON assigned_role.tenant_id = employees.tenant_id
+         AND assigned_role.id = employee_role_assignments.role_id
+        LEFT JOIN tenant_role_permissions
+          ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+         AND tenant_role_permissions.role_id = assigned_role.id
+        WHERE employees.id = $1
+          AND employees.tenant_id = $2
+        GROUP BY employees.id
         LIMIT 1
       `,
       [employeeId, tenantId],
@@ -624,6 +795,43 @@ async function demoAuth(
     req.authUser = user;
     next();
   } catch (error) {
+    if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
+      try {
+        const fallbackResult = await getDbPool().query<AuthenticatedUser>(
+          `
+            SELECT
+              id AS "employeeId",
+              tenant_id AS "tenantId",
+              email,
+              role,
+              NULL::varchar AS "jobTitle",
+              ARRAY[]::varchar[] AS "roleNames",
+              CASE
+                WHEN role = 'hr_admin' THEN ARRAY['roles.manage']::varchar[]
+                ELSE ARRAY[]::varchar[]
+              END AS permissions
+            FROM employees
+            WHERE id = $1
+              AND tenant_id = $2
+            LIMIT 1
+          `,
+          [employeeId, tenantId],
+        );
+
+        if (fallbackResult.rowCount === 0) {
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid authentication context.',
+          });
+        }
+
+        req.authUser = fallbackResult.rows[0];
+        return next();
+      } catch (fallbackError) {
+        console.error('[Auth] Fallback auth failed:', fallbackError);
+      }
+    }
+
     console.error('[Auth] Failed to resolve authenticated user:', error);
 
     res.status(500).json({
@@ -654,6 +862,30 @@ function requireRole(allowedRoles: EmployeeRole[]) {
     }
 
     next();
+  };
+}
+
+function requirePermission(permissionKey: string) {
+  return (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    if (!req.authUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required.',
+      });
+    }
+
+    if (req.authUser.role === 'hr_admin' || req.authUser.permissions?.includes(permissionKey)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      error: 'You do not have permission to perform this action.',
+    });
   };
 }
 // yet another helper function to verify password against stored hash
@@ -693,7 +925,7 @@ async function startServer() {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-employee-id, x-tenant-id');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     }
 
     if (req.method === 'OPTIONS') {
@@ -774,6 +1006,7 @@ async function startServer() {
       currency,
       capacity,
       allowsLoans,
+      customRoles,
       locations,
       lat,
       lng,
@@ -788,6 +1021,7 @@ async function startServer() {
       currency?: string;
       capacity?: string;
       allowsLoans?: boolean;
+      customRoles?: CustomTenantRoleInput[];
       locations?: CompanyLocationInput[];
       lat?: number | string;
       lng?: number | string;
@@ -803,6 +1037,7 @@ async function startServer() {
     const normalizedAdminRole = allowedAdminRoles.includes(adminRole as EmployeeRole)
       ? adminRole as EmployeeRole
       : 'hr_admin';
+    const normalizedCustomRoles = normalizeCustomTenantRoles(customRoles);
     const normalizedLocations = normalizeCompanyLocations(locations, {
       name: 'Headquarters',
       locationType: 'headquarters',
@@ -838,6 +1073,13 @@ async function startServer() {
       return res.status(400).json({
         success: false,
         error: normalizedLocations.error,
+      });
+    }
+
+    if (!normalizedCustomRoles.ok) {
+      return res.status(400).json({
+        success: false,
+        error: normalizedCustomRoles.error,
       });
     }
 
@@ -882,6 +1124,7 @@ async function startServer() {
       const tenant = tenantResult.rows[0];
 
       await client.query("SELECT set_config('app.current_tenant', $1, true)", [tenant.id]);
+      await seedTenantRolesAndPermissions(client, tenant.id, normalizedCustomRoles.roles);
 
       const passwordHash = generatePasswordHash(adminPassword);
 
@@ -913,6 +1156,22 @@ async function startServer() {
       );
 
       const employee = employeeResult.rows[0];
+
+      await client.query(
+        `
+          INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id)
+          SELECT $1, $2, tenant_roles.id
+          FROM tenant_roles
+          WHERE tenant_roles.tenant_id = $1
+            AND tenant_roles.system_key = $3
+          ON CONFLICT (tenant_id, employee_id)
+          DO UPDATE SET
+            role_id = EXCLUDED.role_id,
+            assigned_at = NOW()
+        `,
+        [tenant.id, employee.id, employee.role],
+      );
+
       const primaryLocation = normalizedLocations.locations.find((location) => location.isPrimary) || normalizedLocations.locations[0];
 
       await client.query(
@@ -1016,6 +1275,7 @@ async function startServer() {
             companyName: tenant.company_name,
             adminEmail: employee.email,
             adminRole: employee.role,
+            customRoles: normalizedCustomRoles.roles.map((role) => role.name),
             locations: createdLocations.map((location) => ({
               id: location.id,
               name: location.name,
@@ -1047,6 +1307,7 @@ async function startServer() {
           email: employee.email,
           name: employee.full_name,
           role: employee.role,
+          jobTitle: null,
           tenantId: employee.tenant_id,
           tenant: responseTenant,
         },
@@ -1066,6 +1327,13 @@ async function startServer() {
         return res.status(409).json({
           success: false,
           error: 'The tenant slug or admin email is already in use.',
+        });
+      }
+
+      if ((error as { statusCode?: number }).statusCode === 400) {
+        return res.status(400).json({
+          success: false,
+          error: (error as Error).message,
         });
       }
 
@@ -1126,6 +1394,9 @@ app.post('/api/auth/login', async (req, res) => {
       email: string;
       full_name: string;
       role: string;
+      job_title: string | null;
+      role_names: string[];
+      permissions: string[];
       password_hash: string | null;
       company_name: string;
     }>(
@@ -1136,12 +1407,31 @@ app.post('/api/auth/login', async (req, res) => {
           employees.email,
           employees.full_name,
           employees.role,
+          employees.job_title,
+          COALESCE(
+            array_remove(array_agg(DISTINCT assigned_role.name), NULL),
+            ARRAY[]::varchar[]
+          ) AS role_names,
+          COALESCE(
+            array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
+            ARRAY[]::varchar[]
+          ) AS permissions,
           employees.password_hash,
           tenants.company_name
         FROM employees
         INNER JOIN tenants
           ON tenants.id = employees.tenant_id
+        LEFT JOIN employee_role_assignments
+          ON employee_role_assignments.tenant_id = employees.tenant_id
+         AND employee_role_assignments.employee_id = employees.id
+        LEFT JOIN tenant_roles assigned_role
+          ON assigned_role.tenant_id = employees.tenant_id
+         AND assigned_role.id = employee_role_assignments.role_id
+        LEFT JOIN tenant_role_permissions
+          ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+         AND tenant_role_permissions.role_id = assigned_role.id
         WHERE LOWER(employees.email) = $1
+        GROUP BY employees.id, tenants.company_name
         LIMIT 1
       `,
       [normalizedEmail],
@@ -1177,11 +1467,73 @@ app.post('/api/auth/login', async (req, res) => {
         email: employee.email,
         name: employee.full_name,
         role: employee.role,
+        jobTitle: employee.job_title,
+        roleNames: employee.role_names,
+        permissions: employee.permissions,
         tenantId: employee.tenant_id,
         tenant: employee.company_name,
       },
     });
   } catch (error) {
+    if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
+      try {
+        const fallbackResult = await getDbPool().query<{
+          id: string;
+          tenant_id: string;
+          email: string;
+          full_name: string;
+          role: string;
+          password_hash: string | null;
+          company_name: string;
+        }>(
+          `
+            SELECT
+              employees.id,
+              employees.tenant_id,
+              employees.email,
+              employees.full_name,
+              employees.role,
+              employees.password_hash,
+              tenants.company_name
+            FROM employees
+            INNER JOIN tenants
+              ON tenants.id = employees.tenant_id
+            WHERE LOWER(employees.email) = $1
+            LIMIT 1
+          `,
+          [normalizedEmail],
+        );
+
+        if (fallbackResult.rowCount === 0 || !verifyPassword(password, fallbackResult.rows[0].password_hash)) {
+          recordFailedLogin(loginRateLimitKey);
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid biometric pattern or credentials',
+          });
+        }
+
+        const fallbackEmployee = fallbackResult.rows[0];
+        clearFailedLogins(loginRateLimitKey);
+
+        return res.json({
+          success: true,
+          user: {
+            id: fallbackEmployee.id,
+            email: fallbackEmployee.email,
+            name: fallbackEmployee.full_name,
+            role: fallbackEmployee.role,
+            jobTitle: null,
+            roleNames: [],
+            permissions: fallbackEmployee.role === 'hr_admin' ? ['roles.manage'] : [],
+            tenantId: fallbackEmployee.tenant_id,
+            tenant: fallbackEmployee.company_name,
+          },
+        });
+      } catch (fallbackError) {
+        console.error('[Login] Fallback login failed:', fallbackError);
+      }
+    }
+
     console.error('[Login] Failed:', error);
 
     res.status(500).json({
@@ -1290,6 +1642,603 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
     });
   }
 });
+
+app.get(
+  '/api/roles',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for tenant roles' });
+    }
+
+    try {
+      const roles = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              tenant_roles.id,
+              tenant_roles.name,
+              tenant_roles.description,
+              tenant_roles.system_key,
+              tenant_roles.is_system,
+              tenant_roles.is_active,
+              tenant_roles.created_at,
+              tenant_roles.updated_at,
+              COALESCE(
+                array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key ORDER BY tenant_role_permissions.permission_key), NULL),
+                ARRAY[]::varchar[]
+              ) AS permissions,
+              COUNT(DISTINCT employee_role_assignments.employee_id)::int AS assigned_employee_count
+            FROM tenant_roles
+            LEFT JOIN tenant_role_permissions
+              ON tenant_role_permissions.tenant_id = tenant_roles.tenant_id
+             AND tenant_role_permissions.role_id = tenant_roles.id
+            LEFT JOIN employee_role_assignments
+              ON employee_role_assignments.tenant_id = tenant_roles.tenant_id
+             AND employee_role_assignments.role_id = tenant_roles.id
+            WHERE tenant_roles.tenant_id = $1
+            GROUP BY tenant_roles.id
+            ORDER BY tenant_roles.is_system DESC, tenant_roles.name ASC
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, roles });
+    } catch (error) {
+      console.error('[Roles] Failed to load tenant roles:', error);
+      res.status(500).json({ success: false, error: 'Unable to load tenant roles' });
+    }
+  },
+);
+
+app.get(
+  '/api/permissions',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (_req, res) => {
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for permissions' });
+    }
+
+    try {
+      const result = await getDbPool().query(
+        `
+          SELECT permission_key, label, description
+          FROM tenant_permissions
+          ORDER BY permission_key ASC
+        `,
+      );
+
+      res.json({ success: true, permissions: result.rows });
+    } catch (error) {
+      console.error('[Roles] Failed to load permissions:', error);
+      res.status(500).json({ success: false, error: 'Unable to load permissions' });
+    }
+  },
+);
+
+app.post(
+  '/api/roles',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { name, description, permissionKeys = [] } = req.body as {
+      name?: string;
+      description?: string;
+      permissionKeys?: string[];
+    };
+    const normalizedName = name?.trim() || '';
+    const normalizedDescription = description?.trim() || null;
+    const normalizedPermissionKeys = [...new Set(Array.isArray(permissionKeys) ? permissionKeys : [])];
+
+    if (!normalizedName || normalizedName.length > 100) {
+      return res.status(400).json({ success: false, error: 'name is required and must be 100 characters or fewer.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for tenant roles' });
+    }
+
+    try {
+      const role = await withTenant(tenantId, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const permissionsResult = await client.query<{ permission_key: string }>(
+            `
+              SELECT permission_key
+              FROM tenant_permissions
+              WHERE permission_key = ANY($1::varchar[])
+            `,
+            [normalizedPermissionKeys],
+          );
+          const validPermissionKeys = permissionsResult.rows.map((row) => row.permission_key);
+
+          if (validPermissionKeys.length !== normalizedPermissionKeys.length) {
+            throw Object.assign(new Error('One or more permission keys are invalid.'), { statusCode: 400 });
+          }
+
+          const roleResult = await client.query(
+            `
+              INSERT INTO tenant_roles (tenant_id, name, description, is_system)
+              VALUES ($1, $2::varchar, $3::text, false)
+              RETURNING id, name, description, system_key, is_system, is_active, created_at, updated_at
+            `,
+            [tenantId, normalizedName, normalizedDescription],
+          );
+
+          const createdRole = roleResult.rows[0];
+
+          if (validPermissionKeys.length > 0) {
+            await client.query(
+              `
+                INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+                SELECT $1, $2, tenant_permissions.permission_key
+                FROM tenant_permissions
+                WHERE tenant_permissions.permission_key = ANY($3::varchar[])
+                ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
+              `,
+              [tenantId, createdRole.id, validPermissionKeys],
+            );
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              actorEmployeeId,
+              'tenant_role_created',
+              'tenant_role',
+              createdRole.id,
+              JSON.stringify({ name: normalizedName, permissionKeys: validPermissionKeys }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return { ...createdRole, permissions: validPermissionKeys };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      res.status(201).json({ success: true, role });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 400) {
+        return res.status(400).json({ success: false, error: (error as Error).message });
+      }
+      if ((error as { code?: string }).code === '23505') {
+        return res.status(409).json({ success: false, error: 'A role with this name already exists.' });
+      }
+
+      console.error('[Roles] Failed to create role:', error);
+      res.status(500).json({ success: false, error: 'Unable to create role' });
+    }
+  },
+);
+
+app.put(
+  '/api/roles/:id/permissions',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { id } = req.params;
+    const { permissionKeys = [] } = req.body as { permissionKeys?: string[] };
+    const normalizedPermissionKeys = [...new Set(Array.isArray(permissionKeys) ? permissionKeys : [])];
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for tenant roles' });
+    }
+
+    try {
+      const role = await withTenant(tenantId, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const roleResult = await client.query<{ id: string; name: string; is_system: boolean }>(
+            `
+              SELECT id, name, is_system
+              FROM tenant_roles
+              WHERE tenant_id = $1
+                AND id = $2
+              LIMIT 1
+            `,
+            [tenantId, id],
+          );
+          const tenantRole = roleResult.rows[0];
+          if (!tenantRole) return null;
+          if (tenantRole.is_system) {
+            throw Object.assign(new Error('System roles cannot be edited in this foundation version.'), { statusCode: 400 });
+          }
+
+          const permissionsResult = await client.query<{ permission_key: string }>(
+            `
+              SELECT permission_key
+              FROM tenant_permissions
+              WHERE permission_key = ANY($1::varchar[])
+            `,
+            [normalizedPermissionKeys],
+          );
+          const validPermissionKeys = permissionsResult.rows.map((row) => row.permission_key);
+          if (validPermissionKeys.length !== normalizedPermissionKeys.length) {
+            throw Object.assign(new Error('One or more permission keys are invalid.'), { statusCode: 400 });
+          }
+
+          await client.query(
+            `
+              DELETE FROM tenant_role_permissions
+              WHERE tenant_id = $1
+                AND role_id = $2
+            `,
+            [tenantId, id],
+          );
+
+          if (validPermissionKeys.length > 0) {
+            await client.query(
+              `
+                INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+                SELECT $1, $2, tenant_permissions.permission_key
+                FROM tenant_permissions
+                WHERE tenant_permissions.permission_key = ANY($3::varchar[])
+              `,
+              [tenantId, id, validPermissionKeys],
+            );
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              actorEmployeeId,
+              'tenant_role_permissions_updated',
+              'tenant_role',
+              id,
+              JSON.stringify({ permissionKeys: validPermissionKeys }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return { ...tenantRole, permissions: validPermissionKeys };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      if (!role) {
+        return res.status(404).json({ success: false, error: 'Tenant role not found.' });
+      }
+
+      res.json({ success: true, role });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 400) {
+        return res.status(400).json({ success: false, error: (error as Error).message });
+      }
+
+      console.error('[Roles] Failed to update role permissions:', error);
+      res.status(500).json({ success: false, error: 'Unable to update role permissions' });
+    }
+  },
+);
+
+app.get(
+  '/api/employees/role-assignments',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for role assignments' });
+    }
+
+    try {
+      const employees = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              employees.id,
+              employees.email,
+              employees.full_name,
+              employees.role,
+              employees.job_title,
+              COALESCE(
+                json_agg(
+                  DISTINCT jsonb_build_object(
+                    'id', tenant_roles.id,
+                    'name', tenant_roles.name,
+                    'systemKey', tenant_roles.system_key
+                  )
+                ) FILTER (WHERE tenant_roles.id IS NOT NULL),
+                '[]'::json
+              ) AS assigned_roles
+            FROM employees
+            LEFT JOIN employee_role_assignments
+              ON employee_role_assignments.tenant_id = employees.tenant_id
+             AND employee_role_assignments.employee_id = employees.id
+            LEFT JOIN tenant_roles
+              ON tenant_roles.tenant_id = employees.tenant_id
+             AND tenant_roles.id = employee_role_assignments.role_id
+            WHERE employees.tenant_id = $1
+            GROUP BY employees.id
+            ORDER BY employees.full_name ASC, employees.email ASC
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, employees });
+    } catch (error) {
+      console.error('[Roles] Failed to load role assignments:', error);
+      res.status(500).json({ success: false, error: 'Unable to load role assignments' });
+    }
+  },
+);
+
+app.post(
+  '/api/employees/:employeeId/roles',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { employeeId } = req.params;
+    const { roleId } = req.body as { roleId?: string };
+
+    if (!roleId) {
+      return res.status(400).json({ success: false, error: 'roleId is required.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for role assignments' });
+    }
+
+    try {
+      const assignment = await withTenant(tenantId, async (client) => {
+        const employeeResult = await client.query<{ id: string }>(
+          `
+            SELECT id
+            FROM employees
+            WHERE tenant_id = $1
+              AND id = $2
+            LIMIT 1
+          `,
+          [tenantId, employeeId],
+        );
+        if (!employeeResult.rows[0]) return null;
+
+        const roleResult = await client.query<{ id: string; name: string }>(
+          `
+            SELECT id, name
+            FROM tenant_roles
+            WHERE tenant_id = $1
+              AND id = $2
+              AND is_active = true
+            LIMIT 1
+          `,
+          [tenantId, roleId],
+        );
+        const tenantRole = roleResult.rows[0];
+        if (!tenantRole) {
+          throw Object.assign(new Error('Tenant role not found.'), { statusCode: 400 });
+        }
+
+        const insertResult = await client.query(
+          `
+            INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id, assigned_by)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (tenant_id, employee_id, role_id)
+            DO UPDATE SET
+              assigned_by = EXCLUDED.assigned_by,
+              assigned_at = NOW()
+            RETURNING id, employee_id, role_id, assigned_at
+          `,
+          [tenantId, employeeId, roleId, actorEmployeeId],
+        );
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_role_assigned',
+            'employee',
+            employeeId,
+            JSON.stringify({ roleId, roleName: tenantRole.name }),
+          ],
+        );
+
+        return insertResult.rows[0];
+      });
+
+      if (!assignment) {
+        return res.status(404).json({ success: false, error: 'Employee not found.' });
+      }
+
+      res.json({ success: true, assignment });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 400) {
+        return res.status(400).json({ success: false, error: (error as Error).message });
+      }
+
+      console.error('[Roles] Failed to assign role:', error);
+      res.status(500).json({ success: false, error: 'Unable to assign role' });
+    }
+  },
+);
+
+app.delete(
+  '/api/employees/:employeeId/roles/:roleId',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { employeeId, roleId } = req.params;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for role assignments' });
+    }
+
+    try {
+      const removed = await withTenant(tenantId, async (client) => {
+        const countResult = await client.query<{ assignment_count: string; fallback_role: EmployeeRole | null }>(
+          `
+            SELECT
+              COUNT(employee_role_assignments.id) AS assignment_count,
+              employees.role AS fallback_role
+            FROM employees
+            LEFT JOIN employee_role_assignments
+              ON employee_role_assignments.tenant_id = employees.tenant_id
+             AND employee_role_assignments.employee_id = employees.id
+            WHERE employees.tenant_id = $1
+              AND employees.id = $2
+            GROUP BY employees.id
+          `,
+          [tenantId, employeeId],
+        );
+        const assignmentState = countResult.rows[0];
+        if (!assignmentState) return null;
+
+        if (Number(assignmentState.assignment_count) <= 1 && !assignmentState.fallback_role) {
+          throw Object.assign(new Error('Cannot remove the final role assignment for this employee.'), { statusCode: 400 });
+        }
+
+        const deleteResult = await client.query<{ id: string }>(
+          `
+            DELETE FROM employee_role_assignments
+            WHERE tenant_id = $1
+              AND employee_id = $2
+              AND role_id = $3
+            RETURNING id
+          `,
+          [tenantId, employeeId, roleId],
+        );
+
+        if (!deleteResult.rows[0]) return null;
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_role_removed',
+            'employee',
+            employeeId,
+            JSON.stringify({ roleId }),
+          ],
+        );
+
+        return deleteResult.rows[0];
+      });
+
+      if (!removed) {
+        return res.status(404).json({ success: false, error: 'Role assignment not found.' });
+      }
+
+      res.json({ success: true, removed });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 400) {
+        return res.status(400).json({ success: false, error: (error as Error).message });
+      }
+
+      console.error('[Roles] Failed to remove role:', error);
+      res.status(500).json({ success: false, error: 'Unable to remove role' });
+    }
+  },
+);
+
+app.patch(
+  '/api/employees/:employeeId/title',
+  demoAuth,
+  requirePermission('roles.manage'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const { employeeId } = req.params;
+    const { jobTitle } = req.body as { jobTitle?: string | null };
+    const normalizedJobTitle = jobTitle?.trim() || null;
+
+    if (normalizedJobTitle && normalizedJobTitle.length > 120) {
+      return res.status(400).json({ success: false, error: 'jobTitle must be 120 characters or fewer.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for employees' });
+    }
+
+    try {
+      const employee = await withTenant(tenantId, async (client) => {
+        const updateResult = await client.query(
+          `
+            UPDATE employees
+            SET job_title = $3::varchar,
+                updated_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+            RETURNING id, email, full_name, role, job_title
+          `,
+          [tenantId, employeeId, normalizedJobTitle],
+        );
+
+        const updatedEmployee = updateResult.rows[0];
+        if (!updatedEmployee) return null;
+
+        await client.query(
+          `
+            INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          `,
+          [
+            tenantId,
+            actorEmployeeId,
+            'employee_title_updated',
+            'employee',
+            employeeId,
+            JSON.stringify({ jobTitle: normalizedJobTitle }),
+          ],
+        );
+
+        return updatedEmployee;
+      });
+
+      if (!employee) {
+        return res.status(404).json({ success: false, error: 'Employee not found.' });
+      }
+
+      res.json({ success: true, employee });
+    } catch (error) {
+      console.error('[Roles] Failed to update employee title:', error);
+      res.status(500).json({ success: false, error: 'Unable to update employee title' });
+    }
+  },
+);
 
 app.post('/api/auth/reset-password', async (req, res) => {
   const { email, resetCode, newPassword } = req.body as {
