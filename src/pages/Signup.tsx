@@ -492,6 +492,7 @@ const InteractiveMap = ({
                 <button
                   key={style.id}
                   type="button"
+                  aria-label={`Switch map style to ${style.label}`}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -511,6 +512,7 @@ const InteractiveMap = ({
 
             <button
               type="button"
+              aria-label="Use my current location"
               onClick={useCurrentLocation}
               disabled={locationStatus === 'locating'}
               className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
@@ -583,6 +585,7 @@ const InteractiveMap = ({
             {pendingLocation && locationStatus === 'low_accuracy' && (
               <button
                 type="button"
+                aria-label="Use approximate detected location"
                 onClick={useApproximateLocation}
                 className="rounded-lg border border-amber-300/30 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 transition hover:border-amber-200/60"
               >
@@ -640,6 +643,7 @@ const InteractiveMap = ({
 
         <input
           type="range"
+          aria-label="Geofence radius in meters"
           min="25"
           max="5000"
           step="25"
@@ -656,6 +660,7 @@ const InteractiveMap = ({
 
       <button
         type="button"
+        aria-label={manualMode ? 'Hide manual coordinate fields' : 'Enter coordinates manually'}
         onClick={() => setManualMode((prev) => !prev)}
         className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/45 transition hover:text-emerald-400"
       >
@@ -695,6 +700,7 @@ const InteractiveMap = ({
               </label>
               <input
                 type="number"
+                aria-label="Manual latitude"
                 step="0.000001"
                 min="-90"
                 max="90"
@@ -711,6 +717,7 @@ const InteractiveMap = ({
               </label>
               <input
                 type="number"
+                aria-label="Manual longitude"
                 step="0.000001"
                 min="-180"
                 max="180"
@@ -727,6 +734,7 @@ const InteractiveMap = ({
               </label>
               <input
                 type="number"
+                aria-label="Manual geofence radius"
                 min="25"
                 max="5000"
                 value={radius}
@@ -933,7 +941,7 @@ const [formData, setFormData] = useState<{
   };
 
   return (
-<div className="relative min-h-screen w-full overflow-y-auto bg-slate-50 px-4 py-6 font-sans transition-colors duration-300 dark:bg-[#020403] md:px-6 md:py-8">      
+<div className="relative min-h-screen w-full overflow-y-auto bg-[#f7fbf8] px-4 py-6 font-sans transition-colors duration-300 dark:bg-[#020604] md:px-6 md:py-8">      
       <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => undefined} />
 
       <motion.div 
@@ -969,14 +977,14 @@ className={cn(
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.companyName')}</label>
-                    <input required name="companyName" value={formData.companyName} onChange={handleChange} className={cn(
+                    <input required aria-label={t('signup.companyName')} name="companyName" value={formData.companyName} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.tenantSlug')}</label>
-                    <input required name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
+                    <input required aria-label={t('signup.tenantSlug')} name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
@@ -986,21 +994,21 @@ className={cn(
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">Admin Full Name</label>
-                    <input required name="adminFullName" value={formData.adminFullName} onChange={handleChange} className={cn(
+                    <input required aria-label="Admin full name" name="adminFullName" value={formData.adminFullName} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminEmail')}</label>
-                    <input type="email" required name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
+                    <input type="email" required aria-label={t('signup.adminEmail')} name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
-                    <input type="password" required minLength={8} name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
+                    <input type="password" required minLength={8} aria-label={t('signup.adminPass')} name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
@@ -1014,6 +1022,7 @@ className={cn(
 
                   <select
                     required
+                    aria-label="Initial account role"
                     name="adminRole"
                     value={formData.adminRole}
                     onChange={handleChange}
@@ -1041,7 +1050,7 @@ className={cn(
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1 flex items-center gap-2"><Wallet className="w-4 h-4"/>{t('signup.currency')}</label>
-                    <select name="currency" value={formData.currency} onChange={handleChange} className={cn(
+                    <select name="currency" aria-label={t('signup.currency')} value={formData.currency} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 transition-all",
   isRtl && "text-right"
 )}>
@@ -1056,7 +1065,7 @@ className={cn(
                   
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.capacity')}</label>
-                    <select name="capacity" value={formData.capacity} onChange={handleChange} className={cn(
+                    <select name="capacity" aria-label={t('signup.capacity')} value={formData.capacity} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 transition-all",
   isRtl && "text-right"
 )}>
@@ -1071,7 +1080,7 @@ className={cn(
                 <div className="pt-4">
                   <label className="flex items-center gap-3 p-4 border border-emerald-500/15 rounded-xl bg-white/70 dark:bg-[#04110d]/60 cursor-pointer hover:border-emerald-500/50 transition-colors">
                     <div className="relative flex items-center justify-center">
-                      <input type="checkbox" name="allowsLoans" checked={formData.allowsLoans} onChange={handleChange} className="sr-only" />
+                      <input type="checkbox" aria-label={t('signup.loans')} name="allowsLoans" checked={formData.allowsLoans} onChange={handleChange} className="sr-only" />
                       <div className={cn("w-6 h-6 rounded border flex items-center justify-center transition-colors", formData.allowsLoans ? "bg-emerald-500 border-emerald-500" : "bg-transparent border-emerald-500/20 dark:border-emerald-500/20")}>
                         {formData.allowsLoans && <CheckCircle2 className="w-4 h-4 text-white" />}
                       </div>
@@ -1091,6 +1100,7 @@ className={cn(
                     </div>
                     <button
                       type="button"
+                      aria-label="Add custom role"
                       onClick={addCustomRole}
                       className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
                     >
@@ -1102,12 +1112,14 @@ className={cn(
                     {customRoles.map((role, index) => (
                       <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-emerald-500/10 p-3 md:grid-cols-[1fr_1fr_auto]">
                         <input
+                          aria-label={`Custom role ${index + 1} name`}
                           value={role.name}
                           onChange={(event) => updateCustomRole(index, { name: event.target.value })}
                           placeholder="Role name"
                           className="rounded border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
                         />
                         <input
+                          aria-label={`Custom role ${index + 1} description`}
                           value={role.description}
                           onChange={(event) => updateCustomRole(index, { description: event.target.value })}
                           placeholder="Description"
@@ -1115,6 +1127,7 @@ className={cn(
                         />
                         <button
                           type="button"
+                          aria-label={`Remove custom role ${index + 1}`}
                           onClick={() => removeCustomRole(index)}
                           className="rounded border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400"
                         >
@@ -1150,6 +1163,7 @@ className={cn(
                         </div>
                         <button
                           type="button"
+                          aria-label="Add company location"
                           onClick={addLocation}
                           className="rounded-lg border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
                         >
@@ -1162,6 +1176,7 @@ className={cn(
                           <button
                             key={`${location.name}-${index}`}
                             type="button"
+                            aria-label={`Edit location ${location.name || index + 1}`}
                             onClick={() => setSelectedLocationIndex(index)}
                             className={cn(
                               "w-full rounded-xl border p-3 text-left transition",
@@ -1191,6 +1206,7 @@ className={cn(
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Name</label>
                           <input
+                            aria-label="Location name"
                             value={selectedLocation.name}
                             onChange={(event) => updateLocation(selectedLocationIndex, { name: event.target.value })}
                             className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
@@ -1200,6 +1216,7 @@ className={cn(
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Type</label>
                           <select
+                            aria-label="Location type"
                             value={selectedLocation.locationType}
                             onChange={(event) => updateLocation(selectedLocationIndex, { locationType: event.target.value as SignupLocationType })}
                             className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
@@ -1213,6 +1230,7 @@ className={cn(
                         <div className="space-y-1 md:col-span-2">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Address Optional</label>
                           <input
+                            aria-label="Optional location address"
                             value={selectedLocation.address}
                             onChange={(event) => updateLocation(selectedLocationIndex, { address: event.target.value })}
                             placeholder="Street, city, country"
@@ -1223,6 +1241,7 @@ className={cn(
                         <label className="flex items-center gap-3 rounded-lg border border-emerald-500/15 bg-black/10 px-3 py-2 dark:bg-black/20">
                           <input
                             type="checkbox"
+                            aria-label="Set as primary location"
                             checked={selectedLocation.isPrimary}
                             onChange={() => setPrimaryLocation(selectedLocationIndex)}
                             className="h-4 w-4 accent-emerald-500"
@@ -1232,6 +1251,7 @@ className={cn(
 
                         <button
                           type="button"
+                          aria-label="Remove selected location"
                           onClick={() => removeLocation(selectedLocationIndex)}
                           disabled={locations.length === 1}
                           className="rounded-lg border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"

@@ -15,11 +15,15 @@ interface LoginProps {
 function FingerprintIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 12c0-5.5 4.5-10 10-10 3.4 0 6.4 1.7 8.2 4.3" />
-      <path d="M5 19.5c.7-1.4 1-3 1-4.5v-3a6 6 0 0 1 10.7-4" />
-      <path d="M9 22c.7-1.6 1-3.2 1-5v-5a2 2 0 0 1 4 0v1" />
-      <path d="M14 22c1.4-2 2-4.3 2-7v-1" />
-      <path d="M18 20c.7-1.7 1-3.6 1-5.5V12" />
+      <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" />
+      <path d="M14 13.12c0 2.38 0 6.38-1 8.88" />
+      <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" />
+      <path d="M2 12a10 10 0 0 1 18-6" />
+      <path d="M2 16h.01" />
+      <path d="M21.8 16c.2-2 .131-5.354 0-6" />
+      <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2" />
+      <path d="M8.65 22c.21-.66.45-1.32.57-2" />
+      <path d="M9 6.8a6 6 0 0 1 9 5.2v2" />
     </svg>
   );
 }
@@ -158,7 +162,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   }
 };
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.10),transparent_48%),#f8fafc] dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.10),transparent_48%),#020403] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
+<div className="relative min-h-screen w-full flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05),transparent_50%),#f7fbf8] dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.035),transparent_52%),#020604] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
       {showDecorativeCanvas && (
         <Suspense fallback={null}>
           <FingerprintCanvas 
@@ -228,6 +232,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
             <input 
               type="text" 
               required
+              aria-label={t('login.corporateId')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@stanza.com"
@@ -242,6 +247,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
   <input 
     type="password" 
     required
+    aria-label={t('login.biometricKey')}
     value={password}
     onChange={(e) => setPassword(e.target.value)}
     placeholder="••••••••"
@@ -336,6 +342,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               <div className="space-y-3">
                 <input
                   type="email"
+                  aria-label="Recovery email"
                   value={recoveryEmail}
                   onChange={(e) => setRecoveryEmail(e.target.value)}
                   placeholder={email || 'admin@stanza.com'}

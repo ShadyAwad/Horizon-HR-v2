@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
@@ -43,12 +43,22 @@ export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
 
+  useEffect(() => {
+    const titles = {
+      login: 'Login — Stanza',
+      signup: 'Register Workspace — Stanza',
+      authenticated: 'Dashboard — Stanza',
+    };
+
+    document.title = titles[authState];
+  }, [authState]);
+
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <div className="w-full min-h-screen bg-slate-50 dark:bg-[#020617] transition-colors duration-300">
+        <div className="w-full min-h-screen bg-[#020604] text-emerald-50 transition-colors duration-300">
          {authState === 'authenticated' ? (
-           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-xs font-bold uppercase tracking-widest text-emerald-300">Loading workspace...</div>}>
+           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#020604] text-xs font-bold uppercase tracking-widest text-emerald-200">Loading workspace...</div>}>
              <Dashboard
                user={authUser}
                onLogout={() => {
@@ -58,7 +68,7 @@ export default function App() {
              />
            </Suspense>
          ) : authState === 'signup' ? (
-           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-xs font-bold uppercase tracking-widest text-emerald-300">Loading signup...</div>}>
+           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#020604] text-xs font-bold uppercase tracking-widest text-emerald-200">Loading signup...</div>}>
              <Signup 
                onNavigateLogin={() => setAuthState('login')} 
                onSignupComplete={(user) => {

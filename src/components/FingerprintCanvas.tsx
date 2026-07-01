@@ -78,7 +78,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#020403' : '#f8fafc';
+      ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#020604' : '#f7fbf8';
       ctx.fillRect(0, 0, width, height);
 
       return () => {
@@ -103,7 +103,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       const cy = height / 2;
 
       // Solid background filling to optimize canvas operations
-      ctx.fillStyle = isDark ? '#020403' : '#f8fafc';
+      ctx.fillStyle = isDark ? '#020604' : '#f7fbf8';
       ctx.fillRect(0, 0, width, height);
 
       const maxRadius = Math.max(width, height) * 0.8;
@@ -159,14 +159,14 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
 let rVal = 16;
 let gVal = 185;
 let bVal = 129;
-let globalAlpha = 0.16 - (rIdx / ringsCount) * 0.11;
+let globalAlpha = 0.085 - (rIdx / ringsCount) * 0.06;
 
         if (isPulsing) {
           const distToPulse = Math.abs(ringBaseR - pulseRadius);
           
           if (distToPulse < pulseWidth) {
             const pulseFactor = 1.0 - (distToPulse / pulseWidth);
-            globalAlpha = globalAlpha + pulseFactor * 0.6; 
+            globalAlpha = globalAlpha + pulseFactor * 0.42; 
 
             if (currentPulseState === 'success') {
               rVal = Math.floor(rVal + pulseFactor * (16 - rVal));
@@ -181,7 +181,7 @@ let globalAlpha = 0.16 - (rIdx / ringsCount) * 0.11;
         }
 
         ctx.strokeStyle = `rgba(${rVal}, ${gVal}, ${bVal}, ${globalAlpha})`;
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.35;
         ctx.stroke();
       }
 

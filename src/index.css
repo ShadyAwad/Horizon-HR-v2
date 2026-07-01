@@ -7,7 +7,7 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
   /* Deep Emerald & Neutral Corporate Theme */
-  --color-horizon-dark: #020403;
+  --color-horizon-dark: #020604;
   --color-horizon-panel: #04110d;
   --color-horizon-emerald: #10b981; /* emerald-500 */
   --color-horizon-emerald-deep: #064e3b; /* emerald-900 */
@@ -16,21 +16,41 @@
 
 @layer base {
   :root {
-    --bg-primary: #f8fafc;
+    --bg-primary: #020604;
+    --text-primary: #e6fff5;
+    --panel-border: rgb(16 185 129 / 0.15);
+    accent-color: #10b981;
+    color-scheme: dark;
+  }
+
+  :root[data-theme="light"] {
+    --bg-primary: #f7fbf8;
     --text-primary: #171717;
-    --panel-border: #e2e8f0;
+    --panel-border: #d6e7dc;
+    color-scheme: light;
   }
   
   .dark {
-    --bg-primary: #020403;
-    --text-primary: #f8fafc;
+    --bg-primary: #020604;
+    --text-primary: #e6fff5;
     --panel-border: rgb(16 185 129 / 0.15);
+  }
+
+  html,
+  #root {
+    min-height: 100%;
+    background-color: #020604;
   }
 
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
     transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  ::selection {
+    background-color: rgb(16 185 129 / 0.35);
+    color: #ecfdf5;
   }
 
   /* RTL Support Enhancements */

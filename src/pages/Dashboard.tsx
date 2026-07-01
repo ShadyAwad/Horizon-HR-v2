@@ -1959,7 +1959,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
-  <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fafc_0%,#ecfdf5_45%,#f8fafc_100%)] dark:hidden" />
+  <div className="absolute inset-0 bg-[linear-gradient(180deg,#f7fbf8_0%,#ecfdf5_45%,#f7fbf8_100%)] dark:hidden" />
 
   {/* Dark mode base */}
   <div className="absolute inset-0 hidden dark:block bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_38%),linear-gradient(180deg,#020403_0%,#03100b_52%,#020403_100%)]" />
@@ -2041,7 +2041,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             "hover:border-emerald-300/30 hover:opacity-100",
             showControlCenter && "border-emerald-300/40 opacity-100"
           )} />
-          <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020617]" />
+          <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020604]" />
         </button>
         <nav className="flex md:flex-col gap-3 md:gap-4 w-full items-center justify-center md:justify-start">
           <button 

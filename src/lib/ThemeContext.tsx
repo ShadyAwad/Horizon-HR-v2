@@ -17,7 +17,7 @@ function getInitialTheme(): Theme {
   const savedTheme = window.localStorage.getItem('horizon-theme');
   if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
 
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  return 'dark';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

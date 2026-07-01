@@ -1,12 +1,15 @@
 {
   "name": "Stanza",
   "short_name": "Stanza",
-  "description": "Secure HR workflows for Stanza.",
+  "id": "/",
+  "description": "Modern workforce operations for attendance, geofencing, payroll, leave requests, grievances, and company communication.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#020403",
-  "theme_color": "#10b981",
+  "orientation": "any",
+  "background_color": "#020604",
+  "theme_color": "#020604",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/favicon.svg",

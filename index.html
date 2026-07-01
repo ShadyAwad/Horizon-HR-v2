@@ -3,10 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        min-height: 100%;
+        background: #020604;
+        color: #e6fff5;
+      }
+
+      body {
+        min-width: 320px;
+      }
+    </style>
+    <script>
+      try {
+        const theme = localStorage.getItem('horizon-theme');
+        if (theme === 'light') {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'light';
+        } else {
+          document.documentElement.classList.add('dark');
+          document.documentElement.dataset.theme = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      } catch {
+        document.documentElement.classList.add('dark');
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.style.colorScheme = 'dark';
+      }
+    </script>
+    <meta
+      name="description"
+      content="Stanza is a modern workforce operations platform for attendance, geofencing, payroll, leave requests, grievances, and company communication."
+    />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#020604" />
+    <link rel="canonical" href="/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#10b981" />
-    <title>Stanza</title>
+
+    <meta property="og:title" content="Stanza — Workforce Operations Platform" />
+    <meta
+      property="og:description"
+      content="Modern workforce operations for attendance, payroll, leave, grievances, and company communication."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/favicon.svg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Stanza — Workforce Operations Platform" />
+    <meta
+      name="twitter:description"
+      content="Modern workforce operations for attendance, payroll, leave, grievances, and company communication."
+    />
+    <meta name="twitter:image" content="/favicon.svg" />
+
+    <title>Stanza — Workforce Operations Platform</title>
   </head>
   <body>
     <div id="root"></div>
