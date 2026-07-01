@@ -2251,14 +2251,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </div>
                        </div>
                        
-                       <div className="relative z-10 w-full flex flex-col items-center justify-center px-4 py-6 sm:px-6 sm:py-8 bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl min-h-[360px] sm:min-h-[340px]">
-                           <div className="relative mb-4 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 sm:h-36 sm:min-h-36 sm:w-36 sm:min-w-36">
+                       <div className="relative z-10 flex h-[420px] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/70 px-4 py-6 dark:border-emerald-500/15 dark:bg-black/35 sm:h-[360px] sm:px-6 sm:py-8">
+                           <div className="relative mb-5 flex h-44 min-h-44 w-44 min-w-44 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 sm:h-40 sm:min-h-40 sm:w-40 sm:min-w-40">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                onClick={handleClockAction}
                                disabled={clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
-                                   "w-28 h-28 min-h-28 min-w-28 shrink-0 rounded-full flex flex-col items-center justify-center gap-1 transition-transform duration-300 font-black tracking-tighter hover:scale-105 active:scale-95 z-10 relative overflow-hidden",
+                                   "relative z-10 flex h-36 min-h-36 w-36 min-w-36 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95",
                                    clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
@@ -2266,26 +2266,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                    "bg-red-500 text-white shadow-[0_0_40px_rgba(239,68,68,0.6)]"
                                )}
                              >
-                              <AnimatePresence mode="popLayout">
+                              <AnimatePresence mode="wait" initial={false}>
                                  {clockInState === 'idle' && (
-                                     <motion.div key="idle" initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} className="flex flex-col items-center">
+                                     <motion.div key="idle" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <span className="whitespace-nowrap text-[10px] sm:text-xs tracking-widest">{isClockedIn ? 'CLOCK OUT' : t('dash.clockIn')}</span>
                                      </motion.div>
                                  )}
                                  {(clockInState === 'locating' || clockInState === 'verifying') && (
-                                     <motion.div key="loading" initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} className="flex flex-col items-center">
+                                     <motion.div key="loading" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <Navigation className="w-8 h-8 mb-2 animate-spin-slow" />
                                          <span className="whitespace-nowrap font-bold text-[10px] uppercase tracking-widest">{clockInState === 'locating' ? t('dash.locating') : t('dash.verifying')}</span>
                                      </motion.div>
                                  )}
                                  {clockInState === 'success' && (
-                                     <motion.div key="success" initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} className="flex flex-col items-center">
+                                     <motion.div key="success" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <CheckCircle2 className="w-10 h-10 mb-1 opacity-90" />
                                          <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.verified')}</span>
                                      </motion.div>
                                  )}
                                  {clockInState === 'failed' && (
-                                     <motion.div key="failed" initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} className="flex flex-col items-center">
+                                     <motion.div key="failed" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <AlertTriangle className="w-10 h-10 mb-1" />
                                          <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.breach')}</span>
                                      </motion.div>
@@ -2295,35 +2295,35 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </div>
 
                            {/* Dynamic Status Display */}
-                           <div className="mt-4 flex min-h-[48px] w-full max-w-[320px] items-center justify-center gap-2 px-1">
-                            <AnimatePresence mode="wait">
+                           <div className="relative mt-3 h-16 w-full max-w-[320px] overflow-hidden px-1">
+                            <AnimatePresence mode="wait" initial={false}>
                                 {clockMessage ? (
                                     <motion.div 
                                         key="msg"
-                                        initial={{opacity: 0, scale: 0.9}} 
-                                        animate={{opacity: 1, scale: 1}}
-                                        exit={{opacity: 0, scale: 0.9}}
-                                        className="flex min-h-[36px] items-center justify-center gap-2 text-center"
+                                        initial={{opacity: 0, y: 4}} 
+                                        animate={{opacity: 1, y: 0}}
+                                        exit={{opacity: 0, y: -4}}
+                                        className="absolute inset-0 flex items-center justify-center gap-2 text-center"
                                     >
                                         <span className={cn("flex h-2 w-2 shrink-0 rounded-full", clockInState === 'success' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]")}></span>
-                                        <span className={cn("text-[10px] uppercase font-bold tracking-widest leading-4", clockInState === 'success' ? "text-emerald-400" : "text-red-400")}>
+                                        <span className={cn("max-h-12 overflow-hidden text-[10px] uppercase font-bold tracking-widest leading-4", clockInState === 'success' ? "text-emerald-400" : "text-red-400")}>
                                             {t('dash.sysMsg')} {clockMessage}
                                         </span>
                                     </motion.div>
                                 ) : (
                                     <motion.div 
                                         key="idle"
-                                        initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
-                                        className="flex min-h-[36px] items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
+                                        initial={{opacity: 0, y: 4}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -4}}
+                                        className="absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
                                     >
                                         <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 animate-pulse"></span>
-                                        <span className="text-[10px] uppercase tracking-widest leading-4">{isClockedIn ? 'Active shift open' : t('dash.awaitingInput')}</span>
+                                        <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{isClockedIn ? 'Active shift open' : t('dash.awaitingInput')}</span>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                            </div>
 
-                           <p className="mt-2 min-h-[16px] text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
+                           <p className="mt-2 h-4 max-w-full overflow-hidden text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
                              {lastClockEvent}
                            </p>
                        </div>

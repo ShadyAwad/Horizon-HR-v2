@@ -29,23 +29,42 @@ type RichTextEditorProps = {
 };
 
 const TEXT_COLORS = [
-  { label: 'Default color', value: '' },
-  { label: 'Emerald', value: '#34d399' },
-  { label: 'Mint', value: '#a7f3d0' },
-  { label: 'Ivory', value: '#ecfdf5' },
-  { label: 'Amber', value: '#fbbf24' },
-  { label: 'Rose', value: '#fb7185' },
+  { label: 'Default', value: '', swatch: 'transparent' },
+  { label: 'White', value: '#f8fafc', swatch: '#f8fafc' },
+  { label: 'Muted Gray', value: '#a3a3a3', swatch: '#a3a3a3' },
+  { label: 'Emerald', value: '#34d399', swatch: '#34d399' },
+  { label: 'Lime', value: '#a3e635', swatch: '#a3e635' },
+  { label: 'Teal', value: '#2dd4bf', swatch: '#2dd4bf' },
+  { label: 'Cyan', value: '#22d3ee', swatch: '#22d3ee' },
+  { label: 'Blue', value: '#60a5fa', swatch: '#60a5fa' },
+  { label: 'Purple', value: '#c084fc', swatch: '#c084fc' },
+  { label: 'Pink', value: '#f472b6', swatch: '#f472b6' },
+  { label: 'Red', value: '#f87171', swatch: '#f87171' },
+  { label: 'Orange', value: '#fb923c', swatch: '#fb923c' },
+  { label: 'Amber', value: '#fbbf24', swatch: '#fbbf24' },
+  { label: 'Yellow', value: '#fde047', swatch: '#fde047' },
 ];
 
 const FONT_SIZES = [
-  { label: 'Default size', value: '' },
-  { label: 'Small', value: '12px' },
-  { label: 'Normal', value: '14px' },
-  { label: 'Large', value: '18px' },
-  { label: 'Display', value: '22px' },
+  { label: 'Reset', value: '' },
+  { label: '10', value: '10px' },
+  { label: '12', value: '12px' },
+  { label: '14', value: '14px' },
+  { label: '16', value: '16px' },
+  { label: '18', value: '18px' },
+  { label: '20', value: '20px' },
+  { label: '24', value: '24px' },
+  { label: '28', value: '28px' },
+  { label: '32', value: '32px' },
 ];
 
-const EMOJIS = ['😀', '🎉', '👏', '✅', '📌', '⭐'];
+const EMOJI_CATEGORIES = [
+  { label: 'Announcements', emojis: ['📢', '📣', '📰', '🔔', '✅', '❗', '⚠️', '🎉'] },
+  { label: 'Calendar/events', emojis: ['📅', '🗓️', '⏰', '⌛', '🎯', '📌'] },
+  { label: 'Work/HR', emojis: ['💼', '🧾', '📋', '📝', '👥', '🏢', '🏆'] },
+  { label: 'Positive/team', emojis: ['🙌', '👏', '💪', '🚀', '⭐', '💚', '🤝'] },
+  { label: 'Status', emojis: ['✅', '❌', '⚠️', '🔴', '🟡', '🟢', '🔒'] },
+];
 
 function getInitialEditorState(valueJson: unknown | null | undefined) {
   if (!valueJson) return undefined;
@@ -99,6 +118,7 @@ function ToolbarButton({
       type="button"
       aria-label={label}
       title={label}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={cn(
         'flex h-8 w-8 items-center justify-center rounded border text-emerald-100/70 transition hover:border-emerald-400/50 hover:text-emerald-200',
@@ -117,6 +137,7 @@ function EditorToolbar() {
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false });
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedFontSize, setSelectedFontSize] = useState('');
+  const [openPicker, setOpenPicker] = useState<'color' | 'size' | 'emoji' | null>(null);
 
   const refreshToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -151,9 +172,12 @@ function EditorToolbar() {
   }, [editor, refreshToolbar]);
 
   const formatText = (format: 'bold' | 'italic' | 'underline') => {
+    setActiveFormats((current) => ({ ...current, [format]: !current[format] }));
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
-    editor.getEditorState().read(() => {
-      refreshToolbar();
+    queueMicrotask(() => {
+      editor.getEditorState().read(() => {
+        refreshToolbar();
+      });
     });
   };
 
@@ -188,7 +212,10 @@ function EditorToolbar() {
   const insertEmoji = (emoji: string) => {
     editor.focus(() => {
       editor.update(() => {
-        const selection = $getSelection();
+        let selection = $getSelection();
+        if (!$isRangeSelection(selection)) {
+          selection = $getRoot().selectEnd();
+        }
         if ($isRangeSelection(selection)) {
           selection.insertText(emoji);
         }
@@ -218,58 +245,134 @@ function EditorToolbar() {
         <Pilcrow className="h-4 w-4" />
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
-      <label className="flex h-8 items-center gap-1 rounded border border-emerald-500/15 bg-black/30 px-2 text-emerald-100/70 transition focus-within:border-emerald-400/50 hover:border-emerald-400/50">
-        <Palette className="h-4 w-4" />
-        <span className="sr-only">Text color</span>
-        <select
-          value={selectedColor}
-          onChange={(event) => {
-            const color = event.target.value;
-            setSelectedColor(color);
-            applyTextStyle({ color: color || null });
-          }}
-          className="h-full bg-transparent text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 outline-none"
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Text color"
+          title="Text color"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setOpenPicker((current) => current === 'color' ? null : 'color')}
+          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
         >
-          {TEXT_COLORS.map((color) => (
-            <option key={color.label} value={color.value} className="bg-black text-emerald-50">
-              {color.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex h-8 items-center gap-1 rounded border border-emerald-500/15 bg-black/30 px-2 text-emerald-100/70 transition focus-within:border-emerald-400/50 hover:border-emerald-400/50">
-        <Type className="h-4 w-4" />
-        <span className="sr-only">Font size</span>
-        <select
-          value={selectedFontSize}
-          onChange={(event) => {
-            const fontSize = event.target.value;
-            setSelectedFontSize(fontSize);
-            applyTextStyle({ 'font-size': fontSize || null });
-          }}
-          className="h-full bg-transparent text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 outline-none"
+          <Palette className="h-4 w-4" />
+          <span
+            className={cn(
+              'h-3.5 w-3.5 rounded-full border',
+              selectedColor ? 'border-black/30' : 'border-emerald-400/50 bg-black/20',
+            )}
+            style={selectedColor ? { backgroundColor: selectedColor } : undefined}
+          />
+          Color
+        </button>
+        {openPicker === 'color' && (
+          <div className="absolute left-0 top-full z-40 mt-2 w-64 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">Text color</div>
+            <div className="grid grid-cols-7 gap-2">
+              {TEXT_COLORS.map((color) => (
+                <button
+                  key={color.label}
+                  type="button"
+                  aria-label={`${color.label} text color`}
+                  title={color.label}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setSelectedColor(color.value);
+                    applyTextStyle({ color: color.value || null });
+                    setOpenPicker(null);
+                  }}
+                  className={cn(
+                    'flex h-8 w-8 items-center justify-center rounded-full border transition hover:scale-105',
+                    selectedColor === color.value
+                      ? 'border-emerald-300 ring-2 ring-emerald-400/30'
+                      : 'border-emerald-500/20',
+                    !color.value && 'bg-[linear-gradient(135deg,transparent_46%,rgba(52,211,153,0.85)_48%,rgba(52,211,153,0.85)_52%,transparent_54%)]',
+                  )}
+                >
+                  <span
+                    className={cn('h-5 w-5 rounded-full border border-black/30', !color.value && 'border-emerald-400/50 bg-black')}
+                    style={color.value ? { backgroundColor: color.swatch } : undefined}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Font size"
+          title="Font size"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setOpenPicker((current) => current === 'size' ? null : 'size')}
+          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
         >
-          {FONT_SIZES.map((size) => (
-            <option key={size.label} value={size.value} className="bg-black text-emerald-50">
-              {size.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="flex h-8 items-center gap-1 rounded border border-emerald-500/15 bg-black/30 px-1 text-emerald-100/70">
-        <Smile className="ml-1 h-4 w-4" aria-hidden="true" />
-        {EMOJIS.map((emoji) => (
-          <button
-            key={emoji}
-            type="button"
-            aria-label={`Insert ${emoji}`}
-            title={`Insert ${emoji}`}
-            onClick={() => insertEmoji(emoji)}
-            className="flex h-6 w-6 items-center justify-center rounded text-sm transition hover:bg-emerald-500/10 hover:text-emerald-100"
-          >
-            {emoji}
-          </button>
-        ))}
+          <Type className="h-4 w-4" />
+          {selectedFontSize ? selectedFontSize.replace('px', '') : 'Size'}
+        </button>
+        {openPicker === 'size' && (
+          <div className="absolute left-0 top-full z-40 mt-2 grid w-36 grid-cols-2 gap-1 rounded-lg border border-emerald-500/20 bg-black/95 p-2 shadow-2xl shadow-black/40">
+            {FONT_SIZES.map((size) => (
+              <button
+                key={size.label}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setSelectedFontSize(size.value);
+                  applyTextStyle({ 'font-size': size.value || null });
+                  setOpenPicker(null);
+                }}
+                className={cn(
+                  'rounded border px-2 py-1.5 text-center text-[11px] font-bold uppercase tracking-widest transition',
+                  selectedFontSize === size.value
+                    ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-100'
+                    : 'border-emerald-500/15 bg-black/40 text-emerald-100/65 hover:border-emerald-400/50 hover:text-emerald-100',
+                )}
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Insert emoji"
+          title="Insert emoji"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setOpenPicker((current) => current === 'emoji' ? null : 'emoji')}
+          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
+        >
+          <Smile className="h-4 w-4" />
+          Emoji
+        </button>
+        {openPicker === 'emoji' && (
+          <div className="absolute left-0 top-full z-40 mt-2 w-72 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40">
+            <div className="space-y-3">
+              {EMOJI_CATEGORIES.map((category) => (
+                <div key={category.label}>
+                  <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">{category.label}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {category.emojis.map((emoji) => (
+                      <button
+                        key={`${category.label}-${emoji}`}
+                        type="button"
+                        aria-label={`Insert ${emoji}`}
+                        title={`Insert ${emoji}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => insertEmoji(emoji)}
+                        className="flex h-8 w-8 items-center justify-center rounded border border-emerald-500/10 bg-black/40 text-lg transition hover:border-emerald-400/40 hover:bg-emerald-500/10"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
       <ToolbarButton label="Undo" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
@@ -316,7 +419,7 @@ export function RichTextEditor({
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className={cn(
-        'overflow-hidden rounded border border-emerald-500/15 bg-black/40 text-sm text-emerald-50 shadow-inner shadow-black/20 focus-within:border-emerald-400/60',
+        'overflow-visible rounded border border-emerald-500/15 bg-black/40 text-sm text-emerald-50 shadow-inner shadow-black/20 focus-within:border-emerald-400/60',
         className,
       )}>
         {!readOnly && <EditorToolbar />}
