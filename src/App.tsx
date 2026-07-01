@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Signup } from './pages/Signup';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
+
+const Dashboard = lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const Signup = lazy(() => import('./pages/Signup').then((module) => ({ default: module.Signup })));
 
 export type AuthUser = {
   id: string;
@@ -15,6 +16,7 @@ export type AuthUser = {
   permissions?: string[];
   tenantId: string;
   tenant?: string | { id: string; slug: string; companyName: string };
+  authToken?: string;
 };
 
 const fallbackUser: AuthUser = {
@@ -46,23 +48,27 @@ export default function App() {
       <LanguageProvider>
         <div className="w-full min-h-screen bg-slate-50 dark:bg-[#020617] transition-colors duration-300">
          {authState === 'authenticated' ? (
-           <Dashboard
-             user={authUser}
-             onLogout={() => {
-               window.localStorage.removeItem('horizon-auth-user');
-               setAuthState('login');
-             }}
-           />
+           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-xs font-bold uppercase tracking-widest text-emerald-300">Loading workspace...</div>}>
+             <Dashboard
+               user={authUser}
+               onLogout={() => {
+                 window.localStorage.removeItem('horizon-auth-user');
+                 setAuthState('login');
+               }}
+             />
+           </Suspense>
          ) : authState === 'signup' ? (
-           <Signup 
-             onNavigateLogin={() => setAuthState('login')} 
-             onSignupComplete={(user) => {
-               const nextUser = user || fallbackUser;
-               setAuthUser(nextUser);
-               window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
-               setAuthState('authenticated');
-             }} 
-           />
+           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-black text-xs font-bold uppercase tracking-widest text-emerald-300">Loading signup...</div>}>
+             <Signup 
+               onNavigateLogin={() => setAuthState('login')} 
+               onSignupComplete={(user) => {
+                 const nextUser = user || fallbackUser;
+                 setAuthUser(nextUser);
+                 window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
+                 setAuthState('authenticated');
+               }} 
+             />
+           </Suspense>
          ) : (
            <Login 
              onLoginSuccess={(user) => {

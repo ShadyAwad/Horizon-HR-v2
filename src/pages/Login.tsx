@@ -1,17 +1,72 @@
-import { useState, FormEvent } from 'react';
-import { FingerprintCanvas } from '../components/FingerprintCanvas';
-import { Fingerprint, CheckCircle2, AlertCircle, ArrowRight, Sun, Moon } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
+import { lazy, Suspense, useEffect, useState, FormEvent } from 'react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
 import type { AuthUser } from '../App';
 
+const FingerprintCanvas = lazy(() => import('../components/FingerprintCanvas').then((module) => ({ default: module.FingerprintCanvas })));
+
 interface LoginProps {
   onLoginSuccess: (user?: AuthUser) => void;
   onNavigateSignup: () => void;
+}
+
+function FingerprintIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12c0-5.5 4.5-10 10-10 3.4 0 6.4 1.7 8.2 4.3" />
+      <path d="M5 19.5c.7-1.4 1-3 1-4.5v-3a6 6 0 0 1 10.7-4" />
+      <path d="M9 22c.7-1.6 1-3.2 1-5v-5a2 2 0 0 1 4 0v1" />
+      <path d="M14 22c1.4-2 2-4.3 2-7v-1" />
+      <path d="M18 20c.7-1.7 1-3.6 1-5.5V12" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 11.1V12a10 10 0 1 1-5.9-9.1" />
+      <path d="m9 11 3 3L22 4" />
+    </svg>
+  );
+}
+
+function AlertCircleIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function SunIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3a6 6 0 0 0 9 7.5A9 9 0 1 1 12 3Z" />
+    </svg>
+  );
 }
 
 export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
@@ -26,8 +81,14 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
   const [pendingUser, setPendingUser] = useState<AuthUser | undefined>();
+  const [showDecorativeCanvas, setShowDecorativeCanvas] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    const loadCanvas = window.setTimeout(() => setShowDecorativeCanvas(true), 0);
+    return () => window.clearTimeout(loadCanvas);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -97,16 +158,20 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   }
 };
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
-      <FingerprintCanvas 
-        pulseState={pulseState} 
-        onPulseComplete={() => {
-          if (pulseState === 'success') onLoginSuccess(pendingUser);
-          if (pulseState === 'error') setPulseState('idle'); // Reset after error pulse
-        }} 
-      />
+<div className="relative min-h-screen w-full flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.10),transparent_48%),#f8fafc] dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.10),transparent_48%),#020403] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
+      {showDecorativeCanvas && (
+        <Suspense fallback={null}>
+          <FingerprintCanvas 
+            pulseState={pulseState} 
+            onPulseComplete={() => {
+              if (pulseState === 'success') onLoginSuccess(pendingUser);
+              if (pulseState === 'error') setPulseState('idle');
+            }} 
+          />
+        </Suspense>
+      )}
 
-      <div className={cn("absolute top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35", isRtl ? "left-4" : "right-4")}>
+      <div className={`absolute top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35 ${isRtl ? "left-4" : "right-4"}`}>
         <button
           type="button"
           onClick={toggleTheme}
@@ -114,7 +179,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
           title="Toggle Light/Dark Mode"
           aria-label="Toggle Light/Dark Mode"
         >
-          {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          {isDark ? <MoonIcon className="h-4 w-4" /> : <SunIcon className="h-4 w-4" />}
         </button>
 
         <div className="h-3 w-px bg-slate-200 dark:bg-emerald-500/20"></div>
@@ -122,12 +187,11 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
         <button
           type="button"
           onClick={() => setLang('en')}
-          className={cn(
-            "text-xs font-bold transition-colors",
+          className={`text-xs font-bold transition-colors ${
             lang === 'en'
               ? "text-emerald-600 dark:text-emerald-400"
               : "text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
-          )}
+          }`}
         >
           EN-US
         </button>
@@ -137,25 +201,20 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
         <button
           type="button"
           onClick={() => setLang('ar')}
-          className={cn(
-            "text-xs font-bold transition-colors",
+          className={`text-xs font-bold transition-colors ${
             lang === 'ar'
               ? "text-emerald-600 dark:text-emerald-400"
               : "text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300"
-          )}
+          }`}
         >
           AR-AE
         </button>
       </div>
 
       {/* Main Login Panel */}
-      <motion.div 
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        layout={false}
-className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
+      <div className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] animate-[loginCardIn_180ms_ease-out]">
         <div className="flex flex-col items-center mb-8">
-<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <Fingerprint className="w-8 h-8" />
+<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <FingerprintIcon className="w-8 h-8" />
           </div>
 <h1 className="text-2xl font-semibold tracking-tight">
   <BrandWordmark />
@@ -172,10 +231,7 @@ className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@stanza.com"
-className={cn(
-  "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
-  isRtl && "text-right"
-)}            />
+className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}            />
           </div>
 
          <div className="space-y-2">
@@ -189,14 +245,11 @@ className={cn(
     value={password}
     onChange={(e) => setPassword(e.target.value)}
     placeholder="••••••••"
-    className={cn(
-      "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
-      isRtl && "text-right"
-    )}
+    className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}
   />
 </div>
 
-<div className={cn("flex", isRtl ? "justify-start" : "justify-end")}>
+<div className={`flex ${isRtl ? "justify-start" : "justify-end"}`}>
   <button
     type="button"
     onClick={() => setShowRecovery(true)}
@@ -206,29 +259,21 @@ className={cn(
   </button>
 </div>
 
-          <AnimatePresence>
             {errorMsg && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex items-start gap-2 text-red-400 text-xs mt-2 bg-red-950/30 p-3 rounded-lg border border-red-900/50"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0" />
+              <div className="flex items-start gap-2 text-red-400 text-xs mt-2 bg-red-950/30 p-3 rounded-lg border border-red-900/50">
+                <AlertCircleIcon className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
 
           <button 
             type="submit"
             disabled={isLoading || pulseState === 'success'}
-            className={cn(
-              "relative w-full overflow-hidden flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-300",
+            className={`relative w-full overflow-hidden flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-300 ${
               pulseState === 'success' ? "bg-emerald-600 text-white" : 
               pulseState === 'error' ? "bg-red-600/90 text-white" :
              "bg-emerald-500 text-black hover:bg-emerald-400 hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.18)]" 
-            )}
+            }`}
           >
             {isLoading && pulseState === 'idle' ? (
               <span className="flex items-center gap-2">
@@ -237,13 +282,13 @@ className={cn(
               </span>
             ) : pulseState === 'success' ? (
               <>
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircleIcon className="w-4 h-4" />
                 {t('login.accessGranted')}
               </>
             ) : (
               <>
                 {t('login.enterSector')}
-                <ArrowRight className={cn("w-4 h-4", isRtl && "rotate-180")} />
+                <ArrowRightIcon className={`w-4 h-4 ${isRtl ? "rotate-180" : ""}`} />
               </>
             )}
           </button>
@@ -261,24 +306,11 @@ className={cn(
              {t('login.registerTenant')}
            </button>
         </div>
-      </motion.div>
+      </div>
 
-      <AnimatePresence>
-        {showRecovery && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 backdrop-blur-[2px] px-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="w-full max-w-sm rounded-2xl border border-emerald-500/15 bg-[#04110d]/95 p-5 shadow-[0_0_45px_rgba(16,185,129,0.12)]"
-            >
+      {showRecovery && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 backdrop-blur-[2px] px-4 animate-[loginFadeIn_120ms_ease-out]">
+            <div className="w-full max-w-sm rounded-2xl border border-emerald-500/15 bg-[#04110d]/95 p-5 shadow-[0_0_45px_rgba(16,185,129,0.12)] animate-[loginCardIn_160ms_ease-out]">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-widest text-emerald-300">
@@ -307,21 +339,17 @@ className={cn(
                   value={recoveryEmail}
                   onChange={(e) => setRecoveryEmail(e.target.value)}
                   placeholder={email || 'admin@stanza.com'}
-                  className={cn(
-                    "w-full bg-black/35 border border-emerald-500/15 rounded-lg px-3 py-2.5 text-xs text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono",
-                    isRtl && "text-right"
-                  )}
+                  className={`w-full bg-black/35 border border-emerald-500/15 rounded-lg px-3 py-2.5 text-xs text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}
                 />
 
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('email')}
-                  className={cn(
-                    "w-full text-left rounded-lg border px-3 py-2.5 transition-all",
+                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
                     recoveryMethod === 'email'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"
-                  )}
+                  }`}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
                     {t('login.recoveryEmailTitle')}
@@ -334,12 +362,11 @@ className={cn(
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('admin')}
-                  className={cn(
-                    "w-full text-left rounded-lg border px-3 py-2.5 transition-all",
+                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
                     recoveryMethod === 'admin'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"
-                  )}
+                  }`}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
                     {t('login.recoveryAdminTitle')}
@@ -352,12 +379,11 @@ className={cn(
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('security')}
-                  className={cn(
-                    "w-full text-left rounded-lg border px-3 py-2.5 transition-all",
+                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
                     recoveryMethod === 'security'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"
-                  )}
+                  }`}
                 >
                   <span className="block text-[11px] font-bold uppercase tracking-widest">
                     {t('login.recoverySecurityTitle')}
@@ -382,10 +408,9 @@ className={cn(
                   </p>
                 )}
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

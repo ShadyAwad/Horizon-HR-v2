@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
@@ -9,8 +9,10 @@ import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
-import { RichFeedContent, RichTextEditor } from '../components/RichTextEditor';
 import type { AuthUser } from '../App';
+
+const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
+const RichFeedContent = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichFeedContent })));
 
 type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
 
@@ -737,7 +739,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     try {
         const res = await fetch(apiUrl('/api/clock-in'), {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: payrollHeaders,
             body: JSON.stringify({
               tenantId: user.tenantId,
               employeeId: user.id,
@@ -775,7 +777,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     try {
       const res = await fetch(apiUrl('/api/clock-out'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: payrollHeaders,
         body: JSON.stringify({
           tenantId: user.tenantId,
           employeeId: user.id,
@@ -811,11 +813,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     )));
   };
 
-  const payrollHeaders = {
+  const payrollHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
   };
+  if (user.authToken) {
+    payrollHeaders.Authorization = `Bearer ${user.authToken}`;
+  }
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
   const loadRoleManagement = async () => {
@@ -1281,10 +1286,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     try {
       const res = await fetch(apiUrl(`/api/payroll/${recordId}/pdf`), {
-        headers: {
-          'x-employee-id': user.id,
-          'x-tenant-id': user.tenantId,
-        },
+        headers: payrollHeaders,
       });
 
       if (!res.ok) {
@@ -2565,12 +2567,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               ))}
                             </select>
                             <div className="md:col-span-4">
-                              <RichTextEditor
-                                key={feedEditorKey}
-                                valueJson={feedForm.contentJson}
-                                onChange={updateFeedContent}
-                                placeholder="Write the announcement..."
-                              />
+                              <Suspense fallback={<div className="rounded-lg border border-emerald-500/15 bg-black/25 p-4 text-xs text-emerald-100/45">Loading editor...</div>}>
+                                <RichTextEditor
+                                  key={feedEditorKey}
+                                  valueJson={feedForm.contentJson}
+                                  onChange={updateFeedContent}
+                                  placeholder="Write the announcement..."
+                                />
+                              </Suspense>
                             </div>
                             <button
                               type="button"
@@ -2615,7 +2619,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 {post.event_ends_at ? ` - ${formatShortDateTime(post.event_ends_at)}` : ''}
                               </p>
                             )}
-                            <RichFeedContent contentJson={post.content_json ?? post.contentJson} contentText={post.content_text} />
+                            <Suspense fallback={<p className="mt-3 text-xs text-emerald-100/45">{post.content_text}</p>}>
+                              <RichFeedContent contentJson={post.content_json ?? post.contentJson} contentText={post.content_text} />
+                            </Suspense>
                           </article>
                         ))}
 

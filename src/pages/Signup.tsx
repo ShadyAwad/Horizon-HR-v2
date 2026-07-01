@@ -1,6 +1,5 @@
 import React, { useEffect, useState ,useRef } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -64,6 +63,7 @@ type EmptyFeatureCollection = {
 type RadiusGeoJson = CircleFeature | EmptyFeatureCollection;
 type LocationStatus = 'idle' | 'locating' | 'accurate' | 'approximate' | 'low_accuracy' | 'manual' | 'manual_coordinates' | 'error';
 type MapStyleId = 'streets' | 'satellite';
+type MapLibreModule = typeof import('maplibre-gl');
 type PendingLocation = {
   lat: number;
   lng: number;
@@ -135,8 +135,9 @@ const InteractiveMap = ({
   disabled = false,
 }: InteractiveMapProps) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
-  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const maplibreModuleRef = useRef<MapLibreModule | null>(null);
+  const mapInstanceRef = useRef<MapLibreMap | null>(null);
+  const markerRef = useRef<MapLibreMarker | null>(null);
   const lastCenterRef = useRef<[number, number] | null>(null);
   const setLatRef = useRef(setLat);
   const setLngRef = useRef(setLng);
@@ -167,7 +168,7 @@ const InteractiveMap = ({
     error: 'Unable to access location. Enter coordinates manually or drag the pin.',
   };
 
-  const ensureRadiusLayer = (map: maplibregl.Map) => {
+  const ensureRadiusLayer = (map: MapLibreMap) => {
     if (!map.isStyleLoaded()) return;
 
     if (!map.getSource('signup-geofence-radius')) {
@@ -202,7 +203,7 @@ const InteractiveMap = ({
       });
     }
 
-    const source = map.getSource('signup-geofence-radius') as maplibregl.GeoJSONSource | undefined;
+    const source = map.getSource('signup-geofence-radius') as GeoJSONSource | undefined;
     source?.setData(createRadiusGeoJson(lngRef.current, latRef.current, radiusRef.current));
   };
 
@@ -224,34 +225,55 @@ const InteractiveMap = ({
     if (!mapContainerRef.current || mapInstanceRef.current || !maptilerKey) return;
 
     const initialCenter: [number, number] = hasCoordinates ? [lng, lat] : neutralMapCenter;
+    let disposed = false;
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: mapStyleUrl(selectedMapStyle, maptilerKey),
-      center: initialCenter,
-      zoom: hasCoordinates ? 15 : 1.5,
-      attributionControl: { compact: true },
-    });
+    const loadMap = async () => {
+      setMapStatus('loading');
 
-    mapInstanceRef.current = map;
-    currentMapStyleRef.current = selectedMapStyle;
-    lastCenterRef.current = hasCoordinates ? initialCenter : null;
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+      try {
+        const [maplibreModule] = await Promise.all([
+          import('maplibre-gl'),
+          import('maplibre-gl/dist/maplibre-gl.css'),
+        ]);
 
-    map.on('load', () => {
-      ensureRadiusLayer(map);
-      setMapStatus('ready');
-      setTimeout(() => map.resize(), 200);
-    });
+        if (disposed || !mapContainerRef.current) return;
 
-    map.on('error', () => setMapStatus('error'));
+        maplibreModuleRef.current = maplibreModule;
+        const maplibre = maplibreModule;
+        const map = new maplibre.Map({
+          container: mapContainerRef.current,
+          style: mapStyleUrl(selectedMapStyle, maptilerKey),
+          center: initialCenter,
+          zoom: hasCoordinates ? 15 : 1.5,
+          attributionControl: { compact: true },
+        });
 
-    setTimeout(() => {
-      map.resize();
-    }, 200);
+        mapInstanceRef.current = map;
+        currentMapStyleRef.current = selectedMapStyle;
+        lastCenterRef.current = hasCoordinates ? initialCenter : null;
+        map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'bottom-right');
+
+        map.on('load', () => {
+          ensureRadiusLayer(map);
+          setMapStatus('ready');
+          setTimeout(() => map.resize(), 200);
+        });
+
+        map.on('error', () => setMapStatus('error'));
+
+        setTimeout(() => {
+          map.resize();
+        }, 200);
+      } catch {
+        if (!disposed) setMapStatus('error');
+      }
+    };
+
+    void loadMap();
 
     return () => {
-      map.remove();
+      disposed = true;
+      mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       markerRef.current = null;
     };
@@ -295,7 +317,7 @@ const InteractiveMap = ({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const source = map.getSource('signup-geofence-radius') as maplibregl.GeoJSONSource | undefined;
+    const source = map.getSource('signup-geofence-radius') as GeoJSONSource | undefined;
     source?.setData(createRadiusGeoJson(lng, lat, radius));
 
     if (!hasCoordinates) {
@@ -310,7 +332,10 @@ const InteractiveMap = ({
     if (!markerRef.current) {
       const markerElement = document.createElement('div');
       markerElement.className = 'h-7 w-7 rounded-full border-[3px] border-black bg-emerald-500 shadow-[0_0_0_5px_rgba(16,185,129,0.25),0_0_28px_rgba(16,185,129,0.65)]';
-      const marker = new maplibregl.Marker({
+      const maplibre = maplibreModuleRef.current;
+      if (!maplibre) return;
+
+      const marker = new maplibre.Marker({
         element: markerElement,
         draggable: !disabled,
       })

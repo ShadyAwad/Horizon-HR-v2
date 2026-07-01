@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
@@ -188,6 +190,7 @@ const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
+const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 type LoginAttemptState = {
   failedAttempts: number;
@@ -233,6 +236,102 @@ function getRequestIp(req: express.Request) {
 
 function getLoginRateLimitKey(req: express.Request, normalizedEmail: string) {
   return `${normalizedEmail}:${getRequestIp(req)}`;
+}
+
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function allowDevAuthHeaders() {
+  return !isProduction() || process.env.DEV_AUTH_HEADERS === 'true';
+}
+
+function getAuthTokenSecret() {
+  return process.env.AUTH_TOKEN_SECRET || process.env.SESSION_SECRET || (!isProduction() ? 'stanza-dev-auth-token-secret' : '');
+}
+
+function base64UrlEncode(value: string) {
+  return Buffer.from(value, 'utf8').toString('base64url');
+}
+
+function signAuthTokenPayload(payload: object) {
+  const secret = getAuthTokenSecret();
+  if (!secret) {
+    throw Object.assign(new Error('AUTH_TOKEN_SECRET is required in production.'), { statusCode: 500 });
+  }
+
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(encodedPayload)
+    .digest('base64url');
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function createAuthToken(user: { id: string; tenant_id: string }) {
+  return signAuthTokenPayload({
+    employeeId: user.id,
+    tenantId: user.tenant_id,
+    exp: Date.now() + AUTH_TOKEN_TTL_MS,
+  });
+}
+
+function getBearerToken(req: express.Request) {
+  const header = req.header('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || null;
+}
+
+function verifyAuthToken(req: express.Request) {
+  const token = getBearerToken(req);
+  if (!token) return { ok: false as const, missing: true as const };
+
+  const [encodedPayload, signature] = token.split('.');
+  if (!encodedPayload || !signature) {
+    return { ok: false as const, missing: false as const };
+  }
+
+  const secret = getAuthTokenSecret();
+  if (!secret) {
+    return { ok: false as const, missing: false as const };
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(encodedPayload)
+    .digest('base64url');
+  const provided = Buffer.from(signature);
+  const expected = Buffer.from(expectedSignature);
+
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+    return { ok: false as const, missing: false as const };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
+      employeeId?: unknown;
+      tenantId?: unknown;
+      exp?: unknown;
+    };
+
+    if (
+      typeof payload.employeeId !== 'string' ||
+      typeof payload.tenantId !== 'string' ||
+      typeof payload.exp !== 'number' ||
+      payload.exp < Date.now()
+    ) {
+      return { ok: false as const, missing: false as const };
+    }
+
+    return {
+      ok: true as const,
+      employeeId: payload.employeeId,
+      tenantId: payload.tenantId,
+    };
+  } catch {
+    return { ok: false as const, missing: false as const };
+  }
 }
 
 function checkLoginRateLimit(key: string) {
@@ -282,8 +381,14 @@ function clearFailedLogins(key: string) {
 }
 
 function getAllowedCorsOrigins() {
+  const envOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   return new Set(
     [
+      ...envOrigins,
       process.env.APP_URL,
       process.env.FRONTEND_URL,
       'http://localhost:4173',
@@ -631,6 +736,10 @@ function normalizeCompanyLocations(
       return { ok: false as const, error: 'Each location requires a name.' };
     }
 
+    if (name.length > 120 || (location.address && location.address.trim().length > 300)) {
+      return { ok: false as const, error: 'Location names must be 120 characters or fewer and addresses 300 characters or fewer.' };
+    }
+
     if (!isCompanyLocationType(locationType)) {
       return { ok: false as const, error: 'locationType must be headquarters, branch, warehouse, remote_site, or other.' };
     }
@@ -639,15 +748,19 @@ function normalizeCompanyLocations(
       return { ok: false as const, error: 'Each location requires valid lat and lng numbers.' };
     }
 
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return { ok: false as const, error: 'Each location latitude must be -90 to 90 and longitude must be -180 to 180.' };
+    }
+
     if (!Number.isFinite(radiusMeters) || radiusMeters < 25 || radiusMeters > 5000) {
       return { ok: false as const, error: 'Each location radius must be between 25 and 5000 meters.' };
     }
   }
 
   const normalizedLocations: NormalizedCompanyLocation[] = rawLocations.map((location, index) => ({
-    name: location.name!.trim(),
+    name: location.name!.trim().slice(0, 120),
     locationType: location.locationType || (index === 0 ? 'headquarters' : 'branch'),
-    address: location.address?.trim() || null,
+    address: location.address?.trim().slice(0, 300) || null,
     latitude: Number(location.lat),
     longitude: Number(location.lng),
     radiusMeters: Number(location.radius),
@@ -816,8 +929,29 @@ async function demoAuth(
   res: express.Response,
   next: express.NextFunction
 ) {
-  const employeeId = req.header('x-employee-id');
-  const tenantId = req.header('x-tenant-id');
+  const tokenAuth = verifyAuthToken(req);
+
+  /*
+    Production identity must come from a signed token issued by login/signup.
+    The legacy x-employee-id/x-tenant-id headers are kept only for local/demo
+    workflows unless DEV_AUTH_HEADERS=true is explicitly set.
+  */
+  if (!tokenAuth.ok && !tokenAuth.missing) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid authentication token.',
+    });
+  }
+
+  const employeeId = tokenAuth.ok ? tokenAuth.employeeId : req.header('x-employee-id');
+  const tenantId = tokenAuth.ok ? tokenAuth.tenantId : req.header('x-tenant-id');
+
+  if (!tokenAuth.ok && !allowDevAuthHeaders()) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication token required.',
+    });
+  }
 
   if (!employeeId || !tenantId) {
     return res.status(401).json({
@@ -933,6 +1067,18 @@ async function demoAuth(
   }
 }
 
+function demoAuthWhenDatabaseConfigured(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  if (!hasDatabaseConfig()) {
+    return next();
+  }
+
+  return demoAuth(req, res, next);
+}
+
 function requireRole(allowedRoles: EmployeeRole[]) {
   return (
     req: express.Request,
@@ -980,6 +1126,23 @@ function requirePermission(permissionKey: string) {
     });
   };
 }
+
+function apiErrorHandler(
+  error: unknown,
+  _req: express.Request,
+  res: express.Response,
+  _next: express.NextFunction,
+) {
+  console.error('[API] Unhandled error:', error);
+
+  if (res.headersSent) return;
+
+  const statusCode = Number((error as { statusCode?: number }).statusCode) || 500;
+  res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+    success: false,
+    error: statusCode >= 500 ? 'Internal server error.' : ((error as Error).message || 'Request failed.'),
+  });
+}
 // yet another helper function to verify password against stored hash
 function verifyPassword(password: string, storedHash: string | null) {
   if (!storedHash) return false;
@@ -1007,8 +1170,48 @@ function verifyPassword(password: string, storedHash: string | null) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const authRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many authentication requests. Try again later.',
+    },
+  });
+  const sensitiveAuthRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many requests. Try again later.',
+    },
+  });
 
-  app.use(express.json());
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: isProduction()
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            baseUri: ["'self'"],
+            connectSrc: ["'self'", 'https://api.maptiler.com', 'https://*.maptiler.com'],
+            fontSrc: ["'self'", 'data:'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https://api.maptiler.com', 'https://*.maptiler.com'],
+            objectSrc: ["'none'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://api.maptiler.com', 'https://*.maptiler.com'],
+            workerSrc: ["'self'", 'blob:'],
+          },
+        }
+      : false,
+  }));
+  app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
   app.use((req, res, next) => {
     const origin = req.header('origin');
     const allowedOrigins = getAllowedCorsOrigins();
@@ -1016,7 +1219,7 @@ async function startServer() {
     if (origin && allowedOrigins.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-employee-id, x-tenant-id');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-employee-id, x-tenant-id');
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     }
 
@@ -1085,7 +1288,7 @@ async function startServer() {
   });
 
   // Registration Route for multi-tenant wizard
-  app.post('/api/auth/register-tenant', async (req, res) => {
+  app.post('/api/auth/register-tenant', sensitiveAuthRateLimiter, async (req, res) => {
     const allowedAdminRoles: EmployeeRole[] = ['employee', 'manager', 'hr_admin'];
 
     const {
@@ -1179,6 +1382,13 @@ async function startServer() {
       return res.status(503).json({
         success: false,
         error: 'DATABASE_URL is required for tenant registration.',
+      });
+    }
+
+    if (isProduction() && !getAuthTokenSecret()) {
+      return res.status(500).json({
+        success: false,
+        error: 'Authentication is not configured.',
       });
     }
 
@@ -1402,6 +1612,7 @@ async function startServer() {
           jobTitle: null,
           tenantId: employee.tenant_id,
           tenant: responseTenant,
+          authToken: createAuthToken(employee),
         },
       });
     } catch (error) {
@@ -1444,7 +1655,7 @@ async function startServer() {
   // 1. Auth Endpoint (Simulates secure iron-session check)
 
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   const { email, password } = req.body as {
     email?: string;
     password?: string;
@@ -1476,6 +1687,13 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(503).json({
       success: false,
       error: 'DATABASE_URL is required for database-backed login.',
+    });
+  }
+
+  if (isProduction() && !getAuthTokenSecret()) {
+    return res.status(500).json({
+      success: false,
+      error: 'Authentication is not configured.',
     });
   }
 
@@ -1564,6 +1782,7 @@ app.post('/api/auth/login', async (req, res) => {
         permissions: employee.permissions,
         tenantId: employee.tenant_id,
         tenant: employee.company_name,
+        authToken: createAuthToken(employee),
       },
     });
   } catch (error) {
@@ -1619,6 +1838,7 @@ app.post('/api/auth/login', async (req, res) => {
             permissions: fallbackEmployee.role === 'hr_admin' ? ['roles.manage'] : [],
             tenantId: fallbackEmployee.tenant_id,
             tenant: fallbackEmployee.company_name,
+            authToken: createAuthToken(fallbackEmployee),
           },
         });
       } catch (fallbackError) {
@@ -1635,7 +1855,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/request-password-reset', async (req, res) => {
+app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) => {
   const { email, method } = req.body as {
     email?: string;
     method?: 'email' | 'admin' | 'security';
@@ -1709,22 +1929,30 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
         normalizedEmail,
         method || 'email',
         tokenHash,
-        resetCode,
+        isProduction() ? null : resetCode,
         expiresAt,
       ],
     );
 
-    console.log('[Password Reset] Dev reset code:', {
-      email: normalizedEmail,
-      resetCode,
-      expiresAt,
-    });
+    if (!isProduction()) {
+      console.log('[Password Reset] Dev reset code:', {
+        email: normalizedEmail,
+        resetCode,
+        expiresAt,
+      });
+    }
 
-    res.json({
+    const response: { success: true; message: string; devResetCode?: string } = {
       success: true,
-      message: 'Recovery instructions generated. Dev reset code printed in server logs.',
-      devResetCode: resetCode,
-    });
+      message: 'If the account exists, recovery instructions have been generated.',
+    };
+
+    if (!isProduction()) {
+      response.message = 'Recovery instructions generated. Dev reset code printed in server logs.';
+      response.devResetCode = resetCode;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('[Password Reset] Failed to create reset token:', error);
 
@@ -2527,7 +2755,7 @@ app.put(
   },
 );
 
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
   const { email, resetCode, newPassword } = req.body as {
     email?: string;
     resetCode?: string;
@@ -2643,11 +2871,18 @@ app.post('/api/auth/reset-password', async (req, res) => {
   // 2. Geofenced Clock-In Simulator
   // In production, this would execute PostGIS: 
   // ST_DWithin(employee_location, geofence.boundary, radius)
-app.post('/api/clock-in', async (req, res) => {
-    const { tenantId, employeeId, latitude, longitude } = req.body as ClockInBody;
+app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
+    const body = req.body as ClockInBody;
+    const tenantId = req.authUser?.tenantId || body.tenantId;
+    const employeeId = req.authUser?.employeeId || body.employeeId;
+    const { latitude, longitude } = body;
     
     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
       return res.status(400).json({ error: 'Geolocation required for clock-in' });
+    }
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({ error: 'Latitude must be -90 to 90 and longitude must be -180 to 180.' });
     }
 
     // Mock HQ Location: 37.7749, -122.4194 (San Francisco).
@@ -3128,8 +3363,10 @@ app.patch(
   },
 );
 
-  app.post('/api/clock-out', async (req, res) => {
-  const { tenantId, employeeId } = req.body;
+  app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
+  const body = req.body as { tenantId?: string; employeeId?: string };
+  const tenantId = req.authUser?.tenantId || body.tenantId;
+  const employeeId = req.authUser?.employeeId || body.employeeId;
 
   if (hasDatabaseConfig() && (!tenantId || !employeeId)) {
     return res.status(400).json({
@@ -3218,13 +3455,26 @@ app.post(
   requireRole(['hr_admin', 'manager', 'employee']),
   async (req, res) => {
     const { startDate, endDate, reason } = req.body;
+    const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
 
     const tenantId = req.authUser!.tenantId;
     const employeeId = req.authUser!.employeeId;
 
-    if (!startDate || !endDate || !reason) {
+    if (!startDate || !endDate || !normalizedReason) {
       return res.status(400).json({
         error: 'startDate, endDate, and reason are required',
+      });
+    }
+
+    if (!isValidDateInput(startDate) || !isValidDateInput(endDate) || endDate < startDate) {
+      return res.status(400).json({
+        error: 'startDate and endDate must be valid YYYY-MM-DD dates, and endDate must not be before startDate.',
+      });
+    }
+
+    if (normalizedReason.length > 1000) {
+      return res.status(400).json({
+        error: 'reason must be 1000 characters or fewer.',
       });
     }
 
@@ -3246,7 +3496,7 @@ app.post(
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
           `,
-          [tenantId, employeeId, startDate, endDate, reason],
+          [tenantId, employeeId, startDate, endDate, normalizedReason],
         );
 
         return result.rows[0];
@@ -3260,7 +3510,7 @@ app.post(
           action: 'leave_requested',
           entityType: 'leave_request',
           entityId: leaveRequest.id,
-          metadata: { startDate, endDate, reason },
+          metadata: { startDate, endDate, reason: normalizedReason },
         }),
       );
 
@@ -5158,6 +5408,21 @@ app.post(
       });
     }
 
+    if (normalizedTitle.length > 160 || normalizedContent.length > 20000) {
+      return res.status(400).json({
+        success: false,
+        error: 'title must be 160 characters or fewer and contentText must be 20000 characters or fewer.',
+      });
+    }
+
+    const serializedContentJson = contentJson == null ? null : JSON.stringify(contentJson);
+    if (serializedContentJson && serializedContentJson.length > 50000) {
+      return res.status(400).json({
+        success: false,
+        error: 'contentJson is too large.',
+      });
+    }
+
     if (!isFeedPostType(postType)) {
       return res.status(400).json({
         success: false,
@@ -5268,7 +5533,7 @@ app.post(
             normalizedTitle,
             postType,
             normalizedContent,
-            contentJson == null ? null : JSON.stringify(contentJson),
+            serializedContentJson,
             normalizedStartsAt,
             normalizedEndsAt,
             status,
@@ -5627,6 +5892,10 @@ app.patch(
 );
 
   app.get('/api/system/health', async (req, res) => {
+  if (isProduction()) {
+    return res.json({ success: true });
+  }
+
   try {
     const queue = getHrQueue();
 
@@ -5661,6 +5930,8 @@ app.patch(
     });
   }
 });
+
+  app.use('/api', apiErrorHandler);
 
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
   if (process.env.NODE_ENV !== 'production') {

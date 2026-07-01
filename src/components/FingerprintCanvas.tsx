@@ -12,6 +12,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
   const pulseStateRef = useRef(pulseState);
   const onPulseCompleteRef = useRef(onPulseComplete);
   const pulseStartTimeRef = useRef<number | null>(null);
+  const reducedMotionRef = useRef(false);
   
   // Track structural dimensions globally inside the hook context
   const dimensionsRef = useRef({ width: 0, height: 0 });
@@ -27,6 +28,11 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       }
     }
     onPulseCompleteRef.current = onPulseComplete;
+
+    if (reducedMotionRef.current && pulseState !== 'idle' && onPulseComplete) {
+      const timeoutId = window.setTimeout(onPulseComplete, 150);
+      return () => window.clearTimeout(timeoutId);
+    }
   }, [pulseState, onPulseComplete]);
 
   useEffect(() => {
@@ -39,6 +45,8 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
     if (!ctx) return;
 
     let animationFrameId: number;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    reducedMotionRef.current = prefersReducedMotion;
 
     // High DPI & dynamic scaling via ResizeObserver safely writing to dimensionsRef
     const resizeObserver = new ResizeObserver((entries) => {
@@ -60,6 +68,23 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
     });
 
     resizeObserver.observe(parent);
+
+    if (prefersReducedMotion) {
+      const { width, height } = parent.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      dimensionsRef.current = { width, height };
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#020403' : '#f8fafc';
+      ctx.fillRect(0, 0, width, height);
+
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }
 
     const draw = (time: number) => {
       const { width, height } = dimensionsRef.current;
