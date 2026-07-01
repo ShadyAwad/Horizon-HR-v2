@@ -1405,6 +1405,20 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setGrievanceForm((current) => ({ ...current, [field]: value as GrievancePriority }));
   };
 
+  const openLeaveRequestFlow = () => {
+    setActiveTab('profile');
+    setShowPayrollPanel(false);
+    setShowGrievancesPanel(true);
+    setGrievanceMessageType('success');
+    setGrievanceMessage('Leave request form opened. Add your dates and details, then submit.');
+    setGrievanceForm({
+      title: 'Leave Request',
+      category: 'leave_request',
+      priority: 'normal',
+      description: '',
+    });
+  };
+
   const submitGrievance = async () => {
     if (grievanceSubmitting) return;
 
@@ -2391,7 +2405,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  Auto Saved
                                </span>
                              )}
-                             <button className="px-3 py-1 text-slate-500 dark:text-slate-400 text-xs hover:text-slate-800 dark:hover:text-slate-300 font-bold uppercase transition-colors">{t('dash.applyLeave')}</button>
+                             <button
+                               type="button"
+                               title="Apply for leave"
+                               aria-label="Apply for leave"
+                               onClick={openLeaveRequestFlow}
+                               className="px-3 py-1 text-slate-500 dark:text-slate-400 text-xs hover:text-slate-800 dark:hover:text-slate-300 font-bold uppercase transition-colors"
+                             >
+                               {t('dash.applyLeave')}
+                             </button>
                            </div>
                        </div>
                        
@@ -3136,7 +3158,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 Grievances
                               </h3>
                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {canManageGrievances ? 'File a grievance and manage tenant cases.' : 'File and track your own grievance cases.'}
+                                {grievanceForm.category === 'leave_request'
+                                  ? 'Submit leave dates and details using the existing request workflow.'
+                                  : canManageGrievances ? 'File a grievance and manage tenant cases.' : 'File and track your own grievance cases.'}
                               </p>
                             </div>
                             <button
@@ -3185,7 +3209,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 disabled={grievanceSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                               >
-                                {grievanceSubmitting ? 'Submitting...' : 'Submit Grievance'}
+                                {grievanceSubmitting ? 'Submitting...' : grievanceForm.category === 'leave_request' ? 'Submit Leave Request' : 'Submit Grievance'}
                               </button>
                             </div>
                           </div>
