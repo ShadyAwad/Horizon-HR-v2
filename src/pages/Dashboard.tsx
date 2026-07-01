@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Settings2 , Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -25,9 +25,24 @@ type ShiftRow = {
 };
 
 type NotificationSettings = {
-  breakStart: boolean;
-  breakEnd: boolean;
+  channel: NotificationChannel;
+  notificationKey: NotificationKey;
+  enabled: boolean;
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
 };
+
+type NotificationChannel = 'in_app' | 'email' | 'push';
+type NotificationKey =
+  | 'attendance_reminders'
+  | 'break_reminders'
+  | 'leave_updates'
+  | 'payroll_updates'
+  | 'loan_updates'
+  | 'grievance_updates'
+  | 'company_feed_posts'
+  | 'role_permission_changes'
+  | 'system_alerts';
 
 type PayrollStatus = 'draft' | 'approved' | 'paid' | 'cancelled';
 
@@ -244,10 +259,33 @@ const defaultSchedule: ShiftRow[] = [
   { day: 'Sunday', date: '30', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Unscheduled' },
 ];
 
-const defaultNotificationSettings: NotificationSettings = {
-  breakStart: true,
-  breakEnd: true,
-};
+const notificationChannels: Array<{ key: NotificationChannel; label: string }> = [
+  { key: 'in_app', label: 'In-app' },
+  { key: 'email', label: 'Email' },
+  { key: 'push', label: 'Push' },
+];
+
+const notificationCategories: Array<{ key: NotificationKey; label: string; description: string }> = [
+  { key: 'attendance_reminders', label: 'Attendance reminders', description: 'Clock-in, clock-out, and attendance perimeter prompts.' },
+  { key: 'break_reminders', label: 'Break reminders', description: 'Scheduled break start and return reminders.' },
+  { key: 'leave_updates', label: 'Leave request updates', description: 'Leave approvals, rejections, and workflow changes.' },
+  { key: 'payroll_updates', label: 'Payroll updates', description: 'Payroll runs, approvals, payments, and statement availability.' },
+  { key: 'loan_updates', label: 'Loan updates', description: 'Employee loan creation, balance, and status updates.' },
+  { key: 'grievance_updates', label: 'Grievance updates', description: 'Case status changes and review activity.' },
+  { key: 'company_feed_posts', label: 'Company feed posts', description: 'Announcements, events, and policy updates.' },
+  { key: 'role_permission_changes', label: 'Role & permission changes', description: 'Custom role assignments and permission updates.' },
+  { key: 'system_alerts', label: 'System alerts', description: 'Important account, workspace, and security notices.' },
+];
+
+const defaultNotificationSettings: NotificationSettings[] = notificationCategories.flatMap((category) => (
+  notificationChannels.map((channel) => ({
+    channel: channel.key,
+    notificationKey: category.key,
+    enabled: true,
+    quietHoursStart: null,
+    quietHoursEnd: null,
+  }))
+));
 
 const defaultPayrollForm: PayrollFormState = {
   payPeriodStart: '',
@@ -323,14 +361,7 @@ function readStoredSchedule() {
 }
 
 function readStoredNotifications() {
-  if (typeof window === 'undefined') return defaultNotificationSettings;
-
-  try {
-    const storedSettings = window.localStorage.getItem('horizon-notifications');
-    return storedSettings ? JSON.parse(storedSettings) as NotificationSettings : defaultNotificationSettings;
-  } catch {
-    return defaultNotificationSettings;
-  }
+  return defaultNotificationSettings;
 }
 
 function getShiftFrame(shift: ShiftRow) {
@@ -441,7 +472,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
   const [schedule, setSchedule] = useState<ShiftRow[]>(readStoredSchedule);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readStoredNotifications);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings[]>(readStoredNotifications);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationMessageType, setNotificationMessageType] = useState<'success' | 'error'>('success');
+  const [quietHoursStart, setQuietHoursStart] = useState('');
+  const [quietHoursEnd, setQuietHoursEnd] = useState('');
   const [showPayrollPanel, setShowPayrollPanel] = useState(false);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
@@ -526,18 +563,99 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       nextStatus === 'paid' ? canMarkPayrollPaid : canApprovePayroll
     ))
   );
+  const profilePanelHeading = showPayrollPanel ? 'Payroll' : showGrievancesPanel ? 'Grievances' : 'Employee Profile';
+  const profilePanelSubtitle = showPayrollPanel
+    ? 'Tenant payroll records, compensation, loans, and approvals'
+    : showGrievancesPanel
+      ? 'File a grievance and manage tenant cases'
+      : 'Personal ledger & workflows';
 
-  const requestNotificationPermission = async () => {
-    if (!('Notification' in window) || Notification.permission !== 'default') return;
-    await Notification.requestPermission();
+  const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
+    notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
+    defaultNotificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel)!
+  );
+
+  const updateNotificationToggle = (notificationKey: NotificationKey, channel: NotificationChannel, enabled: boolean) => {
+    setNotificationSettings((current) => current.map((setting) => (
+      setting.notificationKey === notificationKey && setting.channel === channel
+        ? { ...setting, enabled }
+        : setting
+    )));
   };
 
-  const updateNotificationSetting = async (key: keyof NotificationSettings, value: boolean) => {
-    if (value) {
-      await requestNotificationPermission();
-    }
+  const normalizeNotificationSettings = (settings: NotificationSettings[]) => (
+    defaultNotificationSettings.map((defaultSetting) => {
+      const savedSetting = settings.find((setting) => (
+        setting.notificationKey === defaultSetting.notificationKey &&
+        setting.channel === defaultSetting.channel
+      ));
 
-    setNotificationSettings((current) => ({ ...current, [key]: value }));
+      return savedSetting ? { ...defaultSetting, ...savedSetting } : defaultSetting;
+    })
+  );
+
+  const loadNotificationSettings = async (clearMessage = true) => {
+    setNotificationLoading(true);
+    if (clearMessage) setNotificationMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/notification-settings/me'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const settings = normalizeNotificationSettings(data.settings || []);
+        setNotificationSettings(settings);
+        const settingWithQuietHours = settings.find((setting) => setting.quietHoursStart || setting.quietHoursEnd);
+        setQuietHoursStart(settingWithQuietHours?.quietHoursStart || '');
+        setQuietHoursEnd(settingWithQuietHours?.quietHoursEnd || '');
+      } else {
+        setNotificationMessageType('error');
+        setNotificationMessage(data.error || 'Unable to load notification settings.');
+      }
+    } catch {
+      setNotificationMessageType('error');
+      setNotificationMessage('Server disconnection. Unable to load notification settings.');
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
+
+  const saveNotificationSettings = async () => {
+    if (notificationSaving) return;
+
+    setNotificationSaving(true);
+    setNotificationMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/notification-settings/me'), {
+        method: 'PUT',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          settings: notificationSettings.map((setting) => ({
+            channel: setting.channel,
+            notificationKey: setting.notificationKey,
+            enabled: setting.enabled,
+            quietHoursStart: quietHoursStart || null,
+            quietHoursEnd: quietHoursEnd || null,
+          })),
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setNotificationSettings(normalizeNotificationSettings(data.settings || []));
+        setNotificationMessageType('success');
+        setNotificationMessage('Notification settings saved.');
+      } else {
+        setNotificationMessageType('error');
+        setNotificationMessage(data.error || 'Unable to save notification settings.');
+      }
+    } catch {
+      setNotificationMessageType('error');
+      setNotificationMessage('Server disconnection. Unable to save notification settings.');
+    } finally {
+      setNotificationSaving(false);
+    }
   };
 
   const handleClockAction = async () => {
@@ -564,11 +682,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   }, [schedule]);
 
   useEffect(() => {
-    window.localStorage.setItem('horizon-notifications', JSON.stringify(notificationSettings));
-  }, [notificationSettings]);
-
-  useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const breakReminderSetting = getNotificationSetting('break_reminders', 'in_app');
+    if (!breakReminderSetting.enabled) return;
 
     const todayCode = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date());
     const todaysShift = schedule.find((shift) => shift.day.slice(0, 3) === todayCode);
@@ -594,13 +711,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     if (todaysShift) {
       scheduleBreakReminder(
-        notificationSettings.breakStart,
+        breakReminderSetting.enabled,
         todaysShift.breakStart,
         'Break starting',
         `Your break starts at ${todaysShift.breakStart}.`,
       );
       scheduleBreakReminder(
-        notificationSettings.breakEnd,
+        breakReminderSetting.enabled,
         todaysShift.breakEnd,
         'Break ending',
         `Your break ends at ${todaysShift.breakEnd}.`,
@@ -1211,6 +1328,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       loadRoleManagement();
     }
   }, [activeTab, showPayrollPanel, showGrievancesPanel, canManageRoles, user.id, user.tenantId]);
+
+  useEffect(() => {
+    if (activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel) {
+      loadNotificationSettings();
+    }
+  }, [activeTab, showPayrollPanel, showGrievancesPanel, user.id, user.tenantId]);
 
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
@@ -2241,8 +2364,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                       <div className="flex items-center gap-3 mb-5">
                           <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />
                           <div>
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('profile.title')}</h2>
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono uppercase tracking-widest">{t('profile.subtitle')}</p>
+                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{profilePanelHeading}</h2>
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono uppercase tracking-widest">{profilePanelSubtitle}</p>
                           </div>
                       </div>
 
@@ -2907,48 +3030,98 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   Notification Settings
                                 </p>
                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                  Optional reminders for your scheduled break window.
+                                  Choose which updates Stanza should surface for your account.
                                 </p>
                               </div>
 
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  await requestNotificationPermission();
-                                  notifyEmployee('Stanza', 'Break reminder notifications are ready.');
-                                }}
-                                className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:text-emerald-300"
+                                onClick={() => loadNotificationSettings()}
+                                disabled={notificationLoading || notificationSaving}
+                                className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                               >
-                                Test
+                                {notificationLoading ? 'Loading...' : 'Refresh'}
                               </button>
                             </div>
 
-                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-500/15 bg-white px-3 py-2.5 dark:border-emerald-500/15 dark:bg-black/40">
-                                <span>
-                                  <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break starts</span>
-                                  <span className="block text-[10px] text-slate-500">Notify when break time begins.</span>
-                                </span>
-                                <input
-                                  type="checkbox"
-                                  checked={notificationSettings.breakStart}
-                                  onChange={(event) => updateNotificationSetting('breakStart', event.target.checked)}
-                                  className="h-4 w-4 accent-emerald-500"
-                                />
-                              </label>
+                            <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] text-neutral-600 dark:text-emerald-100/55">
+                              Email and push delivery are preference-ready; delivery providers can be connected later.
+                            </p>
 
-                              <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-500/15 bg-white px-3 py-2.5 dark:border-emerald-500/15 dark:bg-black/40">
-                                <span>
-                                  <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Break ends</span>
-                                  <span className="block text-[10px] text-slate-500">Notify before returning to shift.</span>
-                                </span>
+                            {notificationMessage && (
+                              <p className={cn(
+                                "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+                                notificationMessageType === 'success'
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                              )}>
+                                {notificationMessage}
+                              </p>
+                            )}
+
+                            <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-500/15">
+                              <div className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] gap-0 border-b border-emerald-500/15 bg-white/70 text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:bg-black/35 dark:text-emerald-100/45">
+                                <div className="p-3">Category</div>
+                                {notificationChannels.map((channel) => (
+                                  <div key={channel.key} className="p-3 text-center">{channel.label}</div>
+                                ))}
+                              </div>
+
+                              <div className="divide-y divide-emerald-500/10">
+                                {notificationCategories.map((category) => (
+                                  <div key={category.key} className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] items-center bg-white/55 dark:bg-black/25">
+                                    <div className="p-3">
+                                      <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{category.label}</p>
+                                      <p className="mt-1 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{category.description}</p>
+                                    </div>
+                                    {notificationChannels.map((channel) => {
+                                      const setting = getNotificationSetting(category.key, channel.key);
+
+                                      return (
+                                        <label key={channel.key} className="flex justify-center p-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={setting.enabled}
+                                            onChange={(event) => updateNotificationToggle(category.key, channel.key, event.target.checked)}
+                                            disabled={notificationLoading || notificationSaving}
+                                            className="h-4 w-4 accent-emerald-500 disabled:opacity-60"
+                                            aria-label={`${category.label} ${channel.label}`}
+                                          />
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                              <label className="block">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours start</span>
                                 <input
-                                  type="checkbox"
-                                  checked={notificationSettings.breakEnd}
-                                  onChange={(event) => updateNotificationSetting('breakEnd', event.target.checked)}
-                                  className="h-4 w-4 accent-emerald-500"
+                                  type="time"
+                                  value={quietHoursStart}
+                                  onChange={(event) => setQuietHoursStart(event.target.value)}
+                                  className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                               </label>
+                              <label className="block">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours end</span>
+                                <input
+                                  type="time"
+                                  value={quietHoursEnd}
+                                  onChange={(event) => setQuietHoursEnd(event.target.value)}
+                                  className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={saveNotificationSettings}
+                                disabled={notificationSaving || notificationLoading}
+                                className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                {notificationSaving ? 'Saving...' : 'Save Settings'}
+                              </button>
                             </div>
                          </div>
 
@@ -3120,25 +3293,6 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             </p>
                             <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 font-mono uppercase tracking-widest">No active liabilities</p>
                          </div>
-                         <button
-                            type="button"
-                            onClick={() => setShowPayrollPanel(true)}
-                            className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/25 transition-colors text-left"
-                         >
-                            <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.payroll')}</p>
-                            <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                         </button>
-                         <button
-                            type="button"
-                            onClick={() => {
-                              setShowPayrollPanel(false);
-                              setShowGrievancesPanel(true);
-                            }}
-                            className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/25 transition-colors text-left"
-                         >
-                            <p className="font-bold text-slate-700 dark:text-slate-300">{t('profile.grievance')}</p>
-                            <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                         </button>
                       </div>
                       )}
                    </motion.div>

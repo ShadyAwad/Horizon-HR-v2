@@ -68,6 +68,75 @@ WITH CHECK (
 );
 
 -- =========================================================
+-- 2. User Notification Settings
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS user_notification_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    channel VARCHAR(30) NOT NULL,
+    notification_key VARCHAR(80) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+
+    quiet_hours_start TIME,
+    quiet_hours_end TIME,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT user_notification_settings_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT user_notification_settings_channel_chk
+        CHECK (channel IN ('in_app', 'email', 'push')),
+
+    CONSTRAINT user_notification_settings_key_chk
+        CHECK (
+            notification_key IN (
+                'attendance_reminders',
+                'break_reminders',
+                'leave_updates',
+                'payroll_updates',
+                'loan_updates',
+                'grievance_updates',
+                'company_feed_posts',
+                'role_permission_changes',
+                'system_alerts'
+            )
+        ),
+
+    CONSTRAINT user_notification_settings_unique_rule
+        UNIQUE (tenant_id, employee_id, channel, notification_key)
+);
+
+CREATE INDEX IF NOT EXISTS user_notification_settings_tenant_employee_idx
+ON user_notification_settings(tenant_id, employee_id);
+
+CREATE INDEX IF NOT EXISTS user_notification_settings_tenant_key_idx
+ON user_notification_settings(tenant_id, notification_key);
+
+CREATE INDEX IF NOT EXISTS user_notification_settings_tenant_channel_idx
+ON user_notification_settings(tenant_id, channel);
+
+ALTER TABLE user_notification_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS user_notification_settings_tenant_isolation ON user_notification_settings;
+
+CREATE POLICY user_notification_settings_tenant_isolation
+ON user_notification_settings
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
 -- 2a. Tenant Roles & Permission Foundations
 -- =========================================================
 
