@@ -20,6 +20,7 @@
     "@lexical/list": "^0.46.0",
     "@lexical/react": "^0.46.0",
     "@lexical/rich-text": "^0.46.0",
+    "@lexical/selection": "^0.46.0",
     "@lexical/utils": "^0.46.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
