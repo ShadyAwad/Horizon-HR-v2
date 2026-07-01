@@ -1,6 +1,6 @@
 import React, { useEffect, useState ,useRef } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -11,12 +11,15 @@ import type { AuthUser } from '../App';
 
 
 type InteractiveMapProps = {
-  lat: number;
-  lng: number;
+  locationKey?: string | number;
+  lat: number | null;
+  lng: number | null;
   radius: number;
   setLat: (value: number) => void;
   setLng: (value: number) => void;
   setRadius: (value: number) => void;
+  locationAccuracy?: number;
+  disabled?: boolean;
 };
 
 type SignupLocationType = 'headquarters' | 'branch' | 'warehouse' | 'remote_site' | 'other';
@@ -25,8 +28,8 @@ type SignupLocation = {
   name: string;
   locationType: SignupLocationType;
   address: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   radius: number;
   isPrimary: boolean;
 };
@@ -44,138 +47,345 @@ const locationTypeOptions: Array<{ value: SignupLocationType; label: string }> =
   { value: 'other', label: 'Other' },
 ];
 
+type CircleFeature = {
+  type: 'Feature';
+  properties: Record<string, never>;
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+};
+
+type EmptyFeatureCollection = {
+  type: 'FeatureCollection';
+  features: [];
+};
+
+type RadiusGeoJson = CircleFeature | EmptyFeatureCollection;
+type LocationStatus = 'idle' | 'locating' | 'accurate' | 'approximate' | 'low_accuracy' | 'manual' | 'manual_coordinates' | 'error';
+type MapStyleId = 'streets' | 'satellite';
+type PendingLocation = {
+  lat: number;
+  lng: number;
+  accuracy: number;
+} | null;
+
+const neutralMapCenter: [number, number] = [0, 20];
+const mapStyleOptions: Array<{ id: MapStyleId; label: string; maptilerId: string }> = [
+  { id: 'streets', label: 'Streets', maptilerId: 'streets-v2' },
+  { id: 'satellite', label: 'Satellite', maptilerId: 'satellite' },
+];
+
+const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+const toDegrees = (radians: number) => radians * (180 / Math.PI);
+
+function createCirclePolygon(lng: number, lat: number, radiusMeters: number, steps = 96): CircleFeature {
+  const earthRadiusMeters = 6371008.8;
+  const angularDistance = radiusMeters / earthRadiusMeters;
+  const latRadians = toRadians(lat);
+  const lngRadians = toRadians(lng);
+  const coordinates: number[][] = [];
+
+  for (let index = 0; index <= steps; index += 1) {
+    const bearing = (index / steps) * Math.PI * 2;
+    const pointLat = Math.asin(
+      Math.sin(latRadians) * Math.cos(angularDistance) +
+      Math.cos(latRadians) * Math.sin(angularDistance) * Math.cos(bearing),
+    );
+    const pointLng = lngRadians + Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRadians),
+      Math.cos(angularDistance) - Math.sin(latRadians) * Math.sin(pointLat),
+    );
+
+    coordinates.push([Number(toDegrees(pointLng).toFixed(7)), Number(toDegrees(pointLat).toFixed(7))]);
+  }
+
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coordinates],
+    },
+  };
+}
+
+function createRadiusGeoJson(lng: number | null, lat: number | null, radiusMeters: number): RadiusGeoJson {
+  if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  return createCirclePolygon(lng, lat, radiusMeters);
+}
+
+function mapStyleUrl(styleId: MapStyleId, key: string) {
+  const style = mapStyleOptions.find((option) => option.id === styleId) || mapStyleOptions[0];
+  return `https://api.maptiler.com/maps/${style.maptilerId}/style.json?key=${key}`;
+}
+
 const InteractiveMap = ({
+  locationKey,
   lat,
   lng,
   radius,
   setLat,
   setLng,
   setRadius,
+  locationAccuracy,
+  disabled = false,
 }: InteractiveMapProps) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const circleRef = useRef<L.Circle | null>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const lastCenterRef = useRef<[number, number] | null>(null);
+  const setLatRef = useRef(setLat);
+  const setLngRef = useRef(setLng);
+  const latRef = useRef(lat);
+  const lngRef = useRef(lng);
+  const radiusRef = useRef(radius);
+  const currentMapStyleRef = useRef<MapStyleId>('streets');
 
   const [manualMode, setManualMode] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<
-    'idle' | 'loading' | 'success' | 'error'
-  >('idle');
-  const [tileStatus, setTileStatus] = useState<'loading' | 'ready' | 'error'>(
-    'loading',
-  );
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
+  const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [selectedMapStyle, setSelectedMapStyle] = useState<MapStyleId>('streets');
+  const [accuracy, setAccuracy] = useState<number | null>(locationAccuracy ?? null);
+  const [pendingLocation, setPendingLocation] = useState<PendingLocation>(null);
+  const [coordinateError, setCoordinateError] = useState('');
+  const maptilerKey = import.meta.env.VITE_MAPTILER_KEY as string | undefined;
+  const hasCoordinates = lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
+  const locationStatusCopy: Record<LocationStatus, string> = {
+    idle: hasCoordinates
+      ? 'Drag the pin to the exact office entrance or worksite center.'
+      : 'Use your location, drag the pin, or enter coordinates manually.',
+    locating: 'Detecting location...',
+    accurate: 'Location detected. Drag the pin if you need to fine-tune the worksite.',
+    approximate: 'Approximate location detected. Drag the pin to the exact worksite.',
+    low_accuracy: 'Browser location is too broad. Drag the pin or enter coordinates manually.',
+    manual: 'Pin adjusted manually.',
+    manual_coordinates: 'Coordinates applied manually.',
+    error: 'Unable to access location. Enter coordinates manually or drag the pin.',
+  };
+
+  const ensureRadiusLayer = (map: maplibregl.Map) => {
+    if (!map.isStyleLoaded()) return;
+
+    if (!map.getSource('signup-geofence-radius')) {
+      map.addSource('signup-geofence-radius', {
+        type: 'geojson',
+        data: createRadiusGeoJson(lngRef.current, latRef.current, radiusRef.current),
+      });
+    }
+
+    if (!map.getLayer('signup-geofence-radius-fill')) {
+      map.addLayer({
+        id: 'signup-geofence-radius-fill',
+        type: 'fill',
+        source: 'signup-geofence-radius',
+        paint: {
+          'fill-color': '#10b981',
+          'fill-opacity': 0.16,
+        },
+      });
+    }
+
+    if (!map.getLayer('signup-geofence-radius-outline')) {
+      map.addLayer({
+        id: 'signup-geofence-radius-outline',
+        type: 'line',
+        source: 'signup-geofence-radius',
+        paint: {
+          'line-color': '#34d399',
+          'line-width': 2,
+          'line-opacity': 0.9,
+        },
+      });
+    }
+
+    const source = map.getSource('signup-geofence-radius') as maplibregl.GeoJSONSource | undefined;
+    source?.setData(createRadiusGeoJson(lngRef.current, latRef.current, radiusRef.current));
+  };
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    setLatRef.current = setLat;
+    setLngRef.current = setLng;
+    latRef.current = lat;
+    lngRef.current = lng;
+    radiusRef.current = radius;
+  }, [lat, lng, radius, setLat, setLng]);
 
-    const map = L.map(mapContainerRef.current, {
-      center: [lat, lng],
-      zoom: 15,
-      zoomControl: true,
-      attributionControl: true,
+  useEffect(() => {
+    setPendingLocation(null);
+    setLocationStatus('idle');
+    setAccuracy(locationAccuracy ?? null);
+  }, [locationAccuracy, locationKey]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current || !maptilerKey) return;
+
+    const initialCenter: [number, number] = hasCoordinates ? [lng, lat] : neutralMapCenter;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: mapStyleUrl(selectedMapStyle, maptilerKey),
+      center: initialCenter,
+      zoom: hasCoordinates ? 15 : 1.5,
+      attributionControl: { compact: true },
     });
 
     mapInstanceRef.current = map;
+    currentMapStyleRef.current = selectedMapStyle;
+    lastCenterRef.current = hasCoordinates ? initialCenter : null;
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    const tileLayer = L.tileLayer(apiUrl('/api/map-tiles/{z}/{x}/{y}.png'), {
-      tileSize: 256,
-      zoomOffset: 0,
-      minZoom: 1,
-      maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    map.on('load', () => {
+      ensureRadiusLayer(map);
+      setMapStatus('ready');
+      setTimeout(() => map.resize(), 200);
     });
 
-    tileLayer
-      .on('load', () => setTileStatus('ready'))
-      .on('tileerror', () => setTileStatus('error'))
-      .addTo(map);
-
-    const worksiteIcon = L.divIcon({
-      className: '',
-      html: `
-        <div style="
-          width: 26px;
-          height: 26px;
-          border-radius: 9999px;
-          background: #10b981;
-          border: 3px solid #020403;
-          box-shadow: 0 0 0 4px rgba(16,185,129,0.25), 0 0 28px rgba(16,185,129,0.65);
-        "></div>
-      `,
-      iconSize: [26, 26],
-      iconAnchor: [13, 13],
-    });
-
-    const marker = L.marker([lat, lng], {
-      draggable: true,
-      icon: worksiteIcon,
-    }).addTo(map);
-
-    markerRef.current = marker;
-
-    const circle = L.circle([lat, lng], {
-      radius,
-      color: '#10b981',
-      fillColor: '#10b981',
-      fillOpacity: 0.16,
-      weight: 2,
-    }).addTo(map);
-
-    circleRef.current = circle;
-
-    marker.on('dragend', () => {
-      const position = marker.getLatLng();
-
-      setLat(Number(position.lat.toFixed(6)));
-      setLng(Number(position.lng.toFixed(6)));
-    });
+    map.on('error', () => setMapStatus('error'));
 
     setTimeout(() => {
-      map.invalidateSize();
+      map.resize();
     }, 200);
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
       markerRef.current = null;
-      circleRef.current = null;
     };
-  }, []);
+  }, [maptilerKey]);
 
   useEffect(() => {
-    if (!markerRef.current || !circleRef.current) return;
+    const map = mapInstanceRef.current;
+    if (!map || !maptilerKey) return;
+    if (currentMapStyleRef.current === selectedMapStyle) return;
 
-    const nextPosition: [number, number] = [lat, lng];
+    const currentCenter = map.getCenter();
+    const currentZoom = map.getZoom();
+    currentMapStyleRef.current = selectedMapStyle;
+    setMapStatus('loading');
 
-    markerRef.current.setLatLng(nextPosition);
-    circleRef.current.setLatLng(nextPosition);
-    circleRef.current.setRadius(radius);
-    mapInstanceRef.current?.setView(nextPosition, Math.max(mapInstanceRef.current.getZoom(), 15), {
-      animate: true,
-    });
-    setTimeout(() => mapInstanceRef.current?.invalidateSize(), 50);
-  }, [lat, lng, radius]);
+    const restoreMapOverlays = () => {
+      map.jumpTo({
+        center: [currentCenter.lng, currentCenter.lat],
+        zoom: currentZoom,
+      });
+      ensureRadiusLayer(map);
+      setMapStatus('ready');
+      setTimeout(() => map.resize(), 50);
+    };
 
-  const useCurrentLocation = () => {
+    map.once('style.load', restoreMapOverlays);
+    map.setStyle(mapStyleUrl(selectedMapStyle, maptilerKey));
+
+    return () => {
+      map.off('style.load', restoreMapOverlays);
+    };
+  }, [maptilerKey, selectedMapStyle]);
+
+  useEffect(() => {
+    if (locationAccuracy !== undefined) {
+      setAccuracy(locationAccuracy);
+    }
+  }, [locationAccuracy]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const source = map.getSource('signup-geofence-radius') as maplibregl.GeoJSONSource | undefined;
+    source?.setData(createRadiusGeoJson(lng, lat, radius));
+
+    if (!hasCoordinates) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      lastCenterRef.current = null;
+      return;
+    }
+
+    const nextCenter: [number, number] = [lng, lat];
+
+    if (!markerRef.current) {
+      const markerElement = document.createElement('div');
+      markerElement.className = 'h-7 w-7 rounded-full border-[3px] border-black bg-emerald-500 shadow-[0_0_0_5px_rgba(16,185,129,0.25),0_0_28px_rgba(16,185,129,0.65)]';
+      const marker = new maplibregl.Marker({
+        element: markerElement,
+        draggable: !disabled,
+      })
+        .setLngLat(nextCenter)
+        .addTo(map);
+
+      marker.on('dragend', () => {
+        const position = marker.getLngLat();
+
+        setLatRef.current(Number(position.lat.toFixed(6)));
+        setLngRef.current(Number(position.lng.toFixed(6)));
+        setLocationStatus('manual');
+      });
+
+      markerRef.current = marker;
+    }
+
+    const marker = markerRef.current;
+    marker.setLngLat(nextCenter);
+    marker.setDraggable(!disabled);
+
+    const previousCenter = lastCenterRef.current;
+    const movedFarEnough = !previousCenter ||
+      Math.abs(previousCenter[0] - lng) > 0.000001 ||
+      Math.abs(previousCenter[1] - lat) > 0.000001;
+
+    if (movedFarEnough) {
+      map.easeTo({
+        center: nextCenter,
+        zoom: Math.max(map.getZoom(), 15),
+        duration: 450,
+      });
+      lastCenterRef.current = nextCenter;
+    }
+
+    setTimeout(() => map.resize(), 50);
+  }, [disabled, hasCoordinates, lat, lng, radius]);
+
+  const useCurrentLocation = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+
     if (!navigator.geolocation) {
       setLocationStatus('error');
       return;
     }
 
-    setLocationStatus('loading');
+    setLocationStatus('locating');
+    setPendingLocation(null);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const nextLat = Number(position.coords.latitude.toFixed(6));
         const nextLng = Number(position.coords.longitude.toFixed(6));
+        const nextAccuracy = Math.round(position.coords.accuracy);
+
+        setAccuracy(nextAccuracy);
+
+        if (nextAccuracy > 1000) {
+          setPendingLocation({ lat: nextLat, lng: nextLng, accuracy: nextAccuracy });
+          setLocationStatus('low_accuracy');
+          return;
+        }
 
         setLat(nextLat);
         setLng(nextLng);
 
-        mapInstanceRef.current?.setView([nextLat, nextLng], 16);
+        mapInstanceRef.current?.flyTo({
+          center: [nextLng, nextLat],
+          zoom: 16,
+          duration: 700,
+        });
+        lastCenterRef.current = [nextLng, nextLat];
 
-        setLocationStatus('success');
+        setLocationStatus(nextAccuracy <= 100 ? 'accurate' : 'approximate');
       },
       () => {
         setLocationStatus('error');
@@ -188,70 +398,205 @@ const InteractiveMap = ({
     );
   };
 
+  const useApproximateLocation = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    if (!pendingLocation) return;
+
+    setLat(pendingLocation.lat);
+    setLng(pendingLocation.lng);
+    setAccuracy(pendingLocation.accuracy);
+    setLocationStatus('approximate');
+    setPendingLocation(null);
+
+    mapInstanceRef.current?.flyTo({
+      center: [pendingLocation.lng, pendingLocation.lat],
+      zoom: 14,
+      duration: 700,
+    });
+    lastCenterRef.current = [pendingLocation.lng, pendingLocation.lat];
+  };
+
+  const applyManualLatitude = (value: string) => {
+    if (value === '') return;
+
+    const nextLat = Number(value);
+    if (!Number.isFinite(nextLat) || nextLat < -90 || nextLat > 90) {
+      setCoordinateError('Latitude must be between -90 and 90.');
+      return;
+    }
+
+    setLat(Number(nextLat.toFixed(6)));
+    setPendingLocation(null);
+    setCoordinateError('');
+    setLocationStatus('manual_coordinates');
+  };
+
+  const applyManualLongitude = (value: string) => {
+    if (value === '') return;
+
+    const nextLng = Number(value);
+    if (!Number.isFinite(nextLng) || nextLng < -180 || nextLng > 180) {
+      setCoordinateError('Longitude must be between -180 and 180.');
+      return;
+    }
+
+    setLng(Number(nextLng.toFixed(6)));
+    setPendingLocation(null);
+    setCoordinateError('');
+    setLocationStatus('manual_coordinates');
+  };
+
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-[#04110d]/80">
-        <div ref={mapContainerRef} className="h-[330px] w-full" />
-
-        {tileStatus === 'error' && (
-          <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-                Map provider unavailable
-              </p>
-              <p className="mt-2 text-[11px] text-emerald-100/50">
-                Check the server map tile configuration, then restart the dev server.
-              </p>
-            </div>
+      <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/80 p-3">
+        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+              Worksite Geofence
+            </p>
+            <p className="mt-1 text-[11px] text-emerald-100/45">
+              Drag the pin to the exact office entrance or worksite center.
+            </p>
           </div>
-        )}
 
-        <div className="pointer-events-none absolute inset-0 rounded-xl border border-emerald-500/10 shadow-[inset_0_0_45px_rgba(16,185,129,0.12)]" />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="inline-flex rounded-lg border border-emerald-500/15 bg-black/25 p-1">
+              {mapStyleOptions.map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setSelectedMapStyle(style.id);
+                  }}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition',
+                    selectedMapStyle === style.id
+                      ? 'bg-emerald-500 text-black'
+                      : 'text-emerald-100/55 hover:text-emerald-200',
+                  )}
+                >
+                  {style.label}
+                </button>
+              ))}
+            </div>
 
-        <div className="absolute left-4 top-4 z-[500] rounded-lg border border-emerald-500/15 bg-black/70 px-3 py-2 backdrop-blur-md">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
-            Worksite Geofence
-          </p>
-          <p className="text-[10px] text-emerald-100/45">
-            Drag the pin, use your current location, or enter coordinates manually.
-          </p>
-          <p className="mt-1 text-[9px] text-emerald-100/35">
-            Map labels are MapTiler/OpenStreetMap; saved coordinates define the geofence.
-          </p>
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={locationStatus === 'locating'}
+              className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+            >
+              {locationStatus === 'locating' ? 'Detecting...' : 'Use My Location'}
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={useCurrentLocation}
-          className="absolute right-4 top-4 z-[500] rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400"
-        >
-          {locationStatus === 'loading' ? 'Locating...' : 'Use My Location'}
-        </button>
+        <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-black">
+          <div ref={mapContainerRef} className="h-[340px] w-full md:h-[420px]" />
 
-        {locationStatus === 'error' && (
-          <div className="absolute bottom-4 left-4 right-4 z-[500] rounded-lg border border-red-500/30 bg-red-950/80 px-3 py-2 text-[11px] text-red-200 backdrop-blur-md">
-            Unable to access location. You can still enter coordinates manually.
-          </div>
-        )}
+          {!maptilerKey && (
+            <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                  Map provider key missing
+                </p>
+                <p className="mt-2 text-[11px] text-emerald-100/50">
+                  Add VITE_MAPTILER_KEY.
+                </p>
+              </div>
+            </div>
+          )}
 
-        {locationStatus === 'success' && (
-          <div className="absolute bottom-4 left-4 right-4 z-[500] rounded-lg border border-emerald-500/20 bg-black/70 px-3 py-2 text-[11px] text-emerald-200 backdrop-blur-md">
-            Location detected. Drag the pin if you need to fine-tune the worksite.
+          {maptilerKey && mapStatus === 'loading' && (
+            <div className="absolute inset-0 z-[550] flex items-center justify-center bg-black/50 px-6 text-center backdrop-blur-[1px]">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                Loading MapLibre map...
+              </p>
+            </div>
+          )}
+
+          {mapStatus === 'error' && (
+            <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                  Map provider unavailable
+                </p>
+                <p className="mt-2 text-[11px] text-emerald-100/50">
+                  Check VITE_MAPTILER_KEY, then restart the dev server.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute inset-0 rounded-xl border border-emerald-500/10 shadow-[inset_0_0_45px_rgba(16,185,129,0.12)]" />
+        </div>
+
+        <div className={cn(
+          'mt-3 rounded-lg border px-3 py-2 text-[11px]',
+          locationStatus === 'error'
+            ? 'border-red-500/30 bg-red-950/50 text-red-200'
+            : locationStatus === 'low_accuracy' || locationStatus === 'approximate'
+              ? 'border-amber-500/25 bg-amber-950/20 text-amber-100/85'
+              : 'border-emerald-500/15 bg-black/25 text-emerald-100/65',
+        )}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-bold uppercase tracking-widest">
+                {locationStatus === 'low_accuracy' ? 'Low accuracy location' : locationStatus === 'approximate' ? 'Approximate location' : locationStatus === 'accurate' ? 'Location detected' : locationStatus === 'manual' ? 'Manual adjustment' : locationStatus === 'manual_coordinates' ? 'Manual coordinates' : 'Location status'}
+              </p>
+              <p className="mt-1">{locationStatusCopy[locationStatus]}</p>
+              {locationStatus === 'low_accuracy' && (
+                <p className="mt-1 text-amber-100/70">
+                  Browser location is only approximate. Manual adjustment is required.
+                </p>
+              )}
+            </div>
+            {pendingLocation && locationStatus === 'low_accuracy' && (
+              <button
+                type="button"
+                onClick={useApproximateLocation}
+                className="rounded-lg border border-amber-300/30 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 transition hover:border-amber-200/60"
+              >
+                Use Approximate Location Anyway
+              </button>
+            )}
           </div>
-        )}
+        </div>
+
+        <p className="mt-2 text-[9px] text-emerald-100/35">
+          Map labels are provided by MapTiler/OpenStreetMap and may differ from local naming. Use satellite view or drag the pin to confirm the exact worksite.
+        </p>
       </div>
 
       <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
         <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
           <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-100/35">Latitude</p>
-            <p className="mt-1 font-mono text-xs text-emerald-300">{lat.toFixed(7)}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">Latitude</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lat === null ? 'Not selected' : lat.toFixed(7)}</p>
           </div>
           <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-100/35">Longitude</p>
-            <p className="mt-1 font-mono text-xs text-emerald-300">{lng.toFixed(7)}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">Longitude</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lng === null ? 'Not selected' : lng.toFixed(7)}</p>
           </div>
         </div>
+
+        {accuracy !== null && (
+          <div className="mb-4 rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">
+              Location accuracy
+            </p>
+            <p className="mt-1 text-xs text-emerald-300">±{accuracy} meters</p>
+            {accuracy > 100 && (
+              <p className="mt-1 text-[11px] text-amber-200/80">
+                Your browser location may be approximate. Drag the pin to fine-tune the worksite.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -293,45 +638,77 @@ const InteractiveMap = ({
       </button>
 
       {manualMode && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
-              Latitude
-            </label>
-            <input
-              type="number"
-              step="0.000001"
-              value={lat}
-              onChange={(e) => setLat(Number(e.target.value))}
-              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
-            />
+        <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
+          <div className="mb-4 rounded-lg border border-emerald-500/10 bg-black/25 p-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">How to get coordinates</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-emerald-100/65">
+              <li>Open Google Maps.</li>
+              <li>Long-press or right-click the exact office/worksite location.</li>
+              <li>Copy the latitude and longitude numbers.</li>
+              <li>Paste them into the Latitude and Longitude fields.</li>
+              <li>Confirm the marker moves to the correct place.</li>
+            </ol>
+            <p className="mt-2 text-xs text-emerald-100/45">
+              Google Maps shows latitude first, longitude second.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border border-emerald-500/10 bg-black/25 p-3 font-mono text-xs text-emerald-200 sm:grid-cols-2">
+              <span>Latitude: 30.0444</span>
+              <span>Longitude: 31.2357</span>
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
-              Longitude
-            </label>
-            <input
-              type="number"
-              step="0.000001"
-              value={lng}
-              onChange={(e) => setLng(Number(e.target.value))}
-              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
-            />
-          </div>
+          {coordinateError && (
+            <p className="mb-3 rounded-lg border border-red-500/25 bg-red-950/35 px-3 py-2 text-xs text-red-200">
+              {coordinateError}
+            </p>
+          )}
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">
-              Radius
-            </label>
-            <input
-              type="number"
-              min="25"
-              max="5000"
-              value={radius}
-              onChange={(e) => setRadius(Number(e.target.value))}
-              className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
-            />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
+                Latitude
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                min="-90"
+                max="90"
+                value={lat ?? ''}
+                onChange={(e) => applyManualLatitude(e.target.value)}
+                placeholder="30.0444"
+                className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
+                Longitude
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                min="-180"
+                max="180"
+                value={lng ?? ''}
+                onChange={(e) => applyManualLongitude(e.target.value)}
+                placeholder="31.2357"
+                className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
+                Radius
+              </label>
+              <input
+                type="number"
+                min="25"
+                max="5000"
+                value={radius}
+                onChange={(e) => setRadius(Number(e.target.value))}
+                className="w-full rounded-lg border border-emerald-500/15 bg-[#04110d]/80 px-3 py-2 text-xs font-mono text-emerald-50 outline-none transition focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -341,11 +718,25 @@ const InteractiveMap = ({
 
 export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin: () => void, onSignupComplete: (user?: AuthUser) => void }) {
   const { t, isRtl } = useLanguage();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
-const [formData, setFormData] = useState({
+const [formData, setFormData] = useState<{
+  companyName: string;
+  tenantSlug: string;
+  adminFullName: string;
+  adminEmail: string;
+  adminPassword: string;
+  adminRole: string;
+  currency: string;
+  capacity: string;
+  allowsLoans: boolean;
+  lat: number | null;
+  lng: number | null;
+  radius: number;
+}>({
   companyName: '',
   tenantSlug: '',
   adminFullName: '',
@@ -355,8 +746,8 @@ const [formData, setFormData] = useState({
   currency: 'USD',
   capacity: '100-500',
   allowsLoans: false,
-  lat: 25.197,
-  lng: 55.274,
+  lat: null,
+  lng: null,
   radius: 100
 });
   const [locations, setLocations] = useState<SignupLocation[]>([
@@ -364,8 +755,8 @@ const [formData, setFormData] = useState({
       name: 'Headquarters',
       locationType: 'headquarters',
       address: '',
-      lat: 25.197,
-      lng: 55.274,
+      lat: null,
+      lng: null,
       radius: 100,
       isPrimary: true,
     },
@@ -387,8 +778,8 @@ const [formData, setFormData] = useState({
         name: `Branch ${current.length}`,
         locationType: 'branch',
         address: '',
-        lat: selectedLocation?.lat || 25.197,
-        lng: selectedLocation?.lng || 55.274,
+        lat: selectedLocation?.lat ?? null,
+        lng: selectedLocation?.lng ?? null,
         radius: selectedLocation?.radius || 100,
         isPrimary: false,
       };
@@ -445,6 +836,17 @@ const [formData, setFormData] = useState({
   const nextStep = () => setStep(prev => Math.min(prev + 1, 3));
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
 
+  const handleNextStep = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (formRef.current && !formRef.current.reportValidity()) {
+      return;
+    }
+
+    nextStep();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (step < 3) {
@@ -456,15 +858,35 @@ const [formData, setFormData] = useState({
     
     try {
       const primaryLocation = locations.find((location) => location.isPrimary) || locations[0];
+      const locationsHaveCoordinates = locations.every((location) => (
+        location.lat !== null &&
+        location.lng !== null &&
+        Number.isFinite(location.lat) &&
+        Number.isFinite(location.lng)
+      ));
+
+      if (!primaryLocation || !locationsHaveCoordinates) {
+        alert('Please use your location or enter coordinates for every company location before submitting.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const normalizedLocations = locations.map((location) => ({
+        ...location,
+        lat: location.lat as number,
+        lng: location.lng as number,
+      }));
+      const normalizedPrimaryLocation = normalizedLocations.find((location) => location.isPrimary) || normalizedLocations[0];
+
       const res = await fetch(apiUrl('/api/auth/register-tenant'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          lat: primaryLocation.lat,
-          lng: primaryLocation.lng,
-          radius: primaryLocation.radius,
-          locations,
+          lat: normalizedPrimaryLocation.lat,
+          lng: normalizedPrimaryLocation.lng,
+          radius: normalizedPrimaryLocation.radius,
+          locations: normalizedLocations,
           customRoles: customRoles.filter((role) => role.name.trim()),
         })
       });
@@ -486,14 +908,17 @@ const [formData, setFormData] = useState({
   };
 
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-slate-50 dark:bg-[#020403] overflow-hidden font-sans transition-colors duration-300">      
+<div className="relative min-h-screen w-full overflow-y-auto bg-slate-50 px-4 py-6 font-sans transition-colors duration-300 dark:bg-[#020403] md:px-6 md:py-8">      
       <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => undefined} />
 
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)]"      >
-        <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
+className={cn(
+  "relative z-10 mx-auto w-full rounded-2xl border border-slate-200 bg-white/85 px-5 py-6 shadow-xl backdrop-blur-xl transition-[max-width] duration-300 dark:border-emerald-500/15 dark:bg-black/55 dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] md:p-8",
+  step === 3 ? "max-w-5xl" : "max-w-2xl"
+)}      >
+        <div className="mb-6 flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-4">
 <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">              <Building2 className="w-6 h-6" />
             </div>
@@ -510,7 +935,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
           <AnimatePresence mode="wait">
             {step === 1 && (
               <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
@@ -686,47 +1111,57 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4 border-b border-emerald-500/20 pb-2">{t('signup.step3')}</h2>
 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/50">
-                        Locations
-                      </p>
-                      <button
-                        type="button"
-                        onClick={addLocation}
-                        className="rounded-lg border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
-                      >
-                        Add Location
-                      </button>
-                    </div>
-
-                    <div className="space-y-2">
-                      {locations.map((location, index) => (
-                        <button
-                          key={`${location.name}-${index}`}
-                          type="button"
-                          onClick={() => setSelectedLocationIndex(index)}
-                          className={cn(
-                            "w-full rounded-xl border p-3 text-left transition",
-                            selectedLocationIndex === index
-                              ? "border-emerald-500/50 bg-emerald-500/10"
-                              : "border-emerald-500/15 bg-white/70 hover:border-emerald-500/35 dark:bg-[#04110d]/60"
-                          )}
-                        >
-                          <span className="block text-xs font-bold text-slate-900 dark:text-emerald-50">{location.name || 'Unnamed Location'}</span>
-                          <span className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700/60 dark:text-emerald-100/40">
-                            <span>{location.locationType.replace('_', ' ')}</span>
-                            <span>{location.radius}m</span>
-                            {location.isPrimary && <span className="text-emerald-500">Primary</span>}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
                   <div className="space-y-4">
                     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">
+                            Locations
+                          </p>
+                          <p className="mt-1 text-xs text-emerald-700/50 dark:text-emerald-100/35">
+                            Add each site that should allow clock-in.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addLocation}
+                          className="rounded-lg border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
+                        >
+                          Add Location
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {locations.map((location, index) => (
+                          <button
+                            key={`${location.name}-${index}`}
+                            type="button"
+                            onClick={() => setSelectedLocationIndex(index)}
+                            className={cn(
+                              "w-full rounded-xl border p-3 text-left transition",
+                              selectedLocationIndex === index
+                                ? "border-emerald-500/50 bg-emerald-500/10"
+                                : "border-emerald-500/15 bg-white/70 hover:border-emerald-500/35 dark:bg-black/25"
+                            )}
+                          >
+                            <span className="block text-xs font-bold text-slate-900 dark:text-emerald-50">{location.name || 'Unnamed Location'}</span>
+                            <span className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700/60 dark:text-emerald-100/40">
+                              <span>{location.locationType.replace('_', ' ')}</span>
+                              <span>{location.radius}m</span>
+                              {location.lat !== null && location.lng !== null && <span>Coordinates set</span>}
+                              {location.isPrimary && <span className="text-emerald-500">Primary</span>}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
+                      <div className="mb-3">
+                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">Location details</p>
+                        <p className="mt-1 text-xs text-emerald-700/50 dark:text-emerald-100/35">Name the worksite before placing the pin.</p>
+                      </div>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Name</label>
@@ -780,8 +1215,11 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
                         </button>
                       </div>
                     </div>
-                  
+                  </div>
+
+                  <div className="min-w-0 space-y-4">
                     <InteractiveMap 
+                      locationKey={selectedLocationIndex}
                       lat={selectedLocation.lat}
                       lng={selectedLocation.lng}
                       radius={selectedLocation.radius}
@@ -815,7 +1253,8 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
              </button>
 
              <button 
-               type="submit"
+               type={step < 3 ? 'button' : 'submit'}
+               onClick={step < 3 ? handleNextStep : undefined}
                disabled={isSubmitting}
                className={cn("px-6 py-2.5 rounded-lg font-bold text-sm transition-all focus:outline-none flex items-center gap-2 uppercase tracking-widest shadow-lg", 
                  isSubmitting ? "bg-emerald-600 opacity-80 text-white" : 
@@ -841,7 +1280,7 @@ className="relative z-10 w-full max-w-2xl px-6 py-10 md:p-10 bg-white/85 dark:bg
         </form>
 
         <div className="mt-6 text-center">
-            <button onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 tracking-widest uppercase transition-colors">
+            <button type="button" onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 tracking-widest uppercase transition-colors">
               {t('signup.login')}
             </button>
         </div>
