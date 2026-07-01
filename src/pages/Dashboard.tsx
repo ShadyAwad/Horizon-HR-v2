@@ -467,7 +467,6 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
-  const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
@@ -531,6 +530,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [roleMessageType, setRoleMessageType] = useState<'success' | 'error'>('success');
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
+  const [showControlCenter, setShowControlCenter] = useState(false);
+  const [showTenantId, setShowTenantId] = useState(false);
+  const [tenantIdCopied, setTenantIdCopied] = useState(false);
 
   const geo = useGeolocation();
 
@@ -569,6 +571,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     : showGrievancesPanel
       ? 'File a grievance and manage tenant cases'
       : 'Personal ledger & workflows';
+  const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
 
   const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
     notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
@@ -1335,6 +1338,25 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   }, [activeTab, showPayrollPanel, showGrievancesPanel, user.id, user.tenantId]);
 
+  useEffect(() => {
+    if (!showControlCenter) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowControlCenter(false);
+      }
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showControlCenter]);
+
+  useEffect(() => {
+    if (showControlCenter) {
+      loadNotificationSettings(false);
+    }
+  }, [showControlCenter, user.id, user.tenantId]);
+
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
     setTenantGrievanceLoading(false);
@@ -1615,6 +1637,307 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     loadCompanyLocations();
   }, [user.id, user.tenantId]);
 
+  const renderNotificationSettingsPanel = () => (
+    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+            <Bell className="h-4 w-4 text-emerald-500" />
+            Notification Settings
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Choose which updates Stanza should surface for your account.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => loadNotificationSettings()}
+          disabled={notificationLoading || notificationSaving}
+          className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
+        >
+          {notificationLoading ? 'Loading...' : 'Refresh'}
+        </button>
+      </div>
+
+      <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] text-neutral-600 dark:text-emerald-100/55">
+        Email and push delivery are preference-ready; delivery providers can be connected later.
+      </p>
+
+      {notificationMessage && (
+        <p className={cn(
+          "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+          notificationMessageType === 'success'
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+            : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+        )}>
+          {notificationMessage}
+        </p>
+      )}
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-500/15">
+        <div className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] gap-0 border-b border-emerald-500/15 bg-white/70 text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:bg-black/35 dark:text-emerald-100/45">
+          <div className="p-3">Category</div>
+          {notificationChannels.map((channel) => (
+            <div key={channel.key} className="p-3 text-center">{channel.label}</div>
+          ))}
+        </div>
+
+        <div className="divide-y divide-emerald-500/10">
+          {notificationCategories.map((category) => (
+            <div key={category.key} className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] items-center bg-white/55 dark:bg-black/25">
+              <div className="p-3">
+                <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{category.label}</p>
+                <p className="mt-1 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{category.description}</p>
+              </div>
+              {notificationChannels.map((channel) => {
+                const setting = getNotificationSetting(category.key, channel.key);
+
+                return (
+                  <label key={channel.key} className="flex justify-center p-3">
+                    <input
+                      type="checkbox"
+                      checked={setting.enabled}
+                      onChange={(event) => updateNotificationToggle(category.key, channel.key, event.target.checked)}
+                      disabled={notificationLoading || notificationSaving}
+                      className="h-4 w-4 accent-emerald-500 disabled:opacity-60"
+                      aria-label={`${category.label} ${channel.label}`}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <label className="block">
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours start</span>
+          <input
+            type="time"
+            value={quietHoursStart}
+            onChange={(event) => setQuietHoursStart(event.target.value)}
+            className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours end</span>
+          <input
+            type="time"
+            value={quietHoursEnd}
+            onChange={(event) => setQuietHoursEnd(event.target.value)}
+            className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={saveNotificationSettings}
+          disabled={notificationSaving || notificationLoading}
+          className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+        >
+          {notificationSaving ? 'Saving...' : 'Save Settings'}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderLocationsCard = () => (
+    <div className="rounded-2xl border border-emerald-500/15 bg-white p-4 shadow-xl backdrop-blur-sm dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">
+          <MapPin className="h-5 w-5 text-emerald-500" /> Locations
+        </span>
+        <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+          {companyLocations.length}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-2.5">
+        {companyLocations.map((location) => (
+          <div key={location.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/35">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  {location.location_type.replace('_', ' ')} - {location.radius_meters}m
+                </p>
+              </div>
+              {location.is_primary && (
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                  HQ
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[10px] text-slate-500">
+              {location.is_active ? 'Active' : 'Inactive'}
+            </p>
+          </div>
+        ))}
+
+        {companyLocations.length === 0 && (
+          <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
+            {locationsMessage || 'No company locations found.'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderSystemStatusCard = () => (
+    <div className="rounded-2xl border border-emerald-500/15 bg-white p-4 shadow-xl backdrop-blur-sm dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">
+          <CheckCircle2 className="h-5 w-5 text-emerald-500" /> System Status
+        </span>
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+          Ready
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
+        <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
+          <span>Locations configured</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
+          <span>Current shift</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? 'Open' : 'Not clocked in'}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span>Last attendance event</span>
+          <span className="max-w-[190px] truncate text-right font-medium text-slate-700 dark:text-slate-300">{lastClockEvent}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const copyTenantId = async () => {
+    try {
+      await navigator.clipboard?.writeText(user.tenantId);
+      setTenantIdCopied(true);
+      window.setTimeout(() => setTenantIdCopied(false), 1800);
+    } catch {
+      setTenantIdCopied(false);
+    }
+  };
+
+  const renderControlCenterAccount = () => (
+    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="h-12 w-12 shrink-0 rounded-full border-2 border-emerald-500 bg-white p-0.5 dark:bg-black">
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-emerald-500/10 text-sm font-black tracking-widest text-neutral-800 dark:bg-emerald-950/50 dark:text-white">
+              {userInitials}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-slate-900 dark:text-emerald-50">{user.name}</p>
+            <p className="truncate text-xs text-neutral-500 dark:text-emerald-100/50">{user.email}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                {formatRole(user.role)}
+              </span>
+              {user.jobTitle && (
+                <span className="rounded-full border border-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50">
+                  {user.jobTitle}
+                </span>
+              )}
+              {user.roleNames?.map((roleName) => (
+                <span key={roleName} className="rounded-full border border-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50">
+                  {roleName}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 dark:text-emerald-300"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          Log Out
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Company</p>
+          <p className="mt-1 truncate text-xs font-bold text-neutral-800 dark:text-emerald-50">{getTenantName(user)}</p>
+        </div>
+        <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Tenant ID</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowTenantId((current) => !current)}
+                className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
+              >
+                {showTenantId ? 'Hide' : 'Show'}
+              </button>
+              <button
+                type="button"
+                onClick={copyTenantId}
+                className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
+              >
+                {tenantIdCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <p className="mt-1 truncate font-mono text-[11px] text-neutral-500 dark:text-emerald-100/55">
+            {showTenantId ? user.tenantId : 'Hidden'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderControlCenterSettings = () => (
+    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Settings</p>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-left text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+        >
+          <span>{isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+          {isDark ? <Sun className="h-4 w-4 text-emerald-500" /> : <Moon className="h-4 w-4 text-emerald-500" />}
+        </button>
+
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
+          <button
+            type="button"
+            onClick={() => setLang('en')}
+            className={cn(
+              "flex-1 rounded px-2 py-1 text-xs font-black uppercase tracking-widest transition",
+              lang === 'en'
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "text-neutral-500 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-300"
+            )}
+          >
+            EN-US
+          </button>
+          <button
+            type="button"
+            onClick={() => setLang('ar')}
+            className={cn(
+              "flex-1 rounded px-2 py-1 text-xs font-black uppercase tracking-widest transition",
+              lang === 'ar'
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "text-neutral-500 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-300"
+            )}
+          >
+            AR-AE
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
 <div className="h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
 {/* Background Atmosphere */}
@@ -1683,9 +2006,27 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     "self-start",
     isRtl ? "md:border-l" : "md:border-r"
   )}
->       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-          <Fingerprint className="w-6 h-6 text-white dark:text-[#020617]" />
-        </div>
+>       <button
+          type="button"
+          id="stanza-control-center-trigger"
+          aria-label="Open Stanza control center"
+          aria-expanded={showControlCenter}
+          aria-controls="stanza-control-center"
+          title="Open Stanza control center"
+          onClick={() => setShowControlCenter((current) => !current)}
+          className={cn(
+            "relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.3)]",
+            "transition duration-200 ease-out hover:scale-105 hover:shadow-[0_0_28px_rgba(16,185,129,0.42)] focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-black active:scale-100",
+            showControlCenter && "scale-105 ring-2 ring-emerald-300/70 shadow-[0_0_34px_rgba(16,185,129,0.55)]"
+          )}
+        >
+          <span className={cn(
+            "absolute inset-[-5px] rounded-2xl border border-emerald-300/0 opacity-0 transition",
+            "hover:border-emerald-300/30 hover:opacity-100",
+            showControlCenter && "border-emerald-300/40 opacity-100"
+          )} />
+          <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020617]" />
+        </button>
         <nav className="flex md:flex-col gap-3 md:gap-4 w-full items-center justify-center md:justify-start">
           <button 
             onClick={() => {
@@ -1762,112 +2103,64 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </nav>
       </aside>
 
+      {showControlCenter && (
+        <div
+          className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] md:bg-black/20"
+          onClick={() => setShowControlCenter(false)}
+        >
+          <section
+            id="stanza-control-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stanza-control-center-title"
+            className={cn(
+              "fixed inset-x-3 bottom-3 max-h-[88dvh] overflow-y-auto rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
+              "md:bottom-auto md:left-24 md:right-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]"
+            )}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="stanza-control-center-title" className="text-base font-black uppercase tracking-widest text-slate-900 dark:text-emerald-50">
+                  Stanza Control Center
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">
+                  Quick access to notifications, locations, and workspace status.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowControlCenter(false)}
+                className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {renderControlCenterAccount()}
+              {renderControlCenterSettings()}
+              {renderNotificationSettingsPanel()}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {renderLocationsCard()}
+                {renderSystemStatusCard()}
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
       <main className="min-w-0 flex-1 flex flex-col p-3 md:p-4 lg:p-5 z-10 overflow-y-auto">
         
         {/* Header Pipeline */}
-        <header className="flex flex-col lg:flex-row lg:items-start justify-between mb-4 gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center">
-               <BrandWordmark /> <span className={cn("text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 font-mono text-xs px-2 py-0.5 border border-emerald-500/30 rounded uppercase hidden sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
+        <header className="mb-3">
+          <div className="min-w-0">
+            <h1 className="flex items-center text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+              <BrandWordmark />
+              <span className={cn("hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
             </h1>
-
-            <div className="mt-3 flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-emerald-500/15 bg-white/80 p-3 shadow-sm backdrop-blur-xl dark:border-emerald-500/15 dark:bg-black/55 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 p-0.5 shrink-0 bg-white dark:bg-black">
-                  <div className="w-full h-full rounded-full bg-emerald-500/10 dark:bg-emerald-950/50 flex items-center justify-center text-xs font-bold text-neutral-800 dark:text-white tracking-widest">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-200">{user.name}</p>
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{getTenantName(user)} • {formatRole(user.role)}</p>
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-3 sm:ml-auto">
-                <button
-                  type="button"
-                  onClick={() => setShowAccountDetails((current) => !current)}
-                  className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-100/60 dark:hover:text-emerald-300"
-                >
-                  Details
-                </button>
-                <button onClick={onLogout} className="text-[10px] text-emerald-600 dark:text-emerald-500 font-bold hover:text-emerald-700 dark:hover:text-emerald-400 uppercase flex items-center gap-1 transition-colors">
-                  <LogOut className="w-3 h-3" /> {t('dash.terminate')}
-                </button>
-              </div>
-            </div>
-
-            {showAccountDetails && (
-              <div className="mt-2 grid w-full max-w-[520px] grid-cols-1 gap-2 rounded-xl border border-emerald-500/15 bg-white/70 p-3 text-xs text-neutral-600 dark:border-emerald-500/15 dark:bg-black/35 dark:text-emerald-100/60 sm:grid-cols-3">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tenant</p>
-                  <p className="mt-1 truncate">{getTenantName(user)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Role</p>
-                  <p className="mt-1">{formatRole(user.role)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tenant ID</p>
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(user.tenantId)}
-                    className="mt-1 max-w-full truncate font-mono text-[11px] text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
-                    title="Click to copy tenant ID"
-                  >
-                    {user.tenantId}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-3 lg:justify-end">
-            {/* Locale Toggle & Theme Toggle */}
-            <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white dark:bg-black/40 border border-emerald-500/15 dark:border-emerald-500/15 rounded-lg shrink-0 shadow-sm">
-              <span className={cn("hidden md:inline-block text-xs font-semibold text-slate-500 uppercase tracking-widest", isRtl ? "ml-2" : "mr-2")}>{t('dash.core')}</span>
-
-              <button
-  onClick={toggleTheme}
-  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-all duration-150 active:scale-90 hover:scale-105"
-  title="Toggle Light/Dark Mode"
->
-  {isDark ? (
-    <Moon className="w-4 h-4" />
-  ) : (
-    <Sun className="w-4 h-4" />
-  )}
-</button>
-<button 
-  type="button"
-  onClick={() => setLang('en')} 
-  className={cn(
-    "text-xs font-bold transition-colors",
-    lang === 'en'
-      ? "text-emerald-600 dark:text-emerald-400"
-      : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300"
-  )}
->
-  EN-US
-</button>
-
-<div className="w-px h-3 bg-emerald-500/15 dark:bg-emerald-500/20"></div>
-
-<button 
-  type="button"
-  onClick={() => setLang('ar')} 
-  className={cn(
-    "text-xs font-bold transition-colors",
-    lang === 'ar'
-      ? "text-emerald-600 dark:text-emerald-400"
-      : "text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-300"
-  )}
->
-  AR-AE
-</button>
-            </div>
           </div>
         </header>
-
         {/* Dashboard Grid Container */}
         <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full items-start">
             
@@ -3022,107 +3315,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl md:col-span-2">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                  <Bell className="h-4 w-4 text-emerald-500" />
-                                  Notification Settings
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                  Choose which updates Stanza should surface for your account.
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => loadNotificationSettings()}
-                                disabled={notificationLoading || notificationSaving}
-                                className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
-                              >
-                                {notificationLoading ? 'Loading...' : 'Refresh'}
-                              </button>
-                            </div>
-
-                            <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] text-neutral-600 dark:text-emerald-100/55">
-                              Email and push delivery are preference-ready; delivery providers can be connected later.
-                            </p>
-
-                            {notificationMessage && (
-                              <p className={cn(
-                                "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
-                                notificationMessageType === 'success'
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-                                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                              )}>
-                                {notificationMessage}
-                              </p>
-                            )}
-
-                            <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-500/15">
-                              <div className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] gap-0 border-b border-emerald-500/15 bg-white/70 text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:bg-black/35 dark:text-emerald-100/45">
-                                <div className="p-3">Category</div>
-                                {notificationChannels.map((channel) => (
-                                  <div key={channel.key} className="p-3 text-center">{channel.label}</div>
-                                ))}
-                              </div>
-
-                              <div className="divide-y divide-emerald-500/10">
-                                {notificationCategories.map((category) => (
-                                  <div key={category.key} className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] items-center bg-white/55 dark:bg-black/25">
-                                    <div className="p-3">
-                                      <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{category.label}</p>
-                                      <p className="mt-1 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{category.description}</p>
-                                    </div>
-                                    {notificationChannels.map((channel) => {
-                                      const setting = getNotificationSetting(category.key, channel.key);
-
-                                      return (
-                                        <label key={channel.key} className="flex justify-center p-3">
-                                          <input
-                                            type="checkbox"
-                                            checked={setting.enabled}
-                                            onChange={(event) => updateNotificationToggle(category.key, channel.key, event.target.checked)}
-                                            disabled={notificationLoading || notificationSaving}
-                                            className="h-4 w-4 accent-emerald-500 disabled:opacity-60"
-                                            aria-label={`${category.label} ${channel.label}`}
-                                          />
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                              <label className="block">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours start</span>
-                                <input
-                                  type="time"
-                                  value={quietHoursStart}
-                                  onChange={(event) => setQuietHoursStart(event.target.value)}
-                                  className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours end</span>
-                                <input
-                                  type="time"
-                                  value={quietHoursEnd}
-                                  onChange={(event) => setQuietHoursEnd(event.target.value)}
-                                  className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={saveNotificationSettings}
-                                disabled={notificationSaving || notificationLoading}
-                                className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
-                              >
-                                {notificationSaving ? 'Saving...' : 'Save Settings'}
-                              </button>
-                            </div>
+                         <div className="md:col-span-2">
+                           {renderNotificationSettingsPanel()}
                          </div>
 
                          {canManageRoles && (
@@ -3298,83 +3492,6 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                    </motion.div>
                 )}
 
-            </div>
-
-            {/* Sidebar (Right) / Stats & Insights */}
-            <div className="w-full xl:w-80 2xl:w-96 flex flex-col gap-4 shrink-0 z-10">
-                 <div className="bg-white dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
-                        <MapPin className="w-5 h-5 text-emerald-500" /> Locations
-                      </span>
-                      <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                        {companyLocations.length}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 space-y-2.5">
-                      {companyLocations.map((location) => (
-                        <div key={location.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/35">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
-                              <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                {location.location_type.replace('_', ' ')} - {location.radius_meters}m
-                              </p>
-                            </div>
-                            {location.is_primary && (
-                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                                HQ
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-2 text-[10px] text-slate-500">
-                            {location.is_active ? 'Active' : 'Inactive'}
-                          </p>
-                        </div>
-                      ))}
-
-                      {companyLocations.length === 0 && (
-                        <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                          {locationsMessage || 'No company locations found.'}
-                        </p>
-                      )}
-                    </div>
-                 </div>
-
-                 <div className="bg-white dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 rounded-2xl p-4 backdrop-blur-sm shadow-xl h-fit overflow-hidden">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-500" /> {t('dash.advParams')}
-                      </span>
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                        Ready
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
-                      <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
-                        <span>Locations configured</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
-                        <span>Current shift</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? 'Open' : 'Not clocked in'}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span>Last attendance event</span>
-                        <span className="max-w-[190px] truncate text-right font-medium text-slate-700 dark:text-slate-300">{lastClockEvent}</span>
-                      </div>
-                    </div>
-                 </div>
-
-                 {/* Active Managers Pill (Bottom) */}
-<div className="hidden xl:flex relative z-20 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 backdrop-blur-xl px-4 py-2.5 rounded-full items-center gap-3 shadow-xl w-full">                    <div className="flex -space-x-2">
-                        <div className="w-6 h-6 rounded-full bg-emerald-300 dark:bg-emerald-900 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
-                        <div className="w-6 h-6 rounded-full bg-emerald-200 dark:bg-emerald-800 border border-emerald-400 dark:border-emerald-500/30 shadow-md"></div>
-                    </div>
-                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase tracking-widest">{t('dash.adminsOnline')}</span>
-                 </div>
             </div>
 
         </div>
