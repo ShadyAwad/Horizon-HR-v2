@@ -8,6 +8,16 @@ import { createServer as createViteServer } from 'vite';
 import type { PoolClient } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+  type AuthenticationResponseJSON,
+  type AuthenticatorTransportFuture,
+  type RegistrationResponseJSON,
+  type WebAuthnCredential,
+} from '@simplewebauthn/server';
+import {
   enqueueAttendanceRollup,
   enqueueAuditLog,
   getDbPool,
@@ -166,6 +176,33 @@ type AuthenticatedUser = {
   permissions?: string[];
 };
 
+type AuthEmployeeRow = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  job_title: string | null;
+  role_names: string[];
+  permissions: string[];
+  company_name: string;
+};
+
+type WebAuthnCredentialRow = {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  credential_id: string;
+  public_key: string;
+  counter: string | number;
+  transports: AuthenticatorTransportFuture[] | null;
+  device_label: string | null;
+  created_at: Date | string;
+  last_used_at: Date | string | null;
+};
+
+type WebAuthnChallengeType = 'registration' | 'authentication';
+
 type DemoTimeLog = {
   id: string;
   tenantId: string;
@@ -275,6 +312,57 @@ function createAuthToken(user: { id: string; tenant_id: string }) {
     tenantId: user.tenant_id,
     exp: Date.now() + AUTH_TOKEN_TTL_MS,
   });
+}
+
+function formatAuthUser(employee: AuthEmployeeRow) {
+  return {
+    id: employee.id,
+    email: employee.email,
+    name: employee.full_name,
+    role: employee.role,
+    jobTitle: employee.job_title,
+    roleNames: employee.role_names || [],
+    permissions: employee.permissions || [],
+    tenantId: employee.tenant_id,
+    tenant: employee.company_name,
+    authToken: createAuthToken(employee),
+  };
+}
+
+function getWebAuthnConfig() {
+  return {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'Stanza',
+    rpID: process.env.WEBAUTHN_RP_ID || 'localhost',
+    origin: process.env.WEBAUTHN_ORIGIN || 'http://localhost:3000',
+  };
+}
+
+function assertWebAuthnOriginAllowed(origin: string) {
+  const parsed = new URL(origin);
+  const localhostHosts = new Set(['localhost', '127.0.0.1', '::1']);
+
+  if (parsed.protocol === 'https:' || localhostHosts.has(parsed.hostname)) {
+    return;
+  }
+
+  throw Object.assign(new Error('WebAuthn origin must be HTTPS or localhost.'), { statusCode: 500 });
+}
+
+function bufferToBase64Url(value: Uint8Array | ArrayBuffer) {
+  return Buffer.from(value instanceof ArrayBuffer ? new Uint8Array(value) : value).toString('base64url');
+}
+
+function base64UrlToBuffer(value: string) {
+  return Buffer.from(value, 'base64url');
+}
+
+function toWebAuthnCredential(row: WebAuthnCredentialRow): WebAuthnCredential {
+  return {
+    id: row.credential_id,
+    publicKey: base64UrlToBuffer(row.public_key),
+    counter: Number(row.counter || 0),
+    transports: row.transports || undefined,
+  };
 }
 
 function getBearerToken(req: express.Request) {
@@ -1167,6 +1255,152 @@ function verifyPassword(password: string, storedHash: string | null) {
   return crypto.timingSafeEqual(testBuffer, originalBuffer);
 }
 
+async function storeWebAuthnChallenge(
+  client: PoolClient,
+  tenantId: string,
+  employeeId: string,
+  challenge: string,
+  challengeType: WebAuthnChallengeType,
+) {
+  await client.query(
+    `
+      UPDATE webauthn_challenges
+      SET used_at = NOW()
+      WHERE tenant_id = $1
+        AND employee_id = $2
+        AND challenge_type = $3::varchar
+        AND used_at IS NULL
+    `,
+    [tenantId, employeeId, challengeType],
+  );
+
+  await client.query(
+    `
+      INSERT INTO webauthn_challenges (
+        tenant_id,
+        employee_id,
+        challenge,
+        challenge_type,
+        expires_at
+      )
+      VALUES ($1, $2, $3, $4::varchar, NOW() + INTERVAL '5 minutes')
+    `,
+    [tenantId, employeeId, challenge, challengeType],
+  );
+}
+
+async function consumeWebAuthnChallenge(
+  client: PoolClient,
+  tenantId: string,
+  employeeId: string,
+  challengeType: WebAuthnChallengeType,
+) {
+  const result = await client.query<{ id: string; challenge: string }>(
+    `
+      UPDATE webauthn_challenges
+      SET used_at = NOW()
+      WHERE id = (
+        SELECT id
+        FROM webauthn_challenges
+        WHERE tenant_id = $1
+          AND employee_id = $2
+          AND challenge_type = $3::varchar
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+      )
+      RETURNING id, challenge
+    `,
+    [tenantId, employeeId, challengeType],
+  );
+
+  return result.rows[0]?.challenge || null;
+}
+
+async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
+  const result = await getDbPool().query<AuthEmployeeRow>(
+    `
+      SELECT
+        employees.id,
+        employees.tenant_id,
+        employees.email,
+        employees.full_name,
+        employees.role,
+        employees.job_title,
+        COALESCE(
+          array_remove(array_agg(DISTINCT assigned_role.name), NULL),
+          ARRAY[]::varchar[]
+        ) AS role_names,
+        COALESCE(
+          array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
+          ARRAY[]::varchar[]
+        ) AS permissions,
+        tenants.company_name
+      FROM employees
+      INNER JOIN tenants
+        ON tenants.id = employees.tenant_id
+      LEFT JOIN employee_role_assignments
+        ON employee_role_assignments.tenant_id = employees.tenant_id
+       AND employee_role_assignments.employee_id = employees.id
+      LEFT JOIN tenant_roles assigned_role
+        ON assigned_role.tenant_id = employees.tenant_id
+       AND assigned_role.id = employee_role_assignments.role_id
+      LEFT JOIN tenant_role_permissions
+        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+       AND tenant_role_permissions.role_id = assigned_role.id
+      WHERE LOWER(employees.email) = $1
+      GROUP BY employees.id, tenants.company_name
+      LIMIT 1
+    `,
+    [normalizedEmail],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
+  const result = await getDbPool().query<AuthEmployeeRow>(
+    `
+      SELECT
+        employees.id,
+        employees.tenant_id,
+        employees.email,
+        employees.full_name,
+        employees.role,
+        employees.job_title,
+        COALESCE(
+          array_remove(array_agg(DISTINCT assigned_role.name), NULL),
+          ARRAY[]::varchar[]
+        ) AS role_names,
+        COALESCE(
+          array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
+          ARRAY[]::varchar[]
+        ) AS permissions,
+        tenants.company_name
+      FROM employees
+      INNER JOIN tenants
+        ON tenants.id = employees.tenant_id
+      LEFT JOIN employee_role_assignments
+        ON employee_role_assignments.tenant_id = employees.tenant_id
+       AND employee_role_assignments.employee_id = employees.id
+      LEFT JOIN tenant_roles assigned_role
+        ON assigned_role.tenant_id = employees.tenant_id
+       AND assigned_role.id = employee_role_assignments.role_id
+      LEFT JOIN tenant_role_permissions
+        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+       AND tenant_role_permissions.role_id = assigned_role.id
+      WHERE employees.tenant_id = $1
+        AND employees.id = $2
+      GROUP BY employees.id, tenants.company_name
+      LIMIT 1
+    `,
+    [tenantId, employeeId],
+  );
+
+  return result.rows[0] || null;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -1851,6 +2085,427 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Unable to authenticate user.',
+    });
+  }
+});
+
+app.get('/api/auth/passkeys', demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+
+  try {
+    const passkeys = await withTenant(authUser.tenantId, async (client) => {
+      const result = await client.query<WebAuthnCredentialRow>(
+        `
+          SELECT
+            id,
+            tenant_id,
+            employee_id,
+            credential_id,
+            public_key,
+            counter,
+            transports,
+            device_label,
+            created_at,
+            last_used_at
+          FROM user_webauthn_credentials
+          WHERE tenant_id = $1
+            AND employee_id = $2
+          ORDER BY created_at DESC
+        `,
+        [authUser.tenantId, authUser.employeeId],
+      );
+
+      return result.rows.map((credential) => ({
+        id: credential.id,
+        deviceLabel: credential.device_label || 'Passkey',
+        transports: credential.transports || [],
+        createdAt: credential.created_at,
+        lastUsedAt: credential.last_used_at,
+      }));
+    });
+
+    res.json({ success: true, passkeys });
+  } catch (error) {
+    console.error('[Passkeys] Failed to list passkeys:', error);
+    res.status(500).json({ success: false, error: 'Unable to load passkeys.' });
+  }
+});
+
+app.post('/api/auth/passkeys/register/options', sensitiveAuthRateLimiter, demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({ success: false, error: 'DATABASE_URL is required for passkeys.' });
+  }
+
+  try {
+    const { rpName, rpID, origin } = getWebAuthnConfig();
+    assertWebAuthnOriginAllowed(origin);
+
+    const options = await withTenant(authUser.tenantId, async (client) => {
+      const existingCredentials = await client.query<WebAuthnCredentialRow>(
+        `
+          SELECT credential_id, transports
+          FROM user_webauthn_credentials
+          WHERE tenant_id = $1
+            AND employee_id = $2
+        `,
+        [authUser.tenantId, authUser.employeeId],
+      );
+
+      const registrationOptions = await generateRegistrationOptions({
+        rpName,
+        rpID,
+        userID: Buffer.from(authUser.employeeId, 'utf8'),
+        userName: authUser.email,
+        userDisplayName: authUser.email,
+        timeout: 60_000,
+        attestationType: 'none',
+        excludeCredentials: existingCredentials.rows.map((credential) => ({
+          id: credential.credential_id,
+          transports: credential.transports || undefined,
+        })),
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'required',
+        },
+      });
+
+      await storeWebAuthnChallenge(
+        client,
+        authUser.tenantId,
+        authUser.employeeId,
+        registrationOptions.challenge,
+        'registration',
+      );
+
+      return registrationOptions;
+    });
+
+    res.json({ success: true, options });
+  } catch (error) {
+    console.error('[Passkeys] Failed to create registration options:', error);
+    res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
+      success: false,
+      error: (error as Error).message || 'Unable to start passkey registration.',
+    });
+  }
+});
+
+app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  const { credential, deviceLabel } = req.body as {
+    credential?: RegistrationResponseJSON;
+    deviceLabel?: string;
+  };
+
+  if (!credential) {
+    return res.status(400).json({ success: false, error: 'Passkey credential response is required.' });
+  }
+
+  try {
+    const { rpID, origin } = getWebAuthnConfig();
+    assertWebAuthnOriginAllowed(origin);
+
+    const createdCredential = await withTenant(authUser.tenantId, async (client) => {
+      const expectedChallenge = await consumeWebAuthnChallenge(
+        client,
+        authUser.tenantId,
+        authUser.employeeId,
+        'registration',
+      );
+
+      if (!expectedChallenge) {
+        throw Object.assign(new Error('Passkey challenge expired. Try again.'), { statusCode: 400 });
+      }
+
+      const verification = await verifyRegistrationResponse({
+        response: credential,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        requireUserVerification: true,
+      });
+
+      if (!verification.verified || !verification.registrationInfo) {
+        throw Object.assign(new Error('Passkey registration could not be verified.'), { statusCode: 400 });
+      }
+
+      const webAuthnCredential = verification.registrationInfo.credential;
+      const transports = credential.response.transports || webAuthnCredential.transports || [];
+      const label = typeof deviceLabel === 'string' && deviceLabel.trim()
+        ? deviceLabel.trim().slice(0, 120)
+        : 'Passkey';
+
+      const result = await client.query<{ id: string }>(
+        `
+          INSERT INTO user_webauthn_credentials (
+            tenant_id,
+            employee_id,
+            credential_id,
+            public_key,
+            counter,
+            transports,
+            device_label
+          )
+          VALUES ($1, $2, $3, $4, $5, $6::text[], $7::text)
+          ON CONFLICT (credential_id) DO NOTHING
+          RETURNING id
+        `,
+        [
+          authUser.tenantId,
+          authUser.employeeId,
+          webAuthnCredential.id,
+          bufferToBase64Url(webAuthnCredential.publicKey),
+          webAuthnCredential.counter,
+          transports,
+          label,
+        ],
+      );
+
+      if (result.rowCount === 0) {
+        throw Object.assign(new Error('This passkey is already registered.'), { statusCode: 409 });
+      }
+
+      await client.query(
+        `
+          INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, 'passkey.registered', 'user_webauthn_credentials', $3, $4::jsonb)
+        `,
+        [
+          authUser.tenantId,
+          authUser.employeeId,
+          result.rows[0].id,
+          JSON.stringify({
+            deviceLabel: label,
+            transports,
+            credentialDeviceType: verification.registrationInfo.credentialDeviceType,
+            credentialBackedUp: verification.registrationInfo.credentialBackedUp,
+          }),
+        ],
+      );
+
+      return { id: result.rows[0].id, deviceLabel: label, transports };
+    });
+
+    res.json({ success: true, passkey: createdCredential });
+  } catch (error) {
+    console.error('[Passkeys] Failed to verify registration:', error);
+    res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
+      success: false,
+      error: (error as Error).message || 'Unable to register passkey.',
+    });
+  }
+});
+
+app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (req, res) => {
+  const { email } = req.body as { email?: string };
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      error: 'Enter your email before using passkey sign in.',
+    });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({ success: false, error: 'DATABASE_URL is required for passkeys.' });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+
+  if (rateLimit.locked) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+  }
+
+  try {
+    const { rpID, origin } = getWebAuthnConfig();
+    assertWebAuthnOriginAllowed(origin);
+
+    const employee = await fetchAuthEmployeeByEmail(normalizedEmail);
+    if (!employee) {
+      recordFailedLogin(loginRateLimitKey);
+      return res.status(401).json({ success: false, error: 'No passkeys found for this account.' });
+    }
+
+    const options = await withTenant(employee.tenant_id, async (client) => {
+      const credentials = await client.query<WebAuthnCredentialRow>(
+        `
+          SELECT *
+          FROM user_webauthn_credentials
+          WHERE tenant_id = $1
+            AND employee_id = $2
+          ORDER BY created_at DESC
+        `,
+        [employee.tenant_id, employee.id],
+      );
+
+      if (credentials.rowCount === 0) {
+        throw Object.assign(new Error('No passkeys found for this account.'), { statusCode: 404 });
+      }
+
+      const authenticationOptions = await generateAuthenticationOptions({
+        rpID,
+        timeout: 60_000,
+        userVerification: 'required',
+        allowCredentials: credentials.rows.map((credentialRow) => ({
+          id: credentialRow.credential_id,
+          transports: credentialRow.transports || undefined,
+        })),
+      });
+
+      await storeWebAuthnChallenge(
+        client,
+        employee.tenant_id,
+        employee.id,
+        authenticationOptions.challenge,
+        'authentication',
+      );
+
+      return authenticationOptions;
+    });
+
+    res.json({ success: true, options });
+  } catch (error) {
+    if (Number((error as { statusCode?: number }).statusCode) === 404) {
+      recordFailedLogin(loginRateLimitKey);
+    }
+
+    console.error('[Passkeys] Failed to create login options:', error);
+    res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
+      success: false,
+      error: (error as Error).message || 'Unable to start passkey sign in.',
+    });
+  }
+});
+
+app.post('/api/auth/passkeys/login/verify', sensitiveAuthRateLimiter, async (req, res) => {
+  const { email, credential } = req.body as {
+    email?: string;
+    credential?: AuthenticationResponseJSON;
+  };
+
+  if (!email || !credential) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and passkey response are required.',
+    });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+
+  if (rateLimit.locked) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+  }
+
+  try {
+    const { rpID, origin } = getWebAuthnConfig();
+    assertWebAuthnOriginAllowed(origin);
+
+    const employee = await fetchAuthEmployeeByEmail(normalizedEmail);
+    if (!employee) {
+      recordFailedLogin(loginRateLimitKey);
+      return res.status(401).json({ success: false, error: 'Invalid passkey sign in.' });
+    }
+
+    const loginUser = await withTenant(employee.tenant_id, async (client) => {
+      const credentialResult = await client.query<WebAuthnCredentialRow>(
+        `
+          SELECT *
+          FROM user_webauthn_credentials
+          WHERE tenant_id = $1
+            AND employee_id = $2
+            AND credential_id = $3
+          LIMIT 1
+        `,
+        [employee.tenant_id, employee.id, credential.id],
+      );
+
+      const credentialRow = credentialResult.rows[0];
+      if (!credentialRow) {
+        throw Object.assign(new Error('Invalid passkey sign in.'), { statusCode: 401 });
+      }
+
+      const expectedChallenge = await consumeWebAuthnChallenge(
+        client,
+        employee.tenant_id,
+        employee.id,
+        'authentication',
+      );
+
+      if (!expectedChallenge) {
+        throw Object.assign(new Error('Passkey challenge expired. Try again.'), { statusCode: 400 });
+      }
+
+      const verification = await verifyAuthenticationResponse({
+        response: credential,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        credential: toWebAuthnCredential(credentialRow),
+        requireUserVerification: true,
+      });
+
+      if (!verification.verified) {
+        throw Object.assign(new Error('Invalid passkey sign in.'), { statusCode: 401 });
+      }
+
+      await client.query(
+        `
+          UPDATE user_webauthn_credentials
+          SET counter = $4,
+              last_used_at = NOW()
+          WHERE tenant_id = $1
+            AND employee_id = $2
+            AND credential_id = $3
+        `,
+        [
+          employee.tenant_id,
+          employee.id,
+          credentialRow.credential_id,
+          verification.authenticationInfo.newCounter,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, 'passkey.login', 'user_webauthn_credentials', $3, $4::jsonb)
+        `,
+        [
+          employee.tenant_id,
+          employee.id,
+          credentialRow.id,
+          JSON.stringify({
+            credentialDeviceType: verification.authenticationInfo.credentialDeviceType,
+            credentialBackedUp: verification.authenticationInfo.credentialBackedUp,
+          }),
+        ],
+      );
+
+      return employee;
+    });
+
+    clearFailedLogins(loginRateLimitKey);
+    res.json({ success: true, user: formatAuthUser(loginUser) });
+  } catch (error) {
+    recordFailedLogin(loginRateLimitKey);
+    console.error('[Passkeys] Failed to verify login:', error);
+    res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
+      success: false,
+      error: (error as Error).message || 'Unable to sign in with passkey.',
     });
   }
 });

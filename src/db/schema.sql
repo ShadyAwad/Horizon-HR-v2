@@ -371,6 +371,76 @@ CREATE INDEX IF NOT EXISTS password_reset_tokens_active_idx
 ON password_reset_tokens (email, expires_at)
 WHERE used_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS user_webauthn_credentials (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    credential_id TEXT NOT NULL UNIQUE,
+    public_key TEXT NOT NULL,
+    counter BIGINT NOT NULL DEFAULT 0,
+    transports TEXT[],
+    device_label TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+
+    CONSTRAINT user_webauthn_credentials_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+    CONSTRAINT user_webauthn_credentials_unique_employee_credential
+        UNIQUE (tenant_id, employee_id, credential_id)
+);
+
+CREATE INDEX IF NOT EXISTS user_webauthn_credentials_employee_idx
+ON user_webauthn_credentials (tenant_id, employee_id);
+
+ALTER TABLE user_webauthn_credentials ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_webauthn_credentials_tenant_isolation
+ON user_webauthn_credentials
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS webauthn_challenges (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    challenge TEXT NOT NULL,
+    challenge_type VARCHAR(20) NOT NULL CHECK (challenge_type IN ('registration', 'authentication')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT webauthn_challenges_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS webauthn_challenges_active_idx
+ON webauthn_challenges (tenant_id, employee_id, challenge_type, expires_at DESC)
+WHERE used_at IS NULL;
+
+ALTER TABLE webauthn_challenges ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY webauthn_challenges_tenant_isolation
+ON webauthn_challenges
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
 -- =========================================================
 -- 4. Geofences / Operating Zones
 -- =========================================================

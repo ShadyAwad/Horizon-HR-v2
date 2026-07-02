@@ -87,6 +87,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [pendingUser, setPendingUser] = useState<AuthUser | undefined>();
   const [showDecorativeCanvas, setShowDecorativeCanvas] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const [passkeyMessage, setPasskeyMessage] = useState('');
+  const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
 
@@ -186,6 +188,63 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     setIsRecovering(false);
   }
 };
+
+  const handlePasskeySignIn = async () => {
+    if (isOffline) {
+      setPasskeyMessage('You are offline. Reconnect to sign in with a passkey.');
+      return;
+    }
+
+    if (!window.PublicKeyCredential) {
+      setPasskeyMessage('Passkeys are not supported in this browser.');
+      return;
+    }
+
+    if (!email.trim()) {
+      setPasskeyMessage('Enter your email, then use passkey sign in.');
+      return;
+    }
+
+    setIsPasskeyLoading(true);
+    setPasskeyMessage('');
+    setErrorMsg('');
+    setPulseState('idle');
+
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const optionsResponse = await fetch(apiUrl('/api/auth/passkeys/login/options'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const optionsData = await optionsResponse.json();
+
+      if (!optionsResponse.ok || !optionsData.success) {
+        throw new Error(optionsData.error || 'Unable to start passkey sign in.');
+      }
+
+      const credential = await startAuthentication({ optionsJSON: optionsData.options });
+      const verifyResponse = await fetch(apiUrl('/api/auth/passkeys/login/verify'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, credential }),
+      });
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || !verifyData.success) {
+        throw new Error(verifyData.error || 'Unable to sign in with passkey.');
+      }
+
+      window.localStorage.setItem('horizon-auth-user', JSON.stringify(verifyData.user));
+      setPendingUser(verifyData.user);
+      setPulseState('success');
+    } catch (error) {
+      setPulseState('error');
+      setPasskeyMessage(error instanceof Error ? error.message : 'Unable to sign in with passkey.');
+      setIsPasskeyLoading(false);
+    }
+  };
+
   return (
 <div className="relative min-h-screen w-full flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05),transparent_50%),#f7fbf8] dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.035),transparent_52%),#020604] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
       {showDecorativeCanvas && (
@@ -305,7 +364,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
 
           <button 
             type="submit"
-            disabled={isLoading || pulseState === 'success' || isOffline}
+            disabled={isLoading || isPasskeyLoading || pulseState === 'success' || isOffline}
             className={`relative w-full overflow-hidden flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-300 ${
               pulseState === 'success' ? "bg-emerald-600 text-white" : 
               pulseState === 'error' ? "bg-red-600/90 text-white" :
@@ -329,6 +388,25 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               </>
             )}
           </button>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handlePasskeySignIn}
+              disabled={isLoading || isPasskeyLoading || pulseState === 'success' || isOffline}
+              className="w-full rounded-lg border border-emerald-500/20 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-300 dark:hover:text-emerald-200"
+            >
+              {isPasskeyLoading ? 'Opening passkey...' : 'Sign in with passkey'}
+            </button>
+            <p className="px-1 text-center text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+              Use Face ID, fingerprint, Windows Hello, device PIN, or a security key.
+            </p>
+            {passkeyMessage && (
+              <p className="rounded-lg border border-emerald-500/15 bg-black/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-100/65">
+                {passkeyMessage}
+              </p>
+            )}
+          </div>
         </form>
 
 <div className="mt-8 pt-6 border-t border-emerald-500/10 text-center flex flex-col space-y-4">           <div className="flex flex-col space-y-2">

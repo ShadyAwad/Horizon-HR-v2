@@ -39,6 +39,14 @@ type NotificationSettings = {
   quietHoursEnd?: string | null;
 };
 
+type PasskeyRecord = {
+  id: string;
+  deviceLabel: string;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt?: string | null;
+};
+
 type NotificationChannel = 'in_app' | 'email' | 'push';
 type NotificationKey =
   | 'attendance_reminders'
@@ -483,6 +491,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationMessageType, setNotificationMessageType] = useState<'success' | 'error'>('success');
+  const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
+  const [passkeysLoading, setPasskeysLoading] = useState(false);
+  const [passkeySaving, setPasskeySaving] = useState(false);
+  const [passkeyMessage, setPasskeyMessage] = useState('');
+  const [passkeyMessageType, setPasskeyMessageType] = useState<'success' | 'error'>('success');
   const [quietHoursStart, setQuietHoursStart] = useState('');
   const [quietHoursEnd, setQuietHoursEnd] = useState('');
   const [showPayrollPanel, setShowPayrollPanel] = useState(false);
@@ -959,6 +972,82 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     payrollHeaders.Authorization = `Bearer ${user.authToken}`;
   }
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
+
+  const loadPasskeys = async (clearMessage = true) => {
+    setPasskeysLoading(true);
+    if (clearMessage) setPasskeyMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/passkeys'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setPasskeys(data.passkeys || []);
+      } else {
+        setPasskeyMessageType('error');
+        setPasskeyMessage(data.error || 'Unable to load passkeys.');
+      }
+    } catch {
+      setPasskeyMessageType('error');
+      setPasskeyMessage('Server disconnection. Unable to load passkeys.');
+    } finally {
+      setPasskeysLoading(false);
+    }
+  };
+
+  const addPasskey = async () => {
+    if (isOffline) {
+      setPasskeyMessageType('error');
+      setPasskeyMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
+    if (!window.PublicKeyCredential) {
+      setPasskeyMessageType('error');
+      setPasskeyMessage('Passkeys are not supported in this browser.');
+      return;
+    }
+
+    setPasskeySaving(true);
+    setPasskeyMessage('');
+
+    try {
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const optionsResponse = await fetch(apiUrl('/api/auth/passkeys/register/options'), {
+        method: 'POST',
+        headers: payrollHeaders,
+      });
+      const optionsData = await optionsResponse.json();
+
+      if (!optionsResponse.ok || !optionsData.success) {
+        throw new Error(optionsData.error || 'Unable to start passkey registration.');
+      }
+
+      const credential = await startRegistration({ optionsJSON: optionsData.options });
+      const verifyResponse = await fetch(apiUrl('/api/auth/passkeys/register/verify'), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          credential,
+          deviceLabel: 'Platform passkey',
+        }),
+      });
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || !verifyData.success) {
+        throw new Error(verifyData.error || 'Unable to save passkey.');
+      }
+
+      setPasskeyMessageType('success');
+      setPasskeyMessage('Passkey added. You can now sign in with this device.');
+      await loadPasskeys(false);
+    } catch (error) {
+      setPasskeyMessageType('error');
+      setPasskeyMessage(error instanceof Error ? error.message : 'Unable to add passkey.');
+    } finally {
+      setPasskeySaving(false);
+    }
+  };
 
   const loadRoleManagement = async () => {
     if (!canManageRoles) return;
@@ -1547,6 +1636,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   useEffect(() => {
     if (showControlCenter) {
       loadNotificationSettings(false);
+      loadPasskeys(false);
     }
   }, [showControlCenter, user.id, user.tenantId]);
 
@@ -2224,6 +2314,70 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     </div>
   );
 
+  const renderPasskeyPanel = () => (
+    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+            <Fingerprint className="h-4 w-4 text-emerald-500" />
+            Passkeys
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
+            Add Face ID, fingerprint, Windows Hello, device PIN, or security key sign-in. Stanza never stores biometric data.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={addPasskey}
+          disabled={isOffline || passkeySaving}
+          className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {passkeySaving ? 'Opening...' : 'Add Passkey'}
+        </button>
+      </div>
+
+      {passkeyMessage && (
+        <p className={cn(
+          "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+          passkeyMessageType === 'success'
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+            : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+        )}>
+          {passkeyMessage}
+        </p>
+      )}
+
+      <div className="mt-4 space-y-2">
+        {passkeys.map((passkey) => (
+          <div key={passkey.id} className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{passkey.deviceLabel || 'Passkey'}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
+                {passkey.transports?.length ? passkey.transports.join(', ') : 'platform'}
+              </p>
+            </div>
+            <p className="mt-1 text-[10px] text-neutral-500 dark:text-emerald-100/45">
+              Last used: {passkey.lastUsedAt ? new Date(passkey.lastUsedAt).toLocaleString() : 'Never'} · Added: {new Date(passkey.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+        ))}
+
+        {!passkeysLoading && passkeys.length === 0 && (
+          <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
+            No passkeys registered yet.
+          </p>
+        )}
+
+        {passkeysLoading && (
+          <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
+            Loading passkeys...
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   const renderControlCenterSettings = () => (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
       <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Settings</p>
@@ -2475,6 +2629,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
             <div className="space-y-4">
               {renderControlCenterAccount()}
+              {renderPasskeyPanel()}
               {renderControlCenterSettings()}
               {renderPwaReadinessPanel()}
               {renderNotificationSettingsPanel()}
