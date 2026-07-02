@@ -11,8 +11,23 @@ createRoot(document.getElementById('root')!).render(
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch((error) => {
-      console.error('[PWA] Service worker registration failed:', error);
-    });
+    navigator.serviceWorker.register('/service-worker.js')
+      .then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const installingWorker = registration.installing;
+          if (!installingWorker) return;
+
+          installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.dispatchEvent(new CustomEvent('stanza-service-worker-update', {
+                detail: { registration },
+              }));
+            }
+          });
+        });
+      })
+      .catch((error) => {
+        console.error('[PWA] Service worker registration failed:', error);
+      });
   });
 }

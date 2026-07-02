@@ -42,6 +42,7 @@ function getStoredUser() {
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
+  const [serviceWorkerRegistration, setServiceWorkerRegistration] = useState<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     const titles = {
@@ -52,6 +53,31 @@ export default function App() {
 
     document.title = titles[authState];
   }, [authState]);
+
+  useEffect(() => {
+    const handleServiceWorkerUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ registration?: ServiceWorkerRegistration }>;
+      if (customEvent.detail?.registration) {
+        setServiceWorkerRegistration(customEvent.detail.registration);
+      }
+    };
+
+    const handleControllerChange = () => {
+      window.location.reload();
+    };
+
+    window.addEventListener('stanza-service-worker-update', handleServiceWorkerUpdate);
+    navigator.serviceWorker?.addEventListener('controllerchange', handleControllerChange);
+
+    return () => {
+      window.removeEventListener('stanza-service-worker-update', handleServiceWorkerUpdate);
+      navigator.serviceWorker?.removeEventListener('controllerchange', handleControllerChange);
+    };
+  }, []);
+
+  const applyServiceWorkerUpdate = () => {
+    serviceWorkerRegistration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+  };
 
   return (
     <ThemeProvider>
@@ -87,6 +113,18 @@ export default function App() {
              }} 
              onNavigateSignup={() => setAuthState('signup')} 
            />
+         )}
+         {serviceWorkerRegistration?.waiting && (
+           <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-[#04110d]/95 p-3 text-xs text-emerald-50 shadow-2xl shadow-black/40 backdrop-blur-xl">
+             <span>Stanza update ready.</span>
+             <button
+               type="button"
+               onClick={applyServiceWorkerUpdate}
+               className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
+             >
+               Refresh
+             </button>
+           </div>
          )}
         </div>
       </LanguageProvider>

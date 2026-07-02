@@ -2,20 +2,44 @@
   "name": "Stanza",
   "short_name": "Stanza",
   "id": "/",
-  "description": "Modern workforce operations for attendance, geofencing, payroll, leave requests, grievances, and company communication.",
+  "description": "Workforce operations platform for attendance, geofencing, payroll, leave, grievances, and company updates.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#020604",
-  "theme_color": "#020604",
+  "orientation": "portrait-primary",
+  "background_color": "#020f0a",
+  "theme_color": "#020f0a",
   "categories": ["business", "productivity"],
   "icons": [
+    {
+      "src": "/icons/stanza-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/stanza-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/stanza-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/stanza-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

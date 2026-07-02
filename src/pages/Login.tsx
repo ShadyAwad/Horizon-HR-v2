@@ -86,6 +86,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [isRecovering, setIsRecovering] = useState(false);
   const [pendingUser, setPendingUser] = useState<AuthUser | undefined>();
   const [showDecorativeCanvas, setShowDecorativeCanvas] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
 
@@ -94,8 +95,27 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     return () => window.clearTimeout(loadCanvas);
   }, []);
 
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(!navigator.onLine);
+
+    window.addEventListener('online', updateOnlineState);
+    window.addEventListener('offline', updateOnlineState);
+
+    return () => {
+      window.removeEventListener('online', updateOnlineState);
+      window.removeEventListener('offline', updateOnlineState);
+    };
+  }, []);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (isOffline) {
+      setPulseState('error');
+      setErrorMsg('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg('');
     setPulseState('idle');
@@ -131,6 +151,11 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   };
 
   const handleRecoveryRequest = async () => {
+  if (isOffline) {
+    setRecoveryMessage('You are offline. Some HR actions require connection.');
+    return;
+  }
+
   setIsRecovering(true);
   setRecoveryMessage('');
 
@@ -272,9 +297,15 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               </div>
             )}
 
+          {isOffline && !errorMsg && (
+            <p className="rounded-lg border border-amber-300/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+              You are offline. Some HR actions require connection.
+            </p>
+          )}
+
           <button 
             type="submit"
-            disabled={isLoading || pulseState === 'success'}
+            disabled={isLoading || pulseState === 'success' || isOffline}
             className={`relative w-full overflow-hidden flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-300 ${
               pulseState === 'success' ? "bg-emerald-600 text-white" : 
               pulseState === 'error' ? "bg-red-600/90 text-white" :
@@ -403,7 +434,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
                 <button
                   type="button"
                   onClick={handleRecoveryRequest}
-                  disabled={isRecovering}
+                  disabled={isRecovering || isOffline}
                   className="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-black transition-all hover:bg-emerald-400 disabled:opacity-60"
                 >
                   {isRecovering ? t('login.recoveryGenerating') : t('login.recoveryStart')}

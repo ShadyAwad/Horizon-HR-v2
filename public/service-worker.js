@@ -1,11 +1,15 @@
-const STATIC_CACHE = 'horizon-static-v2';
-const RUNTIME_CACHE = 'horizon-runtime-v2';
+const STATIC_CACHE = 'stanza-static-v4';
+const RUNTIME_CACHE = 'stanza-runtime-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/offline.html',
   '/favicon.svg',
+  '/icons/stanza-icon-192.png',
+  '/icons/stanza-icon-512.png',
+  '/icons/stanza-maskable-192.png',
+  '/icons/stanza-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -28,6 +32,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 function offlineJsonResponse() {
   return new Response(
     JSON.stringify({
@@ -42,16 +52,8 @@ function offlineJsonResponse() {
   );
 }
 
-function isSensitiveApiPath(pathname) {
-  return pathname.startsWith('/api/auth/');
-}
-
 function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
-}
-
-function isPayrollPdfPath(pathname) {
-  return /^\/api\/payroll\/[^/]+\/pdf$/.test(pathname);
 }
 
 function isStaticAssetRequest(request, url) {
@@ -65,26 +67,17 @@ function isStaticAssetRequest(request, url) {
   );
 }
 
-async function networkFirstApi(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-
+async function networkOnlyApi(request) {
   try {
-    const response = await fetch(request);
-
-    if (response.ok && !isSensitiveApiPath(new URL(request.url).pathname)) {
-      cache.put(request, response.clone());
-    }
-
-    return response;
+    return await fetch(request, { cache: 'no-store' });
   } catch {
-    const cachedResponse = await cache.match(request);
-    return cachedResponse || offlineJsonResponse();
+    return offlineJsonResponse();
   }
 }
 
 async function networkOnlyMutation(request) {
   try {
-    return await fetch(request);
+    return await fetch(request, { cache: 'no-store' });
   } catch {
     return offlineJsonResponse();
   }
@@ -138,20 +131,14 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (isApiRequest(url)) {
-    if (isPayrollPdfPath(url.pathname)) {
-      event.respondWith(networkOnlyMutation(request));
-      return;
-    }
-
+    // Authenticated HR API responses can contain payroll, grievance, attendance, role,
+    // location, and employee data. They are intentionally network-only and never stored
+    // in Cache Storage, so one browser user/session cannot receive another user's stale
+    // private JSON while offline.
     // Mutating HR workflows are intentionally not cached or queued. Retrying login,
     // password reset, payroll, grievance, company feed, clock, or leave writes offline could
     // duplicate sensitive actions or replay stale credentials/payroll changes.
-    if (request.method !== 'GET') {
-      event.respondWith(networkOnlyMutation(request));
-      return;
-    }
-
-    event.respondWith(networkFirstApi(request));
+    event.respondWith(request.method === 'GET' ? networkOnlyApi(request) : networkOnlyMutation(request));
     return;
   }
 

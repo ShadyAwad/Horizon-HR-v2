@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -13,6 +13,11 @@ import type { AuthUser } from '../App';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const RichFeedContent = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichFeedContent })));
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
 
@@ -535,8 +540,124 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [showControlCenter, setShowControlCenter] = useState(false);
   const [showTenantId, setShowTenantId] = useState(false);
   const [tenantIdCopied, setTenantIdCopied] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installDismissed, setInstallDismissed] = useState(() => window.localStorage.getItem('stanza-install-dismissed') === 'true');
+  const [isStandalone, setIsStandalone] = useState(() => (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  ));
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => (
+    'Notification' in window ? Notification.permission : 'unsupported'
+  ));
+  const [pwaMessage, setPwaMessage] = useState('');
+  const [pwaMessageType, setPwaMessageType] = useState<'success' | 'error' | 'info'>('info');
 
   const geo = useGeolocation();
+
+  const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+  const canPromptInstall = Boolean(installPrompt && !installDismissed && !isStandalone);
+  const shouldShowIosInstallHint = isIos && !isStandalone;
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(!navigator.onLine);
+    const updateStandaloneState = () => {
+      setIsStandalone(
+        window.matchMedia('(display-mode: standalone)').matches ||
+        Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
+      );
+    };
+    const displayModeQuery = window.matchMedia('(display-mode: standalone)');
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      if (!installDismissed) {
+        setInstallPrompt(event as BeforeInstallPromptEvent);
+      }
+    };
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+      setInstallDismissed(false);
+      window.localStorage.removeItem('stanza-install-dismissed');
+      setIsStandalone(true);
+      setPwaMessageType('success');
+      setPwaMessage('Stanza is installed.');
+    };
+
+    window.addEventListener('online', updateOnlineState);
+    window.addEventListener('offline', updateOnlineState);
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    displayModeQuery.addEventListener('change', updateStandaloneState);
+
+    updateOnlineState();
+    updateStandaloneState();
+
+    return () => {
+      window.removeEventListener('online', updateOnlineState);
+      window.removeEventListener('offline', updateOnlineState);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+      displayModeQuery.removeEventListener('change', updateStandaloneState);
+    };
+  }, [installDismissed]);
+
+  const installStanza = async () => {
+    if (!installPrompt) return;
+
+    try {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      setInstallPrompt(null);
+
+      if (choice.outcome === 'dismissed') {
+        setInstallDismissed(true);
+        window.localStorage.setItem('stanza-install-dismissed', 'true');
+        setPwaMessageType('info');
+        setPwaMessage('Install prompt dismissed. You can still install Stanza from the browser menu.');
+      } else {
+        setPwaMessageType('success');
+        setPwaMessage('Stanza install started.');
+      }
+    } catch {
+      setPwaMessageType('error');
+      setPwaMessage('Unable to open the install prompt. Use your browser install menu.');
+    }
+  };
+
+  const dismissInstallPrompt = () => {
+    setInstallDismissed(true);
+    setInstallPrompt(null);
+    window.localStorage.setItem('stanza-install-dismissed', 'true');
+  };
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      setNotificationPermission('unsupported');
+      setPwaMessageType('error');
+      setPwaMessage('Notifications are not supported in this browser.');
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setPwaMessageType('error');
+      setPwaMessage('Notification permissions require HTTPS or localhost.');
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      setPwaMessageType(permission === 'granted' ? 'success' : 'info');
+      setPwaMessage(
+        permission === 'granted'
+          ? 'Notification permissions ready. Push delivery requires server push setup.'
+          : 'Notification permission was not granted.',
+      );
+    } catch {
+      setPwaMessageType('error');
+      setPwaMessage('Unable to request notification permission.');
+    }
+  };
 
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
@@ -626,6 +747,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const saveNotificationSettings = async () => {
+    if (isOffline) {
+      setNotificationMessageType('error');
+      setNotificationMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (notificationSaving) return;
 
     setNotificationSaving(true);
@@ -664,6 +791,16 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const handleClockAction = async () => {
+    if (isOffline) {
+      setClockInState('failed');
+      setClockMessage('You are offline. Some HR actions require connection.');
+      window.setTimeout(() => {
+        setClockInState('idle');
+        setClockMessage('');
+      }, 4000);
+      return;
+    }
+
     if (isClockedIn) {
       await verifyClockOut();
       return;
@@ -874,6 +1011,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const createTenantRole = async () => {
+    if (isOffline) {
+      setRoleMessageType('error');
+      setRoleMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (roleSaving) return;
 
     setRoleSaving(true);
@@ -905,6 +1048,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const assignEmployeeRole = async (employeeId: string, roleId: string) => {
+    if (isOffline) {
+      setRoleMessageType('error');
+      setRoleMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (!roleId || roleUpdatingEmployeeId) return;
 
     setRoleUpdatingEmployeeId(employeeId);
@@ -935,6 +1084,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const saveEmployeeTitle = async (employeeId: string) => {
+    if (isOffline) {
+      setRoleMessageType('error');
+      setRoleMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (roleUpdatingEmployeeId) return;
 
     setRoleUpdatingEmployeeId(employeeId);
@@ -1086,6 +1241,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const saveCompensationProfile = async () => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (compensationSaving || !compensationForm.employeeId || !canManageCompensation) return;
 
     setCompensationSaving(true);
@@ -1121,6 +1282,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const createEmployeeLoan = async () => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (loanSaving || !loanForm.employeeId || !canManageLoans) return;
 
     setLoanSaving(true);
@@ -1165,6 +1332,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const updateEmployeeLoanStatus = async (loanId: string, status: LoanStatus) => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (loanUpdatingId || !canManageLoans) return;
 
     setLoanUpdatingId(loanId);
@@ -1195,6 +1368,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const updatePayrollStatus = async (recordId: string, status: PayrollStatus) => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (payrollStatusUpdatingId) return;
     if (status === 'paid' && !canMarkPayrollPaid) return;
     if ((status === 'approved' || status === 'cancelled') && !canApprovePayroll) return;
@@ -1227,6 +1406,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const runPayroll = async () => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (payrollSubmitting || !canRunPayroll) return;
 
     setPayrollSubmitting(true);
@@ -1279,6 +1464,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const exportPayrollPdf = async (recordId: string) => {
+    if (isOffline) {
+      setPayrollMessageType('error');
+      setPayrollMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (payrollExportingId || !canExportPayrollPdf) return;
 
     setPayrollExportingId(recordId);
@@ -1422,6 +1613,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const submitGrievance = async () => {
+    if (isOffline) {
+      setGrievanceMessageType('error');
+      setGrievanceMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (grievanceSubmitting) return;
 
     setGrievanceSubmitting(true);
@@ -1453,6 +1650,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const updateGrievanceStatus = async (grievanceId: string, status: GrievanceStatus) => {
+    if (isOffline) {
+      setGrievanceMessageType('error');
+      setGrievanceMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (grievanceUpdatingId) return;
 
     setGrievanceUpdatingId(grievanceId);
@@ -1552,6 +1755,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const submitFeedPost = async () => {
+    if (isOffline) {
+      setFeedMessageType('error');
+      setFeedMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()) return;
 
     setFeedSubmitting(true);
@@ -1591,6 +1800,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const updateFeedStatus = async (postId: string, status: FeedPostStatus) => {
+    if (isOffline) {
+      setFeedMessageType('error');
+      setFeedMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
     if (feedUpdatingId) return;
 
     setFeedUpdatingId(postId);
@@ -1669,7 +1884,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <button
           type="button"
           onClick={() => loadNotificationSettings()}
-          disabled={notificationLoading || notificationSaving}
+          disabled={isOffline || notificationLoading || notificationSaving}
           className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
         >
           {notificationLoading ? 'Loading...' : 'Refresh'}
@@ -1715,7 +1930,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                       type="checkbox"
                       checked={setting.enabled}
                       onChange={(event) => updateNotificationToggle(category.key, channel.key, event.target.checked)}
-                      disabled={notificationLoading || notificationSaving}
+                      disabled={isOffline || notificationLoading || notificationSaving}
                       className="h-4 w-4 accent-emerald-500 disabled:opacity-60"
                       aria-label={`${category.label} ${channel.label}`}
                     />
@@ -1749,7 +1964,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <button
           type="button"
           onClick={saveNotificationSettings}
-          disabled={notificationSaving || notificationLoading}
+          disabled={isOffline || notificationSaving || notificationLoading}
           className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
         >
           {notificationSaving ? 'Saving...' : 'Save Settings'}
@@ -1825,6 +2040,104 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           <span className="max-w-[190px] truncate text-right font-medium text-slate-700 dark:text-slate-300">{lastClockEvent}</span>
         </div>
       </div>
+    </div>
+  );
+
+  const renderPwaReadinessPanel = () => (
+    <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+            <Smartphone className="h-4 w-4 text-emerald-500" />
+            App Readiness
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
+            Install, offline, and notification status for this device.
+          </p>
+        </div>
+
+        <span className={cn(
+          "w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest",
+          isOffline
+            ? "border-amber-300/30 bg-amber-500/10 text-amber-600 dark:text-amber-200"
+            : "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        )}>
+          {isOffline ? 'Offline' : 'Online'}
+        </span>
+      </div>
+
+      {isOffline && (
+        <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-100">
+          You are offline. Some HR actions require connection.
+        </p>
+      )}
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">App mode</p>
+          <p className="mt-1 text-xs font-bold text-neutral-800 dark:text-emerald-50">
+            {isStandalone ? 'Installed' : 'Browser mode'}
+          </p>
+        </div>
+        <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Notifications</p>
+          <p className="mt-1 text-xs font-bold text-neutral-800 dark:text-emerald-50">
+            {notificationPermission === 'unsupported' ? 'Unsupported' : notificationPermission}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {canPromptInstall && (
+          <button
+            type="button"
+            onClick={installStanza}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Install Stanza
+          </button>
+        )}
+
+        {canPromptInstall && (
+          <button
+            type="button"
+            onClick={dismissInstallPrompt}
+            className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300"
+          >
+            Dismiss
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={requestNotificationPermission}
+          disabled={notificationPermission === 'granted'}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-default disabled:opacity-60 dark:text-emerald-300"
+        >
+          <Bell className="h-3.5 w-3.5" />
+          {notificationPermission === 'granted' ? 'Notifications Ready' : 'Enable Notifications'}
+        </button>
+      </div>
+
+      {shouldShowIosInstallHint && (
+        <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-xs text-neutral-600 dark:text-emerald-100/55">
+          On iOS, open Share menu {'->'} Add to Home Screen to install Stanza.
+        </p>
+      )}
+
+      {pwaMessage && (
+        <p className={cn(
+          "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+          pwaMessageType === 'success'
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+            : pwaMessageType === 'error'
+              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+              : "border-emerald-500/15 bg-emerald-500/5 text-neutral-600 dark:text-emerald-100/55"
+        )}>
+          {pwaMessage}
+        </p>
+      )}
     </div>
   );
 
@@ -2119,6 +2432,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </nav>
       </aside>
 
+      {isOffline && (
+        <div className="fixed inset-x-3 top-3 z-50 mx-auto flex max-w-md items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-[#1c1304]/95 px-3 py-2 text-xs font-bold text-amber-100 shadow-2xl shadow-black/35 backdrop-blur-xl">
+          <WifiOff className="h-4 w-4" />
+          You are offline. Some HR actions require connection.
+        </div>
+      )}
+
       {showControlCenter && (
         <div
           className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] md:bg-black/20"
@@ -2156,6 +2476,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             <div className="space-y-4">
               {renderControlCenterAccount()}
               {renderControlCenterSettings()}
+              {renderPwaReadinessPanel()}
               {renderNotificationSettingsPanel()}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {renderLocationsCard()}
@@ -2272,7 +2593,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                onClick={handleClockAction}
-                               disabled={clockInState === 'locating' || clockInState === 'verifying'}
+                               disabled={isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
                                    "relative z-10 flex h-36 min-h-36 w-36 min-w-36 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95",
                                    clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
@@ -2517,7 +2838,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             loadFeed();
                             loadAdminFeed();
                           }}
-                          disabled={feedLoading || adminFeedLoading}
+                          disabled={isOffline || feedLoading || adminFeedLoading}
                           className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
                         >
                           Refresh
@@ -2579,7 +2900,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <button
                               type="button"
                               onClick={submitFeedPost}
-                              disabled={feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()}
+                              disabled={isOffline || feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()}
                               className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                             >
                               {feedSubmitting ? 'Saving...' : feedForm.status === 'published' ? 'Publish Post' : 'Save Draft'}
@@ -2653,7 +2974,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 <select
                                   value={post.status}
                                   onChange={(event) => updateFeedStatus(post.id, event.target.value as FeedPostStatus)}
-                                  disabled={feedUpdatingId !== null}
+                                  disabled={isOffline || feedUpdatingId !== null}
                                   className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 >
                                   <option value="draft">Draft</option>
@@ -2720,7 +3041,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <button
                                     type="button"
                                     onClick={loadCompensationProfiles}
-                                    disabled={compensationLoading}
+                                    disabled={isOffline || compensationLoading}
                                     className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                                   >
                                     {compensationLoading ? 'Loading...' : 'Refresh'}
@@ -2779,7 +3100,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <button
                                     type="button"
                                     onClick={saveCompensationProfile}
-                                    disabled={compensationSaving || !compensationForm.employeeId}
+                                  disabled={isOffline || compensationSaving || !compensationForm.employeeId}
                                     className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-6"
                                   >
                                     {compensationSaving ? 'Saving...' : 'Save Compensation'}
@@ -2879,7 +3200,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={runPayroll}
-                                disabled={payrollSubmitting}
+                                disabled={isOffline || payrollSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                               >
                                 {payrollSubmitting ? 'Generating payroll...' : 'Run Payroll'}
@@ -2901,7 +3222,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={loadEmployeeLoans}
-                                disabled={loanLoading}
+                                disabled={isOffline || loanLoading}
                                 className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                               >
                                 {loanLoading ? 'Loading...' : 'Refresh'}
@@ -2970,7 +3291,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 <button
                                   type="button"
                                   onClick={createEmployeeLoan}
-                                  disabled={loanSaving || !loanForm.employeeId}
+                                  disabled={isOffline || loanSaving || !loanForm.employeeId}
                                   className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-3"
                                 >
                                   {loanSaving ? 'Creating...' : 'Create Loan'}
@@ -2992,7 +3313,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       <select
                                         value={loan.status}
                                         onChange={(event) => updateEmployeeLoanStatus(loan.id, event.target.value as LoanStatus)}
-                                        disabled={loanUpdatingId === loan.id}
+                                        disabled={isOffline || loanUpdatingId === loan.id}
                                         className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-700 outline-none focus:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                       >
                                         {loanStatuses.map((status) => (
@@ -3109,7 +3430,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                                 key={status}
                                                 type="button"
                                                 onClick={() => updatePayrollStatus(record.id, status)}
-                                                disabled={payrollStatusUpdatingId === record.id}
+                                                disabled={isOffline || payrollStatusUpdatingId === record.id}
                                                 className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                               >
                                                 {payrollStatusUpdatingId === record.id ? 'Updating...' : formatLabel(status)}
@@ -3126,7 +3447,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         <button
                                           type="button"
                                           onClick={() => exportPayrollPdf(record.id)}
-                                          disabled={payrollExportingId !== null}
+                                          disabled={isOffline || payrollExportingId !== null}
                                           className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                         >
                                           {payrollExportingId === record.id ? 'Exporting...' : 'Export PDF'}
@@ -3212,7 +3533,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={submitGrievance}
-                                disabled={grievanceSubmitting}
+                                disabled={isOffline || grievanceSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                               >
                                 {grievanceSubmitting ? 'Submitting...' : grievanceForm.category === 'leave_request' ? 'Submit Leave Request' : 'Submit Grievance'}
@@ -3237,7 +3558,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <button
                                 type="button"
                                 onClick={() => loadGrievances()}
-                                disabled={grievanceLoading || tenantGrievanceLoading}
+                                disabled={isOffline || grievanceLoading || tenantGrievanceLoading}
                                 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 disabled:opacity-60 dark:text-emerald-300"
                               >
                                 Refresh
@@ -3311,7 +3632,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                           <select
                                             value={grievance.status}
                                             onChange={(event) => updateGrievanceStatus(grievance.id, event.target.value as GrievanceStatus)}
-                                            disabled={grievanceUpdatingId !== null}
+                                            disabled={isOffline || grievanceUpdatingId !== null}
                                             className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                           >
                                             {grievanceStatuses.map((status) => (
@@ -3359,7 +3680,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                <button
                                  type="button"
                                  onClick={loadRoleManagement}
-                                 disabled={rolesLoading}
+                                 disabled={isOffline || rolesLoading}
                                  className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                >
                                  {rolesLoading ? 'Loading...' : 'Refresh'}
@@ -3426,7 +3747,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                              <select
                                                defaultValue=""
                                                onChange={(event) => assignEmployeeRole(employee.id, event.target.value)}
-                                               disabled={roleUpdatingEmployeeId === employee.id}
+                                               disabled={isOffline || roleUpdatingEmployeeId === employee.id}
                                                className="rounded border border-emerald-500/15 bg-white px-2 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                              >
                                                <option value="">Assign role</option>
@@ -3437,7 +3758,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                              <button
                                                type="button"
                                                onClick={() => saveEmployeeTitle(employee.id)}
-                                               disabled={roleUpdatingEmployeeId === employee.id}
+                                               disabled={isOffline || roleUpdatingEmployeeId === employee.id}
                                                className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                                              >
                                                Save Title
@@ -3491,7 +3812,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                    <button
                                      type="button"
                                      onClick={createTenantRole}
-                                     disabled={roleSaving || !roleForm.name.trim()}
+                                     disabled={isOffline || roleSaving || !roleForm.name.trim()}
                                      className="w-full rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                                    >
                                      {roleSaving ? 'Creating...' : 'Create Role'}
