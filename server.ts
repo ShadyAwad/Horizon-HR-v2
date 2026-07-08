@@ -26,6 +26,11 @@ import {
   hasDatabaseConfig,
   withTenant,
 } from './src/lib/hr-background';
+import {
+  validateEmail,
+  validatePasswordStrength,
+  validateRequiredText,
+} from './src/lib/validation';
 
 
 type ClockInBody = {  
@@ -144,6 +149,8 @@ type NotificationChannel = 'in_app' | 'email' | 'push';
 type NotificationKey =
   | 'attendance_reminders'
   | 'break_reminders'
+  | 'break_request_pending'
+  | 'break_request_reviewed'
   | 'leave_updates'
   | 'payroll_updates'
   | 'loan_updates'
@@ -162,6 +169,19 @@ type NotificationSettingInput = {
 
 type UpdateNotificationSettingsBody = {
   settings?: NotificationSettingInput[];
+};
+
+type BreakRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+type CreateBreakRequestBody = {
+  requestedStartTime?: string | null;
+  durationMinutes?: number | string;
+  reason?: string | null;
+};
+
+type ReviewBreakRequestBody = {
+  status?: 'approved' | 'rejected';
+  reviewNote?: string | null;
 };
 
 type EmployeeRole = 'hr_admin' | 'manager' | 'employee';
@@ -581,6 +601,17 @@ function isValidDateInput(value: string | undefined) {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function isUuid(value: string | undefined) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+function normalizeOptionalTimestamp(value: string | null | undefined) {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
 function isNonNegativeAmount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
@@ -599,6 +630,8 @@ const notificationChannels: NotificationChannel[] = ['in_app', 'email', 'push'];
 const notificationKeys: NotificationKey[] = [
   'attendance_reminders',
   'break_reminders',
+  'break_request_pending',
+  'break_request_reviewed',
   'leave_updates',
   'payroll_updates',
   'loan_updates',
@@ -607,6 +640,7 @@ const notificationKeys: NotificationKey[] = [
   'role_permission_changes',
   'system_alerts',
 ];
+const breakRequestStatuses: BreakRequestStatus[] = ['pending', 'approved', 'rejected', 'cancelled'];
 const employeeRoles: EmployeeRole[] = ['employee', 'manager', 'hr_admin'];
 
 function isGrievancePriority(value: unknown): value is GrievancePriority {
@@ -655,6 +689,10 @@ function isNotificationChannel(value: unknown): value is NotificationChannel {
 
 function isNotificationKey(value: unknown): value is NotificationKey {
   return typeof value === 'string' && notificationKeys.includes(value as NotificationKey);
+}
+
+function isBreakRequestStatus(value: unknown): value is BreakRequestStatus {
+  return typeof value === 'string' && breakRequestStatuses.includes(value as BreakRequestStatus);
 }
 
 function isEmployeeRole(value: unknown): value is EmployeeRole {
@@ -921,6 +959,8 @@ async function seedTenantRolesAndPermissions(
         VALUES
           ('employee', 'locations.read'),
           ('employee', 'attendance.clock'),
+          ('employee', 'break_requests.create'),
+          ('employee', 'break_requests.view_own'),
           ('employee', 'leave.create'),
           ('employee', 'payroll.view_self'),
           ('employee', 'payroll.export_pdf'),
@@ -929,6 +969,10 @@ async function seedTenantRolesAndPermissions(
           ('employee', 'feed.read'),
           ('manager', 'locations.read'),
           ('manager', 'attendance.view'),
+          ('manager', 'break_requests.create'),
+          ('manager', 'break_requests.view_own'),
+          ('manager', 'break_requests.review'),
+          ('manager', 'break_requests.view_all'),
           ('manager', 'leave.review'),
           ('manager', 'payroll.view_self'),
           ('manager', 'payroll.export_pdf'),
@@ -1213,6 +1257,10 @@ function requirePermission(permissionKey: string) {
       error: 'You do not have permission to perform this action.',
     });
   };
+}
+
+function authUserHasPermission(authUser: AuthenticatedUser, permissionKey: string) {
+  return authUser.role === 'hr_admin' || Boolean(authUser.permissions?.includes(permissionKey));
 }
 
 function apiErrorHandler(
@@ -1557,10 +1605,11 @@ async function startServer() {
       radius?: number | string;
     };
 
-    const normalizedCompanyName = companyName?.trim() || '';
-    const normalizedTenantSlug = tenantSlug?.trim().toLowerCase() || '';
-    const normalizedAdminFullName = adminFullName?.trim() || '';
-    const normalizedAdminEmail = adminEmail?.trim().toLowerCase() || '';
+    const normalizedCompanyName = validateRequiredText(companyName, { label: 'companyName', max: 255 });
+    const normalizedTenantSlug = validateRequiredText(tenantSlug, { label: 'tenantSlug', min: 3, max: 255 });
+    const normalizedAdminFullName = validateRequiredText(adminFullName, { label: 'adminFullName', min: 2, max: 255 });
+    const normalizedAdminEmail = validateEmail(adminEmail);
+    const adminPasswordStrength = validatePasswordStrength(adminPassword);
     const normalizedCurrency = currency?.trim() || '';
     const normalizedCapacity = capacity?.trim() || '';
     const normalizedAdminRole = allowedAdminRoles.includes(adminRole as EmployeeRole)
@@ -1577,10 +1626,10 @@ async function startServer() {
     });
 
     if (
-      !normalizedCompanyName ||
-      !normalizedTenantSlug ||
-      !normalizedAdminFullName ||
-      !normalizedAdminEmail ||
+      !normalizedCompanyName.valid ||
+      !normalizedTenantSlug.valid ||
+      !normalizedAdminFullName.valid ||
+      !normalizedAdminEmail.valid ||
       !adminPassword ||
       !normalizedCurrency ||
       !normalizedCapacity
@@ -1591,10 +1640,10 @@ async function startServer() {
       });
     }
 
-    if (adminPassword.length < 8) {
+    if (!adminPasswordStrength.valid) {
       return res.status(400).json({
         success: false,
-        error: 'adminPassword must be at least 8 characters.',
+        error: `adminPassword is missing: ${adminPasswordStrength.missingRules.join(', ')}.`,
       });
     }
 
@@ -1649,8 +1698,8 @@ async function startServer() {
           RETURNING id, company_name, slug
         `,
         [
-          normalizedCompanyName,
-          normalizedTenantSlug,
+          normalizedCompanyName.value,
+          normalizedTenantSlug.value.toLowerCase(),
           normalizedCurrency,
           normalizedCapacity,
           Boolean(allowsLoans),
@@ -1684,8 +1733,8 @@ async function startServer() {
         `,
         [
           tenant.id,
-          normalizedAdminFullName,
-          normalizedAdminEmail,
+          normalizedAdminFullName.value,
+          normalizedAdminEmail.value,
           passwordHash,
           normalizedAdminRole,
         ],
@@ -1895,14 +1944,16 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     password?: string;
   };
 
-  if (!email || !password) {
+  const normalizedLoginEmail = validateEmail(email);
+
+  if (!normalizedLoginEmail.valid || !password) {
     return res.status(400).json({
       success: false,
-      error: 'Email and password are required.',
+      error: !normalizedLoginEmail.valid ? normalizedLoginEmail.error : 'Password is required.',
     });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizedLoginEmail.value;
   const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
   const rateLimit = checkLoginRateLimit(loginRateLimitKey);
 
@@ -2300,11 +2351,12 @@ app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAut
 
 app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (req, res) => {
   const { email } = req.body as { email?: string };
+  const normalizedPasskeyEmail = validateEmail(email);
 
-  if (!email) {
+  if (!normalizedPasskeyEmail.valid) {
     return res.status(400).json({
       success: false,
-      error: 'Enter your email before using passkey sign in.',
+      error: normalizedPasskeyEmail.error,
     });
   }
 
@@ -2312,7 +2364,7 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
     return res.status(503).json({ success: false, error: 'DATABASE_URL is required for passkeys.' });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizedPasskeyEmail.value;
   const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
   const rateLimit = checkLoginRateLimit(loginRateLimitKey);
 
@@ -2391,14 +2443,16 @@ app.post('/api/auth/passkeys/login/verify', sensitiveAuthRateLimiter, async (req
     credential?: AuthenticationResponseJSON;
   };
 
-  if (!email || !credential) {
+  const normalizedPasskeyEmail = validateEmail(email);
+
+  if (!normalizedPasskeyEmail.valid || !credential) {
     return res.status(400).json({
       success: false,
-      error: 'Email and passkey response are required.',
+      error: !normalizedPasskeyEmail.valid ? normalizedPasskeyEmail.error : 'Passkey response is required.',
     });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizedPasskeyEmail.value;
   const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
   const rateLimit = checkLoginRateLimit(loginRateLimitKey);
 
@@ -2516,10 +2570,12 @@ app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) =
     method?: 'email' | 'admin' | 'security';
   };
 
-  if (!email) {
+  const normalizedResetEmail = validateEmail(email);
+
+  if (!normalizedResetEmail.valid) {
     return res.status(400).json({
       success: false,
-      error: 'Email is required for password recovery.',
+      error: normalizedResetEmail.error,
     });
   }
 
@@ -2531,7 +2587,7 @@ app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) =
   }
 
   try {
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizedResetEmail.value;
     const resetCode = generateResetCode();
     const tokenHash = hashResetCode(resetCode);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -2559,7 +2615,7 @@ app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) =
     if (result.rowCount === 0) {
       return res.json({
         success: true,
-        message: 'If the account exists, recovery instructions have been generated.',
+        message: 'If an account exists, password reset instructions have been sent.',
       });
     }
 
@@ -2597,15 +2653,10 @@ app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) =
       });
     }
 
-    const response: { success: true; message: string; devResetCode?: string } = {
+    const response: { success: true; message: string } = {
       success: true,
-      message: 'If the account exists, recovery instructions have been generated.',
+      message: 'If an account exists, password reset instructions have been sent.',
     };
-
-    if (!isProduction()) {
-      response.message = 'Recovery instructions generated. Dev reset code printed in server logs.';
-      response.devResetCode = resetCode;
-    }
 
     res.json(response);
   } catch (error) {
@@ -3417,17 +3468,22 @@ app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
     newPassword?: string;
   };
 
-  if (!email || !resetCode || !newPassword) {
+  const normalizedResetEmail = validateEmail(email);
+  const newPasswordStrength = validatePasswordStrength(newPassword);
+
+  if (!normalizedResetEmail.valid || !resetCode || !newPassword) {
     return res.status(400).json({
       success: false,
-      error: 'Email, reset code, and new password are required.',
+      error: !normalizedResetEmail.valid
+        ? normalizedResetEmail.error
+        : 'Reset code and new password are required.',
     });
   }
 
-  if (newPassword.length < 8) {
+  if (!newPasswordStrength.valid) {
     return res.status(400).json({
       success: false,
-      error: 'Password must be at least 8 characters long.',
+      error: `Password is missing: ${newPasswordStrength.missingRules.join(', ')}.`,
     });
   }
 
@@ -3438,7 +3494,7 @@ app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
     });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizedResetEmail.value;
   const resetCodeHash = hashResetCode(resetCode.trim());
   const newPasswordHash = generatePasswordHash(newPassword);
 
@@ -4103,6 +4159,474 @@ app.patch(
     res.status(demoClockOut.status).json(demoClockOut.body);
   }
 });
+
+app.post(
+  '/api/break-requests',
+  demoAuth,
+  requirePermission('break_requests.create'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+    const { requestedStartTime, durationMinutes, reason } = req.body as CreateBreakRequestBody;
+
+    const normalizedDuration = typeof durationMinutes === 'string'
+      ? Number(durationMinutes)
+      : durationMinutes;
+    const normalizedReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : null;
+    const normalizedStartTime = normalizeOptionalTimestamp(requestedStartTime);
+
+    if (!Number.isInteger(normalizedDuration) || normalizedDuration < 5 || normalizedDuration > 180) {
+      return res.status(400).json({ success: false, error: 'durationMinutes must be a whole number between 5 and 180.' });
+    }
+
+    if (normalizedStartTime === undefined) {
+      return res.status(400).json({ success: false, error: 'requestedStartTime must be a valid date/time if provided.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for break requests' });
+    }
+
+    try {
+      const breakRequest = await withTenant(tenantId, async (client) => {
+        await client.query('BEGIN');
+
+        try {
+          const existing = await client.query<{ id: string }>(
+            `
+              SELECT id
+              FROM break_requests
+              WHERE tenant_id = $1
+                AND employee_id = $2
+                AND status = 'pending'
+              LIMIT 1
+            `,
+            [tenantId, employeeId],
+          );
+
+          if (existing.rows[0]) {
+            await client.query('ROLLBACK');
+            return { duplicatePending: true as const };
+          }
+
+          const result = await client.query<{
+            id: string;
+            employee_id: string;
+            requested_start_time: string | null;
+            requested_end_time: string | null;
+            duration_minutes: number;
+            reason: string | null;
+            status: BreakRequestStatus;
+            created_at: string;
+          }>(
+            `
+              INSERT INTO break_requests (
+                tenant_id,
+                employee_id,
+                requested_start_time,
+                requested_end_time,
+                duration_minutes,
+                reason
+              )
+              VALUES (
+                $1,
+                $2,
+                $3::timestamptz,
+                CASE
+                  WHEN $3::timestamptz IS NULL THEN NULL
+                  ELSE $3::timestamptz + ($4::int * INTERVAL '1 minute')
+                END,
+                $4::int,
+                $5::text
+              )
+              RETURNING
+                id,
+                employee_id,
+                requested_start_time,
+                requested_end_time,
+                duration_minutes,
+                reason,
+                status,
+                created_at
+            `,
+            [tenantId, employeeId, normalizedStartTime, normalizedDuration, normalizedReason],
+          );
+
+          const requestRow = result.rows[0];
+
+          const recipients = await client.query<{ id: string }>(
+            `
+              WITH requester AS (
+                SELECT manager_id
+                FROM employees
+                WHERE tenant_id = $1
+                  AND id = $2
+              ),
+              candidate_recipients AS (
+                SELECT manager_id AS id
+                FROM requester
+                WHERE manager_id IS NOT NULL
+
+                UNION
+
+                SELECT employees.id
+                FROM employees
+                WHERE employees.tenant_id = $1
+                  AND employees.role IN ('manager', 'hr_admin')
+                  AND NOT EXISTS (SELECT 1 FROM requester WHERE manager_id IS NOT NULL)
+              )
+              SELECT candidate_recipients.id
+              FROM candidate_recipients
+              LEFT JOIN user_notification_settings
+                ON user_notification_settings.tenant_id = $1
+               AND user_notification_settings.employee_id = candidate_recipients.id
+               AND user_notification_settings.channel = 'in_app'
+               AND user_notification_settings.notification_key = 'break_request_pending'
+              WHERE COALESCE(user_notification_settings.enabled, true)
+            `,
+            [tenantId, employeeId],
+          );
+
+          if (recipients.rows.length > 0) {
+            await client.query(
+              `
+                INSERT INTO outbox_events (tenant_id, event_type, payload)
+                VALUES ($1, $2::varchar, $3::jsonb)
+              `,
+              [
+                tenantId,
+                'notification.break_request_pending',
+                JSON.stringify({
+                  notificationKey: 'break_request_pending',
+                  breakRequestId: requestRow.id,
+                  employeeId,
+                  recipientEmployeeIds: recipients.rows.map((row) => row.id),
+                  title: 'Break request pending',
+                  body: `A ${normalizedDuration}-minute break request is waiting for review.`,
+                }),
+              ],
+            );
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+              VALUES ($1, $2, $3::varchar, $4::varchar, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              employeeId,
+              'break_request.created',
+              'break_request',
+              requestRow.id,
+              JSON.stringify({ durationMinutes: normalizedDuration, requestedStartTime: normalizedStartTime, reason: normalizedReason }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return requestRow;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      if ('duplicatePending' in breakRequest) {
+        return res.status(409).json({ success: false, error: 'You already have a pending break request.' });
+      }
+
+      res.status(201).json({ success: true, breakRequest });
+    } catch (error) {
+      console.error('[Break Requests] Failed to create break request:', error);
+      res.status(500).json({ success: false, error: 'Unable to create break request' });
+    }
+  },
+);
+
+app.get(
+  '/api/break-requests/me',
+  demoAuth,
+  requirePermission('break_requests.view_own'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for break requests' });
+    }
+
+    try {
+      const breakRequests = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              break_requests.*,
+              reviewer.full_name AS reviewer_name
+            FROM break_requests
+            LEFT JOIN employees reviewer
+              ON reviewer.tenant_id = break_requests.tenant_id
+             AND reviewer.id = break_requests.reviewed_by
+            WHERE break_requests.tenant_id = $1
+              AND break_requests.employee_id = $2
+            ORDER BY break_requests.created_at DESC
+            LIMIT 25
+          `,
+          [tenantId, employeeId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, breakRequests });
+    } catch (error) {
+      console.error('[Break Requests] Failed to load own break requests:', error);
+      res.status(500).json({ success: false, error: 'Unable to load break requests' });
+    }
+  },
+);
+
+app.get(
+  '/api/break-requests/pending',
+  demoAuth,
+  requirePermission('break_requests.view_all'),
+  async (req, res) => {
+    const tenantId = req.authUser!.tenantId;
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for break requests' });
+    }
+
+    try {
+      const breakRequests = await withTenant(tenantId, async (client) => {
+        const result = await client.query(
+          `
+            SELECT
+              break_requests.*,
+              employees.full_name,
+              employees.email,
+              employees.role
+            FROM break_requests
+            INNER JOIN employees
+              ON employees.tenant_id = break_requests.tenant_id
+             AND employees.id = break_requests.employee_id
+            WHERE break_requests.tenant_id = $1
+              AND break_requests.status = 'pending'
+            ORDER BY break_requests.created_at ASC
+          `,
+          [tenantId],
+        );
+
+        return result.rows;
+      });
+
+      res.json({ success: true, breakRequests });
+    } catch (error) {
+      console.error('[Break Requests] Failed to load pending break requests:', error);
+      res.status(500).json({ success: false, error: 'Unable to load pending break requests' });
+    }
+  },
+);
+
+app.patch(
+  '/api/break-requests/:id/review',
+  demoAuth,
+  requirePermission('break_requests.review'),
+  async (req, res) => {
+    const { id } = req.params;
+    const tenantId = req.authUser!.tenantId;
+    const reviewerId = req.authUser!.employeeId;
+    const { status, reviewNote } = req.body as ReviewBreakRequestBody;
+    const normalizedNote = typeof reviewNote === 'string' ? reviewNote.trim().slice(0, 500) : null;
+
+    if (!isUuid(id)) {
+      return res.status(400).json({ success: false, error: 'Break request id is invalid.' });
+    }
+
+    if (status !== 'approved' && status !== 'rejected') {
+      return res.status(400).json({ success: false, error: 'status must be approved or rejected.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for break requests' });
+    }
+
+    try {
+      const breakRequest = await withTenant(tenantId, async (client) => {
+        await client.query('BEGIN');
+
+        try {
+          const result = await client.query<{
+            id: string;
+            employee_id: string;
+            status: BreakRequestStatus;
+            duration_minutes: number;
+            reviewed_at: string;
+          }>(
+            `
+              UPDATE break_requests
+              SET
+                status = $3::varchar,
+                reviewed_by = $2,
+                reviewed_at = NOW(),
+                review_note = $4::text,
+                updated_at = NOW()
+              WHERE tenant_id = $1
+                AND id = $5
+                AND status = 'pending'
+              RETURNING id, employee_id, status, duration_minutes, reviewed_at
+            `,
+            [tenantId, reviewerId, status, normalizedNote, id],
+          );
+
+          const requestRow = result.rows[0];
+          if (!requestRow) {
+            await client.query('ROLLBACK');
+            return null;
+          }
+
+          const notificationSetting = await client.query<{ enabled: boolean }>(
+            `
+              SELECT enabled
+              FROM user_notification_settings
+              WHERE tenant_id = $1
+                AND employee_id = $2
+                AND channel = 'in_app'
+                AND notification_key = 'break_request_reviewed'
+              LIMIT 1
+            `,
+            [tenantId, requestRow.employee_id],
+          );
+
+          if (notificationSetting.rows[0]?.enabled !== false) {
+            await client.query(
+              `
+                INSERT INTO outbox_events (tenant_id, event_type, payload)
+                VALUES ($1, $2::varchar, $3::jsonb)
+              `,
+              [
+                tenantId,
+                'notification.break_request_reviewed',
+                JSON.stringify({
+                  notificationKey: 'break_request_reviewed',
+                  breakRequestId: requestRow.id,
+                  recipientEmployeeIds: [requestRow.employee_id],
+                  title: status === 'approved' ? 'Break approved' : 'Break rejected',
+                  body: `Your ${requestRow.duration_minutes}-minute break request was ${status}.`,
+                }),
+              ],
+            );
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+              VALUES ($1, $2, $3::varchar, $4::varchar, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              reviewerId,
+              status === 'approved' ? 'break_request.approved' : 'break_request.rejected',
+              'break_request',
+              requestRow.id,
+              JSON.stringify({ employeeId: requestRow.employee_id, status, reviewNote: normalizedNote }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return requestRow;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      if (!breakRequest) {
+        return res.status(404).json({ success: false, error: 'Pending break request not found.' });
+      }
+
+      res.json({ success: true, breakRequest });
+    } catch (error) {
+      console.error('[Break Requests] Failed to review break request:', error);
+      res.status(500).json({ success: false, error: 'Unable to review break request' });
+    }
+  },
+);
+
+app.patch(
+  '/api/break-requests/:id/cancel',
+  demoAuth,
+  requirePermission('break_requests.view_own'),
+  async (req, res) => {
+    const { id } = req.params;
+    const tenantId = req.authUser!.tenantId;
+    const employeeId = req.authUser!.employeeId;
+
+    if (!isUuid(id)) {
+      return res.status(400).json({ success: false, error: 'Break request id is invalid.' });
+    }
+
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for break requests' });
+    }
+
+    try {
+      const breakRequest = await withTenant(tenantId, async (client) => {
+        await client.query('BEGIN');
+
+        try {
+          const result = await client.query<{ id: string; status: BreakRequestStatus }>(
+            `
+              UPDATE break_requests
+              SET status = 'cancelled', updated_at = NOW()
+              WHERE tenant_id = $1
+                AND id = $2
+                AND employee_id = $3
+                AND status = 'pending'
+              RETURNING id, status
+            `,
+            [tenantId, id, employeeId],
+          );
+
+          const requestRow = result.rows[0];
+          if (!requestRow) {
+            await client.query('ROLLBACK');
+            return null;
+          }
+
+          await client.query(
+            `
+              INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+              VALUES ($1, $2, $3::varchar, $4::varchar, $5, $6::jsonb)
+            `,
+            [
+              tenantId,
+              employeeId,
+              'break_request.cancelled',
+              'break_request',
+              requestRow.id,
+              JSON.stringify({ status: requestRow.status }),
+            ],
+          );
+
+          await client.query('COMMIT');
+          return requestRow;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+
+      if (!breakRequest) {
+        return res.status(404).json({ success: false, error: 'Pending break request not found.' });
+      }
+
+      res.json({ success: true, breakRequest });
+    } catch (error) {
+      console.error('[Break Requests] Failed to cancel break request:', error);
+      res.status(500).json({ success: false, error: 'Unable to cancel break request' });
+    }
+  },
+);
 
 app.post(
   '/api/leave-requests',

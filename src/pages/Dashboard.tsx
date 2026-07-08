@@ -51,6 +51,8 @@ type NotificationChannel = 'in_app' | 'email' | 'push';
 type NotificationKey =
   | 'attendance_reminders'
   | 'break_reminders'
+  | 'break_request_pending'
+  | 'break_request_reviewed'
   | 'leave_updates'
   | 'payroll_updates'
   | 'loan_updates'
@@ -60,6 +62,33 @@ type NotificationKey =
   | 'system_alerts';
 
 type PayrollStatus = 'draft' | 'approved' | 'paid' | 'cancelled';
+
+type BreakRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+type BreakRequest = {
+  id: string;
+  employee_id: string;
+  full_name?: string;
+  email?: string;
+  role?: AuthUser['role'];
+  requested_start_time?: string | null;
+  requested_end_time?: string | null;
+  duration_minutes: number;
+  reason?: string | null;
+  status: BreakRequestStatus;
+  reviewed_by?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+};
+
+type BreakRequestFormState = {
+  durationMinutes: string;
+  customDuration: string;
+  reason: string;
+};
 
 type PayrollRecord = {
   id: string;
@@ -283,6 +312,8 @@ const notificationChannels: Array<{ key: NotificationChannel; label: string }> =
 const notificationCategories: Array<{ key: NotificationKey; label: string; description: string }> = [
   { key: 'attendance_reminders', label: 'Attendance reminders', description: 'Clock-in, clock-out, and attendance perimeter prompts.' },
   { key: 'break_reminders', label: 'Break reminders', description: 'Scheduled break start and return reminders.' },
+  { key: 'break_request_pending', label: 'Break approval queue', description: 'Manager and HR alerts for pending break requests.' },
+  { key: 'break_request_reviewed', label: 'Break request updates', description: 'Approval and rejection updates for your break requests.' },
   { key: 'leave_updates', label: 'Leave request updates', description: 'Leave approvals, rejections, and workflow changes.' },
   { key: 'payroll_updates', label: 'Payroll updates', description: 'Payroll runs, approvals, payments, and statement availability.' },
   { key: 'loan_updates', label: 'Loan updates', description: 'Employee loan creation, balance, and status updates.' },
@@ -308,6 +339,12 @@ const defaultPayrollForm: PayrollFormState = {
   defaultBaseSalary: '',
   bonuses: '0',
   deductions: '0',
+};
+
+const defaultBreakRequestForm: BreakRequestFormState = {
+  durationMinutes: '15',
+  customDuration: '',
+  reason: '',
 };
 
 const defaultCompensationForm: CompensationFormState = {
@@ -421,6 +458,13 @@ function formatLabel(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getBreakStatusClass(status: BreakRequestStatus) {
+  if (status === 'approved') return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25';
+  if (status === 'rejected') return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/25';
+  if (status === 'cancelled') return 'bg-neutral-500/10 text-neutral-600 dark:text-neutral-300 border-neutral-500/25';
+  return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25';
+}
+
 function getNextPayrollStatuses(status: PayrollStatus): PayrollStatus[] {
   if (status === 'draft') return ['approved', 'cancelled'];
   if (status === 'approved') return ['paid', 'cancelled'];
@@ -428,8 +472,8 @@ function getNextPayrollStatuses(status: PayrollStatus): PayrollStatus[] {
 }
 
 const legacyRolePermissionFallback: Record<AuthUser['role'], string[]> = {
-  employee: ['payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
-  manager: ['payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
+  employee: ['break_requests.create', 'break_requests.view_own', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
+  manager: ['break_requests.create', 'break_requests.view_own', 'break_requests.review', 'break_requests.view_all', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self'],
   hr_admin: [],
 };
 
@@ -485,6 +529,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
+  const [breakRequests, setBreakRequests] = useState<BreakRequest[]>([]);
+  const [pendingBreakRequests, setPendingBreakRequests] = useState<BreakRequest[]>([]);
+  const [breakRequestsLoading, setBreakRequestsLoading] = useState(false);
+  const [breakRequestSubmitting, setBreakRequestSubmitting] = useState(false);
+  const [breakRequestReviewingId, setBreakRequestReviewingId] = useState<string | null>(null);
+  const [breakRequestMessage, setBreakRequestMessage] = useState('');
+  const [breakRequestMessageType, setBreakRequestMessageType] = useState<'success' | 'error'>('success');
+  const [breakRequestForm, setBreakRequestForm] = useState<BreakRequestFormState>(defaultBreakRequestForm);
+  const [breakReviewNotes, setBreakReviewNotes] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<ShiftRow[]>(readStoredSchedule);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings[]>(readStoredNotifications);
   const [notificationLoading, setNotificationLoading] = useState(false);
@@ -680,6 +733,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
   const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
   const canManageRoles = user.role === 'hr_admin' || Boolean(user.permissions?.includes('roles.manage'));
+  const canCreateBreakRequests = hasPermission(user, 'break_requests.create');
+  const canViewOwnBreakRequests = hasPermission(user, 'break_requests.view_own');
+  const canReviewBreakRequests = hasPermission(user, 'break_requests.review') || hasPermission(user, 'break_requests.view_all');
   const canPublishFeed = hasPermission(user, 'feed.publish');
   const canViewAllPayroll = hasPermission(user, 'payroll.view_all');
   const canViewOwnPayroll = hasPermission(user, 'payroll.view_self');
@@ -708,6 +764,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       ? 'File a grievance and manage tenant cases'
       : 'Personal ledger & workflows';
   const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
 
   const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
     notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
@@ -972,6 +1029,167 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     payrollHeaders.Authorization = `Bearer ${user.authToken}`;
   }
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
+
+  const loadBreakRequests = async (clearMessage = true) => {
+    if (!canViewOwnBreakRequests && !canReviewBreakRequests) return;
+
+    setBreakRequestsLoading(true);
+    if (clearMessage) setBreakRequestMessage('');
+
+    try {
+      if (canViewOwnBreakRequests) {
+        const ownResponse = await fetch(apiUrl('/api/break-requests/me'), { headers: payrollHeaders });
+        const ownData = await ownResponse.json();
+
+        if (!ownResponse.ok || !ownData.success) {
+          throw new Error(ownData.error || 'Unable to load break requests.');
+        }
+
+        setBreakRequests(ownData.breakRequests || []);
+      }
+
+      if (canReviewBreakRequests) {
+        const pendingResponse = await fetch(apiUrl('/api/break-requests/pending'), { headers: payrollHeaders });
+        const pendingData = await pendingResponse.json();
+
+        if (!pendingResponse.ok || !pendingData.success) {
+          throw new Error(pendingData.error || 'Unable to load pending break requests.');
+        }
+
+        setPendingBreakRequests(pendingData.breakRequests || []);
+      } else {
+        setPendingBreakRequests([]);
+      }
+    } catch (error) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to load break requests.');
+    } finally {
+      setBreakRequestsLoading(false);
+    }
+  };
+
+  const submitBreakRequest = async () => {
+    if (isOffline) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
+    if (breakRequestSubmitting || pendingOwnBreakRequest) return;
+
+    const selectedDuration = breakRequestForm.durationMinutes === 'custom'
+      ? Number(breakRequestForm.customDuration)
+      : Number(breakRequestForm.durationMinutes);
+
+    if (!Number.isInteger(selectedDuration) || selectedDuration < 5 || selectedDuration > 180) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage('Choose a break duration between 5 and 180 minutes.');
+      return;
+    }
+
+    setBreakRequestSubmitting(true);
+    setBreakRequestMessage('');
+
+    try {
+      const res = await fetch(apiUrl('/api/break-requests'), {
+        method: 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          requestedStartTime: new Date().toISOString(),
+          durationMinutes: selectedDuration,
+          reason: breakRequestForm.reason,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to request break.');
+      }
+
+      setBreakRequestForm(defaultBreakRequestForm);
+      setBreakRequestMessageType('success');
+      setBreakRequestMessage('Break request sent for approval.');
+      await loadBreakRequests(false);
+    } catch (error) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to request break.');
+    } finally {
+      setBreakRequestSubmitting(false);
+    }
+  };
+
+  const cancelBreakRequest = async (requestId: string) => {
+    if (isOffline) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
+    setBreakRequestReviewingId(requestId);
+    setBreakRequestMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/break-requests/${requestId}/cancel`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to cancel break request.');
+      }
+
+      setBreakRequestMessageType('success');
+      setBreakRequestMessage('Break request cancelled.');
+      await loadBreakRequests(false);
+    } catch (error) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to cancel break request.');
+    } finally {
+      setBreakRequestReviewingId(null);
+    }
+  };
+
+  const reviewBreakRequest = async (requestId: string, status: 'approved' | 'rejected') => {
+    if (isOffline) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage('You are offline. Some HR actions require connection.');
+      return;
+    }
+
+    setBreakRequestReviewingId(requestId);
+    setBreakRequestMessage('');
+
+    try {
+      const res = await fetch(apiUrl(`/api/break-requests/${requestId}/review`), {
+        method: 'PATCH',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          status,
+          reviewNote: breakReviewNotes[requestId] || null,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to review break request.');
+      }
+
+      setBreakReviewNotes((current) => {
+        const next = { ...current };
+        delete next[requestId];
+        return next;
+      });
+      setBreakRequestMessageType('success');
+      setBreakRequestMessage(`Break request ${status}.`);
+      await loadBreakRequests(false);
+    } catch (error) {
+      setBreakRequestMessageType('error');
+      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to review break request.');
+    } finally {
+      setBreakRequestReviewingId(null);
+    }
+  };
 
   const loadPasskeys = async (clearMessage = true) => {
     setPasskeysLoading(true);
@@ -1619,6 +1837,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       loadNotificationSettings();
     }
   }, [activeTab, showPayrollPanel, showGrievancesPanel, user.id, user.tenantId]);
+
+  useEffect(() => {
+    if (activeTab === 'geofence') {
+      loadBreakRequests(false);
+    }
+  }, [activeTab, user.id, user.role, user.tenantId]);
 
   useEffect(() => {
     if (!showControlCenter) return;
@@ -2422,7 +2646,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   );
 
   return (
-<div className="h-[100dvh] bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
+<div className="h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
@@ -2476,18 +2700,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       {/* Sidebar Navigation */}
 <aside
   className={cn(
-    "w-[calc(100%-1rem)] md:w-16 lg:w-[72px] max-w-full",
+    "fixed left-3 right-3 md:static md:left-auto md:right-auto",
+    "bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-auto",
+    "w-auto max-w-[calc(100vw-1.5rem)] md:w-16 lg:w-[72px] md:max-w-full",
     "bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md",
     "border border-emerald-500/15 dark:border-emerald-900/40",
     "flex md:flex-col items-center",
-    "py-3 md:py-5 px-4 md:px-0 gap-4 md:gap-6",
-    "z-20 shrink-0",
-    "my-2 mx-auto md:mx-2 lg:mx-3",
+    "py-2 md:py-5 px-2 md:px-0 gap-2 md:gap-6",
+    "shrink-0",
+    "mx-0 md:my-2 md:mx-2 lg:mx-3",
     "rounded-2xl",
     "shadow-xl",
     "transition-all duration-300",
-    "self-start",
-    isRtl ? "md:border-l" : "md:border-r"
+    "self-auto md:self-start",
+    isRtl ? "md:border-l" : "md:border-r",
+    showControlCenter ? "z-30 md:z-20" : "z-50 md:z-20"
   )}
 >       <button
           type="button"
@@ -2510,14 +2737,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           )} />
           <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020604]" />
         </button>
-        <nav className="flex md:flex-col gap-3 md:gap-4 w-full items-center justify-center md:justify-start">
+        <nav className="flex md:flex-col gap-1.5 md:gap-4 min-w-0 flex-1 md:flex-none w-full items-center justify-around md:justify-start">
           <button 
             onClick={() => {
               setActiveTab('geofence');
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Geo-Operations"
             aria-label="Geo-Operations"
           >
@@ -2529,7 +2756,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Weekly Roster"
             aria-label="Weekly Roster"
           >
@@ -2541,7 +2768,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'feed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'feed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Company Feed"
             aria-label="Company Feed"
           >
@@ -2553,7 +2780,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Profile"
             aria-label="Profile"
           >
@@ -2565,7 +2792,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowPayrollPanel(true);
               setShowGrievancesPanel(false);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Payroll"
             aria-label="Payroll"
           >
@@ -2577,7 +2804,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(true);
             }}
-            className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title="Grievances"
             aria-label="Grievances"
           >
@@ -2587,7 +2814,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       </aside>
 
       {isOffline && (
-        <div className="fixed inset-x-3 top-3 z-50 mx-auto flex max-w-md items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-[#1c1304]/95 px-3 py-2 text-xs font-bold text-amber-100 shadow-2xl shadow-black/35 backdrop-blur-xl">
+        <div className="fixed inset-x-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-50 mx-auto flex max-w-md items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-[#1c1304]/95 px-3 py-2 text-xs font-bold text-amber-100 shadow-2xl shadow-black/35 backdrop-blur-xl">
           <WifiOff className="h-4 w-4" />
           You are offline. Some HR actions require connection.
         </div>
@@ -2604,7 +2831,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             aria-modal="true"
             aria-labelledby="stanza-control-center-title"
             className={cn(
-              "fixed inset-x-3 bottom-3 max-h-[88dvh] overflow-y-auto rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
+              "fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-h-[88dvh] overflow-y-auto rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
               "md:bottom-auto md:left-24 md:right-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]"
             )}
             onClick={(event) => event.stopPropagation()}
@@ -2642,7 +2869,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </div>
       )}
 
-      <main className="min-w-0 flex-1 flex flex-col p-3 md:p-4 lg:p-5 z-10 overflow-y-auto">
+      <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
         <header className="mb-3">
@@ -2654,10 +2881,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           </div>
         </header>
         {/* Dashboard Grid Container */}
-        <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full items-start">
+        <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full max-w-full min-w-0 items-start">
             
             {/* Main Action Area (Left / Center) */}
-            <div className="flex-1 space-y-4 max-w-full min-w-0">
+            <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
                 <div className="hidden md:flex items-center gap-2">
@@ -2731,7 +2958,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                 {/* Tab Contents */}
                 {activeTab === 'geofence' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
+                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="w-full max-w-full min-h-[calc(100dvh-145px)] md:min-h-0 bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-start md:justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
                        <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
@@ -2743,14 +2970,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            </div>
                        </div>
                        
-                       <div className="relative z-10 flex h-[420px] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/70 px-4 py-6 dark:border-emerald-500/15 dark:bg-black/35 sm:h-[360px] sm:px-6 sm:py-8">
-                           <div className="relative mb-5 flex h-44 min-h-44 w-44 min-w-44 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 sm:h-40 sm:min-h-40 sm:w-40 sm:min-w-40">
+                       <div className="relative z-10 flex min-h-[calc(100dvh-260px)] w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-0 md:h-[360px] md:px-6 md:py-8">
+                           <div className="relative mb-5 flex h-48 min-h-48 w-48 min-w-48 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-40 md:min-h-40 md:w-40 md:min-w-40">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                onClick={handleClockAction}
                                disabled={isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
-                                   "relative z-10 flex h-36 min-h-36 w-36 min-w-36 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95",
+                                   "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95 md:h-36 md:min-h-36 md:w-36 md:min-w-36",
                                    clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
@@ -2819,6 +3046,240 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {lastClockEvent}
                            </p>
                        </div>
+
+                       <div className="relative z-10 mt-4 grid w-full grid-cols-1 gap-3 text-left xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                         {canCreateBreakRequests && (
+                           <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
+                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                               <div>
+                                 <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                                   <Coffee className="h-4 w-4 text-emerald-500" />
+                                   Request Break
+                                 </h3>
+                                 <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                                   Send a short break request for manager approval.
+                                 </p>
+                               </div>
+                               {pendingOwnBreakRequest && (
+                                 <span className={cn("w-fit rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(pendingOwnBreakRequest.status))}>
+                                   Pending
+                                 </span>
+                               )}
+                             </div>
+
+                             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                               {['10', '15', '30', '45', '60'].map((minutes) => (
+                                 <button
+                                   key={minutes}
+                                   type="button"
+                                   onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: minutes }))}
+                                   disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
+                                   className={cn(
+                                     "rounded-lg border px-2 py-2 text-xs font-bold transition-colors",
+                                     breakRequestForm.durationMinutes === minutes
+                                       ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
+                                       : "border-emerald-500/15 bg-white/60 text-slate-600 hover:border-emerald-500/30 dark:bg-black/35 dark:text-emerald-100/65",
+                                     (pendingOwnBreakRequest || breakRequestSubmitting) && "cursor-not-allowed opacity-60"
+                                   )}
+                                 >
+                                   {minutes}m
+                                 </button>
+                               ))}
+                             </div>
+
+                             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[130px_minmax(0,1fr)]">
+                               <button
+                                 type="button"
+                                 onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: 'custom' }))}
+                                 disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
+                                 className={cn(
+                                   "rounded-lg border px-3 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
+                                   breakRequestForm.durationMinutes === 'custom'
+                                     ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
+                                     : "border-emerald-500/15 bg-white/60 text-slate-600 hover:border-emerald-500/30 dark:bg-black/35 dark:text-emerald-100/65"
+                                 )}
+                               >
+                                 Custom
+                               </button>
+                               <input
+                                 type="number"
+                                 min={5}
+                                 max={180}
+                                 value={breakRequestForm.customDuration}
+                                 onChange={(event) => setBreakRequestForm((current) => ({ ...current, customDuration: event.target.value, durationMinutes: 'custom' }))}
+                                 disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
+                                 placeholder="5-180 minutes"
+                                 className="rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                               />
+                             </div>
+
+                             <textarea
+                               value={breakRequestForm.reason}
+                               onChange={(event) => setBreakRequestForm((current) => ({ ...current, reason: event.target.value }))}
+                               disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
+                               rows={3}
+                               placeholder="Optional reason"
+                               className="mt-3 w-full resize-none rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                             />
+
+                             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                               <button
+                                 type="button"
+                                 onClick={submitBreakRequest}
+                                 disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
+                                 className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
+                               >
+                                 {breakRequestSubmitting ? 'Sending...' : pendingOwnBreakRequest ? 'Pending Approval' : 'Request Break'}
+                               </button>
+                               {pendingOwnBreakRequest && (
+                                 <button
+                                   type="button"
+                                   onClick={() => cancelBreakRequest(pendingOwnBreakRequest.id)}
+                                   disabled={isOffline || breakRequestReviewingId === pendingOwnBreakRequest.id}
+                                   className="rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-600 transition-colors hover:border-red-500/35 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-100/65"
+                                 >
+                                   Cancel Request
+                                 </button>
+                               )}
+                             </div>
+                           </div>
+                         )}
+
+                         <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
+                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                             <div>
+                               <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                                 Break Status
+                               </h3>
+                               <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                                 Latest personal requests and manager decisions.
+                               </p>
+                             </div>
+                             <button
+                               type="button"
+                               onClick={() => loadBreakRequests()}
+                               disabled={breakRequestsLoading || isOffline}
+                               className="w-fit rounded-lg border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-300"
+                             >
+                               {breakRequestsLoading ? 'Loading...' : 'Refresh'}
+                             </button>
+                           </div>
+
+                           {breakRequestMessage && (
+                             <p className={cn(
+                               "mt-3 rounded-lg border px-3 py-2 text-xs font-medium",
+                               breakRequestMessageType === 'success'
+                                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                 : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300"
+                             )}>
+                               {breakRequestMessage}
+                             </p>
+                           )}
+
+                           <div className="mt-3 space-y-2">
+                             {breakRequests.slice(0, 3).map((request) => (
+                               <div key={request.id} className="rounded-xl border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/35">
+                                 <div className="flex items-start justify-between gap-3">
+                                   <div>
+                                     <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                                       {request.duration_minutes} minutes
+                                     </p>
+                                     <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500 dark:text-emerald-100/45">
+                                       Requested {formatShortDateTime(request.created_at)}
+                                     </p>
+                                   </div>
+                                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
+                                     {request.status}
+                                   </span>
+                                 </div>
+                                 {request.reason && (
+                                   <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{request.reason}</p>
+                                 )}
+                                 {request.review_note && (
+                                   <p className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-[10px] text-slate-600 dark:bg-emerald-500/5 dark:text-emerald-100/55">
+                                     Review note: {request.review_note}
+                                   </p>
+                                 )}
+                               </div>
+                             ))}
+
+                             {!breakRequestsLoading && breakRequests.length === 0 && (
+                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">
+                                 No break requests yet.
+                               </p>
+                             )}
+                           </div>
+                         </div>
+                       </div>
+
+                       {canReviewBreakRequests && (
+                         <div className="relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 text-left dark:border-emerald-500/15 dark:bg-black/30">
+                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                             <div>
+                               <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                                 Break Approval Queue
+                               </h3>
+                               <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                                 Review pending employee break requests.
+                               </p>
+                             </div>
+                             <span className="w-fit rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                               {pendingBreakRequests.length} Pending
+                             </span>
+                           </div>
+
+                           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                             {pendingBreakRequests.map((request) => (
+                               <div key={request.id} className="rounded-xl border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/35">
+                                 <div className="flex items-start justify-between gap-3">
+                                   <div>
+                                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.email || 'Employee'}</p>
+                                     <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
+                                       {request.duration_minutes} minutes - {formatShortDateTime(request.created_at)}
+                                     </p>
+                                   </div>
+                                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
+                                     {request.status}
+                                   </span>
+                                 </div>
+                                 {request.reason && (
+                                   <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{request.reason}</p>
+                                 )}
+                                 <input
+                                   value={breakReviewNotes[request.id] || ''}
+                                   onChange={(event) => setBreakReviewNotes((current) => ({ ...current, [request.id]: event.target.value }))}
+                                   placeholder="Optional review note"
+                                   className="mt-3 w-full rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                                 />
+                                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                   <button
+                                     type="button"
+                                     onClick={() => reviewBreakRequest(request.id, 'approved')}
+                                     disabled={isOffline || breakRequestReviewingId === request.id}
+                                     className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
+                                   >
+                                     Approve
+                                   </button>
+                                   <button
+                                     type="button"
+                                     onClick={() => reviewBreakRequest(request.id, 'rejected')}
+                                     disabled={isOffline || breakRequestReviewingId === request.id}
+                                     className="rounded-lg border border-red-500/25 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-red-300"
+                                   >
+                                     Reject
+                                   </button>
+                                 </div>
+                               </div>
+                             ))}
+
+                             {!breakRequestsLoading && pendingBreakRequests.length === 0 && (
+                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45 lg:col-span-2">
+                                 No pending break requests.
+                               </p>
+                             )}
+                           </div>
+                         </div>
+                       )}
 
                        <div className="relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 text-left dark:border-emerald-500/15 dark:bg-black/30">
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

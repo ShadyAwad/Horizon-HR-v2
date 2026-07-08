@@ -7,6 +7,12 @@ import { useLanguage } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
 import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
+import {
+  validateEmail,
+  validatePasswordStrength,
+  validateRadiusMeters,
+  type PasswordRuleKey,
+} from '../lib/validation';
 
 
 type InteractiveMapProps = {
@@ -754,6 +760,9 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const formRef = useRef<HTMLFormElement | null>(null);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
+  const [formError, setFormError] = useState('');
 
   // Form State
 const [formData, setFormData] = useState<{
@@ -798,6 +807,27 @@ const [formData, setFormData] = useState<{
   const [selectedLocationIndex, setSelectedLocationIndex] = useState(0);
 
   const selectedLocation = locations[selectedLocationIndex] || locations[0];
+  const adminEmailValidation = validateEmail(formData.adminEmail);
+  const adminPasswordValidation = validatePasswordStrength(formData.adminPassword);
+  const confirmPasswordValid = Boolean(confirmPassword) && confirmPassword === formData.adminPassword;
+  const showAdminEmailError = touchedFields.adminEmail && !adminEmailValidation.valid;
+  const showAdminPasswordChecklist = touchedFields.adminPassword || Boolean(formData.adminPassword);
+  const showConfirmPasswordError = touchedFields.confirmPassword && !confirmPasswordValid;
+  const passwordRuleTranslationKeys: Record<PasswordRuleKey, Parameters<typeof t>[0]> = {
+    length: 'validation.passwordLength',
+    uppercase: 'validation.passwordUppercase',
+    lowercase: 'validation.passwordLowercase',
+    number: 'validation.passwordNumber',
+    special: 'validation.passwordSpecial',
+  };
+  const stepOneValid = Boolean(
+    formData.companyName.trim() &&
+    formData.tenantSlug.trim() &&
+    formData.adminFullName.trim() &&
+    adminEmailValidation.valid &&
+    adminPasswordValidation.valid &&
+    confirmPasswordValid
+  );
 
   const updateLocation = (index: number, updates: Partial<SignupLocation>) => {
     setLocations((current) => current.map((location, locationIndex) => (
@@ -864,6 +894,11 @@ const [formData, setFormData] = useState<{
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
     setFormData(prev => ({ ...prev, [name]: val }));
+    if (formError) setFormError('');
+  };
+
+  const markTouched = (field: string) => {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
   };
 
   const nextStep = () => setStep(prev => Math.min(prev + 1, 3));
@@ -877,13 +912,48 @@ const [formData, setFormData] = useState<{
       return;
     }
 
+    if (step === 1) {
+      setTouchedFields((current) => ({
+        ...current,
+        adminEmail: true,
+        adminPassword: true,
+        confirmPassword: true,
+      }));
+
+      if (!stepOneValid) {
+        setFormError(!adminEmailValidation.valid ? t('validation.email') : t('validation.passwordChecklist'));
+        return;
+      }
+    }
+
     nextStep();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (step < 3) {
+      if (step === 1 && !stepOneValid) {
+        setTouchedFields((current) => ({
+          ...current,
+          adminEmail: true,
+          adminPassword: true,
+          confirmPassword: true,
+        }));
+        setFormError(!adminEmailValidation.valid ? t('validation.email') : t('validation.passwordChecklist'));
+        return;
+      }
       nextStep();
+      return;
+    }
+
+    if (!stepOneValid) {
+      setTouchedFields((current) => ({
+        ...current,
+        adminEmail: true,
+        adminPassword: true,
+        confirmPassword: true,
+      }));
+      setFormError(!adminEmailValidation.valid ? t('validation.email') : t('validation.passwordChecklist'));
       return;
     }
     
@@ -899,7 +969,13 @@ const [formData, setFormData] = useState<{
       ));
 
       if (!primaryLocation || !locationsHaveCoordinates) {
-        alert('Please use your location or enter coordinates for every company location before submitting.');
+        setFormError(t('validation.companyLocationRequired'));
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (locations.some((location) => !validateRadiusMeters(location.radius))) {
+        setFormError('Radius must be between 25 and 5000 meters.');
         setIsSubmitting(false);
         return;
       }
@@ -916,6 +992,7 @@ const [formData, setFormData] = useState<{
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          adminEmail: adminEmailValidation.value,
           lat: normalizedPrimaryLocation.lat,
           lng: normalizedPrimaryLocation.lng,
           radius: normalizedPrimaryLocation.radius,
@@ -993,25 +1070,83 @@ className={cn(
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">Admin Full Name</label>
-                    <input required aria-label="Admin full name" name="adminFullName" value={formData.adminFullName} onChange={handleChange} className={cn(
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminFullName')}</label>
+                    <input required aria-label={t('signup.adminFullName')} name="adminFullName" value={formData.adminFullName} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminEmail')}</label>
-                    <input type="email" required aria-label={t('signup.adminEmail')} name="adminEmail" value={formData.adminEmail} onChange={handleChange} className={cn(
+                    <input
+                      type="email"
+                      required
+                      aria-invalid={showAdminEmailError}
+                      aria-describedby={showAdminEmailError ? 'signup-email-error' : undefined}
+                      aria-label={t('signup.adminEmail')}
+                      name="adminEmail"
+                      value={formData.adminEmail}
+                      onBlur={() => markTouched('adminEmail')}
+                      onChange={handleChange}
+                      className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
+                    {showAdminEmailError && (
+                      <p id="signup-email-error" className="px-1 text-xs font-medium text-red-500">{t('validation.email')}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
-                    <input type="password" required minLength={8} aria-label={t('signup.adminPass')} name="adminPassword" value={formData.adminPassword} onChange={handleChange} className={cn(
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      aria-label={t('signup.adminPass')}
+                      name="adminPassword"
+                      value={formData.adminPassword}
+                      onBlur={() => markTouched('adminPassword')}
+                      onChange={handleChange}
+                      className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
+                    {showAdminPasswordChecklist && (
+                      <div className="rounded-lg border border-emerald-500/15 bg-black/5 p-3 text-xs dark:bg-black/20">
+                        <p className="mb-2 font-bold text-emerald-700 dark:text-emerald-200">{t('validation.passwordChecklist')}</p>
+                        <ul className="space-y-1">
+                          {adminPasswordValidation.rules.map((rule) => (
+                            <li key={rule.key} className={cn("flex items-center gap-2", rule.valid ? "text-emerald-600 dark:text-emerald-300" : "text-neutral-500 dark:text-emerald-100/45")}>
+                              <CheckCircle2 className={cn("h-3.5 w-3.5", rule.valid ? "opacity-100" : "opacity-25")} />
+                              <span>{t(passwordRuleTranslationKeys[rule.key])}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.confirmPass')}</label>
+                    <input
+                      type="password"
+                      required
+                      aria-invalid={showConfirmPasswordError}
+                      aria-describedby={showConfirmPasswordError ? 'signup-confirm-password-error' : undefined}
+                      aria-label={t('signup.confirmPass')}
+                      value={confirmPassword}
+                      onBlur={() => markTouched('confirmPassword')}
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value);
+                        if (formError) setFormError('');
+                      }}
+                      className={cn(
+                        "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
+                        isRtl && "text-right"
+                      )}
+                    />
+                    {showConfirmPasswordError && (
+                      <p id="signup-confirm-password-error" className="px-1 text-xs font-medium text-red-500">{t('validation.confirmPassword')}</p>
+                    )}
                   </div>
                 </div>
 
@@ -1288,6 +1423,12 @@ className={cn(
             )}
           </AnimatePresence>
 
+          {formError && (
+            <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300">
+              {formError}
+            </p>
+          )}
+
           {/* Navigation Buttons */}
 <div className="flex items-center justify-between pt-6 border-t border-emerald-500/10">             <button 
                type="button" 
@@ -1300,7 +1441,7 @@ className={cn(
              <button 
                type={step < 3 ? 'button' : 'submit'}
                onClick={step < 3 ? handleNextStep : undefined}
-               disabled={isSubmitting}
+               disabled={isSubmitting || (step === 1 && !stepOneValid)}
                className={cn("px-6 py-2.5 rounded-lg font-bold text-sm transition-all focus:outline-none flex items-center gap-2 uppercase tracking-widest shadow-lg", 
                  isSubmitting ? "bg-emerald-600 opacity-80 text-white" : 
                  "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 hover:scale-105 hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"

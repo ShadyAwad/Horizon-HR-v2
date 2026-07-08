@@ -4,6 +4,7 @@ import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
 import type { AuthUser } from '../App';
+import { validateEmail } from '../lib/validation';
 
 const FingerprintCanvas = lazy(() => import('../components/FingerprintCanvas').then((module) => ({ default: module.FingerprintCanvas })));
 
@@ -76,6 +77,9 @@ function MoonIcon({ className = '' }: { className?: string }) {
 export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [recoveryEmailTouched, setRecoveryEmailTouched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pulseState, setPulseState] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -91,6 +95,11 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
+  const emailValidation = validateEmail(email);
+  const recoveryEmailValidation = validateEmail(recoveryEmail || email);
+  const showEmailError = emailTouched && !emailValidation.valid;
+  const showPasswordError = passwordTouched && !password;
+  const showRecoveryEmailError = recoveryEmailTouched && !recoveryEmailValidation.valid;
 
   useEffect(() => {
     const loadCanvas = window.setTimeout(() => setShowDecorativeCanvas(true), 0);
@@ -114,7 +123,16 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
 
     if (isOffline) {
       setPulseState('error');
-      setErrorMsg('You are offline. Some HR actions require connection.');
+      setErrorMsg(t('login.offline'));
+      return;
+    }
+
+    setEmailTouched(true);
+    setPasswordTouched(true);
+
+    if (!emailValidation.valid || !password) {
+      setPulseState('error');
+      setErrorMsg(!emailValidation.valid ? t('validation.email') : t('validation.passwordRequired'));
       return;
     }
 
@@ -126,7 +144,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: emailValidation.value, password })
       });
       
       const data = await res.json();
@@ -145,8 +163,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       setPulseState('error');
       setErrorMsg(
         !navigator.onLine
-          ? 'You appear to be offline. Reconnect to sign in.'
-          : 'Unable to reach the HR API. Check the backend connection and try again.'
+          ? t('login.offlineSignIn')
+          : t('login.apiUnavailable')
       );
       setIsLoading(false);
     }
@@ -154,7 +172,14 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
 
   const handleRecoveryRequest = async () => {
   if (isOffline) {
-    setRecoveryMessage('You are offline. Some HR actions require connection.');
+    setRecoveryMessage(t('login.offline'));
+    return;
+  }
+
+  setRecoveryEmailTouched(true);
+
+  if (!recoveryEmailValidation.valid) {
+    setRecoveryMessage(t('validation.email'));
     return;
   }
 
@@ -166,7 +191,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: recoveryEmail || email,
+        email: recoveryEmailValidation.value,
         method: recoveryMethod,
       }),
     });
@@ -174,14 +199,14 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     const data = await res.json();
 
     if (data.success) {
-      setRecoveryMessage(data.message || 'Recovery instructions generated successfully.');
+      setRecoveryMessage(data.message || t('login.recoveryGeneric'));
     } else {
       setRecoveryMessage(data.error || 'Unable to start recovery flow.');
     }
   } catch (error) {
     setRecoveryMessage(
       !navigator.onLine
-        ? 'You appear to be offline. Reconnect to start recovery.'
+        ? t('login.offlineSignIn')
         : 'Server disconnection. Unable to start recovery flow.'
     );
   } finally {
@@ -191,7 +216,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
 
   const handlePasskeySignIn = async () => {
     if (isOffline) {
-      setPasskeyMessage('You are offline. Reconnect to sign in with a passkey.');
+      setPasskeyMessage(t('login.offlineSignIn'));
       return;
     }
 
@@ -200,8 +225,10 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       return;
     }
 
-    if (!email.trim()) {
-      setPasskeyMessage('Enter your email, then use passkey sign in.');
+    setEmailTouched(true);
+
+    if (!emailValidation.valid) {
+      setPasskeyMessage(t('login.passkeyEmailRequired'));
       return;
     }
 
@@ -215,7 +242,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const optionsResponse = await fetch(apiUrl('/api/auth/passkeys/login/options'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: emailValidation.value }),
       });
       const optionsData = await optionsResponse.json();
 
@@ -227,7 +254,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const verifyResponse = await fetch(apiUrl('/api/auth/passkeys/login/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, credential }),
+        body: JSON.stringify({ email: emailValidation.value, credential }),
       });
       const verifyData = await verifyResponse.json();
 
@@ -314,13 +341,22 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
           <div className="space-y-2">
             <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
             <input 
-              type="text" 
+              type="email" 
               required
+              aria-invalid={showEmailError}
+              aria-describedby={showEmailError ? 'login-email-error' : undefined}
               aria-label={t('login.corporateId')}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errorMsg) setErrorMsg('');
+              }}
               placeholder="admin@stanza.com"
 className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}            />
+            {showEmailError && (
+              <p id="login-email-error" className="px-1 text-xs font-medium text-red-500">{t('validation.email')}</p>
+            )}
           </div>
 
          <div className="space-y-2">
@@ -331,12 +367,21 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
   <input 
     type="password" 
     required
+    aria-invalid={showPasswordError}
+    aria-describedby={showPasswordError ? 'login-password-error' : undefined}
     aria-label={t('login.biometricKey')}
     value={password}
-    onChange={(e) => setPassword(e.target.value)}
+    onBlur={() => setPasswordTouched(true)}
+    onChange={(e) => {
+      setPassword(e.target.value);
+      if (errorMsg) setErrorMsg('');
+    }}
     placeholder="••••••••"
     className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}
   />
+  {showPasswordError && (
+    <p id="login-password-error" className="px-1 text-xs font-medium text-red-500">{t('validation.passwordRequired')}</p>
+  )}
 </div>
 
 <div className={`flex ${isRtl ? "justify-start" : "justify-end"}`}>
@@ -358,7 +403,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
 
           {isOffline && !errorMsg && (
             <p className="rounded-lg border border-amber-300/20 bg-amber-500/10 p-3 text-xs text-amber-100">
-              You are offline. Some HR actions require connection.
+              {t('login.offline')}
             </p>
           )}
 
@@ -396,10 +441,10 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               disabled={isLoading || isPasskeyLoading || pulseState === 'success' || isOffline}
               className="w-full rounded-lg border border-emerald-500/20 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-300 dark:hover:text-emerald-200"
             >
-              {isPasskeyLoading ? 'Opening passkey...' : 'Sign in with passkey'}
+              {isPasskeyLoading ? t('login.passkeyOpening') : t('login.passkeySignIn')}
             </button>
             <p className="px-1 text-center text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-              Use Face ID, fingerprint, Windows Hello, device PIN, or a security key.
+              {t('login.passkeyDescription')}
             </p>
             {passkeyMessage && (
               <p className="rounded-lg border border-emerald-500/15 bg-black/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-100/65">
@@ -410,7 +455,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
         </form>
 
 <div className="mt-8 pt-6 border-t border-emerald-500/10 text-center flex flex-col space-y-4">           <div className="flex flex-col space-y-2">
-<span className="text-[10px] text-slate-600 font-mono tracking-widest uppercase">System Operational • V2.4</span>
+<span className="text-[10px] text-slate-600 font-mono tracking-widest uppercase">{t('login.systemOperational')}</span>
            </div>
            
            <button 
@@ -451,12 +496,20 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               <div className="space-y-3">
                 <input
                   type="email"
-                  aria-label="Recovery email"
+                  aria-label={t('login.recoveryEmail')}
+                  aria-invalid={showRecoveryEmailError}
                   value={recoveryEmail}
-                  onChange={(e) => setRecoveryEmail(e.target.value)}
+                  onBlur={() => setRecoveryEmailTouched(true)}
+                  onChange={(e) => {
+                    setRecoveryEmail(e.target.value);
+                    if (recoveryMessage) setRecoveryMessage('');
+                  }}
                   placeholder={email || 'admin@stanza.com'}
                   className={`w-full bg-black/35 border border-emerald-500/15 rounded-lg px-3 py-2.5 text-xs text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}
                 />
+                {showRecoveryEmailError && (
+                  <p className="px-1 text-xs font-medium text-red-400">{t('validation.email')}</p>
+                )}
 
                 <button
                   type="button"

@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'stanza-static-v4';
-const RUNTIME_CACHE = 'stanza-runtime-v4';
+const STATIC_CACHE = 'stanza-static-v5';
+const RUNTIME_CACHE = 'stanza-runtime-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -15,8 +15,7 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll(STATIC_ASSETS)),
   );
 });
 

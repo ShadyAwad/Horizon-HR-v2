@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS user_notification_settings (
             notification_key IN (
                 'attendance_reminders',
                 'break_reminders',
+                'break_request_pending',
+                'break_request_reviewed',
                 'leave_updates',
                 'payroll_updates',
                 'loan_updates',
@@ -112,6 +114,27 @@ CREATE TABLE IF NOT EXISTS user_notification_settings (
 
     CONSTRAINT user_notification_settings_unique_rule
         UNIQUE (tenant_id, employee_id, channel, notification_key)
+);
+
+ALTER TABLE user_notification_settings
+DROP CONSTRAINT IF EXISTS user_notification_settings_key_chk;
+
+ALTER TABLE user_notification_settings
+ADD CONSTRAINT user_notification_settings_key_chk
+CHECK (
+    notification_key IN (
+        'attendance_reminders',
+        'break_reminders',
+        'break_request_pending',
+        'break_request_reviewed',
+        'leave_updates',
+        'payroll_updates',
+        'loan_updates',
+        'grievance_updates',
+        'company_feed_posts',
+        'role_permission_changes',
+        'system_alerts'
+    )
 );
 
 CREATE INDEX IF NOT EXISTS user_notification_settings_tenant_employee_idx
@@ -265,6 +288,10 @@ VALUES
     ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
     ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
     ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
+    ('break_requests.create', 'Create break requests', 'Request manager approval for breaks.'),
+    ('break_requests.view_own', 'View own break requests', 'View personal break request history.'),
+    ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
+    ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
     ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
     ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
     ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
@@ -303,6 +330,8 @@ JOIN (
     VALUES
         ('employee', 'locations.read'),
         ('employee', 'attendance.clock'),
+        ('employee', 'break_requests.create'),
+        ('employee', 'break_requests.view_own'),
         ('employee', 'leave.create'),
         ('employee', 'payroll.view_self'),
         ('employee', 'payroll.export_pdf'),
@@ -311,6 +340,10 @@ JOIN (
         ('employee', 'feed.read'),
         ('manager', 'locations.read'),
         ('manager', 'attendance.view'),
+        ('manager', 'break_requests.create'),
+        ('manager', 'break_requests.view_own'),
+        ('manager', 'break_requests.review'),
+        ('manager', 'break_requests.view_all'),
         ('manager', 'leave.review'),
         ('manager', 'payroll.view_self'),
         ('manager', 'payroll.export_pdf'),
@@ -661,6 +694,73 @@ ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY leave_requests_tenant_isolation
 ON leave_requests
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 7a. Break Requests
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS break_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+
+    requested_start_time TIMESTAMPTZ,
+    requested_end_time TIMESTAMPTZ,
+    duration_minutes INTEGER NOT NULL,
+    reason TEXT,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+
+    reviewed_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    review_note TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT break_requests_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT break_requests_duration_chk
+        CHECK (duration_minutes BETWEEN 5 AND 180),
+
+    CONSTRAINT break_requests_time_order_chk
+        CHECK (
+            requested_start_time IS NULL OR
+            requested_end_time IS NULL OR
+            requested_end_time > requested_start_time
+        )
+);
+
+CREATE INDEX IF NOT EXISTS break_requests_tenant_status_idx
+ON break_requests(tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS break_requests_tenant_employee_idx
+ON break_requests(tenant_id, employee_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS break_requests_tenant_reviewer_idx
+ON break_requests(tenant_id, reviewed_by, reviewed_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS break_requests_one_pending_per_employee_idx
+ON break_requests(tenant_id, employee_id)
+WHERE status = 'pending';
+
+ALTER TABLE break_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS break_requests_tenant_isolation ON break_requests;
+
+CREATE POLICY break_requests_tenant_isolation
+ON break_requests
 USING (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 )
