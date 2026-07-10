@@ -811,7 +811,7 @@ const [formData, setFormData] = useState<{
   const adminEmailValidation = validateEmail(formData.adminEmail);
   const adminPasswordValidation = validatePasswordStrength(formData.adminPassword);
   const confirmPasswordValid = Boolean(confirmPassword) && confirmPassword === formData.adminPassword;
-  const showAdminEmailError = touchedFields.adminEmail && !adminEmailValidation.valid;
+  const showAdminEmailError = (touchedFields.adminEmail || Boolean(formData.adminEmail.trim())) && !adminEmailValidation.valid;
   const showAdminPasswordChecklist = touchedFields.adminPassword || Boolean(formData.adminPassword);
   const showConfirmPasswordError = touchedFields.confirmPassword && !confirmPasswordValid;
   const passwordRuleTranslationKeys: Record<PasswordRuleKey, Parameters<typeof t>[0]> = {

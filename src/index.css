@@ -61,6 +61,33 @@
   [dir="rtl"] {
     font-family: "Inter", "Tajawal", "SF Pro", sans-serif;
   }
+
+  [dir="rtl"] input,
+  [dir="rtl"] textarea,
+  [dir="rtl"] select {
+    text-align: right;
+  }
+
+  [dir="rtl"] input[type="email"],
+  [dir="rtl"] input[type="url"],
+  [dir="rtl"] input[type="tel"],
+  [dir="rtl"] input[type="number"],
+  [dir="rtl"] input[type="date"],
+  [dir="rtl"] input[type="time"],
+  [dir="rtl"] .font-mono {
+    direction: ltr;
+    text-align: left;
+  }
+
+  [dir="rtl"] table {
+    text-align: right;
+  }
+
+  [dir="rtl"] .ProseMirror,
+  [dir="rtl"] [contenteditable="true"] {
+    direction: rtl;
+    text-align: right;
+  }
 }
 
 @keyframes loginCardIn {

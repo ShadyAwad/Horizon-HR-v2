@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, type MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
@@ -19,7 +19,15 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-type ClockActionState = 'idle' | 'locating' | 'verifying' | 'success' | 'failed';
+type ClockActionState =
+  | 'idle'
+  | 'locating'
+  | 'verifying'
+  | 'success'
+  | 'failed'
+  | 'outside_geofence'
+  | 'open_shift_conflict'
+  | 'clocked_out';
 
 type ShiftRow = {
   day: string;
@@ -494,34 +502,70 @@ function notifyEmployee(title: string, body: string) {
 }
 
 // Helper hook for Geolocation fetching
+type DeviceCoordinates = { lat: number; lng: number; accuracy: number };
+type ClockAccuracyLevel = 'good' | 'approximate' | 'low';
+
+function getClockAccuracyLevel(accuracy: number): ClockAccuracyLevel {
+  if (accuracy <= 100) return 'good';
+  if (accuracy <= 1000) return 'approximate';
+  return 'low';
+}
+
+function formatAccuracyMeters(accuracy: number) {
+  return Math.round(accuracy).toLocaleString();
+}
+
+function logClockDebug(message: string, details?: unknown) {
+  if (import.meta.env.DEV) {
+    if (details !== undefined) {
+      console.log(message, details);
+    } else {
+      console.log(message);
+    }
+  }
+}
+
 function useGeolocation() {
-  const [coords, setCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [coords, setCoords] = useState<DeviceCoordinates | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const requestCoordinates = () => {
+  const requestCoordinates = (messages?: { unavailable?: string; denied?: string }) => new Promise<DeviceCoordinates>((resolve, reject) => {
     setLoading(true);
     setError(null);
+    logClockDebug('[clock-in] requesting geolocation');
     if (!navigator.geolocation) {
-      setError("Geolocation is not supported by your browser");
+      const message = messages?.unavailable || "Location services are not available in this browser.";
+      setError(message);
       setLoading(false);
+      logClockDebug('[clock-in] geolocation error', { message });
+      reject(new Error(message));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoords({
+        const nextCoords = {
           lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        };
+        setCoords(nextCoords);
         setLoading(false);
+        logClockDebug('[clock-in] geolocation success', nextCoords);
+        resolve(nextCoords);
       },
       (err) => {
-        setError(`Location access denied. Please allow permissions.`);
+        const message = err.code === err.PERMISSION_DENIED
+          ? messages?.denied || 'Location permission is required to clock in.'
+          : err.message || messages?.denied || 'Location permission is required to clock in.';
+        setError(message);
         setLoading(false);
+        logClockDebug('[clock-in] geolocation error', { code: err.code, message });
+        reject(new Error(message));
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
-  };
+  });
 
   return { coords, error, loading, requestCoordinates };
 }
@@ -530,6 +574,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
+  const [clockWarning, setClockWarning] = useState('');
+  const [lastClockAccuracy, setLastClockAccuracy] = useState<number | null>(null);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
@@ -770,6 +816,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
   const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
+  const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
   const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
     notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
@@ -867,34 +914,83 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     }
   };
 
-  const handleClockAction = async () => {
-    if (isOffline) {
-      setClockInState('failed');
-      setClockMessage('You are offline. Some HR actions require connection.');
-      window.setTimeout(() => {
-        setClockInState('idle');
-        setClockMessage('');
-      }, 4000);
+  const resetClockStatusSoon = () => {
+    window.setTimeout(() => {
+      setClockInState('idle');
+      setClockMessage('');
+    }, 4000);
+  };
+
+  const updateClockAccuracyNotice = (accuracy: number) => {
+    setLastClockAccuracy(accuracy);
+    const accuracyText = `${t('dash.locationAccuracy')}: ±${formatAccuracyMeters(accuracy)}m`;
+    const accuracyLevel = getClockAccuracyLevel(accuracy);
+
+    if (accuracyLevel === 'low') {
+      setClockWarning(`${t('dash.lowAccuracyLocation')} ${accuracyText}`);
       return;
     }
 
-    if (isClockedIn) {
+    if (accuracyLevel === 'approximate') {
+      setClockWarning(`${t('dash.approximateLocation')} ${accuracyText}`);
+      return;
+    }
+
+    setClockWarning(accuracyText);
+  };
+
+  const handleClockAction = async (event?: MouseEvent<HTMLButtonElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    logClockDebug('[clock-in] clicked');
+
+    if (isOffline) {
+      setClockInState('failed');
+      setClockMessage(t('dash.offlineAction'));
+      setClockWarning('');
+      resetClockStatusSoon();
+      return;
+    }
+
+    if (hasActiveShift) {
       await verifyClockOut();
       return;
     }
 
-    setClockInState('locating');
-    geo.requestCoordinates();
-  };
-
-  useEffect(() => {
-    if (geo.coords && clockInState === 'locating') {
-      verifyClockIn(geo.coords.lat, geo.coords.lng);
-    } else if (geo.error && clockInState === 'locating') {
+    if (!navigator.geolocation) {
       setClockInState('failed');
-      setClockMessage(geo.error);
+      setClockMessage(
+        !window.isSecureContext
+          ? `${t('dash.locationUnavailable')} ${t('dash.secureLocationContext')}`
+          : t('dash.locationUnavailable')
+      );
+      setClockWarning('');
+      resetClockStatusSoon();
+      return;
     }
-  }, [geo.coords, geo.error]);
+
+    if (!window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
+      logClockDebug('[clock-in] geolocation error', { message: t('dash.secureLocationContext') });
+    }
+
+    setClockInState('locating');
+    setClockMessage(t('dash.locationPermission'));
+    setClockWarning('');
+
+    try {
+      const coords = await geo.requestCoordinates({
+        unavailable: t('dash.locationUnavailable'),
+        denied: t('dash.locationDenied'),
+      });
+      updateClockAccuracyNotice(coords.accuracy);
+      await verifyClockIn(coords);
+    } catch (error) {
+      setClockInState('failed');
+      setClockMessage((error as Error).message || t('dash.locationDenied'));
+      setClockWarning('');
+      resetClockStatusSoon();
+    }
+  };
 
   useEffect(() => {
     window.localStorage.setItem('horizon-roster', JSON.stringify(schedule));
@@ -948,8 +1044,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     };
   }, [notificationSettings, schedule]);
 
-  const verifyClockIn = async (lat: number, lng: number) => {
+  const verifyClockIn = async (coords: DeviceCoordinates) => {
     setClockInState('verifying');
+    setClockMessage(t('dash.validatingGeofence'));
     try {
         const res = await fetch(apiUrl('/api/clock-in'), {
             method: 'POST',
@@ -957,8 +1054,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             body: JSON.stringify({
               tenantId: user.tenantId,
               employeeId: user.id,
-              latitude: lat,
-              longitude: lng,
+              latitude: coords.lat,
+              longitude: coords.lng,
+              accuracy: coords.accuracy,
             })
         });
         const data = await res.json();
@@ -968,14 +1066,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             setIsClockedIn(true);
             setActiveTimeLogId(data.timeLogId || null);
             setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-            setClockMessage(data.message);
+            setClockMessage(t('dash.clockInSuccess'));
         } else {
-            setClockInState('failed');
-            setClockMessage(data.error || data.message || 'Unable to record clock-in.');
+            if (res.status === 409) {
+              setClockInState('open_shift_conflict');
+              setClockMessage(t('dash.openShiftConflict'));
+              await loadClockStatus(true);
+            } else {
+              setClockInState(res.status === 403 ? 'outside_geofence' : 'failed');
+              setClockMessage(
+                res.status === 404 ? t('dash.noActiveLocation') :
+                res.status === 403 ? t('dash.outsideGeofence') :
+                data.error || data.message || t('dash.clockInTryAgain')
+              );
+            }
         }
     } catch(err) {
         setClockInState('failed');
-        setClockMessage('Server disconnection. Unable to verify location.');
+        setClockMessage(t('dash.clockInTryAgain'));
     }
     
     // Reset state after 4 seconds
@@ -987,6 +1095,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
   const verifyClockOut = async () => {
     setClockInState('verifying');
+    setClockMessage(t('dash.clockingOut'));
 
     try {
       const res = await fetch(apiUrl('/api/clock-out'), {
@@ -1001,18 +1110,21 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setClockInState('success');
+        setClockInState('clocked_out');
         setIsClockedIn(false);
         setActiveTimeLogId(null);
+        setClockWarning('');
+        setLastClockAccuracy(null);
         setLastClockEvent(`Clocked out at ${new Date(data.clockedOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-        setClockMessage(data.message || 'Clock-out recorded successfully.');
+        setClockMessage(t('dash.clockOutSuccess'));
+        await loadClockStatus(true);
       } else {
         setClockInState('failed');
-        setClockMessage(data.error || 'Unable to record clock-out.');
+        setClockMessage(res.status === 404 ? t('dash.noActiveShift') : data.error || t('dash.clockOutError'));
       }
     } catch {
       setClockInState('failed');
-      setClockMessage('Server disconnection. Unable to record clock-out.');
+      setClockMessage(t('dash.clockOutError'));
     }
 
     setTimeout(() => {
@@ -1035,6 +1147,37 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   if (user.authToken) {
     payrollHeaders.Authorization = `Bearer ${user.authToken}`;
   }
+
+  const loadClockStatus = async (preserveLastEvent = false) => {
+    if (!hasAuthenticatedDashboardUser) return;
+
+    try {
+      const res = await fetch(apiUrl('/api/clock-status'), { headers: payrollHeaders });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const nextIsClockedIn = Boolean(data.isClockedIn);
+        setIsClockedIn(nextIsClockedIn);
+        setActiveTimeLogId(data.timeLogId || null);
+        if (data.clockedIn) {
+          setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+        } else if (!preserveLastEvent) {
+          setLastClockEvent('No active shift recorded.');
+        }
+        if (!nextIsClockedIn) {
+          setClockWarning('');
+          setLastClockAccuracy(null);
+        }
+      }
+    } catch {
+      // Clock status is best-effort; explicit clock actions still show errors.
+    }
+  };
+
+  useEffect(() => {
+    loadClockStatus();
+  }, [hasAuthenticatedDashboardUser, user.id, user.tenantId]);
+
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
   const loadBreakRequests = async (clearMessage = true) => {
@@ -2619,7 +2762,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <button
           type="button"
           onClick={toggleTheme}
-          className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-left text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+          className={cn("flex items-center justify-between gap-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50", isRtl ? "text-right" : "text-left")}
         >
           <span>{isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
           {isDark ? <Sun className="h-4 w-4 text-emerald-500" /> : <Moon className="h-4 w-4 text-emerald-500" />}
@@ -2656,7 +2799,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   );
 
   return (
-<div className="h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300">
+<div
+  dir={isRtl ? 'rtl' : 'ltr'}
+  className={cn(
+    "h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
+    isRtl ? "text-right" : "text-left"
+  )}
+>
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
@@ -2842,11 +2991,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             aria-labelledby="stanza-control-center-title"
             className={cn(
               "fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-h-[88dvh] overflow-y-auto rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
-              "md:bottom-auto md:left-24 md:right-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]"
+              "md:bottom-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]",
+              isRtl ? "md:right-24 md:left-auto text-right" : "md:left-24 md:right-auto text-left"
             )}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-4 flex items-start justify-between gap-4">
+            <div className={cn("mb-4 flex items-start justify-between gap-4", isRtl && "flex-row-reverse")}>
               <div>
                 <h2 id="stanza-control-center-title" className="text-base font-black uppercase tracking-widest text-slate-900 dark:text-emerald-50">
                   Stanza Control Center
@@ -2984,21 +3134,23 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            <div className="relative mb-5 flex h-48 min-h-48 w-48 min-w-48 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-40 md:min-h-40 md:w-40 md:min-w-40">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
+                               type="button"
                                onClick={handleClockAction}
                                disabled={isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
                                    "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95 md:h-36 md:min-h-36 md:w-36 md:min-w-36",
-                                   clockInState === 'idle' && isClockedIn ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
+                                   clockInState === 'idle' && hasActiveShift ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
-                                   clockInState === 'success' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
+                                   clockInState === 'success' || clockInState === 'clocked_out' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
+                                   clockInState === 'open_shift_conflict' ? "bg-amber-500 text-slate-950 shadow-[0_0_40px_rgba(245,158,11,0.42)]" :
                                    "bg-red-500 text-white shadow-[0_0_40px_rgba(239,68,68,0.6)]"
                                )}
                              >
                               <AnimatePresence mode="wait" initial={false}>
                                  {clockInState === 'idle' && (
                                      <motion.div key="idle" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
-                                         <span className="whitespace-nowrap text-[10px] sm:text-xs tracking-widest">{isClockedIn ? 'CLOCK OUT' : t('dash.clockIn')}</span>
+                                         <span className="whitespace-nowrap text-[10px] sm:text-xs tracking-widest">{hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')}</span>
                                      </motion.div>
                                  )}
                                  {(clockInState === 'locating' || clockInState === 'verifying') && (
@@ -3007,16 +3159,22 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          <span className="whitespace-nowrap font-bold text-[10px] uppercase tracking-widest">{clockInState === 'locating' ? t('dash.locating') : t('dash.verifying')}</span>
                                      </motion.div>
                                  )}
-                                 {clockInState === 'success' && (
+                                 {(clockInState === 'success' || clockInState === 'clocked_out') && (
                                      <motion.div key="success" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <CheckCircle2 className="w-10 h-10 mb-1 opacity-90" />
                                          <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.verified')}</span>
                                      </motion.div>
                                  )}
-                                 {clockInState === 'failed' && (
+                                 {clockInState === 'open_shift_conflict' && (
+                                     <motion.div key="conflict" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                         <AlertTriangle className="w-10 h-10 mb-1" />
+                                         <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.openShiftConflictLabel')}</span>
+                                     </motion.div>
+                                 )}
+                                 {(clockInState === 'failed' || clockInState === 'outside_geofence') && (
                                      <motion.div key="failed" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
                                          <AlertTriangle className="w-10 h-10 mb-1" />
-                                         <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.breach')}</span>
+                                         <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{clockInState === 'outside_geofence' ? t('dash.outsideGeofenceLabel') : t('dash.attendanceErrorLabel')}</span>
                                      </motion.div>
                                  )}
                               </AnimatePresence>
@@ -3034,8 +3192,22 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         exit={{opacity: 0, y: -4}}
                                         className="absolute inset-0 flex items-center justify-center gap-2 text-center"
                                     >
-                                        <span className={cn("flex h-2 w-2 shrink-0 rounded-full", clockInState === 'success' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]")}></span>
-                                        <span className={cn("max-h-12 overflow-hidden text-[10px] uppercase font-bold tracking-widest leading-4", clockInState === 'success' ? "text-emerald-400" : "text-red-400")}>
+                                        <span className={cn(
+                                          "flex h-2 w-2 shrink-0 rounded-full",
+                                          clockInState === 'success' || clockInState === 'clocked_out'
+                                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]"
+                                            : clockInState === 'open_shift_conflict'
+                                              ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                                              : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]"
+                                        )}></span>
+                                        <span className={cn(
+                                          "max-h-12 overflow-hidden text-[10px] uppercase font-bold tracking-widest leading-4",
+                                          clockInState === 'success' || clockInState === 'clocked_out'
+                                            ? "text-emerald-400"
+                                            : clockInState === 'open_shift_conflict'
+                                              ? "text-amber-400"
+                                              : "text-red-400"
+                                        )}>
                                             {t('dash.sysMsg')} {clockMessage}
                                         </span>
                                     </motion.div>
@@ -3046,18 +3218,34 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         className="absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
                                     >
                                         <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 animate-pulse"></span>
-                                        <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{isClockedIn ? 'Active shift open' : t('dash.awaitingInput')}</span>
+                                        <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</span>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                            </div>
 
-                           <p className="mt-2 h-4 max-w-full overflow-hidden text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
-                             {lastClockEvent}
-                           </p>
+                           <div className="mt-2 flex h-16 w-full max-w-[360px] flex-col items-center justify-start gap-1 overflow-hidden px-1">
+                             <p className="h-4 max-w-full overflow-hidden text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
+                               {lastClockEvent}
+                             </p>
+                             {clockWarning ? (
+                               <p
+                                 className={cn(
+                                   "max-h-10 max-w-full overflow-hidden rounded-lg border px-2 py-1 text-center text-[10px] font-bold leading-4",
+                                   lastClockAccuracy !== null && getClockAccuracyLevel(lastClockAccuracy) === 'low'
+                                     ? "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                                     : "border-emerald-500/15 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                                 )}
+                               >
+                                 {clockWarning}
+                               </p>
+                             ) : (
+                               <span className="h-8" aria-hidden="true" />
+                             )}
+                           </div>
                        </div>
 
-                       <div className="relative z-10 mt-4 grid w-full grid-cols-1 gap-3 text-left xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                       <div className={cn("relative z-10 mt-4 grid w-full grid-cols-1 gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]", isRtl ? "text-right" : "text-left")}>
                          {canCreateBreakRequests && (
                            <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -3223,7 +3411,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        </div>
 
                        {canReviewBreakRequests && (
-                         <div className="relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 text-left dark:border-emerald-500/15 dark:bg-black/30">
+                         <div className={cn("relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                              <div>
                                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -3291,7 +3479,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                          </div>
                        )}
 
-                       <div className="relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 text-left dark:border-emerald-500/15 dark:bg-black/30">
+                       <div className={cn("relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                            <div>
                              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -3347,7 +3535,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {t('dash.rosterHub')}
                            </h3>
                            <div className="flex gap-2">
-                             <button className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">{t('dash.weekView')}</button>
+                             <button type="button" className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">{t('dash.weekView')}</button>
                              {canManageRoster && (
                                <span className="inline-flex items-center gap-1 px-3 py-1 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
                                  <Save className="h-3 w-3" />

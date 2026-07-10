@@ -80,6 +80,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [recoveryEmailTouched, setRecoveryEmailTouched] = useState(false);
+  const [loginSubmitted, setLoginSubmitted] = useState(false);
+  const [recoverySubmitted, setRecoverySubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pulseState, setPulseState] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -97,9 +99,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const { isDark, toggleTheme } = useTheme();
   const emailValidation = validateEmail(email);
   const recoveryEmailValidation = validateEmail(recoveryEmail || email);
-  const showEmailError = emailTouched && !emailValidation.valid;
+  const showEmailError = (emailTouched || loginSubmitted || Boolean(email.trim())) && !emailValidation.valid;
   const showPasswordError = passwordTouched && !password;
-  const showRecoveryEmailError = recoveryEmailTouched && !recoveryEmailValidation.valid;
+  const showRecoveryEmailError = (recoveryEmailTouched || recoverySubmitted || Boolean((recoveryEmail || email).trim())) && !recoveryEmailValidation.valid;
 
   useEffect(() => {
     const loadCanvas = window.setTimeout(() => setShowDecorativeCanvas(true), 0);
@@ -120,6 +122,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setLoginSubmitted(true);
 
     if (isOffline) {
       setPulseState('error');
@@ -171,6 +174,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   };
 
   const handleRecoveryRequest = async () => {
+  setRecoverySubmitted(true);
+
   if (isOffline) {
     setRecoveryMessage(t('login.offline'));
     return;
@@ -514,7 +519,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('email')}
-                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
+                  className={`w-full rounded-lg border px-3 py-2.5 transition-all ${isRtl ? "text-right" : "text-left"} ${
                     recoveryMethod === 'email'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"
@@ -531,7 +536,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('admin')}
-                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
+                  className={`w-full rounded-lg border px-3 py-2.5 transition-all ${isRtl ? "text-right" : "text-left"} ${
                     recoveryMethod === 'admin'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"
@@ -548,7 +553,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
                 <button
                   type="button"
                   onClick={() => setRecoveryMethod('security')}
-                  className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all ${
+                  className={`w-full rounded-lg border px-3 py-2.5 transition-all ${isRtl ? "text-right" : "text-left"} ${
                     recoveryMethod === 'security'
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                       : "border-emerald-500/10 bg-black/20 text-emerald-100/45 hover:border-emerald-500/30 hover:text-emerald-200"

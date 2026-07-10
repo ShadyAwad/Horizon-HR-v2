@@ -36,8 +36,8 @@ import {
 type ClockInBody = {  
   tenantId?: string;
   employeeId?: string;
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | string;
+  longitude?: number | string;
 };
 
 type CompanyLocationType = 'headquarters' | 'branch' | 'warehouse' | 'remote_site' | 'other';
@@ -3659,14 +3659,15 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
     const body = req.body as ClockInBody;
     const tenantId = req.authUser?.tenantId || body.tenantId;
     const employeeId = req.authUser?.employeeId || body.employeeId;
-    const { latitude, longitude } = body;
+    const latitude = Number(body.latitude);
+    const longitude = Number(body.longitude);
     
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return res.status(400).json({ error: 'Geolocation required for clock-in' });
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return res.status(400).json({ success: false, error: 'Geolocation required for clock-in.' });
     }
 
     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-      return res.status(400).json({ error: 'Latitude must be -90 to 90 and longitude must be -180 to 180.' });
+      return res.status(400).json({ success: false, error: 'Latitude must be -90 to 90 and longitude must be -180 to 180.' });
     }
 
     // Mock HQ Location: 37.7749, -122.4194 (San Francisco).
@@ -3680,13 +3681,28 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
 
     if (hasDatabaseConfig()) {
       if (!tenantId || !employeeId) {
-        return res.status(400).json({
+        return res.status(401).json({
+          success: false,
           error: 'tenantId and employeeId are required when DATABASE_URL is configured',
         });
       }
 
       try {
         const timeLog = await withTenant(tenantId, async (client) => {
+          const activeLocations = await client.query<{ count: string }>(
+            `
+              SELECT COUNT(*)::text AS count
+              FROM company_locations
+              WHERE tenant_id = $1
+                AND is_active = true
+            `,
+            [tenantId],
+          );
+
+          if (Number(activeLocations.rows[0]?.count || 0) === 0) {
+            throw Object.assign(new Error('No active company location found for this workspace.'), { statusCode: 404 });
+          }
+
           const locationResult = await client.query<{
             id: string;
             name: string;
@@ -3716,6 +3732,10 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
                 locationType: location.location_type,
               }
             : undefined;
+
+          if (!isWithinGeofence) {
+            throw Object.assign(new Error('You are outside the allowed worksite geofence.'), { statusCode: 403 });
+          }
 
           const result = await client.query<{ id: string; clock_in_time: Date }>(
             `
@@ -3777,10 +3797,28 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
           message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.',
         });
       } catch (error) {
+        const statusCode = Number((error as { statusCode?: number }).statusCode);
+        if (statusCode === 404) {
+          return res.status(404).json({
+            success: false,
+            error: (error as Error).message,
+          });
+        }
+
+        if (statusCode === 403) {
+          return res.status(403).json({
+            success: false,
+            locationValid: false,
+            isValidGeofence: false,
+            error: (error as Error).message,
+          });
+        }
+
         console.error('[Clock-In] Failed to persist clock-in:', error);
 
         if ((error as { code?: string }).code === '23505') {
           return res.status(409).json({
+            success: false,
             error: 'This employee already has an open shift.',
           });
         }
@@ -4147,13 +4185,68 @@ app.patch(
   },
 );
 
-  app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
+app.get('/api/clock-status', demoAuthWhenDatabaseConfigured, async (req, res) => {
+  const tenantId = req.authUser?.tenantId || (typeof req.query.tenantId === 'string' ? req.query.tenantId : undefined);
+  const employeeId = req.authUser?.employeeId || (typeof req.query.employeeId === 'string' ? req.query.employeeId : undefined);
+
+  if (hasDatabaseConfig() && (!tenantId || !employeeId)) {
+    return res.status(401).json({
+      success: false,
+      error: 'tenantId and employeeId are required when DATABASE_URL is configured',
+    });
+  }
+
+  try {
+    if (!hasDatabaseConfig()) {
+      const openLog = demoOpenTimeLogs.get(getAttendanceKey(tenantId, employeeId));
+      return res.json({
+        success: true,
+        isClockedIn: Boolean(openLog && !openLog.clockOutTime),
+        timeLogId: openLog?.id || null,
+        clockedIn: openLog?.clockInTime?.toISOString() || null,
+      });
+    }
+
+    const openLog = await withTenant(tenantId, async (client) => {
+      const result = await client.query<{
+        id: string;
+        clock_in_time: Date;
+      }>(
+        `
+          SELECT id, clock_in_time
+          FROM time_logs
+          WHERE tenant_id = $1
+            AND employee_id = $2
+            AND clock_out_time IS NULL
+          ORDER BY clock_in_time DESC
+          LIMIT 1
+        `,
+        [tenantId, employeeId],
+      );
+
+      return result.rows[0] || null;
+    });
+
+    res.json({
+      success: true,
+      isClockedIn: Boolean(openLog),
+      timeLogId: openLog?.id || null,
+      clockedIn: openLog?.clock_in_time || null,
+    });
+  } catch (error) {
+    console.error('[Clock-Status] Failed to load active shift:', error);
+    res.status(500).json({ success: false, error: 'Unable to load clock status.' });
+  }
+});
+
+app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
   const body = req.body as { tenantId?: string; employeeId?: string };
   const tenantId = req.authUser?.tenantId || body.tenantId;
   const employeeId = req.authUser?.employeeId || body.employeeId;
 
   if (hasDatabaseConfig() && (!tenantId || !employeeId)) {
-    return res.status(400).json({
+    return res.status(401).json({
+      success: false,
       error: 'tenantId and employeeId are required when DATABASE_URL is configured',
     });
   }
@@ -4190,6 +4283,7 @@ app.patch(
 
     if (!updatedLog) {
       return res.status(404).json({
+        success: false,
         error: 'No open shift found for this employee',
       });
     }
