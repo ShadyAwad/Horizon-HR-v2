@@ -3,7 +3,7 @@ import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from
 import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { useLanguage } from '../lib/LanguageContext';
+import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
 import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
@@ -44,12 +44,12 @@ type SignupCustomRole = {
   description: string;
 };
 
-const locationTypeOptions: Array<{ value: SignupLocationType; label: string }> = [
-  { value: 'headquarters', label: 'Headquarters' },
-  { value: 'branch', label: 'Branch Office' },
-  { value: 'warehouse', label: 'Warehouse' },
-  { value: 'remote_site', label: 'Remote Site' },
-  { value: 'other', label: 'Other' },
+const locationTypeOptions: Array<{ value: SignupLocationType; labelKey: TranslationKey }> = [
+  { value: 'headquarters', labelKey: 'signup.locationTypeHeadquarters' },
+  { value: 'branch', labelKey: 'signup.locationTypeBranch' },
+  { value: 'warehouse', labelKey: 'signup.locationTypeWarehouse' },
+  { value: 'remote_site', labelKey: 'signup.locationTypeRemote' },
+  { value: 'other', labelKey: 'signup.locationTypeOther' },
 ];
 
 type CircleFeature = {
@@ -77,9 +77,9 @@ type PendingLocation = {
 } | null;
 
 const neutralMapCenter: [number, number] = [0, 20];
-const mapStyleOptions: Array<{ id: MapStyleId; label: string; maptilerId: string }> = [
-  { id: 'streets', label: 'Streets', maptilerId: 'streets-v2' },
-  { id: 'satellite', label: 'Satellite', maptilerId: 'satellite' },
+const mapStyleOptions: Array<{ id: MapStyleId; labelKey: TranslationKey; maptilerId: string }> = [
+  { id: 'streets', labelKey: 'signup.mapStyleStreets', maptilerId: 'streets-v2' },
+  { id: 'satellite', labelKey: 'signup.mapStyleSatellite', maptilerId: 'satellite' },
 ];
 
 const toRadians = (degrees: number) => degrees * (Math.PI / 180);
@@ -140,6 +140,7 @@ const InteractiveMap = ({
   locationAccuracy,
   disabled = false,
 }: InteractiveMapProps) => {
+  const { t } = useLanguage();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const maplibreModuleRef = useRef<MapLibreModule | null>(null);
   const mapInstanceRef = useRef<MapLibreMap | null>(null);
@@ -163,15 +164,15 @@ const InteractiveMap = ({
   const hasCoordinates = lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
   const locationStatusCopy: Record<LocationStatus, string> = {
     idle: hasCoordinates
-      ? 'Drag the pin to the exact office entrance or worksite center.'
-      : 'Use your location, drag the pin, or enter coordinates manually.',
-    locating: 'Detecting location...',
-    accurate: 'Location detected. Drag the pin if you need to fine-tune the worksite.',
-    approximate: 'Approximate location detected. Drag the pin to the exact worksite.',
-    low_accuracy: 'Browser location is too broad. Drag the pin or enter coordinates manually.',
-    manual: 'Pin adjusted manually.',
-    manual_coordinates: 'Coordinates applied manually.',
-    error: 'Unable to access location. Enter coordinates manually or drag the pin.',
+      ? t('signup.geofenceInstruction')
+      : t('signup.useMyLocation'),
+    locating: t('signup.detecting'),
+    accurate: t('signup.locationDetected'),
+    approximate: t('signup.approximateLocation'),
+    low_accuracy: t('signup.lowAccuracyLocation'),
+    manual: t('signup.manualAdjustment'),
+    manual_coordinates: t('signup.manualCoordinates'),
+    error: t('signup.mapUnavailable'),
   };
 
   const ensureRadiusLayer = (map: MapLibreMap) => {
@@ -454,7 +455,7 @@ const InteractiveMap = ({
 
     const nextLat = Number(value);
     if (!Number.isFinite(nextLat) || nextLat < -90 || nextLat > 90) {
-      setCoordinateError('Latitude must be between -90 and 90.');
+      setCoordinateError(t('signup.latitudeValidation'));
       return;
     }
 
@@ -469,7 +470,7 @@ const InteractiveMap = ({
 
     const nextLng = Number(value);
     if (!Number.isFinite(nextLng) || nextLng < -180 || nextLng > 180) {
-      setCoordinateError('Longitude must be between -180 and 180.');
+      setCoordinateError(t('signup.longitudeValidation'));
       return;
     }
 
@@ -498,7 +499,7 @@ const InteractiveMap = ({
                 <button
                   key={style.id}
                   type="button"
-                  aria-label={`Switch map style to ${style.label}`}
+                  aria-label={`${t('signup.locationType')}: ${t(style.labelKey)}`}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -511,19 +512,19 @@ const InteractiveMap = ({
                       : 'text-emerald-100/55 hover:text-emerald-200',
                   )}
                 >
-                  {style.label}
+                  {t(style.labelKey)}
                 </button>
               ))}
             </div>
 
             <button
               type="button"
-              aria-label="Use my current location"
+              aria-label={t('signup.useMyLocation')}
               onClick={useCurrentLocation}
               disabled={locationStatus === 'locating'}
               className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
             >
-              {locationStatus === 'locating' ? 'Detecting...' : 'Use My Location'}
+              {locationStatus === 'locating' ? t('signup.detecting') : t('signup.useMyLocation')}
             </button>
           </div>
         </div>
@@ -535,10 +536,10 @@ const InteractiveMap = ({
             <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-                  Map provider key missing
+                  {t('signup.mapKeyMissing')}
                 </p>
                 <p className="mt-2 text-[11px] text-emerald-100/50">
-                  Add VITE_MAPTILER_KEY.
+                  {t('signup.mapKeyMissingHelp')}
                 </p>
               </div>
             </div>
@@ -547,7 +548,7 @@ const InteractiveMap = ({
           {maptilerKey && mapStatus === 'loading' && (
             <div className="absolute inset-0 z-[550] flex items-center justify-center bg-black/50 px-6 text-center backdrop-blur-[1px]">
               <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-                Loading MapLibre map...
+                {t('signup.mapLoading')}
               </p>
             </div>
           )}
@@ -556,10 +557,10 @@ const InteractiveMap = ({
             <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-                  Map provider unavailable
+                  {t('signup.mapUnavailable')}
                 </p>
                 <p className="mt-2 text-[11px] text-emerald-100/50">
-                  Check VITE_MAPTILER_KEY, then restart the dev server.
+                  {t('signup.mapUnavailableHelp')}
                 </p>
               </div>
             </div>
@@ -579,54 +580,54 @@ const InteractiveMap = ({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-bold uppercase tracking-widest">
-                {locationStatus === 'low_accuracy' ? 'Low accuracy location' : locationStatus === 'approximate' ? 'Approximate location' : locationStatus === 'accurate' ? 'Location detected' : locationStatus === 'manual' ? 'Manual adjustment' : locationStatus === 'manual_coordinates' ? 'Manual coordinates' : 'Location status'}
+                {locationStatus === 'low_accuracy' ? t('signup.lowAccuracyLocation') : locationStatus === 'approximate' ? t('signup.approximateLocation') : locationStatus === 'accurate' ? t('signup.locationDetected') : locationStatus === 'manual' ? t('signup.manualAdjustment') : locationStatus === 'manual_coordinates' ? t('signup.manualCoordinates') : t('signup.locationStatus')}
               </p>
               <p className="mt-1">{locationStatusCopy[locationStatus]}</p>
               {locationStatus === 'low_accuracy' && (
                 <p className="mt-1 text-amber-100/70">
-                  Browser location is only approximate. Manual adjustment is required.
+                  {t('signup.approximateWarning')}
                 </p>
               )}
             </div>
             {pendingLocation && locationStatus === 'low_accuracy' && (
               <button
                 type="button"
-                aria-label="Use approximate detected location"
+                aria-label={t('signup.useApproximateAnyway')}
                 onClick={useApproximateLocation}
                 className="rounded-lg border border-amber-300/30 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-100 transition hover:border-amber-200/60"
               >
-                Use Approximate Location Anyway
+                {t('signup.useApproximateAnyway')}
               </button>
             )}
           </div>
         </div>
 
         <p className="mt-2 text-[9px] text-emerald-100/35">
-          Map labels are provided by MapTiler/OpenStreetMap and may differ from local naming. Use satellite view or drag the pin to confirm the exact worksite.
+          {t('signup.mapProviderNote')}
         </p>
       </div>
 
       <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
         <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
           <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">Latitude</p>
-            <p className="mt-1 font-mono text-xs text-emerald-300">{lat === null ? 'Not selected' : lat.toFixed(7)}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">{t('signup.latitude')}</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lat === null ? t('signup.notSelected') : lat.toFixed(7)}</p>
           </div>
           <div className="rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">Longitude</p>
-            <p className="mt-1 font-mono text-xs text-emerald-300">{lng === null ? 'Not selected' : lng.toFixed(7)}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">{t('signup.longitude')}</p>
+            <p className="mt-1 font-mono text-xs text-emerald-300">{lng === null ? t('signup.notSelected') : lng.toFixed(7)}</p>
           </div>
         </div>
 
         {accuracy !== null && (
           <div className="mb-4 rounded-lg border border-emerald-500/10 bg-black/25 px-3 py-2">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-100/45">
-              Location accuracy
+              {t('signup.locationAccuracy')}
             </p>
-            <p className="mt-1 text-xs text-emerald-300">±{accuracy} meters</p>
+            <p className="mt-1 text-xs text-emerald-300">±{accuracy} {t('signup.meters')}</p>
             {accuracy > 100 && (
               <p className="mt-1 text-[11px] text-amber-200/80">
-                Your browser location may be approximate. Drag the pin to fine-tune the worksite.
+                {t('signup.accuracyHelp')}
               </p>
             )}
           </div>
@@ -635,10 +636,10 @@ const InteractiveMap = ({
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-              Geofence Radius
+              {t('signup.geofenceRadius')}
             </p>
             <p className="text-[11px] text-emerald-100/45">
-              Controls the allowed clock-in zone around the selected worksite.
+              {t('signup.geofenceRadiusHelp')}
             </p>
           </div>
 
@@ -649,7 +650,7 @@ const InteractiveMap = ({
 
         <input
           type="range"
-          aria-label="Geofence radius in meters"
+          aria-label={t('signup.geofenceRadius')}
           min="25"
           max="5000"
           step="25"
@@ -666,30 +667,30 @@ const InteractiveMap = ({
 
       <button
         type="button"
-        aria-label={manualMode ? 'Hide manual coordinate fields' : 'Enter coordinates manually'}
+        aria-label={manualMode ? t('signup.hideManualCoordinates') : t('signup.enterCoordinatesManually')}
         onClick={() => setManualMode((prev) => !prev)}
         className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/45 transition hover:text-emerald-400"
       >
-        {manualMode ? 'Hide Manual Coordinates' : 'Enter Coordinates Manually'}
+        {manualMode ? t('signup.hideManualCoordinates') : t('signup.enterCoordinatesManually')}
       </button>
 
       {manualMode && (
         <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
           <div className="mb-4 rounded-lg border border-emerald-500/10 bg-black/25 p-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">How to get coordinates</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">{t('signup.howToGetCoordinates')}</p>
             <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-emerald-100/65">
-              <li>Open Google Maps.</li>
-              <li>Long-press or right-click the exact office/worksite location.</li>
-              <li>Copy the latitude and longitude numbers.</li>
-              <li>Paste them into the Latitude and Longitude fields.</li>
-              <li>Confirm the marker moves to the correct place.</li>
+              <li>{t('signup.coordinateStepGoogleMaps')}</li>
+              <li>{t('signup.coordinateStepPress')}</li>
+              <li>{t('signup.coordinateStepCopy')}</li>
+              <li>{t('signup.coordinateStepPaste')}</li>
+              <li>{t('signup.coordinateStepConfirm')}</li>
             </ol>
             <p className="mt-2 text-xs text-emerald-100/45">
-              Google Maps shows latitude first, longitude second.
+              {t('signup.coordinateOrderHelp')}
             </p>
             <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border border-emerald-500/10 bg-black/25 p-3 font-mono text-xs text-emerald-200 sm:grid-cols-2">
-              <span>Latitude: 30.0444</span>
-              <span>Longitude: 31.2357</span>
+              <span>{t('signup.latitude')}: 30.0444</span>
+              <span>{t('signup.longitude')}: 31.2357</span>
             </div>
           </div>
 
@@ -702,11 +703,11 @@ const InteractiveMap = ({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1">
               <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
-                Latitude
+                {t('signup.latitude')}
               </label>
               <input
                 type="number"
-                aria-label="Manual latitude"
+                aria-label={t('signup.latitude')}
                 step="0.000001"
                 min="-90"
                 max="90"
@@ -719,11 +720,11 @@ const InteractiveMap = ({
 
             <div className="space-y-1">
               <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
-                Longitude
+                {t('signup.longitude')}
               </label>
               <input
                 type="number"
-                aria-label="Manual longitude"
+                aria-label={t('signup.longitude')}
                 step="0.000001"
                 min="-180"
                 max="180"
@@ -736,11 +737,11 @@ const InteractiveMap = ({
 
             <div className="space-y-1">
               <label className="text-xs font-bold uppercase tracking-widest text-emerald-100/55">
-                Radius
+                {t('signup.radius')}
               </label>
               <input
                 type="number"
-                aria-label="Manual geofence radius"
+                aria-label={t('signup.radius')}
                 min="25"
                 max="5000"
                 value={radius}
@@ -795,7 +796,7 @@ const [formData, setFormData] = useState<{
 });
   const [locations, setLocations] = useState<SignupLocation[]>([
     {
-      name: 'Headquarters',
+      name: t('signup.locationTypeHeadquarters'),
       locationType: 'headquarters',
       address: '',
       lat: null,
@@ -983,7 +984,7 @@ const [formData, setFormData] = useState<{
       }
 
       if (locations.some((location) => !validateRadiusMeters(location.radius))) {
-        setFormError('Radius must be between 25 and 5000 meters.');
+        setFormError(t('signup.radiusValidation'));
         setIsSubmitting(false);
         return;
       }
@@ -1231,7 +1232,7 @@ className={cn(
                     </div>
                     <div>
                       <h3 className="font-bold text-sm text-slate-900 dark:text-white">{t('signup.loans')}</h3>
-<p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">Enable payroll deductions and standard corporate loan requests.</p>
+                      <p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">{t('signup.enableLoansHelp')}</p>
                     </div>
                   </label>
                 </div>
@@ -1239,16 +1240,16 @@ className={cn(
                 <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">Custom Roles</h3>
-                      <p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">Optional. Defaults are created automatically.</p>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">{t('signup.customRoles')}</h3>
+                      <p className="text-xs text-emerald-700/60 dark:text-emerald-100/45">{t('signup.customRolesHelp')}</p>
                     </div>
                     <button
                       type="button"
-                      aria-label="Add custom role"
+                      aria-label={t('signup.addRole')}
                       onClick={addCustomRole}
                       className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
                     >
-                      Add Role
+                      {t('signup.addRole')}
                     </button>
                   </div>
 
@@ -1256,32 +1257,32 @@ className={cn(
                     {customRoles.map((role, index) => (
                       <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-emerald-500/10 p-3 md:grid-cols-[1fr_1fr_auto]">
                         <input
-                          aria-label={`Custom role ${index + 1} name`}
+                          aria-label={`${t('signup.roleName')} ${index + 1}`}
                           value={role.name}
                           onChange={(event) => updateCustomRole(index, { name: event.target.value })}
-                          placeholder="Role name"
+                          placeholder={t('signup.roleName')}
                           className="rounded border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
                         />
                         <input
-                          aria-label={`Custom role ${index + 1} description`}
+                          aria-label={`${t('signup.roleDescription')} ${index + 1}`}
                           value={role.description}
                           onChange={(event) => updateCustomRole(index, { description: event.target.value })}
-                          placeholder="Description"
+                          placeholder={t('signup.roleDescription')}
                           className="rounded border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
                         />
                         <button
                           type="button"
-                          aria-label={`Remove custom role ${index + 1}`}
+                          aria-label={`${t('signup.remove')} ${index + 1}`}
                           onClick={() => removeCustomRole(index)}
                           className="rounded border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400"
                         >
-                          Remove
+                          {t('signup.remove')}
                         </button>
                       </div>
                     ))}
                     {customRoles.length === 0 && (
                       <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-emerald-700/50 dark:text-emerald-100/40">
-                        No custom roles defined. Employee, Manager, and HR Admin will be created.
+                        {t('signup.noCustomRoles')}
                       </p>
                     )}
                   </div>
@@ -1299,19 +1300,19 @@ className={cn(
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-xs font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">
-                            Locations
+                            {t('signup.locations')}
                           </p>
                           <p className="mt-1 text-xs text-emerald-700/50 dark:text-emerald-100/35">
-                            Add each site that should allow clock-in.
+                            {t('signup.locationsHelp')}
                           </p>
                         </div>
                         <button
                           type="button"
-                          aria-label="Add company location"
+                          aria-label={t('signup.addLocation')}
                           onClick={addLocation}
                           className="rounded-lg border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600 transition hover:border-emerald-400 dark:text-emerald-300"
                         >
-                          Add Location
+                          {t('signup.addLocation')}
                         </button>
                       </div>
 
@@ -1320,7 +1321,7 @@ className={cn(
                           <button
                             key={`${location.name}-${index}`}
                             type="button"
-                            aria-label={`Edit location ${location.name || index + 1}`}
+                            aria-label={`${t('signup.locationDetails')}: ${location.name || index + 1}`}
                             onClick={() => setSelectedLocationIndex(index)}
                             className={cn(
                               "w-full rounded-xl border p-3 text-left transition",
@@ -1329,12 +1330,12 @@ className={cn(
                                 : "border-emerald-500/15 bg-white/70 hover:border-emerald-500/35 dark:bg-black/25"
                             )}
                           >
-                            <span className="block text-xs font-bold text-slate-900 dark:text-emerald-50">{location.name || 'Unnamed Location'}</span>
+                            <span className="block text-xs font-bold text-slate-900 dark:text-emerald-50">{location.name || t('signup.unnamedLocation')}</span>
                             <span className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700/60 dark:text-emerald-100/40">
-                              <span>{location.locationType.replace('_', ' ')}</span>
+                              <span>{t(locationTypeOptions.find((option) => option.value === location.locationType)?.labelKey || 'signup.locationTypeOther')}</span>
                               <span>{location.radius}m</span>
-                              {location.lat !== null && location.lng !== null && <span>Coordinates set</span>}
-                              {location.isPrimary && <span className="text-emerald-500">Primary</span>}
+                              {location.lat !== null && location.lng !== null && <span>{t('signup.coordinatesSet')}</span>}
+                              {location.isPrimary && <span className="text-emerald-500">{t('signup.primaryLocation')}</span>}
                             </span>
                           </button>
                         ))}
@@ -1343,14 +1344,14 @@ className={cn(
 
                     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
                       <div className="mb-3">
-                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">Location details</p>
-                        <p className="mt-1 text-xs text-emerald-700/50 dark:text-emerald-100/35">Name the worksite before placing the pin.</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">{t('signup.locationDetails')}</p>
+                        <p className="mt-1 text-xs text-emerald-700/50 dark:text-emerald-100/35">{t('signup.locationDetailsHelp')}</p>
                       </div>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Name</label>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">{t('signup.locationName')}</label>
                           <input
-                            aria-label="Location name"
+                            aria-label={t('signup.locationName')}
                             value={selectedLocation.name}
                             onChange={(event) => updateLocation(selectedLocationIndex, { name: event.target.value })}
                             className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
@@ -1358,26 +1359,26 @@ className={cn(
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Location Type</label>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">{t('signup.locationType')}</label>
                           <select
-                            aria-label="Location type"
+                            aria-label={t('signup.locationType')}
                             value={selectedLocation.locationType}
                             onChange={(event) => updateLocation(selectedLocationIndex, { locationType: event.target.value as SignupLocationType })}
                             className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
                           >
                             {locationTypeOptions.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
+                              <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
                             ))}
                           </select>
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">Address Optional</label>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/50">{t('signup.addressOptional')}</label>
                           <input
-                            aria-label="Optional location address"
+                            aria-label={t('signup.addressOptional')}
                             value={selectedLocation.address}
                             onChange={(event) => updateLocation(selectedLocationIndex, { address: event.target.value })}
-                            placeholder="Street, city, country"
+                            placeholder={t('signup.addressPlaceholder')}
                             className="w-full rounded-lg border border-emerald-500/15 bg-white/80 px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-400 dark:bg-[#04110d]/80 dark:text-emerald-50"
                           />
                         </div>
@@ -1385,22 +1386,22 @@ className={cn(
                         <label className="flex items-center gap-3 rounded-lg border border-emerald-500/15 bg-black/10 px-3 py-2 dark:bg-black/20">
                           <input
                             type="checkbox"
-                            aria-label="Set as primary location"
+                            aria-label={t('signup.primaryLocation')}
                             checked={selectedLocation.isPrimary}
                             onChange={() => setPrimaryLocation(selectedLocationIndex)}
                             className="h-4 w-4 accent-emerald-500"
                           />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">Primary Location</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/70 dark:text-emerald-100/55">{t('signup.primaryLocation')}</span>
                         </label>
 
                         <button
                           type="button"
-                          aria-label="Remove selected location"
+                          aria-label={t('signup.removeLocation')}
                           onClick={() => removeLocation(selectedLocationIndex)}
                           disabled={locations.length === 1}
                           className="rounded-lg border border-red-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          Remove Location
+                          {t('signup.removeLocation')}
                         </button>
                       </div>
                     </div>

@@ -206,13 +206,13 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     if (data.success) {
       setRecoveryMessage(data.message || t('login.recoveryGeneric'));
     } else {
-      setRecoveryMessage(data.error || 'Unable to start recovery flow.');
+      setRecoveryMessage(data.error || t('login.recoveryStartError'));
     }
   } catch (error) {
     setRecoveryMessage(
       !navigator.onLine
         ? t('login.offlineSignIn')
-        : 'Server disconnection. Unable to start recovery flow.'
+        : t('login.recoveryServerError')
     );
   } finally {
     setIsRecovering(false);
@@ -226,7 +226,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     }
 
     if (!window.PublicKeyCredential) {
-      setPasskeyMessage('Passkeys are not supported in this browser.');
+      setPasskeyMessage(t('login.passkeyUnsupported'));
       return;
     }
 
@@ -459,17 +459,27 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
           </div>
         </form>
 
-<div className="mt-8 pt-6 border-t border-emerald-500/10 text-center flex flex-col space-y-4">           <div className="flex flex-col space-y-2">
-<span className="text-[10px] text-slate-600 font-mono tracking-widest uppercase">{t('login.systemOperational')}</span>
-           </div>
-           
-           <button 
-             onClick={onNavigateSignup}
-             type="button"
-             className="text-xs font-semibold text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors"
-           >
-             {t('login.registerTenant')}
-           </button>
+        <div className="mt-8 flex flex-col space-y-4 border-t border-emerald-500/10 pt-6 text-center">
+          <div className="flex flex-col space-y-2">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">{t('login.systemOperational')}</span>
+          </div>
+
+          <button
+            onClick={onNavigateSignup}
+            type="button"
+            className="text-xs font-semibold uppercase tracking-widest text-emerald-500 transition-colors hover:text-emerald-400"
+          >
+            {t('login.registerTenant')}
+          </button>
+
+          <a
+            href="https://shadyawad.github.io/portfolio/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-medium text-neutral-500 transition hover:text-emerald-500 hover:underline dark:text-emerald-100/40 dark:hover:text-emerald-300"
+          >
+            {t('login.creatorCredit')}
+          </a>
         </div>
       </div>
 

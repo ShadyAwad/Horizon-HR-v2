@@ -13,6 +13,7 @@ import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { $patchStyleText } from '@lexical/selection';
 import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
 import { Bold, Italic, List, ListOrdered, Palette, Pilcrow, Redo2, Smile, Type, Underline, Undo2 } from 'lucide-react';
+import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { cn } from '../lib/utils';
 
 type RichTextPayload = {
@@ -28,21 +29,21 @@ type RichTextEditorProps = {
   className?: string;
 };
 
-const TEXT_COLORS = [
-  { label: 'Default', value: '', swatch: 'transparent' },
-  { label: 'White', value: '#f8fafc', swatch: '#f8fafc' },
-  { label: 'Muted Gray', value: '#a3a3a3', swatch: '#a3a3a3' },
-  { label: 'Emerald', value: '#34d399', swatch: '#34d399' },
-  { label: 'Lime', value: '#a3e635', swatch: '#a3e635' },
-  { label: 'Teal', value: '#2dd4bf', swatch: '#2dd4bf' },
-  { label: 'Cyan', value: '#22d3ee', swatch: '#22d3ee' },
-  { label: 'Blue', value: '#60a5fa', swatch: '#60a5fa' },
-  { label: 'Purple', value: '#c084fc', swatch: '#c084fc' },
-  { label: 'Pink', value: '#f472b6', swatch: '#f472b6' },
-  { label: 'Red', value: '#f87171', swatch: '#f87171' },
-  { label: 'Orange', value: '#fb923c', swatch: '#fb923c' },
-  { label: 'Amber', value: '#fbbf24', swatch: '#fbbf24' },
-  { label: 'Yellow', value: '#fde047', swatch: '#fde047' },
+const TEXT_COLORS: Array<{ label: string; value: string; swatch: string; translationKey: TranslationKey }> = [
+  { label: 'Default', value: '', swatch: 'transparent', translationKey: 'editor.defaultColor' },
+  { label: 'White', value: '#f8fafc', swatch: '#f8fafc', translationKey: 'editor.white' },
+  { label: 'Muted Gray', value: '#a3a3a3', swatch: '#a3a3a3', translationKey: 'editor.mutedGray' },
+  { label: 'Emerald', value: '#34d399', swatch: '#34d399', translationKey: 'editor.emerald' },
+  { label: 'Lime', value: '#a3e635', swatch: '#a3e635', translationKey: 'editor.lime' },
+  { label: 'Teal', value: '#2dd4bf', swatch: '#2dd4bf', translationKey: 'editor.teal' },
+  { label: 'Cyan', value: '#22d3ee', swatch: '#22d3ee', translationKey: 'editor.cyan' },
+  { label: 'Blue', value: '#60a5fa', swatch: '#60a5fa', translationKey: 'editor.blue' },
+  { label: 'Purple', value: '#c084fc', swatch: '#c084fc', translationKey: 'editor.purple' },
+  { label: 'Pink', value: '#f472b6', swatch: '#f472b6', translationKey: 'editor.pink' },
+  { label: 'Red', value: '#f87171', swatch: '#f87171', translationKey: 'editor.red' },
+  { label: 'Orange', value: '#fb923c', swatch: '#fb923c', translationKey: 'editor.orange' },
+  { label: 'Amber', value: '#fbbf24', swatch: '#fbbf24', translationKey: 'editor.amber' },
+  { label: 'Yellow', value: '#fde047', swatch: '#fde047', translationKey: 'editor.yellow' },
 ];
 
 const FONT_SIZES = [
@@ -58,12 +59,12 @@ const FONT_SIZES = [
   { label: '32', value: '32px' },
 ];
 
-const EMOJI_CATEGORIES = [
-  { label: 'Announcements', emojis: ['📢', '📣', '📰', '🔔', '✅', '❗', '⚠️', '🎉'] },
-  { label: 'Calendar/events', emojis: ['📅', '🗓️', '⏰', '⌛', '🎯', '📌'] },
-  { label: 'Work/HR', emojis: ['💼', '🧾', '📋', '📝', '👥', '🏢', '🏆'] },
-  { label: 'Positive/team', emojis: ['🙌', '👏', '💪', '🚀', '⭐', '💚', '🤝'] },
-  { label: 'Status', emojis: ['✅', '❌', '⚠️', '🔴', '🟡', '🟢', '🔒'] },
+const EMOJI_CATEGORIES: Array<{ label: string; translationKey: TranslationKey; emojis: string[] }> = [
+  { label: 'Announcements', translationKey: 'editor.announcements', emojis: ['📢', '📣', '📰', '🔔', '✅', '❗', '⚠️', '🎉'] },
+  { label: 'Calendar/events', translationKey: 'editor.calendarEvents', emojis: ['📅', '🗓️', '⏰', '⌛', '🎯', '📌'] },
+  { label: 'Work/HR', translationKey: 'editor.workHr', emojis: ['💼', '🧾', '📋', '📝', '👥', '🏢', '🏆'] },
+  { label: 'Positive/team', translationKey: 'editor.positiveTeam', emojis: ['🙌', '👏', '💪', '🚀', '⭐', '💚', '🤝'] },
+  { label: 'Status', translationKey: 'editor.status', emojis: ['✅', '❌', '⚠️', '🔴', '🟡', '🟢', '🔒'] },
 ];
 
 function getInitialEditorState(valueJson: unknown | null | undefined) {
@@ -134,6 +135,7 @@ function ToolbarButton({
 
 function EditorToolbar() {
   const [editor] = useLexicalComposerContext();
+  const { t, isRtl } = useLanguage();
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false });
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedFontSize, setSelectedFontSize] = useState('');
@@ -225,31 +227,31 @@ function EditorToolbar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-emerald-500/15 bg-black/25 p-2">
-      <ToolbarButton label="Bold" active={activeFormats.bold} onClick={() => formatText('bold')}>
+      <ToolbarButton label={t('editor.bold')} active={activeFormats.bold} onClick={() => formatText('bold')}>
         <Bold className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Italic" active={activeFormats.italic} onClick={() => formatText('italic')}>
+      <ToolbarButton label={t('editor.italic')} active={activeFormats.italic} onClick={() => formatText('italic')}>
         <Italic className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Underline" active={activeFormats.underline} onClick={() => formatText('underline')}>
+      <ToolbarButton label={t('editor.underline')} active={activeFormats.underline} onClick={() => formatText('underline')}>
         <Underline className="h-4 w-4" />
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
-      <ToolbarButton label="Bulleted list" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>
+      <ToolbarButton label={t('editor.bulletedList')} onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>
         <List className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Numbered list" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>
+      <ToolbarButton label={t('editor.numberedList')} onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>
         <ListOrdered className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Remove list" onClick={removeCurrentList}>
+      <ToolbarButton label={t('editor.removeList')} onClick={removeCurrentList}>
         <Pilcrow className="h-4 w-4" />
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
       <div className="relative">
         <button
           type="button"
-          aria-label="Text color"
-          title="Text color"
+          aria-label={t('editor.textColor')}
+          title={t('editor.textColor')}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => setOpenPicker((current) => current === 'color' ? null : 'color')}
           className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
@@ -262,18 +264,18 @@ function EditorToolbar() {
             )}
             style={selectedColor ? { backgroundColor: selectedColor } : undefined}
           />
-          Color
+          {t('editor.color')}
         </button>
         {openPicker === 'color' && (
-          <div className="absolute left-0 top-full z-40 mt-2 w-64 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">Text color</div>
+          <div className={cn("absolute top-full z-40 mt-2 w-64 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">{t('editor.textColor')}</div>
             <div className="grid grid-cols-7 gap-2">
               {TEXT_COLORS.map((color) => (
                 <button
                   key={color.label}
                   type="button"
-                  aria-label={`${color.label} text color`}
-                  title={color.label}
+                  aria-label={`${t(color.translationKey)} ${t('editor.textColor')}`}
+                  title={t(color.translationKey)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     setSelectedColor(color.value);
@@ -301,17 +303,17 @@ function EditorToolbar() {
       <div className="relative">
         <button
           type="button"
-          aria-label="Font size"
-          title="Font size"
+          aria-label={t('editor.fontSize')}
+          title={t('editor.fontSize')}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => setOpenPicker((current) => current === 'size' ? null : 'size')}
           className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
         >
           <Type className="h-4 w-4" />
-          {selectedFontSize ? selectedFontSize.replace('px', '') : 'Size'}
+          {selectedFontSize ? selectedFontSize.replace('px', '') : t('editor.size')}
         </button>
         {openPicker === 'size' && (
-          <div className="absolute left-0 top-full z-40 mt-2 grid w-36 grid-cols-2 gap-1 rounded-lg border border-emerald-500/20 bg-black/95 p-2 shadow-2xl shadow-black/40">
+          <div className={cn("absolute top-full z-40 mt-2 grid w-36 grid-cols-2 gap-1 rounded-lg border border-emerald-500/20 bg-black/95 p-2 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
             {FONT_SIZES.map((size) => (
               <button
                 key={size.label}
@@ -329,7 +331,7 @@ function EditorToolbar() {
                     : 'border-emerald-500/15 bg-black/40 text-emerald-100/65 hover:border-emerald-400/50 hover:text-emerald-100',
                 )}
               >
-                {size.label}
+                {size.value ? size.label : t('editor.reset')}
               </button>
             ))}
           </div>
@@ -338,28 +340,28 @@ function EditorToolbar() {
       <div className="relative">
         <button
           type="button"
-          aria-label="Insert emoji"
-          title="Insert emoji"
+          aria-label={t('editor.insertEmoji')}
+          title={t('editor.insertEmoji')}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => setOpenPicker((current) => current === 'emoji' ? null : 'emoji')}
           className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
         >
           <Smile className="h-4 w-4" />
-          Emoji
+          {t('editor.emoji')}
         </button>
         {openPicker === 'emoji' && (
-          <div className="absolute left-0 top-full z-40 mt-2 w-72 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40">
+          <div className={cn("absolute top-full z-40 mt-2 w-72 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
             <div className="space-y-3">
               {EMOJI_CATEGORIES.map((category) => (
                 <div key={category.label}>
-                  <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">{category.label}</div>
+                  <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">{t(category.translationKey)}</div>
                   <div className="flex flex-wrap gap-1">
                     {category.emojis.map((emoji) => (
                       <button
                         key={`${category.label}-${emoji}`}
                         type="button"
-                        aria-label={`Insert ${emoji}`}
-                        title={`Insert ${emoji}`}
+                        aria-label={`${t('editor.insertEmoji')} ${emoji}`}
+                        title={`${t('editor.insertEmoji')} ${emoji}`}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => insertEmoji(emoji)}
                         className="flex h-8 w-8 items-center justify-center rounded border border-emerald-500/10 bg-black/40 text-lg transition hover:border-emerald-400/40 hover:bg-emerald-500/10"
@@ -375,10 +377,10 @@ function EditorToolbar() {
         )}
       </div>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
-      <ToolbarButton label="Undo" onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
+      <ToolbarButton label={t('editor.undo')} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Redo" onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}>
+      <ToolbarButton label={t('editor.redo')} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}>
         <Redo2 className="h-4 w-4" />
       </ToolbarButton>
     </div>
@@ -388,10 +390,12 @@ function EditorToolbar() {
 export function RichTextEditor({
   valueJson,
   onChange,
-  placeholder = 'Write an update...',
+  placeholder,
   readOnly = false,
   className,
 }: RichTextEditorProps) {
+  const { t, isRtl } = useLanguage();
+  const resolvedPlaceholder = placeholder ?? t('editor.writeUpdate');
   const initialConfig = useMemo(() => ({
     namespace: readOnly ? 'StanzaFeedReader' : 'StanzaFeedComposer',
     editable: !readOnly,
@@ -429,12 +433,13 @@ export function RichTextEditor({
               <ContentEditable
                 className={cn(
                   'min-h-[150px] px-3 py-3 text-sm leading-6 text-emerald-50 outline-none',
+                  isRtl ? 'text-right' : 'text-left',
                   readOnly && 'min-h-0 px-0 py-0 text-slate-700 dark:text-emerald-100/70',
                 )}
-                aria-placeholder={placeholder}
+                aria-placeholder={resolvedPlaceholder}
                 placeholder={!readOnly ? (
-                  <div className="pointer-events-none absolute left-3 top-3 text-sm text-emerald-100/35">
-                    {placeholder}
+                  <div className={cn("pointer-events-none absolute top-3 text-sm text-emerald-100/35", isRtl ? "right-3 text-right" : "left-3 text-left")}>
+                    {resolvedPlaceholder}
                   </div>
                 ) : null}
               />
@@ -462,6 +467,7 @@ export function RichFeedContent({
   contentJson?: unknown | null;
   contentText: string;
 }) {
+  const { isRtl } = useLanguage();
   const hasLexicalRoot = Boolean(
     contentJson &&
     typeof contentJson === 'object' &&
@@ -469,7 +475,7 @@ export function RichFeedContent({
   );
 
   if (!hasLexicalRoot) {
-    return <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-emerald-100/70">{contentText}</p>;
+    return <p className={cn("mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-emerald-100/70", isRtl ? "text-right" : "text-left")}>{contentText}</p>;
   }
 
   return (

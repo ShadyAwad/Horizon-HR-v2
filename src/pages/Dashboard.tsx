@@ -428,10 +428,6 @@ function getShiftFrame(shift: ShiftRow) {
   return shift.shiftStart && shift.shiftEnd ? `${shift.shiftStart} - ${shift.shiftEnd}` : 'Leave';
 }
 
-function formatRole(role: AuthUser['role']) {
-  return role === 'hr_admin' ? 'HR Admin' : role === 'manager' ? 'Manager' : 'Employee';
-}
-
 function getTenantName(user: AuthUser) {
   if (!user.tenant) return 'Company workspace';
   return typeof user.tenant === 'string' ? user.tenant : user.tenant.companyName;
@@ -668,6 +664,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   ));
   const [pwaMessage, setPwaMessage] = useState('');
   const [pwaMessageType, setPwaMessageType] = useState<'success' | 'error' | 'info'>('info');
+  const { t, lang, setLang, isRtl } = useLanguage();
+  const { isDark, toggleTheme } = useTheme();
 
   const geo = useGeolocation();
 
@@ -696,7 +694,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       window.localStorage.removeItem('stanza-install-dismissed');
       setIsStandalone(true);
       setPwaMessageType('success');
-      setPwaMessage('Stanza is installed.');
+      setPwaMessage(t('dash.installedMessage'));
     };
 
     window.addEventListener('online', updateOnlineState);
@@ -715,7 +713,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       window.removeEventListener('appinstalled', handleAppInstalled);
       displayModeQuery.removeEventListener('change', updateStandaloneState);
     };
-  }, [installDismissed]);
+  }, [installDismissed, t]);
 
   const installStanza = async () => {
     if (!installPrompt) return;
@@ -729,14 +727,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setInstallDismissed(true);
         window.localStorage.setItem('stanza-install-dismissed', 'true');
         setPwaMessageType('info');
-        setPwaMessage('Install prompt dismissed. You can still install Stanza from the browser menu.');
+        setPwaMessage(t('dash.installDismissedMessage'));
       } else {
         setPwaMessageType('success');
-        setPwaMessage('Stanza install started.');
+        setPwaMessage(t('dash.installStartedMessage'));
       }
     } catch {
       setPwaMessageType('error');
-      setPwaMessage('Unable to open the install prompt. Use your browser install menu.');
+      setPwaMessage(t('dash.installPromptError'));
     }
   };
 
@@ -750,13 +748,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     if (!('Notification' in window)) {
       setNotificationPermission('unsupported');
       setPwaMessageType('error');
-      setPwaMessage('Notifications are not supported in this browser.');
+      setPwaMessage(t('dash.notificationUnsupportedMessage'));
       return;
     }
 
     if (!window.isSecureContext) {
       setPwaMessageType('error');
-      setPwaMessage('Notification permissions require HTTPS or localhost.');
+      setPwaMessage(t('dash.notificationSecureContextMessage'));
       return;
     }
 
@@ -766,17 +764,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       setPwaMessageType(permission === 'granted' ? 'success' : 'info');
       setPwaMessage(
         permission === 'granted'
-          ? 'Notification permissions ready. Push delivery requires server push setup.'
-          : 'Notification permission was not granted.',
+          ? t('dash.notificationReadyMessage')
+          : t('dash.notificationNotGrantedMessage'),
       );
     } catch {
       setPwaMessageType('error');
-      setPwaMessage('Unable to request notification permission.');
+      setPwaMessage(t('dash.notificationRequestError'));
     }
   };
 
-  const { t, lang, setLang, isRtl } = useLanguage();
-  const { isDark, toggleTheme } = useTheme();
   const canManageRoster = user.role === 'hr_admin' || user.role === 'manager';
   const missingCompensationProfiles = compensationProfiles.filter((profile) => !profile.id);
   const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
@@ -807,16 +803,142 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       nextStatus === 'paid' ? canMarkPayrollPaid : canApprovePayroll
     ))
   );
-  const profilePanelHeading = showPayrollPanel ? 'Payroll' : showGrievancesPanel ? 'Grievances' : 'Employee Profile';
+  const profilePanelHeading = showPayrollPanel ? t('profile.payroll') : showGrievancesPanel ? t('dash.grievances') : t('profile.title');
   const profilePanelSubtitle = showPayrollPanel
-    ? 'Tenant payroll records, compensation, loans, and approvals'
+    ? t('dash.payrollSubtitleFull')
     : showGrievancesPanel
-      ? 'File a grievance and manage tenant cases'
-      : 'Personal ledger & workflows';
+      ? t('dash.grievancesSubtitleAdmin')
+      : t('profile.subtitle');
   const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
   const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
+
+  const displayRole = (role: AuthUser['role']) => {
+    if (role === 'hr_admin') return t('enum.hrAdmin');
+    if (role === 'manager') return t('enum.manager');
+    return t('enum.employee');
+  };
+
+  const displayEnum = (value: string) => {
+    const normalized = value.toLowerCase();
+    const enumLabels: Record<string, ReturnType<typeof t>> = {
+      employee: t('enum.employee'),
+      manager: t('enum.manager'),
+      hr_admin: t('enum.hrAdmin'),
+      pending: t('enum.pending'),
+      approved: t('enum.approved'),
+      rejected: t('enum.rejected'),
+      cancelled: t('enum.cancelled'),
+      draft: t('enum.draft'),
+      published: t('enum.published'),
+      archived: t('enum.archived'),
+      paid: t('enum.paid'),
+      open: t('enum.open'),
+      under_review: t('enum.underReview'),
+      resolved: t('enum.resolved'),
+      closed: t('enum.closed'),
+      active: t('enum.active'),
+      inactive: t('enum.inactive'),
+      missing: t('enum.missing'),
+      low: t('enum.low'),
+      normal: t('enum.normal'),
+      high: t('enum.high'),
+      urgent: t('enum.urgent'),
+      general: t('enum.general'),
+      scheduling: t('enum.scheduling'),
+      leave_request: t('enum.leaveRequest'),
+      announcement: t('enum.announcement'),
+      event: t('enum.event'),
+      policy_update: t('enum.policyUpdate'),
+      monthly: t('enum.monthly'),
+      weekly: t('enum.weekly'),
+      hourly: t('enum.hourly'),
+      annual: t('enum.annual'),
+      one_time: t('enum.oneTime'),
+      headquarters: t('enum.headquarters'),
+      branch: t('enum.branch'),
+      warehouse: t('enum.warehouse'),
+      remote_site: t('enum.remoteSite'),
+      other: t('enum.other'),
+    };
+
+    return enumLabels[normalized] || formatLabel(value);
+  };
+
+  const displayWeekday = (day: string) => {
+    const weekdayLabels: Record<string, string> = {
+      Monday: t('dash.monday'),
+      Tuesday: t('dash.tuesday'),
+      Wednesday: t('dash.wednesday'),
+      Thursday: t('dash.thursday'),
+      Friday: t('dash.friday'),
+      Saturday: t('dash.saturday'),
+      Sunday: t('dash.sunday'),
+    };
+    return weekdayLabels[day] || day;
+  };
+
+  const displayShiftType = (type: string) => {
+    const shiftLabels: Record<string, string> = {
+      'Office HQ': t('dash.officeHq'),
+      Remote: t('dash.remote'),
+      'Annual Leave': t('dash.annualLeave'),
+      Unscheduled: t('dash.abstained'),
+    };
+    return shiftLabels[type] || type;
+  };
+
+  const displayNotificationChannel = (channel: NotificationChannel) => {
+    if (channel === 'in_app') return t('notification.inApp');
+    if (channel === 'email') return t('notification.email');
+    return t('notification.push');
+  };
+
+  const displayNotificationCategory = (key: NotificationKey) => {
+    const labels: Record<NotificationKey, string> = {
+      attendance_reminders: t('notification.attendanceReminders'),
+      break_reminders: t('notification.breakReminders'),
+      break_request_pending: t('notification.breakRequestPending'),
+      break_request_reviewed: t('notification.breakRequestReviewed'),
+      leave_updates: t('notification.leaveUpdates'),
+      payroll_updates: t('notification.payrollUpdates'),
+      loan_updates: t('notification.loanUpdates'),
+      grievance_updates: t('notification.grievanceUpdates'),
+      company_feed_posts: t('notification.companyFeedPosts'),
+      role_permission_changes: t('notification.rolePermissionChanges'),
+      system_alerts: t('notification.systemAlerts'),
+    };
+    return labels[key];
+  };
+
+  const displayNotificationDescription = (key: NotificationKey) => {
+    const descriptions: Record<NotificationKey, string> = {
+      attendance_reminders: t('notification.attendanceRemindersDescription'),
+      break_reminders: t('notification.breakRemindersDescription'),
+      break_request_pending: t('notification.breakRequestPendingDescription'),
+      break_request_reviewed: t('notification.breakRequestReviewedDescription'),
+      leave_updates: t('notification.leaveUpdatesDescription'),
+      payroll_updates: t('notification.payrollUpdatesDescription'),
+      loan_updates: t('notification.loanUpdatesDescription'),
+      grievance_updates: t('notification.grievanceUpdatesDescription'),
+      company_feed_posts: t('notification.companyFeedPostsDescription'),
+      role_permission_changes: t('notification.rolePermissionChangesDescription'),
+      system_alerts: t('notification.systemAlertsDescription'),
+    };
+    return descriptions[key];
+  };
+
+  const displayNotificationPermission = () => {
+    if (notificationPermission === 'unsupported') return t('dash.unsupported');
+    if (notificationPermission === 'granted') return t('dash.permissionGranted');
+    if (notificationPermission === 'denied') return t('dash.permissionDenied');
+    return t('dash.permissionDefault');
+  };
+
+  const displayLastClockEvent = lastClockEvent === 'No active shift recorded.'
+    ? t('dash.noActiveShiftRecorded')
+    : lastClockEvent;
 
   const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
     notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
@@ -860,11 +982,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setQuietHoursEnd(settingWithQuietHours?.quietHoursEnd || '');
       } else {
         setNotificationMessageType('error');
-        setNotificationMessage(data.error || 'Unable to load notification settings.');
+        setNotificationMessage(data.error || t('dash.notificationLoadError'));
       }
     } catch {
       setNotificationMessageType('error');
-      setNotificationMessage('Server disconnection. Unable to load notification settings.');
+      setNotificationMessage(t('dash.notificationLoadServerError'));
     } finally {
       setNotificationLoading(false);
     }
@@ -901,14 +1023,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         setNotificationSettings(normalizeNotificationSettings(data.settings || []));
         setNotificationMessageType('success');
-        setNotificationMessage('Notification settings saved.');
+        setNotificationMessage(t('dash.notificationSaved'));
       } else {
         setNotificationMessageType('error');
-        setNotificationMessage(data.error || 'Unable to save notification settings.');
+        setNotificationMessage(data.error || t('dash.notificationSaveError'));
       }
     } catch {
       setNotificationMessageType('error');
-      setNotificationMessage('Server disconnection. Unable to save notification settings.');
+      setNotificationMessage(t('dash.notificationSaveServerError'));
     } finally {
       setNotificationSaving(false);
     }
@@ -1193,7 +1315,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         const ownData = await ownResponse.json();
 
         if (!ownResponse.ok || !ownData.success) {
-          throw new Error(ownData.error || 'Unable to load break requests.');
+          throw new Error(ownData.error || t('dash.breakLoadError'));
         }
 
         setBreakRequests(ownData.breakRequests || []);
@@ -1204,7 +1326,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         const pendingData = await pendingResponse.json();
 
         if (!pendingResponse.ok || !pendingData.success) {
-          throw new Error(pendingData.error || 'Unable to load pending break requests.');
+          throw new Error(pendingData.error || t('dash.breakPendingLoadError'));
         }
 
         setPendingBreakRequests(pendingData.breakRequests || []);
@@ -1213,7 +1335,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       }
     } catch (error) {
       setBreakRequestMessageType('error');
-      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to load break requests.');
+      setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakLoadServerError'));
     } finally {
       setBreakRequestsLoading(false);
     }
@@ -1234,7 +1356,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     if (!Number.isInteger(selectedDuration) || selectedDuration < 5 || selectedDuration > 180) {
       setBreakRequestMessageType('error');
-      setBreakRequestMessage('Choose a break duration between 5 and 180 minutes.');
+      setBreakRequestMessage(t('dash.breakDurationError'));
       return;
     }
 
@@ -1254,16 +1376,16 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Unable to request break.');
+        throw new Error(data.error || t('dash.breakRequestError'));
       }
 
       setBreakRequestForm(defaultBreakRequestForm);
       setBreakRequestMessageType('success');
-      setBreakRequestMessage('Break request sent for approval.');
+      setBreakRequestMessage(t('dash.breakRequestSent'));
       await loadBreakRequests(false);
     } catch (error) {
       setBreakRequestMessageType('error');
-      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to request break.');
+      setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakRequestServerError'));
     } finally {
       setBreakRequestSubmitting(false);
     }
@@ -1287,15 +1409,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Unable to cancel break request.');
+        throw new Error(data.error || t('dash.breakCancelError'));
       }
 
       setBreakRequestMessageType('success');
-      setBreakRequestMessage('Break request cancelled.');
+      setBreakRequestMessage(t('dash.breakCancelled'));
       await loadBreakRequests(false);
     } catch (error) {
       setBreakRequestMessageType('error');
-      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to cancel break request.');
+      setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakCancelServerError'));
     } finally {
       setBreakRequestReviewingId(null);
     }
@@ -1323,7 +1445,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Unable to review break request.');
+        throw new Error(data.error || t('dash.breakReviewError'));
       }
 
       setBreakReviewNotes((current) => {
@@ -1336,7 +1458,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       await loadBreakRequests(false);
     } catch (error) {
       setBreakRequestMessageType('error');
-      setBreakRequestMessage(error instanceof Error ? error.message : 'Server disconnection. Unable to review break request.');
+      setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakReviewServerError'));
     } finally {
       setBreakRequestReviewingId(null);
     }
@@ -1356,11 +1478,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setPasskeys(data.passkeys || []);
       } else {
         setPasskeyMessageType('error');
-        setPasskeyMessage(data.error || 'Unable to load passkeys.');
+        setPasskeyMessage(data.error || t('dash.passkeyLoadError'));
       }
     } catch {
       setPasskeyMessageType('error');
-      setPasskeyMessage('Server disconnection. Unable to load passkeys.');
+      setPasskeyMessage(t('dash.passkeyLoadServerError'));
     } finally {
       setPasskeysLoading(false);
     }
@@ -1375,7 +1497,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
     if (!window.PublicKeyCredential) {
       setPasskeyMessageType('error');
-      setPasskeyMessage('Passkeys are not supported in this browser.');
+      setPasskeyMessage(t('dash.passkeyUnsupported'));
       return;
     }
 
@@ -1391,7 +1513,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const optionsData = await optionsResponse.json();
 
       if (!optionsResponse.ok || !optionsData.success) {
-        throw new Error(optionsData.error || 'Unable to start passkey registration.');
+        throw new Error(optionsData.error || t('dash.passkeyStartError'));
       }
 
       const credential = await startRegistration({ optionsJSON: optionsData.options });
@@ -1406,15 +1528,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok || !verifyData.success) {
-        throw new Error(verifyData.error || 'Unable to save passkey.');
+        throw new Error(verifyData.error || t('dash.passkeySaveError'));
       }
 
       setPasskeyMessageType('success');
-      setPasskeyMessage('Passkey added. You can now sign in with this device.');
+      setPasskeyMessage(t('dash.passkeyAdded'));
       await loadPasskeys(false);
     } catch (error) {
       setPasskeyMessageType('error');
-      setPasskeyMessage(error instanceof Error ? error.message : 'Unable to add passkey.');
+      setPasskeyMessage(error instanceof Error ? error.message : t('dash.passkeyAddError'));
     } finally {
       setPasskeySaving(false);
     }
@@ -1437,13 +1559,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       const employeesData = await employeesResponse.json();
 
       if (!rolesResponse.ok || !rolesData.success) {
-        throw new Error(rolesData.error || 'Unable to load roles.');
+        throw new Error(rolesData.error || t('dash.roleLoadError'));
       }
       if (!permissionsResponse.ok || !permissionsData.success) {
-        throw new Error(permissionsData.error || 'Unable to load permissions.');
+        throw new Error(permissionsData.error || t('dash.roleLoadError'));
       }
       if (!employeesResponse.ok || !employeesData.success) {
-        throw new Error(employeesData.error || 'Unable to load role assignments.');
+        throw new Error(employeesData.error || t('dash.roleLoadError'));
       }
 
       setTenantRoles(rolesData.roles || []);
@@ -1455,7 +1577,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       }), {}));
     } catch (error) {
       setRoleMessageType('error');
-      setRoleMessage(error instanceof Error ? error.message : 'Unable to load role management.');
+      setRoleMessage(error instanceof Error ? error.message : t('dash.roleLoadError'));
     } finally {
       setRolesLoading(false);
     }
@@ -1494,14 +1616,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setRoleForm(defaultRoleForm);
         await loadRoleManagement();
         setRoleMessageType('success');
-        setRoleMessage('Custom role created.');
+        setRoleMessage(t('dash.roleCreated'));
       } else {
         setRoleMessageType('error');
-        setRoleMessage(data.error || 'Unable to create role.');
+        setRoleMessage(data.error || t('dash.roleCreateError'));
       }
     } catch {
       setRoleMessageType('error');
-      setRoleMessage('Server disconnection. Unable to create role.');
+      setRoleMessage(t('dash.roleCreateError'));
     } finally {
       setRoleSaving(false);
     }
@@ -1530,14 +1652,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadRoleManagement();
         setRoleMessageType('success');
-        setRoleMessage('Role assigned.');
+        setRoleMessage(t('dash.roleAssigned'));
       } else {
         setRoleMessageType('error');
-        setRoleMessage(data.error || 'Unable to assign role.');
+        setRoleMessage(data.error || t('dash.roleAssignError'));
       }
     } catch {
       setRoleMessageType('error');
-      setRoleMessage('Server disconnection. Unable to assign role.');
+      setRoleMessage(t('dash.roleAssignError'));
     } finally {
       setRoleUpdatingEmployeeId(null);
     }
@@ -1566,14 +1688,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadRoleManagement();
         setRoleMessageType('success');
-        setRoleMessage('Job title updated.');
+        setRoleMessage(t('dash.titleUpdated'));
       } else {
         setRoleMessageType('error');
-        setRoleMessage(data.error || 'Unable to update job title.');
+        setRoleMessage(data.error || t('dash.titleUpdateError'));
       }
     } catch {
       setRoleMessageType('error');
-      setRoleMessage('Server disconnection. Unable to update job title.');
+      setRoleMessage(t('dash.titleUpdateError'));
     } finally {
       setRoleUpdatingEmployeeId(null);
     }
@@ -1600,11 +1722,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setPayrollRecords(data.payroll || []);
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to load payroll records.');
+        setPayrollMessage(data.error || t('dash.payrollLoadError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to load payroll records.');
+      setPayrollMessage(t('dash.payrollLoadServerError'));
     } finally {
       setPayrollLoading(false);
     }
@@ -1635,11 +1757,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         });
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to load compensation profiles.');
+        setPayrollMessage(data.error || t('dash.compensationLoadError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to load compensation profiles.');
+      setPayrollMessage(t('dash.compensationLoadServerError'));
     } finally {
       setCompensationLoading(false);
     }
@@ -1666,11 +1788,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         });
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to load employee loans.');
+        setPayrollMessage(data.error || t('dash.loanLoadError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to load employee loans.');
+      setPayrollMessage(t('dash.loanLoadServerError'));
     } finally {
       setLoanLoading(false);
     }
@@ -1728,14 +1850,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadCompensationProfiles();
         setPayrollMessageType('success');
-        setPayrollMessage('Compensation profile saved.');
+        setPayrollMessage(t('dash.compensationSaved'));
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to save compensation profile.');
+        setPayrollMessage(data.error || t('dash.compensationSaveError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to save compensation profile.');
+      setPayrollMessage(t('dash.compensationSaveServerError'));
     } finally {
       setCompensationSaving(false);
     }
@@ -1778,14 +1900,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           repaymentFrequency: current.repaymentFrequency,
         }));
         setPayrollMessageType('success');
-        setPayrollMessage('Employee loan created.');
+        setPayrollMessage(t('dash.employeeLoanCreated'));
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to create employee loan.');
+        setPayrollMessage(data.error || t('dash.employeeLoanCreateError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to create employee loan.');
+      setPayrollMessage(t('dash.employeeLoanCreateServerError'));
     } finally {
       setLoanSaving(false);
     }
@@ -1814,14 +1936,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadEmployeeLoans();
         setPayrollMessageType('success');
-        setPayrollMessage('Loan status updated.');
+        setPayrollMessage(t('dash.loanStatusUpdated'));
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to update loan status.');
+        setPayrollMessage(data.error || t('dash.loanStatusUpdateError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to update loan status.');
+      setPayrollMessage(t('dash.loanStatusUpdateServerError'));
     } finally {
       setLoanUpdatingId(null);
     }
@@ -1855,11 +1977,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setPayrollMessage(`Payroll marked ${formatLabel(status)}.`);
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to update payroll status.');
+        setPayrollMessage(data.error || t('dash.payrollStatusUpdateError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to update payroll status.');
+      setPayrollMessage(t('dash.payrollStatusUpdateServerError'));
     } finally {
       setPayrollStatusUpdatingId(null);
     }
@@ -1913,11 +2035,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setPayrollMessage(`${data.message} Records: ${data.recordsGenerated}`);
       } else {
         setPayrollMessageType('error');
-        setPayrollMessage(data.error || 'Unable to run payroll.');
+        setPayrollMessage(data.error || t('dash.payrollRunError'));
       }
     } catch {
       setPayrollMessageType('error');
-      setPayrollMessage('Server disconnection. Unable to run payroll.');
+      setPayrollMessage(t('dash.payrollRunServerError'));
     } finally {
       setPayrollSubmitting(false);
     }
@@ -1941,7 +2063,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       });
 
       if (!res.ok) {
-        let errorMessage = 'Unable to export payroll PDF.';
+        let errorMessage = t('dash.payrollExportError');
         try {
           const data = await res.json();
           errorMessage = data.error || errorMessage;
@@ -1965,7 +2087,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       window.URL.revokeObjectURL(url);
     } catch (error) {
       setPayrollMessageType('error');
-      setPayrollMessage(error instanceof Error ? error.message : 'Unable to export payroll PDF.');
+      setPayrollMessage(error instanceof Error ? error.message : t('dash.payrollExportError'));
     } finally {
       setPayrollExportingId(null);
     }
@@ -2030,7 +2152,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       if (!myResponse.ok || !myData.success) {
         setGrievanceMessageType('error');
-        setGrievanceMessage(myData.error || 'Unable to load grievances.');
+        setGrievanceMessage(myData.error || t('dash.grievanceLoadError'));
         return;
       }
 
@@ -2044,7 +2166,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
         if (!tenantResponse.ok || !tenantData.success) {
           setGrievanceMessageType('error');
-          setGrievanceMessage(tenantData.error || 'Unable to load tenant grievances.');
+          setGrievanceMessage(tenantData.error || t('dash.tenantGrievanceLoadError'));
           return;
         }
 
@@ -2054,7 +2176,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       }
     } catch {
       setGrievanceMessageType('error');
-      setGrievanceMessage('Server disconnection. Unable to load grievances.');
+      setGrievanceMessage(t('dash.grievanceLoadServerError'));
     } finally {
       setGrievanceLoading(false);
       setTenantGrievanceLoading(false);
@@ -2070,9 +2192,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     setShowPayrollPanel(false);
     setShowGrievancesPanel(true);
     setGrievanceMessageType('success');
-    setGrievanceMessage('Leave request form opened. Add your dates and details, then submit.');
+    setGrievanceMessage(t('dash.leaveRequestOpened'));
     setGrievanceForm({
-      title: 'Leave Request',
+      title: t('enum.leaveRequest'),
       category: 'leave_request',
       priority: 'normal',
       description: '',
@@ -2103,14 +2225,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setGrievanceForm(defaultGrievanceForm);
         await loadGrievances(false);
         setGrievanceMessageType('success');
-        setGrievanceMessage('Grievance filed successfully.');
+        setGrievanceMessage(t('dash.grievanceFiled'));
       } else {
         setGrievanceMessageType('error');
-        setGrievanceMessage(data.error || 'Unable to file grievance.');
+        setGrievanceMessage(data.error || t('dash.grievanceFileError'));
       }
     } catch {
       setGrievanceMessageType('error');
-      setGrievanceMessage('Server disconnection. Unable to file grievance.');
+      setGrievanceMessage(t('dash.grievanceFileServerError'));
     } finally {
       setGrievanceSubmitting(false);
     }
@@ -2139,14 +2261,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadGrievances(false);
         setGrievanceMessageType('success');
-        setGrievanceMessage('Grievance status updated.');
+        setGrievanceMessage(t('dash.grievanceStatusUpdated'));
       } else {
         setGrievanceMessageType('error');
-        setGrievanceMessage(data.error || 'Unable to update grievance status.');
+        setGrievanceMessage(data.error || t('dash.grievanceStatusUpdateError'));
       }
     } catch {
       setGrievanceMessageType('error');
-      setGrievanceMessage('Server disconnection. Unable to update grievance status.');
+      setGrievanceMessage(t('dash.grievanceStatusUpdateServerError'));
     } finally {
       setGrievanceUpdatingId(null);
     }
@@ -2166,11 +2288,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setFeedPosts(data.posts || []);
       } else {
         setFeedMessageType('error');
-        setFeedMessage(data.error || 'Unable to load company feed.');
+        setFeedMessage(data.error || t('dash.feedLoadError'));
       }
     } catch {
       setFeedMessageType('error');
-      setFeedMessage('Server disconnection. Unable to load company feed.');
+      setFeedMessage(t('dash.feedLoadServerError'));
     } finally {
       setFeedLoading(false);
     }
@@ -2253,14 +2375,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setFeedEditorKey((current) => current + 1);
         await Promise.all([loadFeed(false), loadAdminFeed()]);
         setFeedMessageType('success');
-        setFeedMessage(feedForm.status === 'published' ? 'Post published.' : 'Draft saved.');
+        setFeedMessage(feedForm.status === 'published' ? t('dash.postPublished') : t('dash.draftSaved'));
       } else {
         setFeedMessageType('error');
-        setFeedMessage(data.error || 'Unable to save feed post.');
+        setFeedMessage(data.error || t('dash.feedSaveError'));
       }
     } catch {
       setFeedMessageType('error');
-      setFeedMessage('Server disconnection. Unable to save feed post.');
+      setFeedMessage(t('dash.feedSaveServerError'));
     } finally {
       setFeedSubmitting(false);
     }
@@ -2289,14 +2411,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await Promise.all([loadFeed(false), loadAdminFeed()]);
         setFeedMessageType('success');
-        setFeedMessage('Post status updated.');
+        setFeedMessage(t('dash.postStatusUpdated'));
       } else {
         setFeedMessageType('error');
-        setFeedMessage(data.error || 'Unable to update post status.');
+        setFeedMessage(data.error || t('dash.postStatusUpdateError'));
       }
     } catch {
       setFeedMessageType('error');
-      setFeedMessage('Server disconnection. Unable to update post status.');
+      setFeedMessage(t('dash.postStatusUpdateServerError'));
     } finally {
       setFeedUpdatingId(null);
     }
@@ -2325,10 +2447,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           setCompanyLocations(data.locations || []);
           setLocationsMessage('');
         } else {
-          setLocationsMessage(data.error || 'Unable to load locations.');
+          setLocationsMessage(data.error || t('dash.locationsLoadError'));
         }
       } catch {
-        setLocationsMessage('Unable to load locations.');
+        setLocationsMessage(t('dash.locationsLoadError'));
       }
     };
 
@@ -2341,10 +2463,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
             <Bell className="h-4 w-4 text-emerald-500" />
-            Notification Settings
+            {t('dash.notificationSettings')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Choose which updates Stanza should surface for your account.
+            {t('dash.notificationSettingsSubtitle')}
           </p>
         </div>
 
@@ -2354,12 +2476,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           disabled={isOffline || notificationLoading || notificationSaving}
           className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
         >
-          {notificationLoading ? 'Loading...' : 'Refresh'}
+          {notificationLoading ? t('dash.loading') : t('dash.refresh')}
         </button>
       </div>
 
       <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] text-neutral-600 dark:text-emerald-100/55">
-        Email and push delivery are preference-ready; delivery providers can be connected later.
+        {t('dash.notificationDeliveryReady')}
       </p>
 
       {notificationMessage && (
@@ -2375,9 +2497,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-500/15">
         <div className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] gap-0 border-b border-emerald-500/15 bg-white/70 text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:bg-black/35 dark:text-emerald-100/45">
-          <div className="p-3">Category</div>
+          <div className="p-3">{t('dash.category')}</div>
           {notificationChannels.map((channel) => (
-            <div key={channel.key} className="p-3 text-center">{channel.label}</div>
+            <div key={channel.key} className="p-3 text-center">{displayNotificationChannel(channel.key)}</div>
           ))}
         </div>
 
@@ -2385,8 +2507,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           {notificationCategories.map((category) => (
             <div key={category.key} className="grid grid-cols-[minmax(180px,1fr)_repeat(3,minmax(64px,86px))] items-center bg-white/55 dark:bg-black/25">
               <div className="p-3">
-                <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{category.label}</p>
-                <p className="mt-1 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{category.description}</p>
+                <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{displayNotificationCategory(category.key)}</p>
+                <p className="mt-1 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{displayNotificationDescription(category.key)}</p>
               </div>
               {notificationChannels.map((channel) => {
                 const setting = getNotificationSetting(category.key, channel.key);
@@ -2399,7 +2521,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                       onChange={(event) => updateNotificationToggle(category.key, channel.key, event.target.checked)}
                       disabled={isOffline || notificationLoading || notificationSaving}
                       className="h-4 w-4 accent-emerald-500 disabled:opacity-60"
-                      aria-label={`${category.label} ${channel.label}`}
+                      aria-label={`${displayNotificationCategory(category.key)} ${displayNotificationChannel(channel.key)}`}
                     />
                   </label>
                 );
@@ -2411,7 +2533,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <label className="block">
-          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours start</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.quietHoursStart')}</span>
           <input
             type="time"
             value={quietHoursStart}
@@ -2420,7 +2542,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           />
         </label>
         <label className="block">
-          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Quiet hours end</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.quietHoursEnd')}</span>
           <input
             type="time"
             value={quietHoursEnd}
@@ -2434,7 +2556,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           disabled={isOffline || notificationSaving || notificationLoading}
           className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
         >
-          {notificationSaving ? 'Saving...' : 'Save Settings'}
+          {notificationSaving ? t('dash.saving') : t('dash.saveSettings')}
         </button>
       </div>
     </div>
@@ -2444,7 +2566,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     <div className="rounded-2xl border border-emerald-500/15 bg-white p-4 shadow-xl backdrop-blur-sm dark:border-emerald-500/15 dark:bg-black/35">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">
-          <MapPin className="h-5 w-5 text-emerald-500" /> Locations
+          <MapPin className="h-5 w-5 text-emerald-500" /> {t('dash.locations')}
         </span>
         <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
           {companyLocations.length}
@@ -2458,24 +2580,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               <div>
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
                 <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  {location.location_type.replace('_', ' ')} - {location.radius_meters}m
+                  {displayEnum(location.location_type)} - <span dir="ltr">{location.radius_meters}m</span>
                 </p>
               </div>
               {location.is_primary && (
                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                  HQ
+                  {t('dash.primary')}
                 </span>
               )}
             </div>
             <p className="mt-2 text-[10px] text-slate-500">
-              {location.is_active ? 'Active' : 'Inactive'}
+              {location.is_active ? t('enum.active') : t('enum.inactive')}
             </p>
           </div>
         ))}
 
         {companyLocations.length === 0 && (
           <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-            {locationsMessage || 'No company locations found.'}
+            {locationsMessage || t('dash.noCompanyLocations')}
           </p>
         )}
       </div>
@@ -2486,25 +2608,25 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     <div className="rounded-2xl border border-emerald-500/15 bg-white p-4 shadow-xl backdrop-blur-sm dark:border-emerald-500/15 dark:bg-black/35">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">
-          <CheckCircle2 className="h-5 w-5 text-emerald-500" /> System Status
+          <CheckCircle2 className="h-5 w-5 text-emerald-500" /> {t('dash.systemStatus')}
         </span>
         <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-          Ready
+          {t('dash.ready')}
         </span>
       </div>
 
       <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
         <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
-          <span>Locations configured</span>
+          <span>{t('dash.locationsConfigured')}</span>
           <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
-          <span>Current shift</span>
-          <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? 'Open' : 'Not clocked in'}</span>
+          <span>{t('dash.currentShift')}</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-300">{isClockedIn ? t('dash.open') : t('dash.notClockedIn')}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span>Last attendance event</span>
-          <span className="max-w-[190px] truncate text-right font-medium text-slate-700 dark:text-slate-300">{lastClockEvent}</span>
+          <span>{t('dash.lastAttendanceEvent')}</span>
+          <span className={cn("max-w-[190px] truncate font-medium text-slate-700 dark:text-slate-300", isRtl ? "text-left" : "text-right")}>{displayLastClockEvent}</span>
         </div>
       </div>
     </div>
@@ -2516,10 +2638,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
             <Smartphone className="h-4 w-4 text-emerald-500" />
-            App Readiness
+            {t('dash.appReadiness')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
-            Install, offline, and notification status for this device.
+            {t('dash.appReadinessSubtitle')}
           </p>
         </div>
 
@@ -2529,27 +2651,27 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             ? "border-amber-300/30 bg-amber-500/10 text-amber-600 dark:text-amber-200"
             : "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
         )}>
-          {isOffline ? 'Offline' : 'Online'}
+          {isOffline ? t('dash.offline') : t('dash.online')}
         </span>
       </div>
 
       {isOffline && (
         <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-100">
-          You are offline. Some HR actions require connection.
+          {t('dash.offlineAction')}
         </p>
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
-          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">App mode</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.appMode')}</p>
           <p className="mt-1 text-xs font-bold text-neutral-800 dark:text-emerald-50">
-            {isStandalone ? 'Installed' : 'Browser mode'}
+            {isStandalone ? t('dash.installedMode') : t('dash.browserMode')}
           </p>
         </div>
         <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
-          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Notifications</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.notifications')}</p>
           <p className="mt-1 text-xs font-bold text-neutral-800 dark:text-emerald-50">
-            {notificationPermission === 'unsupported' ? 'Unsupported' : notificationPermission}
+            {displayNotificationPermission()}
           </p>
         </div>
       </div>
@@ -2562,7 +2684,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
           >
             <Download className="h-3.5 w-3.5" />
-            Install Stanza
+            {t('dash.installStanza')}
           </button>
         )}
 
@@ -2572,7 +2694,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             onClick={dismissInstallPrompt}
             className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300"
           >
-            Dismiss
+            {t('dash.dismiss')}
           </button>
         )}
 
@@ -2583,13 +2705,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-default disabled:opacity-60 dark:text-emerald-300"
         >
           <Bell className="h-3.5 w-3.5" />
-          {notificationPermission === 'granted' ? 'Notifications Ready' : 'Enable Notifications'}
+          {notificationPermission === 'granted' ? t('dash.notificationsReady') : t('dash.enableNotifications')}
         </button>
       </div>
 
       {shouldShowIosInstallHint && (
         <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-xs text-neutral-600 dark:text-emerald-100/55">
-          On iOS, open Share menu {'->'} Add to Home Screen to install Stanza.
+          {t('dash.iosInstallHint')}
         </p>
       )}
 
@@ -2632,7 +2754,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             <p className="truncate text-xs text-neutral-500 dark:text-emerald-100/50">{user.email}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                {formatRole(user.role)}
+                {displayRole(user.role)}
               </span>
               {user.jobTitle && (
                 <span className="rounded-full border border-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50">
@@ -2654,37 +2776,37 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 dark:text-emerald-300"
         >
           <LogOut className="h-3.5 w-3.5" />
-          Log Out
+          {t('dash.logout')}
         </button>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
-          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Company</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.company')}</p>
           <p className="mt-1 truncate text-xs font-bold text-neutral-800 dark:text-emerald-50">{getTenantName(user)}</p>
         </div>
         <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">Tenant ID</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.tenantId')}</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setShowTenantId((current) => !current)}
                 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
               >
-                {showTenantId ? 'Hide' : 'Show'}
+                {showTenantId ? t('dash.hide') : t('dash.show')}
               </button>
               <button
                 type="button"
                 onClick={copyTenantId}
                 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 hover:text-emerald-500 dark:text-emerald-300"
               >
-                {tenantIdCopied ? 'Copied' : 'Copy'}
+                {tenantIdCopied ? t('dash.copied') : t('dash.copy')}
               </button>
             </div>
           </div>
-          <p className="mt-1 truncate font-mono text-[11px] text-neutral-500 dark:text-emerald-100/55">
-            {showTenantId ? user.tenantId : 'Hidden'}
+          <p className="mt-1 truncate font-mono text-[11px] text-neutral-500 dark:text-emerald-100/55" dir="ltr">
+            {showTenantId ? user.tenantId : t('dash.hidden')}
           </p>
         </div>
       </div>
@@ -2697,10 +2819,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
             <Fingerprint className="h-4 w-4 text-emerald-500" />
-            Passkeys
+            {t('dash.passkeys')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
-            Add Face ID, fingerprint, Windows Hello, device PIN, or security key sign-in. Stanza never stores biometric data.
+            {t('dash.passkeyDescription')}
           </p>
         </div>
 
@@ -2710,7 +2832,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           disabled={isOffline || passkeySaving}
           className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {passkeySaving ? 'Opening...' : 'Add Passkey'}
+          {passkeySaving ? t('dash.opening') : t('dash.addPasskey')}
         </button>
       </div>
 
@@ -2729,26 +2851,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         {passkeys.map((passkey) => (
           <div key={passkey.id} className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{passkey.deviceLabel || 'Passkey'}</p>
+              <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{passkey.deviceLabel || t('dash.passkeyDevice')}</p>
               <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
-                {passkey.transports?.length ? passkey.transports.join(', ') : 'platform'}
+                {passkey.transports?.length ? passkey.transports.join(', ') : t('dash.platform')}
               </p>
             </div>
             <p className="mt-1 text-[10px] text-neutral-500 dark:text-emerald-100/45">
-              Last used: {passkey.lastUsedAt ? new Date(passkey.lastUsedAt).toLocaleString() : 'Never'} · Added: {new Date(passkey.createdAt).toLocaleDateString()}
+              {t('dash.lastUsed')}: <span dir="ltr">{passkey.lastUsedAt ? new Date(passkey.lastUsedAt).toLocaleString() : t('dash.never')}</span> · {t('dash.added')}: <span dir="ltr">{new Date(passkey.createdAt).toLocaleDateString()}</span>
             </p>
           </div>
         ))}
 
         {!passkeysLoading && passkeys.length === 0 && (
           <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-            No passkeys registered yet.
+            {t('dash.noPasskeys')}
           </p>
         )}
 
         {passkeysLoading && (
           <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-            Loading passkeys...
+            {t('dash.loadingPasskeys')}
           </p>
         )}
       </div>
@@ -2757,14 +2879,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
   const renderControlCenterSettings = () => (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Settings</p>
+      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.settings')}</p>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={toggleTheme}
           className={cn("flex items-center justify-between gap-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50", isRtl ? "text-right" : "text-left")}
         >
-          <span>{isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+          <span>{isDark ? t('dash.switchLight') : t('dash.switchDark')}</span>
           {isDark ? <Sun className="h-4 w-4 text-emerald-500" /> : <Moon className="h-4 w-4 text-emerald-500" />}
         </button>
 
@@ -2878,10 +3000,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 >       <button
           type="button"
           id="stanza-control-center-trigger"
-          aria-label="Open Stanza control center"
+          aria-label={t('dash.controlCenterTitle')}
           aria-expanded={showControlCenter}
           aria-controls="stanza-control-center"
-          title="Open Stanza control center"
+          title={t('dash.controlCenterTitle')}
           onClick={() => setShowControlCenter((current) => !current)}
           className={cn(
             "relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.3)]",
@@ -2904,8 +3026,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Geo-Operations"
-            aria-label="Geo-Operations"
+            title={t('dash.geoOp')}
+            aria-label={t('dash.geoOp')}
           >
              <Map className="w-5 h-5" />
           </button>
@@ -2916,8 +3038,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Weekly Roster"
-            aria-label="Weekly Roster"
+            title={t('dash.roster')}
+            aria-label={t('dash.roster')}
           >
              <Calendar className="w-5 h-5" />
           </button>
@@ -2928,8 +3050,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'feed' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Company Feed"
-            aria-label="Company Feed"
+            title={t('dash.companyFeed')}
+            aria-label={t('dash.companyFeed')}
           >
              <Newspaper className="w-5 h-5" />
           </button>
@@ -2940,8 +3062,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Profile"
-            aria-label="Profile"
+            title={t('dash.profile')}
+            aria-label={t('dash.profile')}
           >
              <User className="w-5 h-5" />
           </button>
@@ -2952,8 +3074,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Payroll"
-            aria-label="Payroll"
+            title={t('profile.payroll')}
+            aria-label={t('profile.payroll')}
           >
              <DollarSign className="w-5 h-5" />
           </button>
@@ -2964,8 +3086,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               setShowGrievancesPanel(true);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title="Grievances"
-            aria-label="Grievances"
+            title={t('dash.grievances')}
+            aria-label={t('dash.grievances')}
           >
              <MessageSquare className="w-5 h-5" />
           </button>
@@ -2975,7 +3097,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       {isOffline && (
         <div className="fixed inset-x-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-50 mx-auto flex max-w-md items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-[#1c1304]/95 px-3 py-2 text-xs font-bold text-amber-100 shadow-2xl shadow-black/35 backdrop-blur-xl">
           <WifiOff className="h-4 w-4" />
-          You are offline. Some HR actions require connection.
+          {t('dash.offlineAction')}
         </div>
       )}
 
@@ -2999,10 +3121,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
             <div className={cn("mb-4 flex items-start justify-between gap-4", isRtl && "flex-row-reverse")}>
               <div>
                 <h2 id="stanza-control-center-title" className="text-base font-black uppercase tracking-widest text-slate-900 dark:text-emerald-50">
-                  Stanza Control Center
+                  {t('dash.controlCenterTitle')}
                 </h2>
                 <p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">
-                  Quick access to notifications, locations, and workspace status.
+                  {t('dash.controlCenterSubtitle')}
                 </p>
               </div>
               <button
@@ -3010,7 +3132,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 onClick={() => setShowControlCenter(false)}
                 className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300"
               >
-                Close
+                {t('dash.close')}
               </button>
             </div>
 
@@ -3079,7 +3201,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'feed' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <Newspaper className="w-4 h-4 hidden sm:block" />
-                       Company Feed
+                       {t('dash.companyFeed')}
                     </button>
                     <button 
                        onClick={() => {
@@ -3101,7 +3223,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <DollarSign className="w-4 h-4 hidden sm:block" />
-                       Payroll
+                       {t('profile.payroll')}
                     </button>
                     <button 
                        onClick={() => {
@@ -3112,7 +3234,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <MessageSquare className="w-4 h-4 hidden sm:block" />
-                       Grievances
+                       {t('dash.grievances')}
                     </button>
                 </div>
 
@@ -3252,15 +3374,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                <div>
                                  <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
                                    <Coffee className="h-4 w-4 text-emerald-500" />
-                                   Request Break
+                                   {t('dash.requestBreak')}
                                  </h3>
                                  <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                   Send a short break request for manager approval.
+                                   {t('dash.breakRequestHelp')}
                                  </p>
                                </div>
                                {pendingOwnBreakRequest && (
                                  <span className={cn("w-fit rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(pendingOwnBreakRequest.status))}>
-                                   Pending
+                                   {t('dash.pending')}
                                  </span>
                                )}
                              </div>
@@ -3297,7 +3419,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      : "border-emerald-500/15 bg-white/60 text-slate-600 hover:border-emerald-500/30 dark:bg-black/35 dark:text-emerald-100/65"
                                  )}
                                >
-                                 Custom
+                                   {t('dash.custom')}
                                </button>
                                <input
                                  type="number"
@@ -3306,7 +3428,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  value={breakRequestForm.customDuration}
                                  onChange={(event) => setBreakRequestForm((current) => ({ ...current, customDuration: event.target.value, durationMinutes: 'custom' }))}
                                  disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 placeholder="5-180 minutes"
+                                 placeholder={t('dash.breakDurationPlaceholder')}
                                  className="rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                />
                              </div>
@@ -3316,7 +3438,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                onChange={(event) => setBreakRequestForm((current) => ({ ...current, reason: event.target.value }))}
                                disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
                                rows={3}
-                               placeholder="Optional reason"
+                               placeholder={t('dash.optionalReason')}
                                className="mt-3 w-full resize-none rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                              />
 
@@ -3327,7 +3449,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
                                  className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
                                >
-                                 {breakRequestSubmitting ? 'Sending...' : pendingOwnBreakRequest ? 'Pending Approval' : 'Request Break'}
+                                 {breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}
                                </button>
                                {pendingOwnBreakRequest && (
                                  <button
@@ -3336,7 +3458,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                    disabled={isOffline || breakRequestReviewingId === pendingOwnBreakRequest.id}
                                    className="rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-600 transition-colors hover:border-red-500/35 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-100/65"
                                  >
-                                   Cancel Request
+                                   {t('dash.cancelRequest')}
                                  </button>
                                )}
                              </div>
@@ -3347,10 +3469,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                              <div>
                                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                 Break Status
+                                 {t('dash.breakStatus')}
                                </h3>
                                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                 Latest personal requests and manager decisions.
+                                 {t('dash.breakStatusHelp')}
                                </p>
                              </div>
                              <button
@@ -3359,7 +3481,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                disabled={breakRequestsLoading || isOffline}
                                className="w-fit rounded-lg border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-300"
                              >
-                               {breakRequestsLoading ? 'Loading...' : 'Refresh'}
+                               {breakRequestsLoading ? t('dash.loading') : t('dash.refresh')}
                              </button>
                            </div>
 
@@ -3380,14 +3502,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  <div className="flex items-start justify-between gap-3">
                                    <div>
                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                                       {request.duration_minutes} minutes
+                                       <span dir="ltr">{request.duration_minutes}</span> {t('dash.minutes')}
                                      </p>
                                      <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500 dark:text-emerald-100/45">
-                                       Requested {formatShortDateTime(request.created_at)}
+                                       {t('dash.requested')} <span dir="ltr">{formatShortDateTime(request.created_at)}</span>
                                      </p>
                                    </div>
                                    <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
-                                     {request.status}
+                                     {displayEnum(request.status)}
                                    </span>
                                  </div>
                                  {request.reason && (
@@ -3395,7 +3517,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  )}
                                  {request.review_note && (
                                    <p className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-[10px] text-slate-600 dark:bg-emerald-500/5 dark:text-emerald-100/55">
-                                     Review note: {request.review_note}
+                                     {t('dash.reviewNote')}: {request.review_note}
                                    </p>
                                  )}
                                </div>
@@ -3403,7 +3525,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                              {!breakRequestsLoading && breakRequests.length === 0 && (
                                <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">
-                                 No break requests yet.
+                                 {t('dash.noBreakRequests')}
                                </p>
                              )}
                            </div>
@@ -3415,14 +3537,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                              <div>
                                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                 Break Approval Queue
+                                 {t('dash.breakApprovalQueue')}
                                </h3>
                                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                 Review pending employee break requests.
+                                 {t('dash.reviewPendingBreakRequests')}
                                </p>
                              </div>
                              <span className="w-fit rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                               {pendingBreakRequests.length} Pending
+                               {pendingBreakRequests.length} {t('dash.pending')}
                              </span>
                            </div>
 
@@ -3431,13 +3553,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                <div key={request.id} className="rounded-xl border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/35">
                                  <div className="flex items-start justify-between gap-3">
                                    <div>
-                                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.email || 'Employee'}</p>
+                                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.email || t('dash.employee')}</p>
                                      <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-                                       {request.duration_minutes} minutes - {formatShortDateTime(request.created_at)}
+                                       <span dir="ltr">{request.duration_minutes}</span> {t('dash.minutes')} - <span dir="ltr">{formatShortDateTime(request.created_at)}</span>
                                      </p>
                                    </div>
                                    <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
-                                     {request.status}
+                                     {displayEnum(request.status)}
                                    </span>
                                  </div>
                                  {request.reason && (
@@ -3446,7 +3568,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  <input
                                    value={breakReviewNotes[request.id] || ''}
                                    onChange={(event) => setBreakReviewNotes((current) => ({ ...current, [request.id]: event.target.value }))}
-                                   placeholder="Optional review note"
+                                   placeholder={t('dash.optionalReviewNote')}
                                    className="mt-3 w-full rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                  />
                                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -3456,7 +3578,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      disabled={isOffline || breakRequestReviewingId === request.id}
                                      className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
                                    >
-                                     Approve
+                                     {t('dash.approve')}
                                    </button>
                                    <button
                                      type="button"
@@ -3464,7 +3586,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      disabled={isOffline || breakRequestReviewingId === request.id}
                                      className="rounded-lg border border-red-500/25 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-red-300"
                                    >
-                                     Reject
+                                     {t('dash.reject')}
                                    </button>
                                  </div>
                                </div>
@@ -3472,7 +3594,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                              {!breakRequestsLoading && pendingBreakRequests.length === 0 && (
                                <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45 lg:col-span-2">
-                                 No pending break requests.
+                                 {t('dash.noPendingBreakRequests')}
                                </p>
                              )}
                            </div>
@@ -3484,14 +3606,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            <div>
                              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
                                <MapPin className="h-4 w-4 text-emerald-500" />
-                               Company Locations
+                               {t('dash.companyLocations')}
                              </h3>
                              <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                               Clock-in is valid inside any active company location.
+                               {t('dash.clockInValidLocations')}
                              </p>
                            </div>
                            <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                             {companyLocations.length} Active
+                             {companyLocations.length} {t('dash.active')}
                            </span>
                          </div>
 
@@ -3502,24 +3624,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  <div>
                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
                                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                     {location.location_type.replace('_', ' ')} - {location.radius_meters}m
+                                     {displayEnum(location.location_type)} - <span dir="ltr">{location.radius_meters}m</span>
                                    </p>
                                  </div>
                                  {location.is_primary && (
                                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                                     Primary
+                                     {t('dash.primary')}
                                    </span>
                                  )}
                                </div>
                                <p className="mt-2 font-mono text-[10px] text-slate-500">
-                                 {Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}
+                                 <span dir="ltr">{Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}</span>
                                </p>
                              </div>
                            ))}
 
                            {companyLocations.length === 0 && (
                              <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45 md:col-span-2">
-                               {locationsMessage || 'No active company locations found.'}
+                               {locationsMessage || t('dash.noActiveCompanyLocations')}
                              </p>
                            )}
                          </div>
@@ -3539,13 +3661,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {canManageRoster && (
                                <span className="inline-flex items-center gap-1 px-3 py-1 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
                                  <Save className="h-3 w-3" />
-                                 Auto Saved
+                                 {t('dash.autoSaved')}
                                </span>
                              )}
                              <button
                                type="button"
-                               title="Apply for leave"
-                               aria-label="Apply for leave"
+                               title={t('dash.applyLeave')}
+                               aria-label={t('dash.applyLeave')}
                                onClick={openLeaveRequestFlow}
                                className="px-3 py-1 text-slate-500 dark:text-slate-400 text-xs hover:text-slate-800 dark:hover:text-slate-300 font-bold uppercase transition-colors"
                              >
@@ -3560,7 +3682,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              <tr className="text-[10px] text-neutral-500 dark:text-emerald-100/45 uppercase font-bold border-b border-emerald-500/15 dark:border-emerald-500/15 bg-white/70 dark:bg-black/25">
                                <th className="p-3">{t('dash.dayDate')}</th>
                                <th className="p-3">{t('dash.shiftFrame')}</th>
-                               <th className="p-3">Break Time</th>
+                              <th className="p-3">{t('dash.breakTime')}</th>
                                <th className="p-3">{t('dash.locationRole')}</th>
                                <th className={cn("p-3", isRtl ? "text-left" : "text-right")}>{t('dash.status')}</th>
                              </tr>
@@ -3569,7 +3691,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                              {schedule.map((s, i) => (
                                <tr key={i} className="border-b border-emerald-500/10 dark:border-emerald-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
                                  <td className="p-3">
-                                   <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{s.day}, {s.date}</div>
+                                   <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></div>
                                  </td>
                                  <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                                    {canManageRoster ? (
@@ -3588,7 +3710,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
-                                   ) : getShiftFrame(s)}
+                                   ) : s.shiftStart && s.shiftEnd ? <span dir="ltr">{getShiftFrame(s)}</span> : t('dash.leave')}
                                  </td>
                                  <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                                    {canManageRoster ? (
@@ -3608,7 +3730,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
-                                   ) : s.breakStart && s.breakEnd ? `${s.breakStart} - ${s.breakEnd}` : 'No break'}
+                                   ) : s.breakStart && s.breakEnd ? <span dir="ltr">{s.breakStart} - {s.breakEnd}</span> : t('dash.noBreak')}
                                  </td>
                                  <td className="p-3 text-xs text-slate-600 dark:text-slate-300">
                                    {canManageRoster ? (
@@ -3618,7 +3740,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                        className="w-36 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                      />
                                    ) : (
-                                     <span className="opacity-80">{s.type}</span>
+                                     <span className="opacity-80">{displayShiftType(s.type)}</span>
                                    )}
                                  </td>
                                  <td className={cn("p-3", isRtl ? "text-left" : "text-right")}>
@@ -3640,10 +3762,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         <div>
                           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
                             <Newspaper className="h-5 w-5 text-emerald-500" />
-                            Company Feed
+                            {t('dash.companyFeed')}
                           </h2>
                           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Announcements, events, and policy updates for your company.
+                            {t('dash.companyFeedSubtitle')}
                           </p>
                         </div>
                         <button
@@ -3655,7 +3777,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                           disabled={isOffline || feedLoading || adminFeedLoading}
                           className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
                         >
-                          Refresh
+                          {t('dash.refresh')}
                         </button>
                       </div>
 
@@ -3665,7 +3787,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <input
                               value={feedForm.title}
                               onChange={(event) => updateFeedForm('title', event.target.value)}
-                              placeholder="Post title"
+                              placeholder={t('dash.postTitle')}
                               className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                             />
                             <select
@@ -3673,41 +3795,41 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               onChange={(event) => updateFeedForm('postType', event.target.value)}
                               className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                             >
-                              <option value="announcement">Announcement</option>
-                              <option value="event">Event</option>
-                              <option value="policy_update">Policy Update</option>
-                              <option value="general">General</option>
+                              <option value="announcement">{t('enum.announcement')}</option>
+                              <option value="event">{t('enum.event')}</option>
+                              <option value="policy_update">{t('enum.policyUpdate')}</option>
+                              <option value="general">{t('enum.general')}</option>
                             </select>
                             <select
                               value={feedForm.status}
                               onChange={(event) => updateFeedForm('status', event.target.value)}
                               className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                             >
-                              <option value="published">Published</option>
-                              <option value="draft">Draft</option>
+                              <option value="published">{t('enum.published')}</option>
+                              <option value="draft">{t('enum.draft')}</option>
                             </select>
                             <select
                               value={feedForm.visibility}
                               onChange={(event) => updateFeedForm('visibility', event.target.value)}
                               className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                             >
-                              <option value="all">Everyone</option>
-                              <option value="role:employee">Role: Employee</option>
-                              <option value="role:manager">Role: Manager</option>
-                              <option value="role:hr_admin">Role: HR Admin</option>
+                              <option value="all">{t('dash.everyone')}</option>
+                              <option value="role:employee">{t('dash.roleEmployee')}</option>
+                              <option value="role:manager">{t('dash.roleManager')}</option>
+                              <option value="role:hr_admin">{t('dash.roleHrAdmin')}</option>
                               {companyLocations.map((location) => (
                                 <option key={location.id} value={`location:${location.id}`}>
-                                  Location: {location.name}
+                                  {t('dash.locationPrefix')}: {location.name}
                                 </option>
                               ))}
                             </select>
                             <div className="md:col-span-4">
-                              <Suspense fallback={<div className="rounded-lg border border-emerald-500/15 bg-black/25 p-4 text-xs text-emerald-100/45">Loading editor...</div>}>
+                              <Suspense fallback={<div className="rounded-lg border border-emerald-500/15 bg-black/25 p-4 text-xs text-emerald-100/45">{t('dash.loadingEditor')}</div>}>
                                 <RichTextEditor
                                   key={feedEditorKey}
                                   valueJson={feedForm.contentJson}
                                   onChange={updateFeedContent}
-                                  placeholder="Write the announcement..."
+                                  placeholder={t('dash.writeAnnouncement')}
                                 />
                               </Suspense>
                             </div>
@@ -3717,7 +3839,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               disabled={isOffline || feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()}
                               className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                             >
-                              {feedSubmitting ? 'Saving...' : feedForm.status === 'published' ? 'Publish Post' : 'Save Draft'}
+                              {feedSubmitting ? t('dash.saving') : feedForm.status === 'published' ? t('dash.publishPost') : t('dash.saveDraft')}
                             </button>
                           </div>
                         </div>
@@ -3741,16 +3863,16 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <div>
                                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{post.title}</h3>
                                 <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                  {post.author_name || 'HR Admin'} • {formatShortDateTime(post.published_at)}
+                                  {post.author_name || t('enum.hrAdmin')} · <span dir="ltr">{formatShortDateTime(post.published_at)}</span>
                                 </p>
                               </div>
                               <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                                {formatLabel(post.post_type)}
+                                {displayEnum(post.post_type)}
                               </span>
                             </div>
                             {post.post_type === 'event' && (post.event_starts_at || post.event_ends_at) && (
                               <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
-                                {post.event_starts_at ? formatShortDateTime(post.event_starts_at) : 'Event time TBD'}
+                                <span dir="ltr">{post.event_starts_at ? formatShortDateTime(post.event_starts_at) : t('dash.eventTimeTbd')}</span>
                                 {post.event_ends_at ? ` - ${formatShortDateTime(post.event_ends_at)}` : ''}
                               </p>
                             )}
@@ -3762,27 +3884,27 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                         {!feedLoading && feedPosts.length === 0 && (
                           <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                            No company announcements yet.
+                            {t('dash.noCompanyAnnouncements')}
                           </p>
                         )}
 
                         {feedLoading && (
                           <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                            Loading company feed...
+                            {t('dash.loadingCompanyFeed')}
                           </p>
                         )}
                       </div>
 
                       {canPublishFeed && (
                         <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Manage Posts</h3>
+                          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.managePosts')}</h3>
                           <div className="space-y-2">
                             {adminFeedPosts.map((post) => (
                               <div key={post.id} className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
                                   <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{post.title}</p>
                                   <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-                                    {formatLabel(post.post_type)} • {formatShortDateTime(post.created_at)}
+                                    {displayEnum(post.post_type)} · <span dir="ltr">{formatShortDateTime(post.created_at)}</span>
                                   </p>
                                 </div>
                                 <select
@@ -3791,22 +3913,22 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   disabled={isOffline || feedUpdatingId !== null}
                                   className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 >
-                                  <option value="draft">Draft</option>
-                                  <option value="published">Published</option>
-                                  <option value="archived">Archived</option>
+                                  <option value="draft">{t('enum.draft')}</option>
+                                  <option value="published">{t('enum.published')}</option>
+                                  <option value="archived">{t('enum.archived')}</option>
                                 </select>
                               </div>
                             ))}
 
                             {!adminFeedLoading && adminFeedPosts.length === 0 && (
                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                No posts to manage yet.
+                                {t('dash.noPostsToManage')}
                               </p>
                             )}
 
                             {adminFeedLoading && (
                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                Loading posts...
+                                {t('dash.loadingPosts')}
                               </p>
                             )}
                           </div>
@@ -3829,9 +3951,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         <div className="space-y-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Payroll</h3>
+                              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('profile.payroll')}</h3>
                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {canViewAllPayroll || canRunPayroll ? 'Tenant payroll records and run controls.' : 'Your recent payroll records.'}
+                                {canViewAllPayroll || canRunPayroll ? t('dash.payrollSubtitleAdmin') : t('dash.payrollSubtitleSelf')}
                               </p>
                             </div>
                             <button
@@ -3839,7 +3961,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               onClick={() => setShowPayrollPanel(false)}
                               className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/15 dark:text-emerald-100/60"
                             >
-                              Back
+                              {t('dash.back')}
                             </button>
                           </div>
 
@@ -3849,8 +3971,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
-                                    <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Compensation Profiles</h4>
-                                    <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">Saved profiles override the fallback salary when payroll runs.</p>
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('dash.compensationProfiles')}</h4>
+                                    <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">{t('dash.compensationProfilesHelp')}</p>
                                   </div>
                                   <button
                                     type="button"
@@ -3858,13 +3980,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     disabled={isOffline || compensationLoading}
                                     className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                                   >
-                                    {compensationLoading ? 'Loading...' : 'Refresh'}
+                                    {compensationLoading ? t('dash.loading') : t('dash.refresh')}
                                   </button>
                                 </div>
 
                                 {missingCompensationProfiles.length > 0 && (
                                   <p className="mb-3 rounded-lg border border-amber-400/25 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
-                                    {missingCompensationProfiles.length} employee{missingCompensationProfiles.length === 1 ? '' : 's'} missing active compensation profiles.
+                                    <span dir="ltr">{missingCompensationProfiles.length}</span> {t('dash.missingActiveCompensation')}
                                   </p>
                                 )}
 
@@ -3874,7 +3996,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     onChange={(event) => selectCompensationEmployee(event.target.value)}
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                                   >
-                                    <option value="">Select employee</option>
+                                    <option value="">{t('dash.selectEmployee')}</option>
                                     {compensationProfiles.map((profile) => (
                                       <option key={profile.employee_id} value={profile.employee_id}>
                                         {profile.full_name || profile.email || profile.employee_id}
@@ -3887,14 +4009,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                   >
                                     {compensationPayTypes.map((payType) => (
-                                      <option key={payType} value={payType}>{formatLabel(payType)}</option>
+                                      <option key={payType} value={payType}>{displayEnum(payType)}</option>
                                     ))}
                                   </select>
                                   <input
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    placeholder="Base amount"
+                                    placeholder={t('dash.baseAmount')}
                                     value={compensationForm.baseAmount}
                                     onChange={(event) => updateCompensationForm('baseAmount', event.target.value)}
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
@@ -3917,7 +4039,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   disabled={isOffline || compensationSaving || !compensationForm.employeeId}
                                     className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-6"
                                   >
-                                    {compensationSaving ? 'Saving...' : 'Save Compensation'}
+                                    {compensationSaving ? t('dash.saving') : t('dash.saveCompensation')}
                                   </button>
                                 </div>
 
@@ -3927,7 +4049,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       <div className="flex items-start justify-between gap-3">
                                         <div>
                                           <p className="font-bold text-neutral-800 dark:text-emerald-50">{profile.full_name || profile.email}</p>
-                                          <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">{profile.email} • {profile.role ? formatRole(profile.role) : 'Employee'}</p>
+                                          <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45"><span dir="ltr">{profile.email}</span> · {profile.role ? displayRole(profile.role) : t('enum.employee')}</p>
                                         </div>
                                         <span className={cn(
                                           "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
@@ -3935,24 +4057,24 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                             ? "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
                                             : "border-amber-400/25 text-amber-700 dark:text-amber-200"
                                         )}>
-                                          {profile.id ? 'Active' : 'Missing'}
+                                          {profile.id ? t('enum.active') : t('enum.missing')}
                                         </span>
                                       </div>
                                       <p className="mt-3 font-mono text-[11px] text-neutral-600 dark:text-emerald-100/60">
                                         {profile.id && profile.base_amount !== null && profile.base_amount !== undefined
-                                          ? `${formatPayrollAmount(profile.base_amount, profile.currency || 'USD')} • ${formatLabel(profile.pay_type || 'monthly')}`
-                                          : 'No active compensation profile'}
+                                          ? <><span dir="ltr">{formatPayrollAmount(profile.base_amount, profile.currency || 'USD')}</span> · {displayEnum(profile.pay_type || 'monthly')}</>
+                                          : t('dash.noActiveCompensation')}
                                       </p>
                                       {profile.effective_from && (
                                         <p className="mt-1 text-[10px] text-neutral-500 dark:text-emerald-100/45">
-                                          Effective {formatPayrollDate(profile.effective_from)}
+                                          {t('dash.effective')} <span dir="ltr">{formatPayrollDate(profile.effective_from)}</span>
                                         </p>
                                       )}
                                     </div>
                                   ))}
                                   {!compensationLoading && compensationProfiles.length === 0 && (
                                     <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-neutral-500 dark:text-emerald-100/45">
-                                      No employees found for compensation profiles.
+                                      {t('dash.noEmployeesForCompensation')}
                                     </p>
                                   )}
                                 </div>
@@ -3962,29 +4084,29 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               {canRunPayroll && (
                               <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                                 <p className="mb-3 text-[11px] font-semibold text-neutral-500 dark:text-emerald-100/45">
-                                  Payroll uses each employee's active compensation profile. Fallback Base Salary is optional, and active loan repayments are automatically included in deductions for new payroll records.
+                                  {t('dash.payrollRunHelp')}
                                 </p>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
                                   <input
                                     type="date"
-                                    aria-label="Pay period start"
+                                    aria-label={t('dash.payPeriodStart')}
                                     value={payrollForm.payPeriodStart}
                                     onChange={(event) => updatePayrollForm('payPeriodStart', event.target.value)}
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                   />
                                   <input
                                     type="date"
-                                    aria-label="Pay period end"
+                                    aria-label={t('dash.payPeriodEnd')}
                                     value={payrollForm.payPeriodEnd}
                                     onChange={(event) => updatePayrollForm('payPeriodEnd', event.target.value)}
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                   />
                                   <input
                                     type="number"
-                                    aria-label="Fallback base salary"
+                                    aria-label={t('dash.fallbackBaseSalary')}
                                     min="0"
                                     step="0.01"
-                                    placeholder="Fallback base salary"
+                                    placeholder={t('dash.fallbackBaseSalary')}
                                     value={payrollForm.defaultBaseSalary}
                                     onChange={(event) => updatePayrollForm('defaultBaseSalary', event.target.value)}
                                     className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
@@ -3992,20 +4114,20 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <div className="grid grid-cols-2 gap-2">
                                 <input
                                   type="number"
-                                  aria-label="Bonuses"
+                                  aria-label={t('dash.bonuses')}
                                   min="0"
                                   step="0.01"
-                                  placeholder="Bonuses"
+                                  placeholder={t('dash.bonuses')}
                                   value={payrollForm.bonuses}
                                   onChange={(event) => updatePayrollForm('bonuses', event.target.value)}
                                   className="min-w-0 rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                                 <input
                                   type="number"
-                                  aria-label="Deductions"
+                                  aria-label={t('dash.deductions')}
                                   min="0"
                                   step="0.01"
-                                  placeholder="Deductions"
+                                  placeholder={t('dash.deductions')}
                                   value={payrollForm.deductions}
                                   onChange={(event) => updatePayrollForm('deductions', event.target.value)}
                                   className="min-w-0 rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
@@ -4017,7 +4139,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 disabled={isOffline || payrollSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                               >
-                                {payrollSubmitting ? 'Generating payroll...' : 'Run Payroll'}
+                                {payrollSubmitting ? t('dash.generatingPayroll') : t('dash.runPayroll')}
                               </button>
                                 </div>
                               </div>
@@ -4028,9 +4150,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                           <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Employee Loans</h4>
+                                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('dash.employeeLoans')}</h4>
                                 <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45">
-                                  {canManageLoans ? 'Create tenant loans and manage repayment status.' : 'Your active and historical employee loans.'}
+                                  {canManageLoans ? t('dash.employeeLoansAdminHelp') : t('dash.employeeLoansSelfHelp')}
                                 </p>
                               </div>
                               <button
@@ -4039,7 +4161,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 disabled={isOffline || loanLoading}
                                 className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                               >
-                                {loanLoading ? 'Loading...' : 'Refresh'}
+                                {loanLoading ? t('dash.loading') : t('dash.refresh')}
                               </button>
                             </div>
 
@@ -4050,7 +4172,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   onChange={(event) => updateLoanForm('employeeId', event.target.value)}
                                   className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                                 >
-                                  <option value="">Select employee</option>
+                                  <option value="">{t('dash.selectEmployee')}</option>
                                   {compensationProfiles.map((profile) => (
                                     <option key={profile.employee_id} value={profile.employee_id}>
                                       {profile.full_name || profile.email || profile.employee_id}
@@ -4060,7 +4182,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 <input
                                   value={loanForm.loanName}
                                   onChange={(event) => updateLoanForm('loanName', event.target.value)}
-                                  placeholder="Loan name"
+                                  placeholder={t('dash.loanName')}
                                   className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                                 <input
@@ -4069,7 +4191,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   step="0.01"
                                   value={loanForm.principalAmount}
                                   onChange={(event) => updateLoanForm('principalAmount', event.target.value)}
-                                  placeholder="Principal"
+                                  placeholder={t('dash.principal')}
                                   className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                                 <input
@@ -4078,7 +4200,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   step="0.01"
                                   value={loanForm.repaymentAmount}
                                   onChange={(event) => updateLoanForm('repaymentAmount', event.target.value)}
-                                  placeholder="Repayment"
+                                  placeholder={t('dash.repayment')}
                                   className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                                 <input
@@ -4093,7 +4215,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                                 >
                                   {loanRepaymentFrequencies.map((frequency) => (
-                                    <option key={frequency} value={frequency}>{formatLabel(frequency)}</option>
+                                    <option key={frequency} value={frequency}>{displayEnum(frequency)}</option>
                                   ))}
                                 </select>
                                 <input
@@ -4108,7 +4230,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   disabled={isOffline || loanSaving || !loanForm.employeeId}
                                   className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-3"
                                 >
-                                  {loanSaving ? 'Creating...' : 'Create Loan'}
+                                  {loanSaving ? t('dash.creating') : t('dash.createLoan')}
                                 </button>
                               </div>
                             )}
@@ -4120,7 +4242,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     <div>
                                       <p className="font-bold text-neutral-800 dark:text-emerald-50">{loan.loan_name}</p>
                                       <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">
-                                        {canManageLoans ? `${loan.full_name || loan.email} - ` : ''}{formatLabel(loan.repayment_frequency)}
+                                        {canManageLoans ? `${loan.full_name || loan.email} - ` : ''}{displayEnum(loan.repayment_frequency)}
                                       </p>
                                     </div>
                                     {canManageLoans ? (
@@ -4131,26 +4253,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                         className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-700 outline-none focus:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                       >
                                         {loanStatuses.map((status) => (
-                                          <option key={status} value={status}>{formatLabel(status)}</option>
+                                          <option key={status} value={status}>{displayEnum(status)}</option>
                                         ))}
                                       </select>
                                     ) : (
                                       <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                                        {loan.status}
+                                        {displayEnum(loan.status)}
                                       </span>
                                     )}
                                   </div>
                                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600 dark:text-emerald-100/60">
-                                    <p>Principal <span className="block font-mono">{formatPayrollAmount(loan.principal_amount, loan.currency)}</span></p>
-                                    <p>Outstanding <span className="block font-mono">{formatPayrollAmount(loan.outstanding_balance, loan.currency)}</span></p>
-                                    <p>Repayment <span className="block font-mono">{formatPayrollAmount(loan.repayment_amount, loan.currency)}</span></p>
-                                    <p>Due <span className="block font-mono">{loan.due_date ? formatPayrollDate(loan.due_date) : 'Not set'}</span></p>
+                                    <p>{t('dash.principal')} <span className="block font-mono" dir="ltr">{formatPayrollAmount(loan.principal_amount, loan.currency)}</span></p>
+                                    <p>{t('dash.outstanding')} <span className="block font-mono" dir="ltr">{formatPayrollAmount(loan.outstanding_balance, loan.currency)}</span></p>
+                                    <p>{t('dash.repayment')} <span className="block font-mono" dir="ltr">{formatPayrollAmount(loan.repayment_amount, loan.currency)}</span></p>
+                                    <p>{t('dash.due')} <span className="block font-mono" dir="ltr">{loan.due_date ? formatPayrollDate(loan.due_date) : t('dash.notSet')}</span></p>
                                   </div>
                                 </div>
                               ))}
                               {!loanLoading && employeeLoans.length === 0 && (
                                 <p className="rounded-lg border border-emerald-500/10 p-3 text-xs text-neutral-500 dark:text-emerald-100/45">
-                                  No employee loans yet.
+                                  {t('dash.noEmployeeLoans')}
                                 </p>
                               )}
                             </div>
@@ -4169,13 +4291,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                           {loanDeductionsApplied > 0 && (
                             <p className="rounded-lg border border-emerald-500/20 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                              Loan deductions applied: {formatPayrollAmount(loanDeductionsApplied, payrollRecords[0]?.currency || 'USD')}
+                              {t('dash.loanDeductionsApplied')}: <span dir="ltr">{formatPayrollAmount(loanDeductionsApplied, payrollRecords[0]?.currency || 'USD')}</span>
                             </p>
                           )}
 
                           {skippedPayrollEmployees.length > 0 && (
                             <div className="rounded-lg border border-amber-400/25 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
-                              <p className="font-bold uppercase tracking-widest">Skipped employees</p>
+                              <p className="font-bold uppercase tracking-widest">{t('dash.skippedEmployees')}</p>
                               <ul className="mt-2 space-y-1">
                                 {skippedPayrollEmployees.map((employee) => (
                                   <li key={employee.employeeId}>
@@ -4190,15 +4312,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                               <thead>
                                 <tr className="border-b border-emerald-500/15 bg-white/70 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:border-emerald-500/15 dark:bg-black/35 dark:text-emerald-100/45">
-                                  <th className="p-3">Employee</th>
-                                  <th className="p-3">Period</th>
-                                  <th className="p-3">Base</th>
-                                  <th className="p-3">Bonus</th>
-                                  <th className="p-3">Deductions</th>
-                                  <th className="p-3">Net</th>
-                                  <th className="p-3">Status</th>
-                                  {canShowPayrollActions && <th className="p-3">Actions</th>}
-                                  <th className="p-3">Export</th>
+                                  <th className="p-3">{t('dash.employee')}</th>
+                                  <th className="p-3">{t('dash.period')}</th>
+                                  <th className="p-3">{t('dash.base')}</th>
+                                  <th className="p-3">{t('dash.bonus')}</th>
+                                  <th className="p-3">{t('dash.deductions')}</th>
+                                  <th className="p-3">{t('dash.net')}</th>
+                                  <th className="p-3">{t('dash.status')}</th>
+                                  {canShowPayrollActions && <th className="p-3">{t('dash.actions')}</th>}
+                                  <th className="p-3">{t('dash.export')}</th>
                                 </tr>
                               </thead>
                               <tbody className="text-xs">
@@ -4206,32 +4328,32 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                   <tr key={record.id} className="border-b border-emerald-500/10 text-neutral-700 last:border-0 dark:border-emerald-500/10 dark:text-emerald-100/65">
                                     <td className="p-3 font-semibold">
                                       {record.full_name || user.name}
-                                      <span className="block text-[10px] font-normal text-slate-500">{record.email || user.email}</span>
+                                      <span className="block text-[10px] font-normal text-slate-500" dir="ltr">{record.email || user.email}</span>
                                     </td>
                                     <td className="p-3 font-mono text-[11px]">
-                                      {formatPayrollDate(record.pay_period_start)} - {formatPayrollDate(record.pay_period_end)}
+                                      <span dir="ltr">{formatPayrollDate(record.pay_period_start)} - {formatPayrollDate(record.pay_period_end)}</span>
                                     </td>
-                                    <td className="p-3">{formatPayrollAmount(record.base_salary, record.currency)}</td>
-                                    <td className="p-3">{formatPayrollAmount(record.bonuses, record.currency)}</td>
-                                    <td className="p-3">{formatPayrollAmount(record.deductions, record.currency)}</td>
-                                    <td className="p-3 font-bold text-emerald-700 dark:text-emerald-300">{formatPayrollAmount(record.net_pay, record.currency)}</td>
+                                    <td className="p-3" dir="ltr">{formatPayrollAmount(record.base_salary, record.currency)}</td>
+                                    <td className="p-3" dir="ltr">{formatPayrollAmount(record.bonuses, record.currency)}</td>
+                                    <td className="p-3" dir="ltr">{formatPayrollAmount(record.deductions, record.currency)}</td>
+                                    <td className="p-3 font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{formatPayrollAmount(record.net_pay, record.currency)}</td>
                                     <td className="p-3">
                                       <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                                        {record.status}
+                                        {displayEnum(record.status)}
                                       </span>
                                       {record.approved_at && (
                                         <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
-                                          Approved {formatPayrollDate(record.approved_at)}
+                                          {t('dash.approvedAt')} <span dir="ltr">{formatPayrollDate(record.approved_at)}</span>
                                         </span>
                                       )}
                                       {record.paid_at && (
                                         <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
-                                          Paid {formatPayrollDate(record.paid_at)}
+                                          {t('dash.paidAt')} <span dir="ltr">{formatPayrollDate(record.paid_at)}</span>
                                         </span>
                                       )}
                                       {record.cancelled_at && (
                                         <span className="mt-1 block text-[10px] font-normal text-neutral-500 dark:text-emerald-100/45">
-                                          Cancelled {formatPayrollDate(record.cancelled_at)}
+                                          {t('dash.cancelledAt')} <span dir="ltr">{formatPayrollDate(record.cancelled_at)}</span>
                                         </span>
                                       )}
                                     </td>
@@ -4247,12 +4369,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                                 disabled={isOffline || payrollStatusUpdatingId === record.id}
                                                 className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                               >
-                                                {payrollStatusUpdatingId === record.id ? 'Updating...' : formatLabel(status)}
+                                                {payrollStatusUpdatingId === record.id ? t('dash.updating') : displayEnum(status)}
                                               </button>
                                             ))}
                                           </div>
                                         ) : (
-                                          <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">Final</span>
+                                          <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">{t('dash.final')}</span>
                                         )}
                                       </td>
                                     )}
@@ -4264,10 +4386,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                           disabled={isOffline || payrollExportingId !== null}
                                           className="rounded border border-emerald-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                         >
-                                          {payrollExportingId === record.id ? 'Exporting...' : 'Export PDF'}
+                                          {payrollExportingId === record.id ? t('dash.exporting') : t('dash.exportPdf')}
                                         </button>
                                       ) : (
-                                        <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">No access</span>
+                                        <span className="text-[10px] uppercase tracking-widest text-neutral-400 dark:text-emerald-100/35">{t('dash.noAccess')}</span>
                                       )}
                                     </td>
                                   </tr>
@@ -4275,14 +4397,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 {!payrollLoading && payrollRecords.length === 0 && (
                                   <tr>
                                     <td colSpan={payrollTableColSpan} className="p-6 text-center text-xs text-slate-500">
-                                      {canUsePayrollPanel ? 'No payroll records yet.' : 'No payroll access assigned yet.'}
+                                      {canUsePayrollPanel ? t('dash.noPayrollRecords') : t('dash.noPayrollAccess')}
                                     </td>
                                   </tr>
                                 )}
                                 {payrollLoading && (
                                   <tr>
                                     <td colSpan={payrollTableColSpan} className="p-6 text-center text-xs text-slate-500">
-                                      Loading payroll records...
+                                      {t('dash.loadingPayroll')}
                                     </td>
                                   </tr>
                                 )}
@@ -4296,12 +4418,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <div>
                               <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
                                 <MessageSquare className="h-4 w-4 text-emerald-500" />
-                                Grievances
+                                {t('dash.grievances')}
                               </h3>
                               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                 {grievanceForm.category === 'leave_request'
-                                  ? 'Submit leave dates and details using the existing request workflow.'
-                                  : canManageGrievances ? 'File a grievance and manage tenant cases.' : 'File and track your own grievance cases.'}
+                                  ? t('dash.grievancesSubtitleLeave')
+                                  : canManageGrievances ? t('dash.grievancesSubtitleAdmin') : t('dash.grievancesSubtitleSelf')}
                               </p>
                             </div>
                             <button
@@ -4318,13 +4440,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <input
                                 value={grievanceForm.title}
                                 onChange={(event) => updateGrievanceForm('title', event.target.value)}
-                                placeholder="Title"
+                                placeholder={t('dash.title')}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                               />
                               <input
                                 value={grievanceForm.category}
                                 onChange={(event) => updateGrievanceForm('category', event.target.value)}
-                                placeholder="Category"
+                                placeholder={t('dash.categoryLabel')}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               />
                               <select
@@ -4332,15 +4454,15 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 onChange={(event) => updateGrievanceForm('priority', event.target.value)}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               >
-                                <option value="low">Low</option>
-                                <option value="normal">Normal</option>
-                                <option value="high">High</option>
-                                <option value="urgent">Urgent</option>
+                                <option value="low">{t('enum.low')}</option>
+                                <option value="normal">{t('enum.normal')}</option>
+                                <option value="high">{t('enum.high')}</option>
+                                <option value="urgent">{t('enum.urgent')}</option>
                               </select>
                               <textarea
                                 value={grievanceForm.description}
                                 onChange={(event) => updateGrievanceForm('description', event.target.value)}
-                                placeholder="Description"
+                                placeholder={t('dash.description')}
                                 rows={4}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
                               />
@@ -4350,7 +4472,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                 disabled={isOffline || grievanceSubmitting}
                                 className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
                               >
-                                {grievanceSubmitting ? 'Submitting...' : grievanceForm.category === 'leave_request' ? 'Submit Leave Request' : 'Submit Grievance'}
+                                {grievanceSubmitting ? t('dash.submitting') : grievanceForm.category === 'leave_request' ? t('dash.submitLeaveRequest') : t('dash.submitGrievance')}
                               </button>
                             </div>
                           </div>
@@ -4368,14 +4490,14 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                           <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                             <div className="mb-3 flex items-center justify-between gap-3">
-                              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">My Grievances</h4>
+                              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.myGrievances')}</h4>
                               <button
                                 type="button"
                                 onClick={() => loadGrievances()}
                                 disabled={isOffline || grievanceLoading || tenantGrievanceLoading}
                                 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 disabled:opacity-60 dark:text-emerald-300"
                               >
-                                Refresh
+                                {t('dash.refresh')}
                               </button>
                             </div>
 
@@ -4388,26 +4510,26 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{grievance.description}</p>
                                     </div>
                                     <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                                      {formatLabel(grievance.status)}
+                                      {displayEnum(grievance.status)}
                                     </span>
                                   </div>
                                   <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                    <span>{formatLabel(grievance.category)}</span>
-                                    <span>{formatLabel(grievance.priority)}</span>
-                                    <span>{formatShortDateTime(grievance.created_at)}</span>
+                                    <span>{displayEnum(grievance.category)}</span>
+                                    <span>{displayEnum(grievance.priority)}</span>
+                                    <span dir="ltr">{formatShortDateTime(grievance.created_at)}</span>
                                   </div>
                                 </div>
                               ))}
 
                               {!grievanceLoading && myGrievances.length === 0 && (
                                 <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                  No grievances filed yet.
+                                  {t('dash.noGrievances')}
                                 </p>
                               )}
 
                               {grievanceLoading && (
                                 <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                  Loading your grievances...
+                                  {t('dash.loadingMyGrievances')}
                                 </p>
                               )}
                             </div>
@@ -4415,33 +4537,33 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
                           {canManageGrievances && (
                             <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                              <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Tenant Grievances</h4>
+                              <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.tenantGrievances')}</h4>
                               <div className="overflow-x-auto">
                                 <table className={cn("w-full min-w-[860px]", isRtl ? "text-right" : "text-left")}>
                                   <thead>
                                     <tr className="border-b border-emerald-500/15 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                      <th className="p-3">Employee</th>
-                                      <th className="p-3">Case</th>
-                                      <th className="p-3">Priority</th>
-                                      <th className="p-3">Status</th>
-                                      <th className="p-3">Created</th>
-                                      <th className="p-3">Update</th>
+                                      <th className="p-3">{t('dash.employee')}</th>
+                                      <th className="p-3">{t('dash.case')}</th>
+                                      <th className="p-3">{t('dash.priority')}</th>
+                                      <th className="p-3">{t('dash.status')}</th>
+                                      <th className="p-3">{t('dash.created')}</th>
+                                      <th className="p-3">{t('dash.update')}</th>
                                     </tr>
                                   </thead>
                                   <tbody className="text-xs">
                                     {tenantGrievances.map((grievance) => (
                                       <tr key={grievance.id} className="border-b border-emerald-500/10 text-neutral-700 last:border-0 dark:border-emerald-500/10 dark:text-emerald-100/65">
                                         <td className="p-3 font-semibold">
-                                          {grievance.full_name || 'Employee'}
-                                          <span className="block text-[10px] font-normal text-slate-500">{grievance.email || grievance.employee_id}</span>
+                                          {grievance.full_name || t('dash.employee')}
+                                          <span className="block text-[10px] font-normal text-slate-500" dir="ltr">{grievance.email || grievance.employee_id}</span>
                                         </td>
                                         <td className="p-3">
                                           <span className="block font-bold text-slate-800 dark:text-slate-100">{grievance.title}</span>
                                           <span className="mt-1 block max-w-[280px] truncate text-[10px] text-slate-500">{grievance.description}</span>
                                         </td>
-                                        <td className="p-3">{formatLabel(grievance.priority)}</td>
-                                        <td className="p-3">{formatLabel(grievance.status)}</td>
-                                        <td className="p-3 font-mono text-[11px]">{formatShortDateTime(grievance.created_at)}</td>
+                                        <td className="p-3">{displayEnum(grievance.priority)}</td>
+                                        <td className="p-3">{displayEnum(grievance.status)}</td>
+                                        <td className="p-3 font-mono text-[11px]" dir="ltr">{formatShortDateTime(grievance.created_at)}</td>
                                         <td className="p-3">
                                           <select
                                             value={grievance.status}
@@ -4450,7 +4572,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                             className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                           >
                                             {grievanceStatuses.map((status) => (
-                                              <option key={status} value={status}>{formatLabel(status)}</option>
+                                              <option key={status} value={status}>{displayEnum(status)}</option>
                                             ))}
                                           </select>
                                         </td>
@@ -4460,7 +4582,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     {!tenantGrievanceLoading && tenantGrievances.length === 0 && (
                                       <tr>
                                         <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
-                                          No tenant grievances yet.
+                                          {t('dash.noTenantGrievances')}
                                         </td>
                                       </tr>
                                     )}
@@ -4468,7 +4590,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                     {tenantGrievanceLoading && (
                                       <tr>
                                         <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
-                                          Loading tenant grievances...
+                                          {t('dash.loadingTenantGrievances')}
                                         </td>
                                       </tr>
                                     )}
@@ -4488,8 +4610,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                            <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl md:col-span-2">
                              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                <div>
-                                 <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">Roles & Permissions</p>
-                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Foundation controls for tenant roles, permission keys, and employee job titles.</p>
+                                 <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.rolesPermissions')}</p>
+                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('dash.rolesPermissionsHelp')}</p>
                                </div>
                                <button
                                  type="button"
@@ -4497,7 +4619,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  disabled={isOffline || rolesLoading}
                                  className="rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:text-emerald-300"
                                >
-                                 {rolesLoading ? 'Loading...' : 'Refresh'}
+                                 {rolesLoading ? t('dash.loading') : t('dash.refresh')}
                                </button>
                              </div>
 
@@ -4521,11 +4643,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                          <div>
                                            <p className="font-bold text-neutral-800 dark:text-emerald-50">{role.name}</p>
                                            <p className="mt-0.5 text-[10px] text-neutral-500 dark:text-emerald-100/45">
-                                             {role.is_system ? 'System role' : 'Custom role'} • {role.assigned_employee_count || 0} assigned
+                                             {role.is_system ? t('dash.systemRole') : t('dash.customRole')} &bull; <span dir="ltr">{role.assigned_employee_count || 0}</span> {t('dash.assigned')}
                                            </p>
                                          </div>
                                          <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                                           {role.system_key ? formatRole(role.system_key) : 'Custom'}
+                                           {role.system_key ? displayRole(role.system_key) : t('dash.custom')}
                                          </span>
                                        </div>
                                        <div className="mt-3 flex flex-wrap gap-1">
@@ -4535,7 +4657,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                            </span>
                                          ))}
                                          {role.permissions.length === 0 && (
-                                           <span className="text-[10px] text-neutral-500 dark:text-emerald-100/40">No permissions yet.</span>
+                                           <span className="text-[10px] text-neutral-500 dark:text-emerald-100/40">{t('dash.noPermissions')}</span>
                                          )}
                                        </div>
                                      </div>
@@ -4543,7 +4665,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                  </div>
 
                                  <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
-                                   <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Employee Assignments</p>
+                                   <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('dash.employeeAssignments')}</p>
                                    <div className="space-y-2">
                                      {roleEmployees.map((employee) => (
                                        <div key={employee.id} className="rounded border border-emerald-500/10 p-3">
@@ -4551,10 +4673,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                            <div>
                                              <p className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{employee.full_name}</p>
                                              <p className="text-[10px] text-neutral-500 dark:text-emerald-100/45">
-                                               {employee.email} • {formatRole(employee.role)}
+                                               <span dir="ltr" className="inline-block max-w-full truncate text-left">{employee.email}</span> &bull; {displayRole(employee.role)}
                                              </p>
                                              <p className="mt-1 text-[10px] text-emerald-700/70 dark:text-emerald-100/55">
-                                               {employee.assigned_roles.map((role) => role.name).join(', ') || 'No custom assignments'}
+                                               {employee.assigned_roles.map((role) => role.name).join(', ') || t('dash.noCustomAssignments')}
                                              </p>
                                            </div>
                                            <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] lg:w-[420px]">
@@ -4564,7 +4686,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                                disabled={isOffline || roleUpdatingEmployeeId === employee.id}
                                                className="rounded border border-emerald-500/15 bg-white px-2 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                              >
-                                               <option value="">Assign role</option>
+                                               <option value="">{t('dash.assignRole')}</option>
                                                {tenantRoles.map((role) => (
                                                  <option key={role.id} value={role.id}>{role.name}</option>
                                                ))}
@@ -4575,12 +4697,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                                disabled={isOffline || roleUpdatingEmployeeId === employee.id}
                                                className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
                                              >
-                                               Save Title
+                                               {t('dash.saveTitle')}
                                              </button>
                                              <input
                                                value={titleDrafts[employee.id] || ''}
                                                onChange={(event) => setTitleDrafts((current) => ({ ...current, [employee.id]: event.target.value }))}
-                                               placeholder="Job title"
+                                               placeholder={t('dash.jobTitle')}
                                                className="rounded border border-emerald-500/15 bg-white px-2 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 sm:col-span-2"
                                              />
                                            </div>
@@ -4592,18 +4714,18 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                </div>
 
                                <div className="rounded-lg border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/25">
-                                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">Create Custom Role</p>
+                                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('dash.createCustomRole')}</p>
                                  <div className="space-y-2">
                                    <input
                                      value={roleForm.name}
                                      onChange={(event) => setRoleForm((current) => ({ ...current, name: event.target.value }))}
-                                     placeholder="Role name"
+                                     placeholder={t('dash.roleName')}
                                      className="w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                    />
                                    <textarea
                                      value={roleForm.description}
                                      onChange={(event) => setRoleForm((current) => ({ ...current, description: event.target.value }))}
-                                     placeholder="Description"
+                                     placeholder={t('dash.description')}
                                      rows={3}
                                      className="w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                    />
@@ -4629,7 +4751,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                                      disabled={isOffline || roleSaving || !roleForm.name.trim()}
                                      className="w-full rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                                    >
-                                     {roleSaving ? 'Creating...' : 'Create Role'}
+                                     {roleSaving ? t('dash.creating') : t('dash.createRole')}
                                    </button>
                                  </div>
                                </div>
@@ -4648,9 +4770,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                             <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.loan')}</p>
                             <p className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
-                               Cleared
+                               {t('dash.profileLoanCleared')}
                             </p>
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 font-mono uppercase tracking-widest">No active liabilities</p>
+                            <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 font-mono uppercase tracking-widest">{t('dash.noActiveLiabilities')}</p>
                          </div>
                       </div>
                       )}
