@@ -483,6 +483,10 @@ function hasPermission(user: AuthUser, permissionKey: string) {
   return legacyRolePermissionFallback[user.role].includes(permissionKey);
 }
 
+function isUuidString(value: string | undefined) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
 function notifyEmployee(title: string, body: string) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -765,6 +769,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       : 'Personal ledger & workflows';
   const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
+  const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
 
   const getNotificationSetting = (notificationKey: NotificationKey, channel: NotificationChannel) => (
     notificationSettings.find((setting) => setting.notificationKey === notificationKey && setting.channel === channel) ||
@@ -791,6 +796,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   );
 
   const loadNotificationSettings = async (clearMessage = true) => {
+    if (!hasAuthenticatedDashboardUser) return;
+
     setNotificationLoading(true);
     if (clearMessage) setNotificationMessage('');
 
@@ -1031,6 +1038,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
   const loadBreakRequests = async (clearMessage = true) => {
+    if (!hasAuthenticatedDashboardUser) return;
     if (!canViewOwnBreakRequests && !canReviewBreakRequests) return;
 
     setBreakRequestsLoading(true);
@@ -1192,6 +1200,8 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   };
 
   const loadPasskeys = async (clearMessage = true) => {
+    if (!hasAuthenticatedDashboardUser) return;
+
     setPasskeysLoading(true);
     if (clearMessage) setPasskeyMessage('');
 
@@ -1833,16 +1843,16 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   }, [activeTab, showPayrollPanel, showGrievancesPanel, canManageRoles, user.id, user.tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel) {
+    if (hasAuthenticatedDashboardUser && activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel) {
       loadNotificationSettings();
     }
-  }, [activeTab, showPayrollPanel, showGrievancesPanel, user.id, user.tenantId]);
+  }, [activeTab, showPayrollPanel, showGrievancesPanel, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'geofence') {
+    if (hasAuthenticatedDashboardUser && activeTab === 'geofence') {
       loadBreakRequests(false);
     }
-  }, [activeTab, user.id, user.role, user.tenantId]);
+  }, [activeTab, hasAuthenticatedDashboardUser, user.id, user.role, user.tenantId]);
 
   useEffect(() => {
     if (!showControlCenter) return;
@@ -1858,11 +1868,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   }, [showControlCenter]);
 
   useEffect(() => {
-    if (showControlCenter) {
+    if (showControlCenter && hasAuthenticatedDashboardUser) {
       loadNotificationSettings(false);
       loadPasskeys(false);
     }
-  }, [showControlCenter, user.id, user.tenantId]);
+  }, [showControlCenter, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
 
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);

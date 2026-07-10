@@ -763,6 +763,7 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const [confirmPassword, setConfirmPassword] = useState('');
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState('');
+  const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, string>>({});
 
   // Form State
 const [formData, setFormData] = useState<{
@@ -895,6 +896,13 @@ const [formData, setFormData] = useState<{
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
     setFormData(prev => ({ ...prev, [name]: val }));
     if (formError) setFormError('');
+    if (registerFieldErrors[name]) {
+      setRegisterFieldErrors((current) => {
+        const next = { ...current };
+        delete next[name];
+        return next;
+      });
+    }
   };
 
   const markTouched = (field: string) => {
@@ -1008,11 +1016,12 @@ const [formData, setFormData] = useState<{
         }
         onSignupComplete(data.user);
       } else {
-        alert(data.error || 'Registration failed');
+        setRegisterFieldErrors(data.fields || {});
+        setFormError(data.message || data.error || 'Unable to register workspace.');
         setIsSubmitting(false);
       }
     } catch(err) {
-      alert('Network anomaly detected.');
+      setFormError('Unable to reach the server. Check the backend connection and try again.');
       setIsSubmitting(false);
     }
   };
@@ -1424,9 +1433,16 @@ className={cn(
           </AnimatePresence>
 
           {formError && (
-            <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300">
-              {formError}
-            </p>
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300">
+              <p>{formError}</p>
+              {Object.keys(registerFieldErrors).length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 ps-5 font-medium">
+                  {Object.entries(registerFieldErrors).map(([field, message]) => (
+                    <li key={field}>{message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
           {/* Navigation Buttons */}

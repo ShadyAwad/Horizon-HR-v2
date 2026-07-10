@@ -48,6 +48,8 @@ type CompanyLocationInput = {
   address?: string;
   lat?: number | string;
   lng?: number | string;
+  latitude?: number | string;
+  longitude?: number | string;
   radius?: number | string;
   isPrimary?: boolean;
   isActive?: boolean;
@@ -841,7 +843,7 @@ function normalizeCompanyLocations(
 ) {
   const rawLocations = Array.isArray(locations) && locations.length > 0
     ? locations
-    : fallbackLocation?.lat !== undefined || fallbackLocation?.lng !== undefined || fallbackLocation?.radius !== undefined
+    : fallbackLocation?.lat !== undefined || fallbackLocation?.lng !== undefined || fallbackLocation?.latitude !== undefined || fallbackLocation?.longitude !== undefined || fallbackLocation?.radius !== undefined
       ? [{ ...fallbackLocation, name: fallbackLocation.name || 'Headquarters', locationType: 'headquarters' as const, isPrimary: true }]
       : [];
 
@@ -854,8 +856,8 @@ function normalizeCompanyLocations(
   for (const [index, location] of rawLocations.entries()) {
     const name = location.name?.trim() || '';
     const locationType = location.locationType || (index === 0 ? 'headquarters' : 'branch');
-    const latitude = Number(location.lat);
-    const longitude = Number(location.lng);
+    const latitude = Number(location.lat ?? location.latitude);
+    const longitude = Number(location.lng ?? location.longitude);
     const radiusMeters = Number(location.radius);
 
     if (!name) {
@@ -887,8 +889,8 @@ function normalizeCompanyLocations(
     name: location.name!.trim().slice(0, 120),
     locationType: location.locationType || (index === 0 ? 'headquarters' : 'branch'),
     address: location.address?.trim().slice(0, 300) || null,
-    latitude: Number(location.lat),
-    longitude: Number(location.lng),
+    latitude: Number(location.lat ?? location.latitude),
+    longitude: Number(location.lng ?? location.longitude),
     radiusMeters: Number(location.radius),
     isPrimary: primaryIndex === -1 ? index === 0 : index === primaryIndex,
     isActive: location.isActive ?? true,
@@ -938,6 +940,40 @@ async function seedTenantRolesAndPermissions(
   tenantId: string,
   customRoles: Array<{ name: string; description: string | null; permissionKeys: string[] }> = [],
 ) {
+  await client.query(
+    `
+      INSERT INTO tenant_permissions (permission_key, label, description)
+      VALUES
+        ('locations.read', 'Read locations', 'View company locations.'),
+        ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
+        ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
+        ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
+        ('break_requests.create', 'Create break requests', 'Request manager approval for breaks.'),
+        ('break_requests.view_own', 'View own break requests', 'View personal break request history.'),
+        ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
+        ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
+        ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
+        ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
+        ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
+        ('payroll.view_all', 'View all payroll', 'View tenant payroll records.'),
+        ('payroll.run', 'Run payroll', 'Generate tenant payroll.'),
+        ('payroll.approve', 'Approve payroll', 'Approve or cancel payroll records.'),
+        ('payroll.mark_paid', 'Mark payroll paid', 'Mark approved payroll as paid.'),
+        ('payroll.export_pdf', 'Export payroll PDF', 'Export payroll statements as PDF.'),
+        ('compensation.manage', 'Manage compensation', 'Create and update compensation profiles.'),
+        ('loans.view_self', 'View own loans', 'View personal employee loans.'),
+        ('loans.manage', 'Manage loans', 'Create and update employee loans.'),
+        ('grievances.create', 'Create grievances', 'File grievance cases.'),
+        ('grievances.review', 'Review grievances', 'Review tenant grievance cases.'),
+        ('feed.read', 'Read company feed', 'Read company feed posts.'),
+        ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
+        ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.')
+      ON CONFLICT (permission_key) DO UPDATE SET
+        label = EXCLUDED.label,
+        description = EXCLUDED.description
+    `,
+  );
+
   await client.query(
     `
       INSERT INTO tenant_roles (tenant_id, name, description, system_key, is_system)
@@ -1089,6 +1125,13 @@ async function demoAuth(
     return res.status(401).json({
       success: false,
       error: 'Authentication required.',
+    });
+  }
+
+  if (!isUuid(employeeId) || !isUuid(tenantId)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid authentication context.',
     });
   }
 
@@ -1625,39 +1668,50 @@ async function startServer() {
       isPrimary: true,
     });
 
-    if (
-      !normalizedCompanyName.valid ||
-      !normalizedTenantSlug.valid ||
-      !normalizedAdminFullName.valid ||
-      !normalizedAdminEmail.valid ||
-      !adminPassword ||
-      !normalizedCurrency ||
-      !normalizedCapacity
-    ) {
+    const validationFields: Record<string, string> = {};
+    if (!normalizedCompanyName.valid) validationFields.companyName = normalizedCompanyName.error;
+    if (!normalizedTenantSlug.valid) validationFields.tenantSlug = normalizedTenantSlug.error;
+    if (!normalizedAdminFullName.valid) validationFields.adminFullName = normalizedAdminFullName.error;
+    if (!normalizedAdminEmail.valid) validationFields.adminEmail = normalizedAdminEmail.error;
+    if (!adminPassword) validationFields.adminPassword = 'Admin password is required.';
+    if (!normalizedCurrency) validationFields.currency = 'Currency is required.';
+    if (!normalizedCapacity) validationFields.capacity = 'Capacity is required.';
+
+    if (Object.keys(validationFields).length > 0) {
       return res.status(400).json({
         success: false,
-        error: 'companyName, tenantSlug, adminFullName, adminEmail, adminPassword, currency, and capacity are required.',
+        code: 'VALIDATION_ERROR',
+        message: 'Please fix the highlighted fields.',
+        fields: validationFields,
       });
     }
 
     if (!adminPasswordStrength.valid) {
       return res.status(400).json({
         success: false,
-        error: `adminPassword is missing: ${adminPasswordStrength.missingRules.join(', ')}.`,
+        code: 'VALIDATION_ERROR',
+        message: 'Please fix the highlighted fields.',
+        fields: {
+          adminPassword: `Password is missing: ${adminPasswordStrength.missingRules.join(', ')}.`,
+        },
       });
     }
 
     if (!normalizedLocations.ok) {
       return res.status(400).json({
         success: false,
-        error: normalizedLocations.error,
+        code: 'VALIDATION_ERROR',
+        message: 'Please fix the highlighted fields.',
+        fields: { locations: normalizedLocations.error },
       });
     }
 
     if (!normalizedCustomRoles.ok) {
       return res.status(400).json({
         success: false,
-        error: normalizedCustomRoles.error,
+        code: 'VALIDATION_ERROR',
+        message: 'Please fix the highlighted fields.',
+        fields: { customRoles: normalizedCustomRoles.error },
       });
     }
 
@@ -1749,10 +1803,7 @@ async function startServer() {
           FROM tenant_roles
           WHERE tenant_roles.tenant_id = $1
             AND tenant_roles.system_key = $3
-          ON CONFLICT (tenant_id, employee_id)
-          DO UPDATE SET
-            role_id = EXCLUDED.role_id,
-            assigned_at = NOW()
+          ON CONFLICT (tenant_id, employee_id, role_id) DO NOTHING
         `,
         [tenant.id, employee.id, employee.role],
       );
@@ -1770,8 +1821,8 @@ async function startServer() {
             $1,
             $2,
             ST_Buffer(
-              ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
-              $5
+              ST_SetSRID(ST_MakePoint($3::double precision, $4::double precision), 4326)::geography,
+              $5::double precision
             )::geometry
           )
         `,
@@ -1809,15 +1860,15 @@ async function startServer() {
               $2,
               $3,
               $4,
-              $5,
-              $6,
-              $7,
+              $5::numeric,
+              $6::numeric,
+              $7::int,
               ST_Buffer(
-                ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography,
-                $7
+                ST_SetSRID(ST_MakePoint($6::double precision, $5::double precision), 4326)::geography,
+                $7::double precision
               )::geometry,
-              $8,
-              $9
+              $8::boolean,
+              $9::boolean
             )
             RETURNING id, name, location_type, latitude, longitude, radius_meters, is_primary, is_active
           `,
@@ -1907,25 +1958,47 @@ async function startServer() {
         }
       }
 
-      console.error('[Register Tenant] Failed:', error);
+      const registerError = error as {
+        message?: string;
+        code?: string;
+        constraint?: string;
+        detail?: string;
+        table?: string;
+        column?: string;
+        stack?: string;
+      };
+
+      console.error('[register-tenant failed]', {
+        message: registerError.message,
+        code: registerError.code,
+        constraint: registerError.constraint,
+        detail: registerError.detail,
+        table: registerError.table,
+        column: registerError.column,
+        stack: process.env.NODE_ENV === 'production' ? undefined : registerError.stack,
+      });
 
       if ((error as { code?: string }).code === '23505') {
         return res.status(409).json({
           success: false,
-          error: 'The tenant slug or admin email is already in use.',
+          code: 'DUPLICATE_WORKSPACE',
+          message: 'A workspace or admin account with these details already exists.',
         });
       }
 
       if ((error as { statusCode?: number }).statusCode === 400) {
         return res.status(400).json({
           success: false,
-          error: (error as Error).message,
+          code: 'VALIDATION_ERROR',
+          message: 'Please fix the highlighted fields.',
+          fields: { form: (error as Error).message },
         });
       }
 
       res.status(500).json({
         success: false,
-        error: 'Unable to register tenant.',
+        code: 'REGISTER_TENANT_FAILED',
+        message: 'Unable to register workspace.',
       });
     } finally {
       client?.release();

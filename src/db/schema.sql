@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "postgis";
 -- 1. Tenants Table
 -- =========================================================
 
-CREATE TABLE tenants (
+CREATE TABLE IF NOT EXISTS tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     slug VARCHAR(255) UNIQUE NOT NULL,
     company_name VARCHAR(255) NOT NULL,
@@ -17,14 +17,14 @@ CREATE TABLE tenants (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX tenants_slug_idx
+CREATE INDEX IF NOT EXISTS tenants_slug_idx
 ON tenants(slug);
 
 -- =========================================================
 -- 2. Employees Table
 -- =========================================================
 
-CREATE TABLE employees (
+CREATE TABLE IF NOT EXISTS employees (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
@@ -47,16 +47,18 @@ CREATE TABLE employees (
     UNIQUE (id, tenant_id)
 );
 
-CREATE UNIQUE INDEX employees_email_tenant_idx
+CREATE UNIQUE INDEX IF NOT EXISTS employees_email_tenant_idx
 ON employees(email, tenant_id);
 
-CREATE INDEX employees_tenant_manager_idx
+CREATE INDEX IF NOT EXISTS employees_tenant_manager_idx
 ON employees(tenant_id, manager_id);
 
 ALTER TABLE employees
 ADD COLUMN IF NOT EXISTS job_title VARCHAR(120);
 
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS employee_tenant_isolation ON employees;
 
 CREATE POLICY employee_tenant_isolation
 ON employees
@@ -367,7 +369,7 @@ FROM employees
 INNER JOIN tenant_roles
     ON tenant_roles.tenant_id = employees.tenant_id
    AND tenant_roles.system_key = employees.role
-ON CONFLICT (tenant_id, employee_id) DO NOTHING;
+ON CONFLICT (tenant_id, employee_id, role_id) DO NOTHING;
 
 
 -- =========================================================
@@ -432,6 +434,8 @@ ON user_webauthn_credentials (tenant_id, employee_id);
 
 ALTER TABLE user_webauthn_credentials ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS user_webauthn_credentials_tenant_isolation ON user_webauthn_credentials;
+
 CREATE POLICY user_webauthn_credentials_tenant_isolation
 ON user_webauthn_credentials
 USING (
@@ -465,6 +469,8 @@ WHERE used_at IS NULL;
 
 ALTER TABLE webauthn_challenges ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS webauthn_challenges_tenant_isolation ON webauthn_challenges;
+
 CREATE POLICY webauthn_challenges_tenant_isolation
 ON webauthn_challenges
 USING (
@@ -478,7 +484,7 @@ WITH CHECK (
 -- 4. Geofences / Operating Zones
 -- =========================================================
 
-CREATE TABLE geofences (
+CREATE TABLE IF NOT EXISTS geofences (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -491,14 +497,16 @@ CREATE TABLE geofences (
 );
 
 -- Spatial index for ST_Contains / ST_Intersects / ST_DWithin-style queries
-CREATE INDEX geofences_boundary_gix
+CREATE INDEX IF NOT EXISTS geofences_boundary_gix
 ON geofences
 USING GIST (boundary);
 
-CREATE INDEX geofences_tenant_idx
+CREATE INDEX IF NOT EXISTS geofences_tenant_idx
 ON geofences(tenant_id);
 
 ALTER TABLE geofences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS geofence_tenant_isolation ON geofences;
 
 CREATE POLICY geofence_tenant_isolation
 ON geofences
@@ -575,7 +583,7 @@ WITH CHECK (
 -- 6. Clock-in / Time Logs
 -- =========================================================
 
-CREATE TABLE time_logs (
+CREATE TABLE IF NOT EXISTS time_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -599,15 +607,17 @@ CREATE TABLE time_logs (
         CHECK (clock_out_time IS NULL OR clock_out_time > clock_in_time)
 );
 
-CREATE INDEX time_logs_tenant_employee_time_idx
+CREATE INDEX IF NOT EXISTS time_logs_tenant_employee_time_idx
 ON time_logs(tenant_id, employee_id, clock_in_time DESC);
 
 -- Prevent two open shifts for the same employee in the same tenant
-CREATE UNIQUE INDEX time_logs_one_open_shift_per_tenant_idx
+CREATE UNIQUE INDEX IF NOT EXISTS time_logs_one_open_shift_per_tenant_idx
 ON time_logs(tenant_id, employee_id)
 WHERE clock_out_time IS NULL;
 
 ALTER TABLE time_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS time_logs_tenant_isolation ON time_logs;
 
 CREATE POLICY time_logs_tenant_isolation
 ON time_logs
@@ -657,7 +667,7 @@ FROM org_tree;
 -- 7. Leave Requests
 -- =========================================================
 
-CREATE TABLE leave_requests (
+CREATE TABLE IF NOT EXISTS leave_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -684,13 +694,15 @@ CREATE TABLE leave_requests (
         CHECK (end_date >= start_date)
 );
 
-CREATE INDEX leave_requests_tenant_status_idx
+CREATE INDEX IF NOT EXISTS leave_requests_tenant_status_idx
 ON leave_requests(tenant_id, status, created_at DESC);
 
-CREATE INDEX leave_requests_tenant_employee_date_idx
+CREATE INDEX IF NOT EXISTS leave_requests_tenant_employee_date_idx
 ON leave_requests(tenant_id, employee_id, start_date DESC);
 
 ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS leave_requests_tenant_isolation ON leave_requests;
 
 CREATE POLICY leave_requests_tenant_isolation
 ON leave_requests
@@ -1231,7 +1243,7 @@ WITH CHECK (
 -- Designed for BullMQ / background worker upserts
 -- =========================================================
 
-CREATE TABLE attendance_daily_summaries (
+CREATE TABLE IF NOT EXISTS attendance_daily_summaries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1263,10 +1275,12 @@ CREATE TABLE attendance_daily_summaries (
 
 -- Reporting index for dashboards:
 -- "Show all employee summaries for tenant X on date/range Y"
-CREATE INDEX attendance_daily_summaries_tenant_date_idx
+CREATE INDEX IF NOT EXISTS attendance_daily_summaries_tenant_date_idx
 ON attendance_daily_summaries(tenant_id, work_date DESC);
 
 ALTER TABLE attendance_daily_summaries ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS attendance_daily_summaries_tenant_isolation ON attendance_daily_summaries;
 
 CREATE POLICY attendance_daily_summaries_tenant_isolation
 ON attendance_daily_summaries
@@ -1281,7 +1295,7 @@ WITH CHECK (
 -- 14. Audit Logs
 -- =========================================================
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1298,13 +1312,15 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX audit_logs_tenant_time_idx
+CREATE INDEX IF NOT EXISTS audit_logs_tenant_time_idx
 ON audit_logs(tenant_id, created_at DESC);
 
-CREATE INDEX audit_logs_tenant_entity_idx
+CREATE INDEX IF NOT EXISTS audit_logs_tenant_entity_idx
 ON audit_logs(tenant_id, entity_type, entity_id);
 
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS audit_logs_tenant_isolation ON audit_logs;
 
 CREATE POLICY audit_logs_tenant_isolation
 ON audit_logs
@@ -1315,7 +1331,7 @@ WITH CHECK (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 );
 
-CREATE TABLE outbox_events (
+CREATE TABLE IF NOT EXISTS outbox_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
@@ -1328,6 +1344,26 @@ CREATE TABLE outbox_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX outbox_events_unprocessed_idx
+CREATE INDEX IF NOT EXISTS outbox_events_unprocessed_idx
 ON outbox_events(processed_at)
 WHERE processed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS outbox_events_tenant_unprocessed_idx
+ON outbox_events(tenant_id, processed_at, created_at DESC)
+WHERE processed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS outbox_events_tenant_event_idx
+ON outbox_events(tenant_id, event_type, created_at DESC);
+
+ALTER TABLE outbox_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS outbox_events_tenant_isolation ON outbox_events;
+
+CREATE POLICY outbox_events_tenant_isolation
+ON outbox_events
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
