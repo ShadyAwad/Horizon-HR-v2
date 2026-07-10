@@ -5061,8 +5061,8 @@ app.put(
     const normalizedCurrency = currency?.trim().toUpperCase();
     const normalizedEffectiveFrom = effectiveFrom || toWorkDate(new Date());
 
-    if (!targetEmployeeId) {
-      return res.status(400).json({ success: false, error: 'employeeId is required.' });
+    if (!isUuid(targetEmployeeId)) {
+      return res.status(400).json({ success: false, error: 'employeeId must be a valid UUID.' });
     }
 
     if (!isCompensationPayType(payType)) {
@@ -5212,6 +5212,10 @@ app.put(
 
       res.json({ success: true, profile });
     } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        return res.status(409).json({ success: false, error: 'An active compensation profile already exists for this employee.' });
+      }
+
       console.error('[Compensation] Failed to save profile:', error);
       res.status(500).json({ success: false, error: 'Unable to save compensation profile' });
     }
@@ -5346,8 +5350,8 @@ app.post(
     const normalizedDueDate = dueDate || null;
     const normalizedLoanName = loanName?.trim() || 'Employee Loan';
 
-    if (!employeeId) {
-      return res.status(400).json({ success: false, error: 'employeeId is required.' });
+    if (!isUuid(employeeId)) {
+      return res.status(400).json({ success: false, error: 'employeeId must be a valid UUID.' });
     }
 
     if (!Number.isFinite(normalizedPrincipalAmount) || normalizedPrincipalAmount <= 0) {
@@ -5356,6 +5360,10 @@ app.post(
 
     if (!Number.isFinite(normalizedRepaymentAmount) || normalizedRepaymentAmount < 0) {
       return res.status(400).json({ success: false, error: 'repaymentAmount must be a non-negative number.' });
+    }
+
+    if (!normalizedLoanName || normalizedLoanName.length > 160) {
+      return res.status(400).json({ success: false, error: 'loanName must be between 1 and 160 characters.' });
     }
 
     if (normalizedCurrency && !/^[A-Z]{3}$/.test(normalizedCurrency)) {
@@ -5368,6 +5376,10 @@ app.post(
 
     if (!isValidDateInput(normalizedIssuedAt) || (normalizedDueDate !== null && !isValidDateInput(normalizedDueDate))) {
       return res.status(400).json({ success: false, error: 'issuedAt and dueDate must be valid YYYY-MM-DD dates.' });
+    }
+
+    if (normalizedDueDate !== null && normalizedDueDate < normalizedIssuedAt) {
+      return res.status(400).json({ success: false, error: 'dueDate must not be before issuedAt.' });
     }
 
     if (!hasDatabaseConfig()) {
@@ -5509,6 +5521,10 @@ app.patch(
     const actorEmployeeId = req.authUser!.employeeId;
     const { id } = req.params;
     const { status } = req.body as UpdateEmployeeLoanStatusBody;
+
+    if (!isUuid(id)) {
+      return res.status(400).json({ success: false, error: 'Employee loan id must be a valid UUID.' });
+    }
 
     if (!isLoanStatus(status)) {
       return res.status(400).json({ success: false, error: 'status must be active, paid, or cancelled.' });
@@ -5744,6 +5760,10 @@ app.patch(
     const { id } = req.params;
     const { status } = req.body as UpdatePayrollStatusBody;
 
+    if (!isUuid(id)) {
+      return res.status(400).json({ success: false, error: 'Payroll record id must be a valid UUID.' });
+    }
+
     if (!isPayrollStatus(status)) {
       return res.status(400).json({ success: false, error: 'status must be draft, approved, paid, or cancelled.' });
     }
@@ -5908,9 +5928,9 @@ app.post(
       });
     }
 
-    if (payPeriodEnd! < payPeriodStart!) {
+    if (payPeriodEnd! <= payPeriodStart!) {
       return res.status(400).json({
-        error: 'payPeriodEnd must not be before payPeriodStart.',
+        error: 'payPeriodEnd must be after payPeriodStart.',
       });
     }
 
@@ -5988,9 +6008,9 @@ app.post(
               continue;
             }
 
-            const existingPayrollResult = await client.query<{ id: string }>(
+            const existingPayrollResult = await client.query<{ id: string; status: PayrollStatus }>(
               `
-                SELECT id
+                SELECT id, status
                 FROM payroll_records
                 WHERE tenant_id = $1
                   AND employee_id = $2
@@ -6002,6 +6022,12 @@ app.post(
             );
 
             const existingPayrollRecord = existingPayrollResult.rows[0];
+            if (existingPayrollRecord && existingPayrollRecord.status !== 'draft') {
+              throw Object.assign(
+                new Error('Payroll for this employee and period is finalized and cannot be re-run.'),
+                { statusCode: 409 },
+              );
+            }
             let employeeLoanDeduction = 0;
             const loanPayments: Array<{ loanId: string; amount: number }> = [];
 
@@ -6202,6 +6228,10 @@ app.post(
         loanDeductionsApplied: payrollRunResult.loanDeductionsApplied,
       });
     } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 409) {
+        return res.status(409).json({ success: false, error: (error as Error).message });
+      }
+
       console.error('[Payroll] Failed to run payroll:', error);
       res.status(500).json({ error: 'Unable to run payroll' });
     }
@@ -6578,6 +6608,10 @@ app.get(
     const employeeId = req.authUser!.employeeId;
     const role = req.authUser!.role;
     const canViewAllPayroll = role === 'hr_admin' || Boolean(req.authUser!.permissions?.includes('payroll.view_all'));
+
+    if (!isUuid(id)) {
+      return res.status(400).json({ success: false, error: 'Payroll record id must be a valid UUID.' });
+    }
 
     if (!hasDatabaseConfig()) {
       return res.status(503).json({ success: false, error: 'DATABASE_URL is required for payroll PDF export' });

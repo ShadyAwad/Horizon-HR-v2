@@ -209,6 +209,14 @@ async function runOptionalAuthenticatedChecks() {
       expectSafeError(result, 'Payroll status validation');
     });
 
+    await check('Invalid payroll identifier is rejected safely', async () => {
+      const result = await request('/api/payroll/not-a-uuid/pdf', {
+        headers: authHeaders(admin!),
+      });
+      expectStatus(result, 400, 'Payroll PDF identifier validation');
+      expectSafeError(result, 'Payroll PDF identifier validation');
+    });
+
     await check('Bad grievance status is rejected safely', async () => {
       const result = await request('/api/grievances/00000000-0000-0000-0000-000000000000/status', {
         method: 'PATCH',

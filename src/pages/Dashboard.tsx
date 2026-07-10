@@ -1825,7 +1825,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const saveCompensationProfile = async () => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
@@ -1866,7 +1866,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const createEmployeeLoan = async () => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
@@ -1916,7 +1916,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const updateEmployeeLoanStatus = async (loanId: string, status: LoanStatus) => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
@@ -1952,7 +1952,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const updatePayrollStatus = async (recordId: string, status: PayrollStatus) => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
@@ -1974,7 +1974,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       if (res.ok && data.success) {
         await loadPayrollRecords(false);
         setPayrollMessageType('success');
-        setPayrollMessage(`Payroll marked ${formatLabel(status)}.`);
+        setPayrollMessage(`${t('dash.payrollStatusUpdated')} ${displayEnum(status)}.`);
       } else {
         setPayrollMessageType('error');
         setPayrollMessage(data.error || t('dash.payrollStatusUpdateError'));
@@ -1990,11 +1990,17 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const runPayroll = async () => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
     if (payrollSubmitting || !canRunPayroll) return;
+
+    if (!payrollForm.payPeriodStart || !payrollForm.payPeriodEnd || payrollForm.payPeriodEnd <= payrollForm.payPeriodStart) {
+      setPayrollMessageType('error');
+      setPayrollMessage(t('dash.payrollPeriodError'));
+      return;
+    }
 
     setPayrollSubmitting(true);
     setPayrollMessage('');
@@ -2032,7 +2038,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
         setSkippedPayrollEmployees(data.skippedEmployees || []);
         setLoanDeductionsApplied(Number(data.loanDeductionsApplied || 0));
         setPayrollMessageType('success');
-        setPayrollMessage(`${data.message} Records: ${data.recordsGenerated}`);
+        setPayrollMessage(`${t('dash.payrollRunComplete')} ${data.recordsGenerated}`);
       } else {
         setPayrollMessageType('error');
         setPayrollMessage(data.error || t('dash.payrollRunError'));
@@ -2048,7 +2054,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const exportPayrollPdf = async (recordId: string) => {
     if (isOffline) {
       setPayrollMessageType('error');
-      setPayrollMessage('You are offline. Some HR actions require connection.');
+      setPayrollMessage(t('dash.offlineActionMessage'));
       return;
     }
 
@@ -4301,7 +4307,9 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               <ul className="mt-2 space-y-1">
                                 {skippedPayrollEmployees.map((employee) => (
                                   <li key={employee.employeeId}>
-                                    {employee.email}: {employee.reason}
+                                    <span dir="ltr">{employee.email}</span>: {employee.reason === 'Missing active compensation profile and no fallback base salary was provided.'
+                                      ? t('dash.missingCompensationSkip')
+                                      : employee.reason}
                                   </li>
                                 ))}
                               </ul>

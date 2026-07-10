@@ -205,6 +205,19 @@ async function run() {
     if (!Array.isArray(result.body?.payroll)) throw new Error('Payroll response did not include a payroll array.');
   });
 
+  await check('Payroll validation rejects invalid identifiers and periods', async () => {
+    const invalidIdResult = await request('/api/payroll/not-a-uuid/pdf', { headers: authenticatedHeaders });
+    expectStatus(invalidIdResult, 400, 'Payroll PDF invalid id');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const invalidPeriodResult = await request('/api/payroll/run', {
+      method: 'POST',
+      headers: authenticatedHeaders,
+      body: JSON.stringify({ payPeriodStart: today, payPeriodEnd: today, bonuses: 0, deductions: 0 }),
+    });
+    expectStatus(invalidPeriodResult, 400, 'Payroll same-day period validation');
+  });
+
   await check('Company feed list and draft creation', async () => {
     const listResult = await request('/api/company-feed', { headers: authenticatedHeaders });
     expectStatus(listResult, 200, 'Company feed list');
