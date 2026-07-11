@@ -35,6 +35,7 @@ async function resetDemo() {
       'time_logs',
       'break_requests',
       'leave_requests',
+      'resignation_requests',
       'payroll_records',
       'employee_compensation_profiles',
       'employee_loans',

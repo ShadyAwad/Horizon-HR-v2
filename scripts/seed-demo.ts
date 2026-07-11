@@ -187,6 +187,18 @@ async function seedDemo() {
       [tenantId, employee.id],
     );
     await client.query(
+      `INSERT INTO resignation_requests (
+         tenant_id, employee_id, resignation_type, requested_last_working_day, reason, status
+       )
+       SELECT $1, $2, 'career_change', CURRENT_DATE + 30,
+         'Demo resignation request for portfolio workflow testing.', 'pending'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM resignation_requests
+         WHERE tenant_id = $1 AND employee_id = $2 AND status = 'pending'
+       )`,
+      [tenantId, employee.id],
+    );
+    await client.query(
       `INSERT INTO employee_compensation_profiles (tenant_id, employee_id, pay_type, base_amount, currency, effective_from, is_active, created_by, updated_by)
        VALUES ($1, $2, 'monthly', 2500.00, 'USD', CURRENT_DATE, true, $3, $3)
        ON CONFLICT (tenant_id, employee_id) WHERE is_active DO UPDATE SET
