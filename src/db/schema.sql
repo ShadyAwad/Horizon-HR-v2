@@ -305,9 +305,14 @@ VALUES
     ('compensation.manage', 'Manage compensation', 'Create and update compensation profiles.'),
     ('loans.view_self', 'View own loans', 'View personal employee loans.'),
     ('loans.manage', 'Manage loans', 'Create and update employee loans.'),
-    ('grievances.create', 'Create grievances', 'File grievance cases.'),
-    ('grievances.review', 'Review grievances', 'Review tenant grievance cases.'),
-    ('feed.read', 'Read company feed', 'Read company feed posts.'),
+        ('grievances.create', 'Create grievances', 'File grievance cases.'),
+        ('grievances.review', 'Review grievances', 'Review tenant grievance cases.'),
+        ('resignations.create', 'Create resignation requests', 'Submit resignation requests.'),
+        ('resignations.view_own', 'View own resignation requests', 'View personal resignation requests.'),
+        ('resignations.view_all', 'View all resignation requests', 'View tenant resignation requests.'),
+        ('resignations.review', 'Review resignation requests', 'Approve or reject resignation requests.'),
+        ('resignations.process', 'Process resignation requests', 'Mark approved resignation requests as processed.'),
+        ('feed.read', 'Read company feed', 'Read company feed posts.'),
     ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
     ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.')
 ON CONFLICT (permission_key) DO UPDATE SET
@@ -339,6 +344,8 @@ JOIN (
         ('employee', 'payroll.export_pdf'),
         ('employee', 'loans.view_self'),
         ('employee', 'grievances.create'),
+        ('employee', 'resignations.create'),
+        ('employee', 'resignations.view_own'),
         ('employee', 'feed.read'),
         ('manager', 'locations.read'),
         ('manager', 'attendance.view'),
@@ -351,6 +358,8 @@ JOIN (
         ('manager', 'payroll.export_pdf'),
         ('manager', 'loans.view_self'),
         ('manager', 'grievances.review'),
+        ('manager', 'resignations.view_all'),
+        ('manager', 'resignations.review'),
         ('manager', 'feed.read')
 ) AS permission_seed(system_key, permission_key)
     ON permission_seed.system_key = tenant_roles.system_key
@@ -1099,6 +1108,58 @@ DROP POLICY IF EXISTS grievances_tenant_isolation ON grievances;
 
 CREATE POLICY grievances_tenant_isolation
 ON grievances
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+-- =========================================================
+-- 11a. Resignation Requests
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS resignation_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+    resignation_type VARCHAR(40) NOT NULL DEFAULT 'voluntary',
+    requested_last_working_day DATE NOT NULL,
+    reason TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    reviewed_by UUID REFERENCES employees(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    review_note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT resignation_requests_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+    CONSTRAINT resignation_requests_type_chk
+        CHECK (resignation_type IN ('voluntary', 'personal_reasons', 'career_change', 'other')),
+    CONSTRAINT resignation_requests_status_chk
+        CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn', 'processed')),
+    CONSTRAINT resignation_requests_reason_length_chk
+        CHECK (reason IS NULL OR length(reason) <= 2000)
+);
+
+CREATE INDEX IF NOT EXISTS resignation_requests_tenant_employee_created_idx
+ON resignation_requests(tenant_id, employee_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS resignation_requests_tenant_status_created_idx
+ON resignation_requests(tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS resignation_requests_tenant_last_working_day_idx
+ON resignation_requests(tenant_id, requested_last_working_day);
+
+ALTER TABLE resignation_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS resignation_requests_tenant_isolation ON resignation_requests;
+
+CREATE POLICY resignation_requests_tenant_isolation
+ON resignation_requests
 USING (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 )

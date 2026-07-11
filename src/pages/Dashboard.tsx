@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, type MouseEvent, type ReactNode } 
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -97,6 +97,23 @@ type BreakRequestFormState = {
   durationMinutes: string;
   customDuration: string;
   reason: string;
+};
+
+type ResignationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'processed';
+type ResignationRequest = {
+  id: string;
+  employee_id: string;
+  full_name?: string;
+  email?: string;
+  resignation_type: string;
+  requested_last_working_day: string;
+  reason?: string | null;
+  status: ResignationStatus;
+  reviewed_by?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
 };
 
 type PayrollRecord = {
@@ -312,6 +329,55 @@ const defaultSchedule: ShiftRow[] = [
   { day: 'Sunday', date: '30', shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Unscheduled' },
 ];
 
+const MAX_ROSTER_RANGE_DAYS = 31;
+
+function toRosterDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function fromRosterDateKey(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const parsed = new Date(year, month - 1, day, 12);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addRosterDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getWeekStart(date: Date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+  const mondayOffset = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - mondayOffset);
+  return start;
+}
+
+function getDefaultShiftForDate(date: Date): ShiftRow {
+  const weekdayIndex = (date.getDay() + 6) % 7;
+  const template = defaultSchedule[weekdayIndex];
+  return { ...template, date: toRosterDateKey(date) };
+}
+
+function getRosterDateRange(startDate: string, endDate: string) {
+  const start = fromRosterDateKey(startDate);
+  const end = fromRosterDateKey(endDate);
+  if (!start || !end || end < start) return { dates: [] as Date[], error: 'invalid' as const };
+
+  const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  if (dayCount > MAX_ROSTER_RANGE_DAYS) return { dates: [] as Date[], error: 'too_large' as const };
+
+  return {
+    dates: Array.from({ length: dayCount }, (_, index) => addRosterDays(start, index)),
+    error: null,
+  };
+}
+
 const notificationChannels: Array<{ key: NotificationChannel; label: string }> = [
   { key: 'in_app', label: 'In-app' },
   { key: 'email', label: 'Email' },
@@ -399,25 +465,20 @@ const defaultRoleForm: RoleFormState = {
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 
 function readStoredSchedule() {
-  if (typeof window === 'undefined') return defaultSchedule;
+  if (typeof window === 'undefined') return [];
 
   try {
     const storedSchedule = window.localStorage.getItem('horizon-roster');
-    if (!storedSchedule) return defaultSchedule;
+    if (!storedSchedule) return [];
 
-    const parsedSchedule = JSON.parse(storedSchedule) as ShiftRow[];
-    const normalizedSchedule = defaultSchedule.map((defaultShift) => {
-      const storedShift = parsedSchedule.find((shift) => (
-        shift.day === defaultShift.day ||
-        shift.day.slice(0, 3) === defaultShift.day.slice(0, 3)
-      ));
-
-      return storedShift ? { ...defaultShift, ...storedShift, day: defaultShift.day } : defaultShift;
-    });
-
-    return normalizedSchedule;
+    const parsedSchedule = JSON.parse(storedSchedule);
+    return Array.isArray(parsedSchedule)
+      ? parsedSchedule.filter((shift): shift is ShiftRow => (
+        Boolean(shift) && typeof shift.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(shift.date)
+      ))
+      : [];
   } catch {
-    return defaultSchedule;
+    return [];
   }
 }
 
@@ -586,6 +647,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const [breakRequestForm, setBreakRequestForm] = useState<BreakRequestFormState>(defaultBreakRequestForm);
   const [breakReviewNotes, setBreakReviewNotes] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<ShiftRow[]>(readStoredSchedule);
+  const [rosterStartDate, setRosterStartDate] = useState(() => toRosterDateKey(getWeekStart(new Date())));
+  const [rosterRangeWeeks, setRosterRangeWeeks] = useState<1 | 2 | 4 | 'custom'>(1);
+  const [rosterCustomEndDate, setRosterCustomEndDate] = useState(() => toRosterDateKey(addRosterDays(getWeekStart(new Date()), 6)));
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings[]>(readStoredNotifications);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
@@ -619,6 +683,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const [loanDeductionsApplied, setLoanDeductionsApplied] = useState(0);
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
+  const [showResignationsPanel, setShowResignationsPanel] = useState(false);
+  const [myResignations, setMyResignations] = useState<ResignationRequest[]>([]);
+  const [tenantResignations, setTenantResignations] = useState<ResignationRequest[]>([]);
+  const [resignationsLoading, setResignationsLoading] = useState(false);
+  const [resignationSubmitting, setResignationSubmitting] = useState(false);
+  const [resignationUpdatingId, setResignationUpdatingId] = useState<string | null>(null);
+  const [resignationMessage, setResignationMessage] = useState('');
+  const [resignationMessageType, setResignationMessageType] = useState<'success' | 'error'>('success');
+  const [resignationForm, setResignationForm] = useState({ requestedLastWorkingDay: '', resignationType: 'voluntary', reason: '' });
   const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
   const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
   const [grievanceLoading, setGrievanceLoading] = useState(false);
@@ -783,6 +856,16 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   };
 
   const canManageRoster = user.role === 'hr_admin' || user.role === 'manager';
+  const rosterEndDate = rosterRangeWeeks === 'custom'
+    ? rosterCustomEndDate
+    : toRosterDateKey(addRosterDays(fromRosterDateKey(rosterStartDate) || getWeekStart(new Date()), rosterRangeWeeks * 7 - 1));
+  const rosterRange = getRosterDateRange(rosterStartDate, rosterEndDate);
+  const rosterDays = rosterRange.dates;
+  const visibleSchedule = rosterDays.map((date) => {
+    const dateKey = toRosterDateKey(date);
+    const storedShift = schedule.find((shift) => shift.date === dateKey);
+    return storedShift ? { ...getDefaultShiftForDate(date), ...storedShift } : getDefaultShiftForDate(date);
+  });
   const missingCompensationProfiles = compensationProfiles.filter((profile) => !profile.id);
   const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
   const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
@@ -812,11 +895,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
       nextStatus === 'paid' ? canMarkPayrollPaid : canApprovePayroll
     ))
   );
-  const profilePanelHeading = showPayrollPanel ? t('profile.payroll') : showGrievancesPanel ? t('dash.grievances') : t('profile.title');
+  const canReviewResignations = user.role === 'hr_admin' || user.role === 'manager' || Boolean(user.permissions?.includes('resignations.review'));
+  const canProcessResignations = user.role === 'hr_admin' || Boolean(user.permissions?.includes('resignations.process'));
+  const profilePanelHeading = showPayrollPanel ? t('profile.payroll') : showGrievancesPanel ? t('dash.grievances') : showResignationsPanel ? t('dash.resignations') : t('profile.title');
   const profilePanelSubtitle = showPayrollPanel
     ? t('dash.payrollSubtitleFull')
     : showGrievancesPanel
       ? t('dash.grievancesSubtitleAdmin')
+      : showResignationsPanel
+        ? t('dash.resignations')
       : t('profile.subtitle');
   const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
@@ -1264,10 +1351,115 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
     }, 4000);
   };
 
-  const updateShift = (index: number, field: keyof ShiftRow, value: string) => {
-    setSchedule((current) => current.map((shift, shiftIndex) => (
-      shiftIndex === index ? { ...shift, [field]: value } : shift
-    )));
+  const updateShift = (date: string, field: keyof ShiftRow, value: string) => {
+    setSchedule((current) => {
+      const existingShift = current.find((shift) => shift.date === date);
+      const nextShift = { ...(existingShift || getDefaultShiftForDate(fromRosterDateKey(date) || new Date())), [field]: value };
+      return existingShift
+        ? current.map((shift) => shift.date === date ? nextShift : shift)
+        : [...current, nextShift];
+    });
+  };
+
+  const setRosterRange = (value: '1' | '2' | '4' | 'custom') => {
+    if (value === 'custom') {
+      setRosterRangeWeeks('custom');
+      setRosterCustomEndDate(toRosterDateKey(addRosterDays(fromRosterDateKey(rosterStartDate) || getWeekStart(new Date()), 6)));
+      return;
+    }
+
+    setRosterRangeWeeks(Number(value) as 1 | 2 | 4);
+  };
+
+  const moveRosterRange = (direction: -1 | 1) => {
+    const start = fromRosterDateKey(rosterStartDate) || getWeekStart(new Date());
+    const daysToMove = rosterDays.length || 7;
+    const nextStart = addRosterDays(start, direction * daysToMove);
+    setRosterStartDate(toRosterDateKey(nextStart));
+
+    if (rosterRangeWeeks === 'custom') {
+      setRosterCustomEndDate(toRosterDateKey(addRosterDays(nextStart, Math.max(daysToMove - 1, 0))));
+    }
+  };
+
+  const resetRosterToThisWeek = () => {
+    const start = getWeekStart(new Date());
+    setRosterStartDate(toRosterDateKey(start));
+    setRosterRangeWeeks(1);
+    setRosterCustomEndDate(toRosterDateKey(addRosterDays(start, 6)));
+  };
+
+  const resignationHeaders = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    'x-employee-id': user.id,
+    'x-tenant-id': user.tenantId,
+    ...(user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {}),
+  });
+
+  const loadResignations = async () => {
+    if (!hasAuthenticatedDashboardUser) return;
+    setResignationsLoading(true);
+    try {
+      const ownResponse = await fetch(apiUrl('/api/resignations/me'), { headers: resignationHeaders() });
+      const ownData = await ownResponse.json();
+      if (!ownResponse.ok) throw new Error(ownData.error || t('dash.resignationLoadError'));
+      setMyResignations(ownData.resignations || []);
+      if (canReviewResignations) {
+        const tenantResponse = await fetch(apiUrl('/api/resignations'), { headers: resignationHeaders() });
+        const tenantData = await tenantResponse.json();
+        if (!tenantResponse.ok) throw new Error(tenantData.error || t('dash.resignationLoadError'));
+        setTenantResignations(tenantData.resignations || []);
+      }
+    } catch (error) {
+      setResignationMessageType('error');
+      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationLoadError'));
+    } finally {
+      setResignationsLoading(false);
+    }
+  };
+
+  const submitResignation = async () => {
+    if (!resignationForm.requestedLastWorkingDay) {
+      setResignationMessageType('error');
+      setResignationMessage(t('dash.lastWorkingDayRequired'));
+      return;
+    }
+    setResignationSubmitting(true);
+    try {
+      const response = await fetch(apiUrl('/api/resignations'), {
+        method: 'POST', headers: resignationHeaders(), body: JSON.stringify(resignationForm),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || t('dash.resignationSubmitError'));
+      setResignationMessageType('success');
+      setResignationMessage(t('dash.resignationSubmitted'));
+      setResignationForm({ requestedLastWorkingDay: '', resignationType: 'voluntary', reason: '' });
+      await loadResignations();
+    } catch (error) {
+      setResignationMessageType('error');
+      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationSubmitError'));
+    } finally {
+      setResignationSubmitting(false);
+    }
+  };
+
+  const updateResignation = async (id: string, path: 'withdraw' | 'review' | 'process', body?: Record<string, string>) => {
+    setResignationUpdatingId(id);
+    try {
+      const response = await fetch(apiUrl(`/api/resignations/${id}/${path}`), {
+        method: 'PATCH', headers: resignationHeaders(), body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || t('dash.resignationUpdateError'));
+      setResignationMessageType('success');
+      setResignationMessage(path === 'withdraw' ? t('dash.resignationWithdrawn') : path === 'process' ? t('dash.resignationProcessed') : body?.status === 'approved' ? t('dash.resignationApproved') : t('dash.resignationRejected'));
+      await loadResignations();
+    } catch (error) {
+      setResignationMessageType('error');
+      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationUpdateError'));
+    } finally {
+      setResignationUpdatingId(null);
+    }
   };
 
   const payrollHeaders: Record<string, string> = {
@@ -3168,12 +3360,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
               setActiveTab('profile');
               setShowPayrollPanel(false);
               setShowGrievancesPanel(true);
+              setShowResignationsPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={t('dash.grievances')}
             aria-label={t('dash.grievances')}
           >
              <MessageSquare className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('profile'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showResignationsPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={t('dash.resignations')}
+            aria-label={t('dash.resignations')}
+          >
+            <FileText className="w-5 h-5" />
           </button>
         </nav>
       </aside>
@@ -3778,13 +3980,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
 
                 {activeTab === 'roster' && (
                     <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
-                       <div className="p-4 border-b border-emerald-500/15 dark:border-emerald-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                             <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
-                             {t('dash.rosterHub')}
-                           </h3>
-                           <div className="flex gap-2">
-                             <button type="button" className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">{t('dash.weekView')}</button>
+                       <div className="border-b border-emerald-500/15 p-4 dark:border-emerald-500/10">
+                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                           <div>
+                             <h3 className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                               <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
+                               {t('dash.rosterHub')}
+                             </h3>
+                             <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45" dir="ltr">
+                               {rosterStartDate} - {rosterEndDate}
+                             </p>
+                           </div>
+                           <div className="flex flex-wrap items-center gap-2">
+                             <span className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">{t('dash.weekView')}</span>
                              {canManageRoster && (
                                <span className="inline-flex items-center gap-1 px-3 py-1 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
                                  <Save className="h-3 w-3" />
@@ -3801,9 +4009,40 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                                {t('dash.applyLeave')}
                              </button>
                            </div>
+                         </div>
+
+                         {canManageRoster && (
+                           <div className="mt-4 flex flex-col gap-3 border-t border-emerald-500/10 pt-3 lg:flex-row lg:items-end lg:justify-between">
+                             <div className="flex flex-wrap items-center gap-2">
+                               <button type="button" onClick={() => moveRosterRange(-1)} className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300">{t('dash.previousWeek')}</button>
+                               <button type="button" onClick={resetRosterToThisWeek} className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300">{t('dash.thisWeek')}</button>
+                               <button type="button" onClick={() => moveRosterRange(1)} className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300">{t('dash.nextWeek')}</button>
+                             </div>
+                             <div className="flex flex-wrap items-end gap-2">
+                               <label className="block">
+                                 <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.viewRange')}</span>
+                                 <select value={rosterRangeWeeks} onChange={(event) => setRosterRange(event.target.value as '1' | '2' | '4' | 'custom')} className="mt-1 block rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50">
+                                   <option value="1">{t('dash.oneWeek')}</option>
+                                   <option value="2">{t('dash.twoWeeks')}</option>
+                                   <option value="4">{t('dash.fourWeeks')}</option>
+                                   <option value="custom">{t('dash.customRange')}</option>
+                                 </select>
+                               </label>
+                               {rosterRangeWeeks === 'custom' && (
+                                 <>
+                                   <label className="block"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.startDate')}</span><input type="date" value={rosterStartDate} onChange={(event) => setRosterStartDate(event.target.value)} className="mt-1 block rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50" /></label>
+                                   <label className="block"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.endDate')}</span><input type="date" value={rosterCustomEndDate} onChange={(event) => setRosterCustomEndDate(event.target.value)} className="mt-1 block rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50" /></label>
+                                 </>
+                               )}
+                             </div>
+                           </div>
+                         )}
                        </div>
-                       
-                       <div className="w-full overflow-x-auto flex-1">
+
+                       {rosterRange.error ? (
+                         <p className="m-4 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">{t('dash.rosterRangeTooLarge')}</p>
+                       ) : (
+                       <div className="w-full max-w-full overflow-x-auto flex-1">
                          <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                            <thead>
                              <tr className="text-[10px] text-neutral-500 dark:text-emerald-100/45 uppercase font-bold border-b border-emerald-500/15 dark:border-emerald-500/15 bg-white/70 dark:bg-black/25">
@@ -3815,8 +4054,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                              </tr>
                            </thead>
                            <tbody className="text-sm">
-                             {schedule.map((s, i) => (
-                               <tr key={i} className="border-b border-emerald-500/10 dark:border-emerald-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
+                             {visibleSchedule.map((s) => (
+                               <tr key={s.date} className="border-b border-emerald-500/10 dark:border-emerald-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
                                  <td className="p-3">
                                    <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></div>
                                  </td>
@@ -3826,14 +4065,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                                        <input
                                          type="time"
                                          value={s.shiftStart}
-                                         onChange={(event) => updateShift(i, 'shiftStart', event.target.value)}
+                                         onChange={(event) => updateShift(s.date, 'shiftStart', event.target.value)}
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                        <span>-</span>
                                        <input
                                          type="time"
                                          value={s.shiftEnd}
-                                         onChange={(event) => updateShift(i, 'shiftEnd', event.target.value)}
+                                         onChange={(event) => updateShift(s.date, 'shiftEnd', event.target.value)}
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
@@ -3846,14 +4085,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                                        <input
                                          type="time"
                                          value={s.breakStart}
-                                         onChange={(event) => updateShift(i, 'breakStart', event.target.value)}
+                                         onChange={(event) => updateShift(s.date, 'breakStart', event.target.value)}
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                        <span>-</span>
                                        <input
                                          type="time"
                                          value={s.breakEnd}
-                                         onChange={(event) => updateShift(i, 'breakEnd', event.target.value)}
+                                         onChange={(event) => updateShift(s.date, 'breakEnd', event.target.value)}
                                          className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                        />
                                      </div>
@@ -3863,7 +4102,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                                    {canManageRoster ? (
                                      <input
                                        value={s.type}
-                                       onChange={(event) => updateShift(i, 'type', event.target.value)}
+                                       onChange={(event) => updateShift(s.date, 'type', event.target.value)}
                                        className="w-36 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                      />
                                    ) : (
@@ -3880,6 +4119,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                            </tbody>
                          </table>
                        </div>
+                       )}
                     </motion.div>
                 )}
 
@@ -4550,6 +4790,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                               </tbody>
                             </table>
                           </div>
+                        </div>
+                      ) : showResignationsPanel ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200"><FileText className="h-4 w-4 text-emerald-500" />{t('dash.resignations')}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('dash.resignationsHelp')}</p></div><button type="button" onClick={() => setShowResignationsPanel(false)} className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 dark:text-emerald-100/60">{t('dash.back')}</button></div>
+                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                              <label><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}</span><input type="date" value={resignationForm.requestedLastWorkingDay} onChange={(event) => setResignationForm((current) => ({ ...current, requestedLastWorkingDay: event.target.value }))} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50" /></label>
+                              <label><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.resignationType')}</span><select value={resignationForm.resignationType} onChange={(event) => setResignationForm((current) => ({ ...current, resignationType: event.target.value }))} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50"><option value="voluntary">{t('dash.voluntary')}</option><option value="personal_reasons">{t('dash.personalReasons')}</option><option value="career_change">{t('dash.careerChange')}</option><option value="other">{t('dash.other')}</option></select></label>
+                              <label className="md:col-span-2"><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.reason')}</span><textarea value={resignationForm.reason} maxLength={2000} onChange={(event) => setResignationForm((current) => ({ ...current, reason: event.target.value }))} rows={2} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50" /></label>
+                              <button type="button" onClick={submitResignation} disabled={isOffline || resignationSubmitting} className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 disabled:opacity-60 md:col-span-4">{resignationSubmitting ? t('dash.submitting') : t('dash.submitResignation')}</button>
+                            </div>
+                          </div>
+                          {resignationMessage && <p className={cn("rounded-lg border px-3 py-2 text-xs font-semibold", resignationMessageType === 'success' ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300")}>{resignationMessage}</p>}
+                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.myResignations')}</h4><button type="button" onClick={loadResignations} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">{t('dash.refresh')}</button></div><div className="space-y-2">{myResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold text-slate-800 dark:text-slate-100">{displayEnum(request.resignation_type)}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span></p>{request.reason && <p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{request.reason}</p>}</div><div className="flex items-center gap-2"><span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{displayEnum(request.status)}</span>{request.status === 'pending' && <button type="button" onClick={() => updateResignation(request.id, 'withdraw')} disabled={resignationUpdatingId === request.id} className="text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.withdraw')}</button>}</div></div>{request.review_note && <p className="mt-2 text-[11px] text-neutral-500 dark:text-emerald-100/45">{request.review_note}</p>}</div>)}{!resignationsLoading && myResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>
+                          {canReviewResignations && <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.tenantResignations')}</h4><div className="space-y-2">{tenantResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.employee_id}</p><p className="text-[10px] text-neutral-500 dark:text-emerald-100/45" dir="ltr">{request.email}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span> · {request.reason}</p></div><div className="flex flex-wrap gap-2">{request.status === 'pending' && <><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'approved' })} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.approve')}</button><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'rejected' })} className="rounded border border-red-500/20 px-2 py-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.reject')}</button></>}{request.status === 'approved' && canProcessResignations && <button type="button" onClick={() => updateResignation(request.id, 'process')} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.markProcessed')}</button>}</div></div></div>)}{!resignationsLoading && tenantResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>}
                         </div>
                       ) : showGrievancesPanel ? (
                         <div className="space-y-5">
