@@ -39,6 +39,22 @@ function CheckCircleIcon({ className = '' }: { className?: string }) {
   );
 }
 
+function PasswordVisibilityIcon({ visible, className = '' }: { visible: boolean; className?: string }) {
+  return visible ? (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" />
+      <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9.4 4.4 10 8-0.3 1.7-1.4 3.5-3.1 4.9" />
+      <path d="M6.6 6.6C4.7 8 3.4 10.1 2 12c1.1 3.4 5 8 10 8 1.3 0 2.5-.3 3.6-.8" />
+    </svg>
+  ) : (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function AlertCircleIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -97,6 +113,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [passkeyMessage, setPasskeyMessage] = useState('');
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
@@ -390,8 +407,9 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
     {t('login.biometricKey')}
   </label>
 
+  <div className="relative">
   <input 
-    type="password" 
+    type={showPassword ? 'text' : 'password'}
     required
     aria-invalid={showPasswordError}
     aria-describedby={showPasswordError ? 'login-password-error' : undefined}
@@ -403,8 +421,12 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
       if (errorMsg) setErrorMsg('');
     }}
     placeholder="••••••••"
-    className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}
+    className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "pl-12 text-right" : "pr-12"}`}
   />
+  <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showPassword} className={`absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55 ${isRtl ? 'left-2' : 'right-2'}`}>
+    <PasswordVisibilityIcon visible={showPassword} className="h-4 w-4" />
+  </button>
+  </div>
   {showPasswordError && (
     <p id="login-password-error" className="px-1 text-xs font-medium text-red-500">{t('validation.passwordRequired')}</p>
   )}

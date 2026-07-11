@@ -1,7 +1,7 @@
 import React, { useEffect, useState ,useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
-import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info } from 'lucide-react';
+import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
@@ -774,6 +774,8 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const [formError, setFormError] = useState('');
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, string>>({});
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Form State
 const [formData, setFormData] = useState<{
@@ -1139,8 +1141,9 @@ className={cn(
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.adminPass')}</label>
+                    <div className="relative">
                     <input
-                      type="password"
+                      type={showAdminPassword ? 'text' : 'password'}
                       required
                       minLength={8}
                       aria-label={t('signup.adminPass')}
@@ -1150,8 +1153,12 @@ className={cn(
                       onChange={handleChange}
                       className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
-  isRtl && "text-right"
+  isRtl ? "pl-12 text-right" : "pr-12"
 )} />
+                    <button type="button" onClick={() => setShowAdminPassword((current) => !current)} aria-label={showAdminPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showAdminPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
+                      {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                    </div>
                     {showAdminPasswordChecklist && (
                       <div className="rounded-lg border border-emerald-500/15 bg-black/5 p-3 text-xs dark:bg-black/20">
                         <p className="mb-2 font-bold text-emerald-700 dark:text-emerald-200">{t('validation.passwordChecklist')}</p>
@@ -1168,8 +1175,9 @@ className={cn(
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.confirmPass')}</label>
+                    <div className="relative">
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       required
                       aria-invalid={showConfirmPasswordError}
                       aria-describedby={showConfirmPasswordError ? 'signup-confirm-password-error' : undefined}
@@ -1182,9 +1190,13 @@ className={cn(
                       }}
                       className={cn(
                         "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
-                        isRtl && "text-right"
+                        isRtl ? "pl-12 text-right" : "pr-12"
                       )}
                     />
+                    <button type="button" onClick={() => setShowConfirmPassword((current) => !current)} aria-label={showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showConfirmPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                    </div>
                     {showConfirmPasswordError && (
                       <p id="signup-confirm-password-error" className="px-1 text-xs font-medium text-red-500">{t('validation.confirmPassword')}</p>
                     )}

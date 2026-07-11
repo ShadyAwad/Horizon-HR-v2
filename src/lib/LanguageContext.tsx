@@ -59,6 +59,8 @@ const translations = {
     'login.demoCredentialsNote': 'Demo credentials are for portfolio testing only.',
     'login.fillDemoCredentials': 'Fill Demo Credentials',
     'login.demoCompany': 'Stanza Demo Company',
+    'login.showPassword': 'Show password',
+    'login.hidePassword': 'Hide password',
     'login.toggleTheme': 'Toggle Light/Dark Mode',
     'login.recoveryEmail': 'Recovery email',
 
@@ -1514,6 +1516,8 @@ const arabicOverrides: Partial<Record<TranslationKey, string>> = {
   'login.demoCredentialsNote': 'بيانات الاعتماد التجريبية مخصصة لاختبار محفظة الأعمال فقط.',
   'login.fillDemoCredentials': 'ملء بيانات الاعتماد التجريبية',
   'login.demoCompany': 'Stanza Demo Company',
+  'login.showPassword': 'إظهار كلمة المرور',
+  'login.hidePassword': 'إخفاء كلمة المرور',
 };
 
 type LanguageContextType = {
