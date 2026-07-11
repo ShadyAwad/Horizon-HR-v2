@@ -362,6 +362,29 @@ async function run() {
     }
   });
 
+  await check('Login and recovery responses do not enumerate accounts', async () => {
+    const unknownEmail = `security-check-${Date.now()}@example.test`;
+    const loginResult = await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: unknownEmail, password: 'not-the-password' }),
+    });
+    expectStatus(loginResult, 401, 'Unknown account login');
+    expectSafeError(loginResult, 'Unknown account login');
+    if (loginResult.body?.error !== 'Invalid email or password.') {
+      throw new Error('Unknown account login did not use the generic credential error.');
+    }
+
+    const recoveryResult = await request('/api/auth/request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email: unknownEmail, method: 'email' }),
+    });
+    expectStatus(recoveryResult, 200, 'Unknown account recovery');
+    expectSafeError(recoveryResult, 'Unknown account recovery');
+    if (recoveryResult.body?.message !== 'If an account exists, password reset instructions have been sent.') {
+      throw new Error('Unknown account recovery did not use the generic response.');
+    }
+  });
+
   await check('Invalid UUID route parameter is safe', async () => {
     const result = await request('/api/break-requests/not-a-uuid/review', {
       method: 'PATCH',
@@ -375,8 +398,11 @@ async function run() {
     const serverSource = await readFile(path.join(rootDir, 'server.ts'), 'utf8');
     const requiredBindings = [
       /app\.post\('\/api\/auth\/login',\s*sensitiveAuthRateLimiter/s,
-      /app\.post\('\/api\/auth\/register-tenant',\s*sensitiveAuthRateLimiter/s,
-      /app\.post\('\/api\/auth\/request-password-reset',\s*authRateLimiter/s,
+      /app\.post\('\/api\/auth\/register-tenant',\s*signupRateLimiter/s,
+      /app\.post\('\/api\/auth\/request-password-reset',\s*passwordResetRequestRateLimiter/s,
+      /app\.post\('\/api\/auth\/reset-password',\s*passwordResetConfirmRateLimiter/s,
+      /app\.post\('\/api\/auth\/passkeys\/login\/options',\s*passkeyLoginRateLimiter/s,
+      /app\.post\('\/api\/auth\/passkeys\/login\/verify',\s*passkeyLoginRateLimiter/s,
     ];
     if (!requiredBindings.every((pattern) => pattern.test(serverSource))) {
       throw new Error('One or more sensitive auth routes are missing their configured rate limiter.');

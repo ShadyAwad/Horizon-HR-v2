@@ -1019,20 +1019,20 @@ const [formData, setFormData] = useState<{
         }
         onSignupComplete(data.user);
       } else {
-        const duplicateEmail = data.code === 'EMAIL_ALREADY_REGISTERED';
-        const duplicateWorkspace = data.code === 'DUPLICATE_WORKSPACE';
+        const duplicateEmail = data.code === 'EMAIL_UNAVAILABLE';
+        const duplicateWorkspace = data.code === 'WORKSPACE_UNAVAILABLE';
         const fieldErrors = duplicateEmail
-          ? { adminEmail: t('signup.emailAlreadyRegistered') }
+          ? { adminEmail: t('signup.emailUnavailable') }
           : duplicateWorkspace
-            ? { tenantSlug: t('signup.workspaceAlreadyExists') }
+            ? { tenantSlug: t('signup.workspaceUnavailable') }
             : data.fields || {};
 
         setRegisterFieldErrors(fieldErrors);
         setFormError(
           duplicateEmail
-            ? t('signup.emailAlreadyRegistered')
+            ? t('signup.emailUnavailable')
             : duplicateWorkspace
-              ? t('signup.workspaceAlreadyExists')
+              ? t('signup.workspaceUnavailable')
               : data.message || data.error || t('signup.registerError'),
         );
         setIsSubmitting(false);

@@ -249,6 +249,7 @@ const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
+const INVALID_LOGIN_TIMING_HASH = generatePasswordHash('stanza-invalid-login-timing-only');
 const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 type LoginAttemptState = {
@@ -1495,26 +1496,25 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const authRateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 30,
+  const rateLimitHandler: Parameters<typeof rateLimit>[0]['handler'] = (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts. Please try again later.',
+    });
+  };
+  const createAuthRateLimiter = (windowMs: number, limit: number) => rateLimit({
+    windowMs,
+    limit,
     standardHeaders: true,
     legacyHeaders: false,
-    message: {
-      success: false,
-      error: 'Too many authentication requests. Try again later.',
-    },
+    handler: rateLimitHandler,
   });
-  const sensitiveAuthRateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      success: false,
-      error: 'Too many requests. Try again later.',
-    },
-  });
+  const sensitiveAuthRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 10);
+  const signupRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 5);
+  const passwordResetRequestRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 5);
+  const passwordResetConfirmRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 10);
+  const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
 
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -1613,7 +1613,7 @@ async function startServer() {
   });
 
   // Registration Route for multi-tenant wizard
-  app.post('/api/auth/register-tenant', sensitiveAuthRateLimiter, async (req, res) => {
+  app.post('/api/auth/register-tenant', signupRateLimiter, async (req, res) => {
     const allowedAdminRoles: EmployeeRole[] = ['employee', 'manager', 'hr_admin'];
 
     const {
@@ -2000,18 +2000,18 @@ async function startServer() {
       if ((error as { code?: string }).code === 'EMAIL_ALREADY_REGISTERED') {
         return res.status(409).json({
           success: false,
-          code: 'EMAIL_ALREADY_REGISTERED',
-          message: 'An account with this email already exists.',
-          fields: { adminEmail: 'An account with this email already exists.' },
+          code: 'EMAIL_UNAVAILABLE',
+          message: 'This email cannot be used for a new workspace. Try signing in or recovering your account.',
+          fields: { adminEmail: 'This email cannot be used for a new workspace. Try signing in or recovering your account.' },
         });
       }
 
       if ((error as { code?: string }).code === '23505') {
         return res.status(409).json({
           success: false,
-          code: 'DUPLICATE_WORKSPACE',
-          message: 'A workspace with this name already exists.',
-          fields: { tenantSlug: 'A workspace with this name already exists.' },
+          code: 'WORKSPACE_UNAVAILABLE',
+          message: 'This workspace name is unavailable. Try another name.',
+          fields: { tenantSlug: 'This workspace name is unavailable. Try another name.' },
         });
       }
 
@@ -2062,7 +2062,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   if (rateLimit.locked) {
     return res.status(429).json({
       success: false,
-      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts. Please try again later.',
       retryAfterSeconds: rateLimit.retryAfterSeconds,
     });
   }
@@ -2135,11 +2136,12 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     );
 
     if (result.rowCount === 0) {
+      verifyPassword(password, INVALID_LOGIN_TIMING_HASH);
       recordFailedLogin(loginRateLimitKey);
 
       return res.status(401).json({
         success: false,
-        error: 'Invalid biometric pattern or credentials',
+        error: 'Invalid email or password.',
       });
     }
 
@@ -2151,7 +2153,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        error: 'Invalid biometric pattern or credentials',
+        error: 'Invalid email or password.',
       });
     }
 
@@ -2202,15 +2204,20 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
           [normalizedEmail],
         );
 
-        if (fallbackResult.rowCount === 0 || !verifyPassword(password, fallbackResult.rows[0].password_hash)) {
+        const fallbackEmployee = fallbackResult.rows[0];
+        const fallbackPasswordValid = verifyPassword(
+          password,
+          fallbackEmployee?.password_hash || INVALID_LOGIN_TIMING_HASH,
+        );
+
+        if (!fallbackEmployee || !fallbackPasswordValid) {
           recordFailedLogin(loginRateLimitKey);
           return res.status(401).json({
             success: false,
-            error: 'Invalid biometric pattern or credentials',
+            error: 'Invalid email or password.',
           });
         }
 
-        const fallbackEmployee = fallbackResult.rows[0];
         clearFailedLogins(loginRateLimitKey);
 
         return res.json({
@@ -2451,7 +2458,7 @@ app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAut
   }
 });
 
-app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (req, res) => {
+app.post('/api/auth/passkeys/login/options', passkeyLoginRateLimiter, async (req, res) => {
   const { email } = req.body as { email?: string };
   const normalizedPasskeyEmail = validateEmail(email);
 
@@ -2473,7 +2480,8 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
   if (rateLimit.locked) {
     return res.status(429).json({
       success: false,
-      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts. Please try again later.',
       retryAfterSeconds: rateLimit.retryAfterSeconds,
     });
   }
@@ -2485,7 +2493,7 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
     const employee = await fetchAuthEmployeeByEmail(normalizedEmail);
     if (!employee) {
       recordFailedLogin(loginRateLimitKey);
-      return res.status(401).json({ success: false, error: 'No passkeys found for this account.' });
+      return res.status(401).json({ success: false, error: 'Invalid passkey sign in.' });
     }
 
     const options = await withTenant(employee.tenant_id, async (client) => {
@@ -2501,7 +2509,7 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
       );
 
       if (credentials.rowCount === 0) {
-        throw Object.assign(new Error('No passkeys found for this account.'), { statusCode: 404 });
+        throw Object.assign(new Error('Invalid passkey sign in.'), { statusCode: 401 });
       }
 
       const authenticationOptions = await generateAuthenticationOptions({
@@ -2527,7 +2535,7 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
 
     res.json({ success: true, options });
   } catch (error) {
-    if (Number((error as { statusCode?: number }).statusCode) === 404) {
+    if (Number((error as { statusCode?: number }).statusCode) === 401) {
       recordFailedLogin(loginRateLimitKey);
     }
 
@@ -2539,7 +2547,7 @@ app.post('/api/auth/passkeys/login/options', sensitiveAuthRateLimiter, async (re
   }
 });
 
-app.post('/api/auth/passkeys/login/verify', sensitiveAuthRateLimiter, async (req, res) => {
+app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req, res) => {
   const { email, credential } = req.body as {
     email?: string;
     credential?: AuthenticationResponseJSON;
@@ -2561,7 +2569,8 @@ app.post('/api/auth/passkeys/login/verify', sensitiveAuthRateLimiter, async (req
   if (rateLimit.locked) {
     return res.status(429).json({
       success: false,
-      error: `Too many failed login attempts. Try again in ${rateLimit.retryAfterSeconds} seconds.`,
+      code: 'RATE_LIMITED',
+      message: 'Too many attempts. Please try again later.',
       retryAfterSeconds: rateLimit.retryAfterSeconds,
     });
   }
@@ -2666,7 +2675,7 @@ app.post('/api/auth/passkeys/login/verify', sensitiveAuthRateLimiter, async (req
   }
 });
 
-app.post('/api/auth/request-password-reset', authRateLimiter, async (req, res) => {
+app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, async (req, res) => {
   const { email, method } = req.body as {
     email?: string;
     method?: 'email' | 'admin' | 'security';
@@ -3563,7 +3572,7 @@ app.put(
   },
 );
 
-app.post('/api/auth/reset-password', authRateLimiter, async (req, res) => {
+app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req, res) => {
   const { email, resetCode, newPassword } = req.body as {
     email?: string;
     resetCode?: string;

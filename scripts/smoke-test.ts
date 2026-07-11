@@ -178,8 +178,8 @@ async function run() {
       }),
     });
     expectStatus(result, 409, 'Duplicate signup email');
-    if (result.body?.code !== 'EMAIL_ALREADY_REGISTERED') {
-      throw new Error('Duplicate signup did not return EMAIL_ALREADY_REGISTERED.');
+    if (result.body?.code !== 'EMAIL_UNAVAILABLE') {
+      throw new Error('Duplicate signup did not return EMAIL_UNAVAILABLE.');
     }
   });
 

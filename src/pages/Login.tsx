@@ -159,7 +159,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
         // Will transition to dashboard after pulse finishes via onPulseComplete
       } else {
         setPulseState('error');
-        setErrorMsg(data.error || 'Authentication Failed');
+        setErrorMsg(data.code === 'RATE_LIMITED'
+          ? t('login.rateLimited')
+          : data.error || t('login.invalidCredentials'));
         setIsLoading(false);
       }
     } catch (err) {
@@ -206,7 +208,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     if (data.success) {
       setRecoveryMessage(data.message || t('login.recoveryGeneric'));
     } else {
-      setRecoveryMessage(data.error || t('login.recoveryStartError'));
+      setRecoveryMessage(data.code === 'RATE_LIMITED'
+        ? t('login.rateLimited')
+        : data.error || t('login.recoveryStartError'));
     }
   } catch (error) {
     setRecoveryMessage(

@@ -47,6 +47,8 @@ const translations = {
     'login.recoveryStartError': 'Unable to start recovery flow.',
     'login.recoveryServerError': 'Server disconnection. Unable to start recovery flow.',
     'login.passkeyUnsupported': 'Passkeys are not supported in this browser.',
+    'login.invalidCredentials': 'Invalid email or password.',
+    'login.rateLimited': 'Too many attempts. Please try again later.',
     'login.systemOperational': 'System Operational • V2.4',
     'login.creatorCredit': 'Created by Shady Awad',
     'login.toggleTheme': 'Toggle Light/Dark Mode',
@@ -527,6 +529,8 @@ const translations = {
     'signup.tenantSlug': 'Unique Tenant Slug',
     'signup.adminFullName': 'Admin Full Name',
     'signup.adminEmail': 'Admin Email',
+    'signup.emailUnavailable': 'This email cannot be used for a new workspace. Try signing in or recovering your account.',
+    'signup.workspaceUnavailable': 'This workspace name is unavailable. Try another name.',
     'signup.emailAlreadyRegistered': 'An account with this email already exists.',
     'signup.workspaceAlreadyExists': 'A workspace with this name already exists.',
     'signup.registerError': 'Unable to register workspace.',
@@ -1350,6 +1354,10 @@ const arabicOverrides: Partial<Record<TranslationKey, string>> = {
   'dash.passkeyNotConfigured': 'مفاتيح المرور غير مهيأة لهذه البيئة.',
   'dash.expand': 'توسيع',
   'dash.collapse': 'طي',
+  'login.invalidCredentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+  'login.rateLimited': 'محاولات كثيرة جدا. يرجى المحاولة لاحقا.',
+  'signup.emailUnavailable': 'لا يمكن استخدام هذا البريد الإلكتروني لمساحة عمل جديدة. جرّب تسجيل الدخول أو استرداد حسابك.',
+  'signup.workspaceUnavailable': 'اسم مساحة العمل هذا غير متاح. جرّب اسما آخر.',
 };
 
 type LanguageContextType = {
