@@ -18,6 +18,18 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins,
+    build: {
+      minify: 'esbuild',
+      cssMinify: 'esbuild',
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            maplibre: ['maplibre-gl'],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -27,7 +39,7 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
   port: 5173,
   allowedHosts: [
-    'modify-instructors-brakes-started.trycloudflare.com',
+    'estimates-eternal-withdrawal-objectives.trycloudflare.com',
   ],
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

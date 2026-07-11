@@ -1,0 +1,30 @@
+# Stanza
+
+Stanza is a portfolio/demo workforce operations platform created by Shady Awad.
+
+## Purpose
+
+Stanza demonstrates authentication, attendance, geofencing, payroll, leave, grievances, company feed, resignations, notifications, PWA behavior, and multi-tenant PostgreSQL/RLS architecture.
+
+## Important Notice
+
+This is a demo/portfolio project. Do not enter real employee, payroll, grievance, or sensitive personal data.
+
+## Public Pages
+
+- Home/Login: https://stanza-demo.onrender.com/
+- Privacy Policy: https://stanza-demo.onrender.com/privacy
+- Creator Portfolio: https://shadyawad.github.io/portfolio/
+
+## Demo Usage
+
+Demo credentials may be available on the login page for portfolio testing only.
+
+## Data and Privacy
+
+The app may process demo account information, attendance records, geolocation coordinates for geofence validation, payroll demo data, grievances, resignation requests, and notification preferences.
+
+## Contact
+
+Created by Shady Awad.
+Portfolio: https://shadyawad.github.io/portfolio/

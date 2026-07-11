@@ -316,7 +316,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   };
 
   return (
-<div className="relative min-h-screen w-full flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05),transparent_50%),#f7fbf8] dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.035),transparent_52%),#020604] overflow-hidden font-sans transition-colors duration-300">      {/* Dynamic Biometric Background */}
+<div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05),transparent_50%),#f7fbf8] px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans transition-colors duration-300 dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.035),transparent_52%),#020604] md:min-h-screen md:justify-center md:px-4 md:py-8">      {/* Dynamic Biometric Background */}
       {showDecorativeCanvas && (
         <Suspense fallback={null}>
           <FingerprintCanvas 
@@ -329,7 +329,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
         </Suspense>
       )}
 
-      <div className={`absolute top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35 ${isRtl ? "left-4" : "right-4"}`}>
+      <div className={`relative z-20 mb-4 flex w-full max-w-sm items-center justify-center gap-2 self-center rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35 md:absolute md:top-4 md:mb-0 md:w-auto md:max-w-none ${isRtl ? "md:left-4" : "md:right-4"}`}>
         <button
           type="button"
           onClick={toggleTheme}
@@ -370,7 +370,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       </div>
 
       {/* Main Login Panel */}
-      <div className="relative z-10 w-full max-w-sm px-8 py-10 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] animate-[loginCardIn_180ms_ease-out]">
+      <div className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
         <div className="flex flex-col items-center mb-8">
 <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <FingerprintIcon className="w-8 h-8" />
           </div>
@@ -423,7 +423,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
     placeholder="••••••••"
     className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "pl-12 text-right" : "pr-12"}`}
   />
-  <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showPassword} className={`absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55 ${isRtl ? 'left-2' : 'right-2'}`}>
+  <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')} title={showPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showPassword} className={`absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55 ${isRtl ? 'left-2' : 'right-2'}`}>
     <PasswordVisibilityIcon visible={showPassword} className="h-4 w-4" />
   </button>
   </div>

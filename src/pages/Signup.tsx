@@ -1155,7 +1155,7 @@ className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl ? "pl-12 text-right" : "pr-12"
 )} />
-                    <button type="button" onClick={() => setShowAdminPassword((current) => !current)} aria-label={showAdminPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showAdminPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
+                    <button type="button" onClick={() => setShowAdminPassword((current) => !current)} aria-label={showAdminPassword ? t('login.hidePassword') : t('login.showPassword')} title={showAdminPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showAdminPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
                       {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     </div>
@@ -1193,7 +1193,7 @@ className={cn(
                         isRtl ? "pl-12 text-right" : "pr-12"
                       )}
                     />
-                    <button type="button" onClick={() => setShowConfirmPassword((current) => !current)} aria-label={showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showConfirmPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
+                    <button type="button" onClick={() => setShowConfirmPassword((current) => !current)} aria-label={showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')} title={showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showConfirmPassword} className={cn("absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-emerald-700/70 transition hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55", isRtl ? "left-2" : "right-2")}>
                       {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                     </div>

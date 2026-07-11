@@ -61,6 +61,8 @@ const translations = {
     'login.demoCompany': 'Stanza Demo Company',
     'login.showPassword': 'Show password',
     'login.hidePassword': 'Hide password',
+    'auth.showPassword': 'Show password',
+    'auth.hidePassword': 'Hide password',
     'login.toggleTheme': 'Toggle Light/Dark Mode',
     'login.recoveryEmail': 'Recovery email',
 
@@ -1518,6 +1520,8 @@ const arabicOverrides: Partial<Record<TranslationKey, string>> = {
   'login.demoCompany': 'Stanza Demo Company',
   'login.showPassword': 'إظهار كلمة المرور',
   'login.hidePassword': 'إخفاء كلمة المرور',
+  'auth.showPassword': 'إظهار كلمة المرور',
+  'auth.hidePassword': 'إخفاء كلمة المرور',
 };
 
 type LanguageContextType = {
