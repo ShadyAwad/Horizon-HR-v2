@@ -154,6 +154,35 @@ async function run() {
     throw new Error('Authenticated smoke checks were skipped because login failed.');
   }
 
+  await check('Duplicate signup email is rejected without creating a workspace', async () => {
+    const result = await request('/api/auth/register-tenant', {
+      method: 'POST',
+      body: JSON.stringify({
+        companyName: 'Smoke Test Duplicate Email',
+        tenantSlug: `smoke-duplicate-${runId}`.slice(0, 60),
+        adminFullName: 'Smoke Test Admin',
+        adminEmail: email,
+        adminPassword: password,
+        adminRole: 'hr_admin',
+        currency: 'USD',
+        capacity: '100-500',
+        locations: [{
+          name: 'Smoke Test Worksite',
+          locationType: 'headquarters',
+          latitude: 30.0444,
+          longitude: 31.2357,
+          radius: 100,
+          isPrimary: true,
+          isActive: true,
+        }],
+      }),
+    });
+    expectStatus(result, 409, 'Duplicate signup email');
+    if (result.body?.code !== 'EMAIL_ALREADY_REGISTERED') {
+      throw new Error('Duplicate signup did not return EMAIL_ALREADY_REGISTERED.');
+    }
+  });
+
   await check('Notification settings load', async () => {
     const result = await request('/api/notification-settings/me', { headers: authenticatedHeaders });
     expectStatus(result, 200, 'Notification settings');

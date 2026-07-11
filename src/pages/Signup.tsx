@@ -813,6 +813,8 @@ const [formData, setFormData] = useState<{
   const adminPasswordValidation = validatePasswordStrength(formData.adminPassword);
   const confirmPasswordValid = Boolean(confirmPassword) && confirmPassword === formData.adminPassword;
   const showAdminEmailError = (touchedFields.adminEmail || Boolean(formData.adminEmail.trim())) && !adminEmailValidation.valid;
+  const adminEmailServerError = registerFieldErrors.adminEmail;
+  const tenantSlugServerError = registerFieldErrors.tenantSlug;
   const showAdminPasswordChecklist = touchedFields.adminPassword || Boolean(formData.adminPassword);
   const showConfirmPasswordError = touchedFields.confirmPassword && !confirmPasswordValid;
   const passwordRuleTranslationKeys: Record<PasswordRuleKey, Parameters<typeof t>[0]> = {
@@ -1017,8 +1019,22 @@ const [formData, setFormData] = useState<{
         }
         onSignupComplete(data.user);
       } else {
-        setRegisterFieldErrors(data.fields || {});
-        setFormError(data.message || data.error || 'Unable to register workspace.');
+        const duplicateEmail = data.code === 'EMAIL_ALREADY_REGISTERED';
+        const duplicateWorkspace = data.code === 'DUPLICATE_WORKSPACE';
+        const fieldErrors = duplicateEmail
+          ? { adminEmail: t('signup.emailAlreadyRegistered') }
+          : duplicateWorkspace
+            ? { tenantSlug: t('signup.workspaceAlreadyExists') }
+            : data.fields || {};
+
+        setRegisterFieldErrors(fieldErrors);
+        setFormError(
+          duplicateEmail
+            ? t('signup.emailAlreadyRegistered')
+            : duplicateWorkspace
+              ? t('signup.workspaceAlreadyExists')
+              : data.message || data.error || t('signup.registerError'),
+        );
         setIsSubmitting(false);
       }
     } catch(err) {
@@ -1071,10 +1087,13 @@ className={cn(
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-100/70 uppercase px-1">{t('signup.tenantSlug')}</label>
-                    <input required aria-label={t('signup.tenantSlug')} name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
+                    <input required aria-invalid={Boolean(tenantSlugServerError)} aria-describedby={tenantSlugServerError ? 'signup-tenant-slug-error' : undefined} aria-label={t('signup.tenantSlug')} name="tenantSlug" value={formData.tenantSlug} onChange={handleChange} className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
+                    {tenantSlugServerError && (
+                      <p id="signup-tenant-slug-error" className="px-1 text-xs font-medium text-red-500">{tenantSlugServerError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -1091,8 +1110,8 @@ className={cn(
                     <input
                       type="email"
                       required
-                      aria-invalid={showAdminEmailError}
-                      aria-describedby={showAdminEmailError ? 'signup-email-error' : undefined}
+                      aria-invalid={showAdminEmailError || Boolean(adminEmailServerError)}
+                      aria-describedby={showAdminEmailError || adminEmailServerError ? 'signup-email-error' : undefined}
                       aria-label={t('signup.adminEmail')}
                       name="adminEmail"
                       value={formData.adminEmail}
@@ -1102,8 +1121,8 @@ className={cn(
   "w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500/50 font-mono text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 transition-all",
   isRtl && "text-right"
 )} />
-                    {showAdminEmailError && (
-                      <p id="signup-email-error" className="px-1 text-xs font-medium text-red-500">{t('validation.email')}</p>
+                    {(showAdminEmailError || adminEmailServerError) && (
+                      <p id="signup-email-error" className="px-1 text-xs font-medium text-red-500">{showAdminEmailError ? t('validation.email') : adminEmailServerError}</p>
                     )}
                   </div>
                   <div className="space-y-1">

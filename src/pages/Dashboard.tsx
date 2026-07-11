@@ -1,8 +1,8 @@
-import { lazy, Suspense, useState, useEffect, type MouseEvent } from 'react';
+import { lazy, Suspense, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -650,6 +650,13 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
+  const [controlCenterSections, setControlCenterSections] = useState({
+    settings: true,
+    passkeys: false,
+    readiness: false,
+    notifications: false,
+    workspace: false,
+  });
   const [showTenantId, setShowTenantId] = useState(false);
   const [tenantIdCopied, setTenantIdCopied] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
@@ -1536,7 +1543,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       await loadPasskeys(false);
     } catch (error) {
       setPasskeyMessageType('error');
-      setPasskeyMessage(error instanceof Error ? error.message : t('dash.passkeyAddError'));
+      const message = error instanceof Error ? error.message : '';
+      setPasskeyMessage(/webauthn|relying party|not configured|origin/i.test(message)
+        ? t('dash.passkeyNotConfigured')
+        : message || t('dash.passkeyAddError'));
     } finally {
       setPasskeySaving(false);
     }
@@ -2463,6 +2473,53 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
     loadCompanyLocations();
   }, [user.id, user.tenantId]);
 
+  const renderControlCenterAccordion = (
+    section: keyof typeof controlCenterSections,
+    title: string,
+    summary: string,
+    content: ReactNode,
+    badge?: ReactNode,
+  ) => {
+    const isOpen = controlCenterSections[section];
+    const contentId = `stanza-control-center-${section}`;
+
+    return (
+      <section className="border-b border-emerald-500/15 last:border-b-0">
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          aria-controls={contentId}
+          aria-label={`${isOpen ? t('dash.collapse') : t('dash.expand')} ${title}`}
+          onClick={() => setControlCenterSections((current) => ({ ...current, [section]: !current[section] }))}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 px-1 py-3 text-left outline-none transition-colors hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061411] dark:hover:text-emerald-300",
+            isRtl && "text-right"
+          )}
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{title}</span>
+            <span className="mt-1 block truncate text-xs font-normal normal-case tracking-normal text-neutral-500 dark:text-emerald-100/50">{summary}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {badge}
+            <ChevronDown className={cn("h-4 w-4 text-emerald-500 transition-transform duration-200 motion-reduce:transition-none", isOpen && "rotate-180")} />
+          </span>
+        </button>
+        <div
+          id={contentId}
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
+            isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="pb-3 pt-1">{content}</div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   const renderNotificationSettingsPanel = () => (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2767,7 +2824,12 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                   {user.jobTitle}
                 </span>
               )}
-              {user.roleNames?.map((roleName) => (
+              {Array.from(new globalThis.Map(
+                (user.roleNames || [])
+                  .map((roleName) => roleName.trim().replace(/\s+/g, ' '))
+                  .filter((roleName) => roleName && roleName.toLocaleLowerCase() !== displayRole(user.role).toLocaleLowerCase())
+                  .map((roleName) => [roleName.toLocaleLowerCase(), roleName])
+              ).values()).slice(0, 2).map((roleName) => (
                 <span key={roleName} className="rounded-full border border-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50">
                   {roleName}
                 </span>
@@ -3142,16 +3204,48 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="divide-y divide-emerald-500/15">
               {renderControlCenterAccount()}
-              {renderPasskeyPanel()}
-              {renderControlCenterSettings()}
-              {renderPwaReadinessPanel()}
-              {renderNotificationSettingsPanel()}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {renderLocationsCard()}
-                {renderSystemStatusCard()}
-              </div>
+              {renderControlCenterAccordion(
+                'settings',
+                t('dash.settings'),
+                isDark ? t('dash.switchLight') : t('dash.switchDark'),
+                renderControlCenterSettings(),
+              )}
+              {renderControlCenterAccordion(
+                'passkeys',
+                t('dash.passkeys'),
+                t('dash.passkeyDescription'),
+                renderPasskeyPanel(),
+                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"><span dir="ltr">{passkeys.length}</span> {t('dash.registered')}</span>,
+              )}
+              {renderControlCenterAccordion(
+                'readiness',
+                t('dash.appReadiness'),
+                `${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`,
+                renderPwaReadinessPanel(),
+                <span className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
+                  isOffline ? "border-amber-300/30 text-amber-600 dark:text-amber-200" : "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                )}>{isOffline ? t('dash.offline') : t('dash.online')}</span>,
+              )}
+              {renderControlCenterAccordion(
+                'notifications',
+                t('dash.notificationSettings'),
+                t('dash.emailPushPreferences'),
+                renderNotificationSettingsPanel(),
+                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('dash.default')}</span>,
+              )}
+              {renderControlCenterAccordion(
+                'workspace',
+                t('dash.workspaceStatus'),
+                `${companyLocations.length} ${t('dash.locationsConfigured').toLowerCase()}`,
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {renderLocationsCard()}
+                  {renderSystemStatusCard()}
+                </div>,
+                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{companyLocations.length}</span>,
+              )}
             </div>
           </section>
         </div>

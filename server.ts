@@ -1735,6 +1735,25 @@ async function startServer() {
       client = await getDbPool().connect();
       await client.query('BEGIN');
 
+      // Keep a global login email unique even though employee rows are tenant-scoped.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedAdminEmail.value]);
+      const existingEmailResult = await client.query<{ id: string }>(
+        `
+          SELECT id
+          FROM employees
+          WHERE LOWER(email) = $1
+          LIMIT 1
+        `,
+        [normalizedAdminEmail.value],
+      );
+
+      if (existingEmailResult.rows[0]) {
+        throw Object.assign(new Error('An account with this email already exists.'), {
+          statusCode: 409,
+          code: 'EMAIL_ALREADY_REGISTERED',
+        });
+      }
+
       const tenantResult = await client.query<{
         id: string;
         company_name: string;
@@ -1978,11 +1997,21 @@ async function startServer() {
         stack: process.env.NODE_ENV === 'production' ? undefined : registerError.stack,
       });
 
+      if ((error as { code?: string }).code === 'EMAIL_ALREADY_REGISTERED') {
+        return res.status(409).json({
+          success: false,
+          code: 'EMAIL_ALREADY_REGISTERED',
+          message: 'An account with this email already exists.',
+          fields: { adminEmail: 'An account with this email already exists.' },
+        });
+      }
+
       if ((error as { code?: string }).code === '23505') {
         return res.status(409).json({
           success: false,
           code: 'DUPLICATE_WORKSPACE',
-          message: 'A workspace or admin account with these details already exists.',
+          message: 'A workspace with this name already exists.',
+          fields: { tenantSlug: 'A workspace with this name already exists.' },
         });
       }
 
