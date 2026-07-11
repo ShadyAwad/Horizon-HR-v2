@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { createServer as createViteServer } from 'vite';
 import type { PoolClient } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -1326,6 +1327,11 @@ function apiErrorHandler(
 // yet another helper function to verify password against stored hash
 function verifyPassword(password: string, storedHash: string | null) {
   if (!storedHash) return false;
+
+  // Demo seed accounts use bcrypt while existing accounts retain the established scrypt format.
+  if (storedHash.startsWith('$2')) {
+    return bcrypt.compareSync(password, storedHash);
+  }
 
   const [algorithm, salt, originalHash] = storedHash.split(':');
 
