@@ -3,6 +3,7 @@ import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
+import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 import { validateEmail } from '../lib/validation';
 
@@ -95,6 +96,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [passkeyMessage, setPasskeyMessage] = useState('');
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const emailValidation = validateEmail(email);
@@ -256,7 +258,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const optionsData = await optionsResponse.json();
 
       if (!optionsResponse.ok || !optionsData.success) {
-        throw new Error(optionsData.error || 'Unable to start passkey sign in.');
+        throw new Error(optionsData.code === 'RATE_LIMITED'
+          ? t('login.rateLimited')
+          : optionsData.error || t('login.passkeyStartError'));
       }
 
       const credential = await startAuthentication({ optionsJSON: optionsData.options });
@@ -268,7 +272,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok || !verifyData.success) {
-        throw new Error(verifyData.error || 'Unable to sign in with passkey.');
+        throw new Error(verifyData.code === 'RATE_LIMITED'
+          ? t('login.rateLimited')
+          : verifyData.error || t('login.passkeySignIn'));
       }
 
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(verifyData.user));
@@ -466,6 +472,7 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
         <div className="mt-8 flex flex-col space-y-4 border-t border-emerald-500/10 pt-6 text-center">
           <div className="flex flex-col space-y-2">
             <span className="font-mono text-[10px] uppercase tracking-widest text-slate-600">{t('login.systemOperational')}</span>
+            <span className="text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/40">{t('demo.footer')}</span>
           </div>
 
           <button
@@ -484,8 +491,17 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
           >
             {t('login.creatorCredit')}
           </a>
+          <button
+            type="button"
+            onClick={() => setShowPrivacyPolicy(true)}
+            className="text-[10px] font-medium text-neutral-500 transition hover:text-emerald-500 hover:underline dark:text-emerald-100/40 dark:hover:text-emerald-300"
+          >
+            {t('privacy.link')}
+          </button>
         </div>
       </div>
+
+      <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
       {showRecovery && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 backdrop-blur-[2px] px-4 animate-[loginFadeIn_120ms_ease-out]">

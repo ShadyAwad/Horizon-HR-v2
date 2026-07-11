@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
+import { DemoNoticeModal } from './components/DemoNoticeModal';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
 const Signup = lazy(() => import('./pages/Signup').then((module) => ({ default: module.Signup })));
@@ -43,6 +44,22 @@ export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
   const [serviceWorkerRegistration, setServiceWorkerRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [showDemoNotice, setShowDemoNotice] = useState(() => {
+    try {
+      return window.localStorage.getItem('stanza-demo-notice-seen') !== 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissDemoNotice = () => {
+    try {
+      window.localStorage.setItem('stanza-demo-notice-seen', 'true');
+    } catch {
+      // Keep the notice dismissible when storage is unavailable.
+    }
+    setShowDemoNotice(false);
+  };
 
   useEffect(() => {
     const titles = {
@@ -91,6 +108,7 @@ export default function App() {
                  window.localStorage.removeItem('horizon-auth-user');
                  setAuthState('login');
                }}
+               onShowDemoNotice={() => setShowDemoNotice(true)}
              />
            </Suspense>
          ) : authState === 'signup' ? (
@@ -126,6 +144,7 @@ export default function App() {
              </button>
            </div>
          )}
+         <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />
         </div>
       </LanguageProvider>
     </ThemeProvider>

@@ -2,13 +2,14 @@ import { lazy, Suspense, useState, useEffect, type MouseEvent, type ReactNode } 
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
+import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
@@ -566,7 +567,7 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
@@ -650,6 +651,7 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [controlCenterSections, setControlCenterSections] = useState({
     settings: true,
     passkeys: false,
@@ -2546,6 +2548,10 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
       <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-[11px] text-neutral-600 dark:text-emerald-100/55">
         {t('dash.notificationDeliveryReady')}
       </p>
+      <p className="mt-2 flex gap-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        {t('demo.notifications')}
+      </p>
 
       {notificationMessage && (
         <p className={cn(
@@ -2635,6 +2641,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           {companyLocations.length}
         </span>
       </div>
+
+      <p className="mt-3 flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        {t('demo.mapNoticeBody')}
+      </p>
 
       <div className="mt-3 space-y-2.5">
         {companyLocations.map((location) => (
@@ -2903,6 +2914,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
           {passkeySaving ? t('dash.opening') : t('dash.addPasskey')}
         </button>
       </div>
+
+      <p className="mt-3 flex gap-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        {t('demo.passkeys')}
+      </p>
 
       {passkeyMessage && (
         <p className={cn(
@@ -3247,9 +3263,20 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                 <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{companyLocations.length}</span>,
               )}
             </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-emerald-500/15 pt-4">
+              <button type="button" onClick={() => setShowPrivacyPolicy(true)} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-100/50 dark:hover:text-emerald-300">
+                {t('privacy.link')}
+              </button>
+              <button type="button" onClick={onShowDemoNotice} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-100/50 dark:hover:text-emerald-300">
+                {t('demo.show')}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[10px] text-neutral-500 dark:text-emerald-100/40">{t('demo.footer')}</p>
           </section>
         </div>
       )}
+
+      <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
       <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
@@ -3881,6 +3908,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                         </button>
                       </div>
 
+                      <p className="mt-3 flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                        {t('demo.feed')}
+                      </p>
+
                       {canPublishFeed && (
                         <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -4064,6 +4096,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               {t('dash.back')}
                             </button>
                           </div>
+
+                          <p className="flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                            {t('demo.payroll')}
+                          </p>
 
                           {(canManageCompensation || canRunPayroll) && (
                             <div className="space-y-3">
@@ -4536,6 +4573,11 @@ export function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               Back
                             </button>
                           </div>
+
+                          <p className="flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                            {t('demo.grievances')}
+                          </p>
 
                           <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">

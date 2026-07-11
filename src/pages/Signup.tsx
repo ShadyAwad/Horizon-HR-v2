@@ -1,10 +1,11 @@
 import React, { useEffect, useState ,useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
-import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe } from 'lucide-react';
+import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { FingerprintCanvas } from '../components/FingerprintCanvas';
+import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
 import {
@@ -605,6 +606,13 @@ const InteractiveMap = ({
         <p className="mt-2 text-[9px] text-emerald-100/35">
           {t('signup.mapProviderNote')}
         </p>
+        <div className="mt-2 flex gap-2 rounded-lg border border-emerald-500/15 bg-black/20 px-3 py-2 text-[10px] leading-4 text-emerald-100/55">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden="true" />
+          <div>
+            <p className="font-bold text-emerald-200">{t('demo.mapNoticeTitle')}</p>
+            <p className="mt-0.5">{t('demo.mapNoticeBody')}</p>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-emerald-500/15 bg-[#04110d]/60 p-4">
@@ -765,6 +773,7 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState('');
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, string>>({});
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
 
   // Form State
 const [formData, setFormData] = useState<{
@@ -1021,6 +1030,7 @@ const [formData, setFormData] = useState<{
       } else {
         const duplicateEmail = data.code === 'EMAIL_UNAVAILABLE';
         const duplicateWorkspace = data.code === 'WORKSPACE_UNAVAILABLE';
+        const rateLimited = data.code === 'RATE_LIMITED';
         const fieldErrors = duplicateEmail
           ? { adminEmail: t('signup.emailUnavailable') }
           : duplicateWorkspace
@@ -1033,6 +1043,8 @@ const [formData, setFormData] = useState<{
             ? t('signup.emailUnavailable')
             : duplicateWorkspace
               ? t('signup.workspaceUnavailable')
+              : rateLimited
+                ? t('signup.rateLimited')
               : data.message || data.error || t('signup.registerError'),
         );
         setIsSubmitting(false);
@@ -1501,13 +1513,17 @@ className={cn(
           </div>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center">
             <button type="button" onClick={onNavigateLogin} className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 tracking-widest uppercase transition-colors">
               {t('signup.login')}
+            </button>
+            <button type="button" onClick={() => setShowPrivacyPolicy(true)} className="text-[10px] font-bold text-emerald-700/70 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-400 tracking-widest uppercase transition-colors">
+              {t('privacy.link')}
             </button>
         </div>
 
       </motion.div>
+      <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
     </div>
   );
 }
