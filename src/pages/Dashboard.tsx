@@ -629,7 +629,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -3294,7 +3294,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
           )} />
           <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020604]" />
         </button>
-        <nav className="flex md:flex-col gap-1.5 md:gap-4 min-w-0 flex-1 md:flex-none w-full items-center justify-around md:justify-start">
+        <nav className="flex md:flex-col gap-1.5 md:gap-4 min-w-0 flex-1 md:flex-none w-full items-center justify-start overflow-x-auto md:overflow-visible">
           <button 
             onClick={() => {
               setActiveTab('geofence');
@@ -3336,8 +3336,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
               setActiveTab('profile');
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
+              setShowResignationsPanel(false);
             }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel && !showResignationsPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={t('dash.profile')}
             aria-label={t('dash.profile')}
           >
@@ -3370,8 +3371,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
           </button>
           <button
             type="button"
-            onClick={() => { setActiveTab('profile'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showResignationsPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'resignations' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={t('dash.resignations')}
             aria-label={t('dash.resignations')}
           >
@@ -3537,8 +3538,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                          setActiveTab('profile');
                          setShowPayrollPanel(false);
                          setShowGrievancesPanel(false);
+                         setShowResignationsPanel(false);
                        }}
-                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel && !showResignationsPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
                        <User className="w-4 h-4 hidden sm:block" />
                        {t('dash.profile')}
@@ -3564,6 +3566,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                     >
                        <MessageSquare className="w-4 h-4 hidden sm:block" />
                        {t('dash.grievances')}
+                    </button>
+                    <button
+                       type="button"
+                       onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'resignations' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                    >
+                       <FileText className="w-4 h-4 hidden sm:block" />
+                       {t('dash.resignations')}
                     </button>
                 </div>
 
@@ -4309,7 +4319,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                    </motion.div>
                 )}
 
-                {activeTab === 'profile' && (
+                {(activeTab === 'profile' || activeTab === 'resignations') && (
                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex items-center gap-3 mb-5">
                           <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />

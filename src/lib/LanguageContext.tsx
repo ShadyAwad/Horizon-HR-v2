@@ -52,6 +52,13 @@ const translations = {
     'login.rateLimited': 'Too many attempts. Please try again later.',
     'login.systemOperational': 'System Operational • V2.4',
     'login.creatorCredit': 'Created by Shady Awad',
+    'login.useDemoAccount': 'Use Demo Account',
+    'login.hrAdminDemo': 'HR Admin Demo',
+    'login.managerDemo': 'Manager Demo',
+    'login.employeeDemo': 'Employee Demo',
+    'login.demoCredentialsNote': 'Demo credentials are for portfolio testing only.',
+    'login.fillDemoCredentials': 'Fill Demo Credentials',
+    'login.demoCompany': 'Stanza Demo Company',
     'login.toggleTheme': 'Toggle Light/Dark Mode',
     'login.recoveryEmail': 'Recovery email',
 
@@ -1500,6 +1507,13 @@ const arabicOverrides: Partial<Record<TranslationKey, string>> = {
   'dash.resignationLoadError': 'تعذر تحميل طلبات الاستقالة.',
   'dash.resignationSubmitError': 'تعذر تقديم طلب الاستقالة.',
   'dash.resignationUpdateError': 'تعذر تحديث طلب الاستقالة.',
+  'login.useDemoAccount': 'استخدام حساب تجريبي',
+  'login.hrAdminDemo': 'عرض مسؤول الموارد البشرية',
+  'login.managerDemo': 'عرض المدير',
+  'login.employeeDemo': 'عرض الموظف',
+  'login.demoCredentialsNote': 'بيانات الاعتماد التجريبية مخصصة لاختبار محفظة الأعمال فقط.',
+  'login.fillDemoCredentials': 'ملء بيانات الاعتماد التجريبية',
+  'login.demoCompany': 'Stanza Demo Company',
 };
 
 type LanguageContextType = {

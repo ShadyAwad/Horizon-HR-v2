@@ -97,6 +97,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [passkeyMessage, setPasskeyMessage] = useState('');
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const emailValidation = validateEmail(email);
@@ -104,6 +105,16 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const showEmailError = (emailTouched || loginSubmitted || Boolean(email.trim())) && !emailValidation.valid;
   const showPasswordError = passwordTouched && !password;
   const showRecoveryEmailError = (recoveryEmailTouched || recoverySubmitted || Boolean((recoveryEmail || email).trim())) && !recoveryEmailValidation.valid;
+  const demoLoginEnabled = import.meta.env.VITE_ENABLE_DEMO_LOGIN !== 'false';
+
+  const fillDemoCredentials = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('StrongPass!123');
+    setEmailTouched(false);
+    setPasswordTouched(false);
+    setLoginSubmitted(false);
+    setErrorMsg('');
+  };
 
   useEffect(() => {
     const loadCanvas = window.setTimeout(() => setShowDecorativeCanvas(true), 0);
@@ -467,6 +478,33 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
               </p>
             )}
           </div>
+
+          {demoLoginEnabled && (
+            <div className="rounded-lg border border-emerald-500/15 bg-black/15 p-3">
+              <button
+                type="button"
+                onClick={() => setShowDemoAccounts((current) => !current)}
+                aria-expanded={showDemoAccounts}
+                className={`w-full text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-300 ${isRtl ? 'text-right' : 'text-left'}`}
+              >
+                {t('login.useDemoAccount')}
+              </button>
+              {showDemoAccounts && (
+                <div className="mt-3 space-y-2">
+                  {[
+                    ['admin@stanza-demo.com', t('login.hrAdminDemo')],
+                    ['manager@stanza-demo.com', t('login.managerDemo')],
+                    ['employee@stanza-demo.com', t('login.employeeDemo')],
+                  ].map(([demoEmail, label]) => (
+                    <button key={demoEmail} type="button" title={t('login.fillDemoCredentials')} onClick={() => fillDemoCredentials(demoEmail)} className={`w-full rounded border border-emerald-500/15 px-3 py-2 text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:text-emerald-100/75 ${isRtl ? 'text-right' : 'text-left'}`}>
+                      {label}
+                    </button>
+                  ))}
+                  <p className="text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{t('login.demoCredentialsNote')}</p>
+                </div>
+              )}
+            </div>
+          )}
         </form>
 
         <div className="mt-8 flex flex-col space-y-4 border-t border-emerald-500/10 pt-6 text-center">

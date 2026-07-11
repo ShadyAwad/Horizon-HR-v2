@@ -1,3 +1,25 @@
+## Demo workspace
+
+Create or refresh the safe local demo workspace:
+
+```powershell
+npm run db:seed:demo
+```
+
+Remove only the `stanza-demo` tenant and its dependent demo data:
+
+```powershell
+npm run db:reset:demo
+```
+
+Demo accounts:
+
+- `admin@stanza-demo.com` / `StrongPass!123`
+- `manager@stanza-demo.com` / `StrongPass!123`
+- `employee@stanza-demo.com` / `StrongPass!123`
+
+Demo accounts are public portfolio fixtures. Do not use real sensitive data in demo mode.
+
 ## Local backend smoke test
 
 Start the local Stanza server, then set `SMOKE_TEST_EMAIL` and

@@ -9,7 +9,7 @@ const DEMO = {
   password: 'StrongPass!123',
   latitude: 30.0444,
   longitude: 31.2357,
-  radiusMeters: 300,
+  radiusMeters: 500,
 } as const;
 
 const permissions = [
@@ -34,6 +34,11 @@ const permissions = [
   ['loans.manage', 'Manage loans', 'Create and update employee loans.'],
   ['grievances.create', 'Create grievances', 'File grievance cases.'],
   ['grievances.review', 'Review grievances', 'Review tenant grievance cases.'],
+  ['resignations.create', 'Create resignation requests', 'Submit resignation requests.'],
+  ['resignations.view_own', 'View own resignation requests', 'View personal resignation requests.'],
+  ['resignations.view_all', 'View all resignation requests', 'View tenant resignation requests.'],
+  ['resignations.review', 'Review resignation requests', 'Approve or reject resignation requests.'],
+  ['resignations.process', 'Process resignation requests', 'Mark approved resignation requests as processed.'],
   ['feed.read', 'Read company feed', 'Read company feed posts.'],
   ['feed.publish', 'Publish company feed', 'Create and manage company feed posts.'],
   ['roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'],
@@ -43,12 +48,12 @@ const rolePermissions: Record<'employee' | 'manager', string[]> = {
   employee: [
     'locations.read', 'attendance.clock', 'break_requests.create', 'break_requests.view_own',
     'leave.create', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self',
-    'grievances.create', 'feed.read',
+    'grievances.create', 'resignations.create', 'resignations.view_own', 'feed.read',
   ],
   manager: [
     'locations.read', 'attendance.view', 'break_requests.create', 'break_requests.view_own',
     'break_requests.review', 'break_requests.view_all', 'leave.review', 'payroll.view_self',
-    'payroll.export_pdf', 'loans.view_self', 'grievances.review', 'feed.read',
+    'payroll.export_pdf', 'loans.view_self', 'grievances.review', 'resignations.view_all', 'resignations.review', 'feed.read',
   ],
 };
 
