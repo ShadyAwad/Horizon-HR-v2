@@ -1,11 +1,20 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
 import { DemoNoticeModal } from './components/DemoNoticeModal';
+import { AuthShell, type AuthBackgroundPulseState } from './components/AuthShell';
+import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
 
-const Dashboard = lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
-const Signup = lazy(() => import('./pages/Signup').then((module) => ({ default: module.Signup })));
+const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
+const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
+const loadResetPassword = () => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword }));
+const Dashboard = lazy(loadDashboard);
+const Signup = lazy(loadSignup);
+const ResetPassword = lazy(loadResetPassword);
+const AUTH_TRANSITION_MINIMUM_MS = 220;
+
+const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
 
 export type AuthUser = {
   id: string;
@@ -43,6 +52,10 @@ function getStoredUser() {
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
+  const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthBackgroundPulseState>('idle');
+  const [authTransition, setAuthTransition] = useState<AuthTransition | null>(null);
+  const [focusLoginEmail, setFocusLoginEmail] = useState(false);
+  const transitionInFlightRef = useRef<AuthTransition | null>(null);
   const [serviceWorkerRegistration, setServiceWorkerRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [showDemoNotice, setShowDemoNotice] = useState(() => {
     try {
@@ -95,42 +108,123 @@ export default function App() {
   const applyServiceWorkerUpdate = () => {
     serviceWorkerRegistration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
   };
+  const isPasswordResetRoute = window.location.pathname === '/reset-password';
+  const completeAuthPulse = () => {
+    setAuthBackgroundPulse('idle');
+  };
+
+  const startAuthTransition = (transition: AuthTransition, complete: () => Promise<void> | void) => {
+    if (transitionInFlightRef.current) return;
+
+    transitionInFlightRef.current = transition;
+    setAuthTransition(transition);
+    const startedAt = performance.now();
+
+    void (async () => {
+      try {
+        await complete();
+      } finally {
+        const remaining = AUTH_TRANSITION_MINIMUM_MS - (performance.now() - startedAt);
+        if (remaining > 0) await waitFor(remaining);
+        setAuthBackgroundPulse('idle');
+        transitionInFlightRef.current = null;
+        setAuthTransition(null);
+      }
+    })();
+  };
+
+  useEffect(() => {
+    if (authState !== 'login' || isPasswordResetRoute) return;
+
+    const preloadTimer = window.setTimeout(() => {
+      void loadSignup();
+    }, 700);
+
+    return () => window.clearTimeout(preloadTimer);
+  }, [authState, isPasswordResetRoute]);
+
+  const beginLogin = (user?: AuthUser) => {
+    const nextUser = user || fallbackUser;
+    setAuthBackgroundPulse('success');
+    startAuthTransition('logging-in', async () => {
+      await loadDashboard();
+      setAuthUser(nextUser);
+      window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
+      setAuthState('authenticated');
+    });
+  };
+
+  const beginLogout = () => {
+    startAuthTransition('logging-out', async () => {
+      await waitFor(180);
+      window.localStorage.removeItem('horizon-auth-user');
+      setFocusLoginEmail(true);
+      setAuthState('login');
+    });
+  };
+
+  const openSignup = () => {
+    setFocusLoginEmail(false);
+    startAuthTransition('opening-signup', async () => {
+      await loadSignup();
+      setAuthState('signup');
+    });
+  };
+
+  const returnToLogin = () => {
+    startAuthTransition('returning-login', () => {
+      setFocusLoginEmail(true);
+      setAuthState('login');
+    });
+  };
+
+  const returnFromResetToLogin = () => {
+    startAuthTransition('returning-login', () => {
+      window.history.replaceState({}, '', '/');
+      setFocusLoginEmail(true);
+      setAuthState('login');
+    });
+  };
 
   return (
     <ThemeProvider>
       <LanguageProvider>
         <div className="w-full min-h-screen bg-[#020604] text-emerald-50 transition-colors duration-300">
          {authState === 'authenticated' ? (
-           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#020604] text-xs font-bold uppercase tracking-widest text-emerald-200">Loading workspace...</div>}>
-             <Dashboard
-               user={authUser}
-               onLogout={() => {
-                 window.localStorage.removeItem('horizon-auth-user');
-                 setAuthState('login');
-               }}
-               onShowDemoNotice={() => setShowDemoNotice(true)}
-             />
-           </Suspense>
-         ) : authState === 'signup' ? (
-           <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#020604] text-xs font-bold uppercase tracking-widest text-emerald-200">Loading signup...</div>}>
-             <Signup 
-               onNavigateLogin={() => setAuthState('login')} 
-               onSignupComplete={(user) => {
-                 const nextUser = user || fallbackUser;
-                 setAuthUser(nextUser);
-                 window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
-                 setAuthState('authenticated');
-               }} 
-             />
-           </Suspense>
+           <>
+             <Suspense fallback={<AuthTransitionLoader transition="logging-in" overlay />}>
+               <Dashboard
+                 user={authUser}
+                 onLogout={beginLogout}
+                 onShowDemoNotice={() => setShowDemoNotice(true)}
+               />
+             </Suspense>
+             {authTransition === 'logging-out' && <AuthTransitionLoader transition="logging-out" overlay />}
+           </>
          ) : (
-           <Login 
-             onLoginSuccess={(user) => {
-               setAuthUser(user || fallbackUser);
-               setAuthState('authenticated');
-             }} 
-             onNavigateSignup={() => setAuthState('signup')} 
-           />
+           <AuthShell pulseState={authBackgroundPulse} onPulseComplete={completeAuthPulse}>
+             {authTransition ? (
+               <AuthTransitionLoader transition={authTransition} />
+             ) : isPasswordResetRoute ? (
+               <Suspense fallback={<AuthTransitionLoader transition="returning-login" />}>
+                 <ResetPassword onNavigateLogin={returnFromResetToLogin} />
+               </Suspense>
+             ) : authState === 'signup' ? (
+               <Suspense fallback={<AuthTransitionLoader transition="opening-signup" />}>
+                 <Signup
+                   onNavigateLogin={returnToLogin}
+                   onSignupComplete={beginLogin}
+                 />
+               </Suspense>
+             ) : (
+               <Login
+                 onLoginSuccess={beginLogin}
+                 onPulseStateChange={setAuthBackgroundPulse}
+                 onNavigateSignup={openSignup}
+                 focusEmailOnMount={focusLoginEmail}
+               />
+             )}
+           </AuthShell>
          )}
          {serviceWorkerRegistration?.waiting && (
            <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-[#04110d]/95 p-3 text-xs text-emerald-50 shadow-2xl shadow-black/40 backdrop-blur-xl">

@@ -32,6 +32,7 @@ import {
   validatePasswordStrength,
   validateRequiredText,
 } from './src/lib/validation';
+import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
 
 
 type ClockInBody = {  
@@ -285,7 +286,7 @@ declare global {
 }
 
 function generateResetCode() {
-  return crypto.randomInt(100000, 999999).toString();
+  return crypto.randomBytes(32).toString('base64url');
 }
 
 function hashResetCode(code: string) {
@@ -2000,6 +2001,12 @@ async function startServer() {
         companyName: tenant.company_name,
       };
 
+      await sendWelcomeEmail({
+        to: employee.email,
+        name: employee.full_name,
+        workspaceName: tenant.company_name,
+      });
+
       res.status(201).json({
         success: true,
         message: 'Tenant registered successfully.',
@@ -2754,11 +2761,13 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
     const result = await getDbPool().query<{
       tenant_id: string;
       employee_id: string;
+      full_name: string;
     }>(
       `
         SELECT
           tenant_id,
-          id AS employee_id
+          id AS employee_id,
+          full_name
         FROM employees
         WHERE LOWER(email) = $1
         LIMIT 1
@@ -2799,23 +2808,26 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
         normalizedEmail,
         method || 'email',
         tokenHash,
-        isProduction() ? null : resetCode,
+        null,
         expiresAt,
       ],
     );
 
-    if (!isProduction()) {
-      console.log('[Password Reset] Dev reset code:', {
-        email: normalizedEmail,
-        resetCode,
-        expiresAt,
-      });
-    }
+    const appBaseUrl = (process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const delivery = await sendPasswordResetEmail({
+      to: normalizedEmail,
+      name: employee.full_name,
+      resetUrl: `${appBaseUrl}/reset-password?token=${encodeURIComponent(resetCode)}`,
+    });
 
-    const response: { success: true; message: string } = {
+    const response: { success: true; message: string; developmentFallback?: boolean } = {
       success: true,
       message: 'If an account exists, password reset instructions have been sent.',
     };
+
+    if (delivery.developmentFallback) {
+      response.developmentFallback = true;
+    }
 
     res.json(response);
   } catch (error) {
@@ -3767,21 +3779,23 @@ app.put(
 );
 
 app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req, res) => {
-  const { email, resetCode, newPassword } = req.body as {
+  const { email, resetCode, token, newPassword } = req.body as {
     email?: string;
     resetCode?: string;
+    token?: string;
     newPassword?: string;
   };
 
   const normalizedResetEmail = validateEmail(email);
   const newPasswordStrength = validatePasswordStrength(newPassword);
+  const suppliedToken = token?.trim() || resetCode?.trim();
 
-  if (!normalizedResetEmail.valid || !resetCode || !newPassword) {
+  if (!suppliedToken || !newPassword || (email && !normalizedResetEmail.valid)) {
     return res.status(400).json({
       success: false,
-      error: !normalizedResetEmail.valid
+      error: email && !normalizedResetEmail.valid
         ? normalizedResetEmail.error
-        : 'Reset code and new password are required.',
+        : 'Reset token and new password are required.',
     });
   }
 
@@ -3799,8 +3813,8 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
     });
   }
 
-  const normalizedEmail = normalizedResetEmail.value;
-  const resetCodeHash = hashResetCode(resetCode.trim());
+  const normalizedEmail = normalizedResetEmail.valid ? normalizedResetEmail.value : null;
+  const resetCodeHash = hashResetCode(suppliedToken);
   const newPasswordHash = generatePasswordHash(newPassword);
 
   const pool = getDbPool();
@@ -3820,15 +3834,14 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
           tenant_id,
           employee_id
         FROM password_reset_tokens
-        WHERE LOWER(email) = $1
-          AND token_hash = $2
+        WHERE token_hash = $1
           AND used_at IS NULL
           AND expires_at > NOW()
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [normalizedEmail, resetCodeHash],
+      [resetCodeHash],
     );
 
     if (tokenResult.rowCount === 0) {

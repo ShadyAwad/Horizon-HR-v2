@@ -1,16 +1,54 @@
 import { Queue } from 'bullmq';
+import type { RedisOptions } from 'ioredis';
 import { Pool, type PoolClient } from 'pg';
 
 
 export const HR_QUEUE_NAME = 'hr-queue';
 
-const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
-const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
+function getRedisConnection(): RedisOptions {
+  const redisUrl = process.env.REDIS_URL?.trim();
 
-export const redisConnection = {
-  host: REDIS_HOST,
-  port: REDIS_PORT,
-};
+  if (redisUrl) {
+    const parsedUrl = new URL(redisUrl);
+
+    if (parsedUrl.protocol !== 'redis:' && parsedUrl.protocol !== 'rediss:') {
+      throw new Error('REDIS_URL must use the redis:// or rediss:// protocol.');
+    }
+
+    const databaseName = parsedUrl.pathname.replace(/^\//, '');
+    const connection: RedisOptions = {
+      host: parsedUrl.hostname,
+      port: parsedUrl.port ? Number(parsedUrl.port) : 6379,
+      username: parsedUrl.username ? decodeURIComponent(parsedUrl.username) : undefined,
+      password: parsedUrl.password ? decodeURIComponent(parsedUrl.password) : undefined,
+      db: databaseName ? Number(databaseName) : undefined,
+      // Upstash and other hosted providers use rediss:// for TLS connections.
+      tls: parsedUrl.protocol === 'rediss:' ? {} : undefined,
+    };
+
+    if (!Number.isInteger(connection.port) || connection.port! < 1 || connection.port! > 65535) {
+      throw new Error('REDIS_URL contains an invalid port.');
+    }
+    if (databaseName && (!Number.isInteger(connection.db) || connection.db! < 0)) {
+      throw new Error('REDIS_URL contains an invalid database number.');
+    }
+
+    return connection;
+  }
+
+  const port = Number(process.env.REDIS_PORT || 6379);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('REDIS_PORT must be a valid TCP port.');
+  }
+
+  return {
+    host: process.env.REDIS_HOST?.trim() || '127.0.0.1',
+    port,
+  };
+}
+
+export const redisConnection = getRedisConnection();
+export const redisConnectionLabel = `${redisConnection.tls ? 'rediss' : 'redis'}://${redisConnection.host}:${redisConnection.port}`;
 
 let hrQueue: Queue | undefined;
 let dbPool: Pool | undefined;
@@ -95,4 +133,3 @@ export async function enqueueAuditLog(data: AuditLogJobData) {
 export function hasDatabaseConfig() {
   return Boolean(process.env.DATABASE_URL);
 }
-

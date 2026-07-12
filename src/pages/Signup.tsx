@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
-import { FingerprintCanvas } from '../components/FingerprintCanvas';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
@@ -234,6 +233,7 @@ const InteractiveMap = ({
 
     const initialCenter: [number, number] = hasCoordinates ? [lng, lat] : neutralMapCenter;
     let disposed = false;
+    let resizeObserver: ResizeObserver | undefined;
 
     const loadMap = async () => {
       setMapStatus('loading');
@@ -261,17 +261,22 @@ const InteractiveMap = ({
         lastCenterRef.current = hasCoordinates ? initialCenter : null;
         map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'bottom-right');
 
+        resizeObserver = new ResizeObserver(() => {
+          if (mapContainerRef.current?.clientWidth && mapContainerRef.current?.clientHeight) {
+            map.resize();
+          }
+        });
+        resizeObserver.observe(mapContainerRef.current);
+
         map.on('load', () => {
           ensureRadiusLayer(map);
           setMapStatus('ready');
-          setTimeout(() => map.resize(), 200);
+          requestAnimationFrame(() => map.resize());
         });
 
         map.on('error', () => setMapStatus('error'));
 
-        setTimeout(() => {
-          map.resize();
-        }, 200);
+        requestAnimationFrame(() => map.resize());
       } catch {
         if (!disposed) setMapStatus('error');
       }
@@ -284,6 +289,7 @@ const InteractiveMap = ({
       mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       markerRef.current = null;
+      resizeObserver?.disconnect();
     };
   }, [maptilerKey]);
 
@@ -304,7 +310,7 @@ const InteractiveMap = ({
       });
       ensureRadiusLayer(map);
       setMapStatus('ready');
-      setTimeout(() => map.resize(), 50);
+      requestAnimationFrame(() => map.resize());
     };
 
     map.once('style.load', restoreMapOverlays);
@@ -379,7 +385,6 @@ const InteractiveMap = ({
       lastCenterRef.current = nextCenter;
     }
 
-    setTimeout(() => map.resize(), 50);
   }, [disabled, hasCoordinates, lat, lng, radius]);
 
   const useCurrentLocation = (event?: React.MouseEvent<HTMLButtonElement>) => {
@@ -530,8 +535,8 @@ const InteractiveMap = ({
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-black">
-          <div ref={mapContainerRef} className="h-[340px] w-full md:h-[420px]" />
+        <div className="relative min-h-[300px] overflow-hidden rounded-xl border border-emerald-500/15 bg-black [backface-visibility:hidden]">
+          <div ref={mapContainerRef} className="h-[300px] min-h-[300px] w-full md:h-[400px] md:min-h-[400px]" />
 
           {!maptilerKey && (
             <div className="absolute inset-0 z-[600] flex items-center justify-center bg-black/80 px-6 text-center backdrop-blur-sm">
@@ -1058,14 +1063,13 @@ const [formData, setFormData] = useState<{
   };
 
   return (
-<div className="relative min-h-screen w-full overflow-y-auto bg-[#f7fbf8] px-4 py-6 font-sans transition-colors duration-300 dark:bg-[#020604] md:px-6 md:py-8">      
-      <FingerprintCanvas pulseState={isSubmitting ? 'success' : 'idle'} onPulseComplete={() => undefined} />
+<div className="relative isolate min-h-[100dvh] w-full overflow-x-hidden bg-transparent px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans transition-colors duration-300 md:px-6 md:py-8">
 
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
 className={cn(
-  "relative z-10 mx-auto w-full rounded-2xl border border-slate-200 bg-white/85 px-5 py-6 shadow-xl backdrop-blur-xl transition-[max-width] duration-300 dark:border-emerald-500/15 dark:bg-black/55 dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] md:p-8",
+  "relative z-10 mx-auto w-full rounded-2xl border border-slate-200 bg-white/95 px-5 py-6 shadow-xl backdrop-blur-none transition-[max-width] duration-300 dark:border-emerald-500/12 dark:bg-[#030b08]/88 dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] md:bg-white/85 md:backdrop-blur-xl md:dark:bg-[#030b08]/70 md:p-8",
   step === 3 ? "max-w-5xl" : "max-w-2xl"
 )}      >
         <div className="mb-6 flex flex-col items-center justify-between gap-4 md:flex-row">

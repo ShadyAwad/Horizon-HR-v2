@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, FormEvent } from 'react';
+import { useEffect, useRef, useState, FormEvent } from 'react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
@@ -7,11 +7,11 @@ import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 import { validateEmail } from '../lib/validation';
 
-const FingerprintCanvas = lazy(() => import('../components/FingerprintCanvas').then((module) => ({ default: module.FingerprintCanvas })));
-
 interface LoginProps {
   onLoginSuccess: (user?: AuthUser) => void;
   onNavigateSignup: () => void;
+  onPulseStateChange?: (pulseState: 'idle' | 'success' | 'error') => void;
+  focusEmailOnMount?: boolean;
 }
 
 function FingerprintIcon({ className = '' }: { className?: string }) {
@@ -91,7 +91,7 @@ function MoonIcon({ className = '' }: { className?: string }) {
   );
 }
 
-export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
+export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, focusEmailOnMount = false }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -107,14 +107,13 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   const [recoveryMethod, setRecoveryMethod] = useState<'email' | 'admin' | 'security'>('email');
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
-  const [pendingUser, setPendingUser] = useState<AuthUser | undefined>();
-  const [showDecorativeCanvas, setShowDecorativeCanvas] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [passkeyMessage, setPasskeyMessage] = useState('');
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const emailValidation = validateEmail(email);
@@ -134,9 +133,12 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   };
 
   useEffect(() => {
-    const loadCanvas = window.setTimeout(() => setShowDecorativeCanvas(true), 0);
-    return () => window.clearTimeout(loadCanvas);
-  }, []);
+    onPulseStateChange?.(pulseState);
+  }, [onPulseStateChange, pulseState]);
+
+  useEffect(() => {
+    if (focusEmailOnMount) emailInputRef.current?.focus();
+  }, [focusEmailOnMount]);
 
   useEffect(() => {
     const updateOnlineState = () => setIsOffline(!navigator.onLine);
@@ -183,10 +185,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       const data = await res.json();
       
       if (data.success) {
-        setPendingUser(data.user);
         setPulseState('success');
         window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
-        // Will transition to dashboard after pulse finishes via onPulseComplete
+        onLoginSuccess(data.user);
       } else {
         setPulseState('error');
         setErrorMsg(data.code === 'RATE_LIMITED'
@@ -236,7 +237,9 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
     const data = await res.json();
 
     if (data.success) {
-      setRecoveryMessage(data.message || t('login.recoveryGeneric'));
+      setRecoveryMessage(data.developmentFallback
+        ? `${data.message || t('login.recoveryGeneric')} ${t('login.recoveryDevFallback')}`
+        : data.message || t('login.recoveryGeneric'));
     } else {
       setRecoveryMessage(data.code === 'RATE_LIMITED'
         ? t('login.rateLimited')
@@ -306,8 +309,8 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       }
 
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(verifyData.user));
-      setPendingUser(verifyData.user);
       setPulseState('success');
+      onLoginSuccess(verifyData.user);
     } catch (error) {
       setPulseState('error');
       setPasskeyMessage(error instanceof Error ? error.message : 'Unable to sign in with passkey.');
@@ -316,18 +319,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
   };
 
   return (
-<div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05),transparent_50%),#f7fbf8] px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans transition-colors duration-300 dark:bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.035),transparent_52%),#020604] md:min-h-screen md:justify-center md:px-4 md:py-8">      {/* Dynamic Biometric Background */}
-      {showDecorativeCanvas && (
-        <Suspense fallback={null}>
-          <FingerprintCanvas 
-            pulseState={pulseState} 
-            onPulseComplete={() => {
-              if (pulseState === 'success') onLoginSuccess(pendingUser);
-              if (pulseState === 'error') setPulseState('idle');
-            }} 
-          />
-        </Suspense>
-      )}
+<div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans md:min-h-screen md:justify-center md:px-4 md:py-8">
 
       <div className={`relative z-20 mb-4 flex w-full max-w-sm items-center justify-center gap-2 self-center rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35 md:absolute md:top-4 md:mb-0 md:w-auto md:max-w-none ${isRtl ? "md:left-4" : "md:right-4"}`}>
         <button
@@ -370,7 +362,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
       </div>
 
       {/* Main Login Panel */}
-      <div className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-black/55 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/15 rounded-2xl shadow-xl dark:shadow-[0_0_45px_rgba(16,185,129,0.08)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
+      <div className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-[#030b08]/70 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/12 rounded-2xl shadow-xl dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
         <div className="flex flex-col items-center mb-8">
 <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <FingerprintIcon className="w-8 h-8" />
           </div>
@@ -384,6 +376,7 @@ export function Login({ onLoginSuccess, onNavigateSignup }: LoginProps) {
           <div className="space-y-2">
             <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
             <input 
+              ref={emailInputRef}
               type="email" 
               required
               aria-invalid={showEmailError}

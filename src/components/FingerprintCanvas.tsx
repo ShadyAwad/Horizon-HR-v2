@@ -3,9 +3,11 @@ import { useEffect, useRef } from 'react';
 interface FingerprintCanvasProps {
   pulseState: 'idle' | 'success' | 'error';
   onPulseComplete?: () => void;
+  staticMode?: boolean;
+  refreshKey?: string | number;
 }
 
-export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCanvasProps) {
+export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = false, refreshKey }: FingerprintCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Use mutable refs to lock parameters without triggering re-effects
@@ -13,6 +15,8 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
   const onPulseCompleteRef = useRef(onPulseComplete);
   const pulseStartTimeRef = useRef<number | null>(null);
   const reducedMotionRef = useRef(false);
+  const staticModeRef = useRef(staticMode);
+  const requestStaticRedrawRef = useRef<() => void>(() => undefined);
   
   // Track structural dimensions globally inside the hook context
   const dimensionsRef = useRef({ width: 0, height: 0 });
@@ -28,6 +32,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
       }
     }
     onPulseCompleteRef.current = onPulseComplete;
+    staticModeRef.current = staticMode;
 
     if (reducedMotionRef.current && pulseState !== 'idle' && onPulseComplete) {
       const timeoutId = window.setTimeout(onPulseComplete, 150);
@@ -44,9 +49,20 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    let animationFrameId: number;
+    let animationFrameId: number | undefined;
+    let drawFrame: ((time: number) => void) | undefined;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     reducedMotionRef.current = prefersReducedMotion;
+
+    const scheduleStaticRedraw = () => {
+      if (!staticModeRef.current || !drawFrame) return;
+
+      if (animationFrameId !== undefined) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      animationFrameId = requestAnimationFrame(drawFrame);
+    };
+    requestStaticRedrawRef.current = scheduleStaticRedraw;
 
     // High DPI & dynamic scaling via ResizeObserver safely writing to dimensionsRef
     const resizeObserver = new ResizeObserver((entries) => {
@@ -64,10 +80,17 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
         canvas.style.height = `${h}px`;
         
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        scheduleStaticRedraw();
       }
     });
 
     resizeObserver.observe(parent);
+
+    const themeObserver = new MutationObserver(scheduleStaticRedraw);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
 
     if (prefersReducedMotion) {
       const { width, height } = parent.getBoundingClientRect();
@@ -83,15 +106,16 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
 
       return () => {
         resizeObserver.disconnect();
+        themeObserver.disconnect();
       };
     }
 
-    const draw = (time: number) => {
+    drawFrame = (time: number) => {
       const { width, height } = dimensionsRef.current;
       
       // Safety check: skip render cycles if dimensions haven't been captured yet
       if (width === 0 || height === 0) {
-        animationFrameId = requestAnimationFrame(draw);
+        animationFrameId = requestAnimationFrame(drawFrame!);
         return;
       }
 
@@ -104,6 +128,13 @@ export function FingerprintCanvas({ pulseState, onPulseComplete }: FingerprintCa
 
       // Solid background filling to optimize canvas operations
       ctx.fillStyle = isDark ? '#020604' : '#f7fbf8';
+      ctx.fillRect(0, 0, width, height);
+
+      const glow = ctx.createRadialGradient(cx, cy * 0.78, 0, cx, cy * 0.78, Math.max(width, height) * 0.46);
+      glow.addColorStop(0, isDark ? 'rgba(16, 185, 129, 0.045)' : 'rgba(16, 185, 129, 0.055)');
+      glow.addColorStop(0.55, isDark ? 'rgba(6, 78, 59, 0.018)' : 'rgba(16, 185, 129, 0.018)');
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
 
       const maxRadius = Math.max(width, height) * 0.8;
@@ -185,16 +216,26 @@ let globalAlpha = 0.085 - (rIdx / ringsCount) * 0.06;
         ctx.stroke();
       }
 
-      animationFrameId = requestAnimationFrame(draw);
+      if (!staticModeRef.current) {
+        animationFrameId = requestAnimationFrame(drawFrame);
+      }
     };
 
-    animationFrameId = requestAnimationFrame(draw);
+    animationFrameId = requestAnimationFrame(drawFrame);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      if (animationFrameId !== undefined) {
+        cancelAnimationFrame(animationFrameId);
+      }
       resizeObserver.disconnect();
+      themeObserver.disconnect();
+      requestStaticRedrawRef.current = () => undefined;
     };
   }, []); // Run ONCE at initial component mount. Never crash or restart loop.
+
+  useEffect(() => {
+    requestStaticRedrawRef.current();
+  }, [refreshKey]);
 
   return (
     <div className="absolute inset-0 z-0 overflow-hidden bg-transparent pointer-events-none">

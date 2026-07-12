@@ -3,13 +3,14 @@ import { Worker, Job } from 'bullmq';
 import {
   HR_QUEUE_NAME,
   redisConnection,
+  redisConnectionLabel,
   withTenant,
   type AttendanceRollupJobData,
   type AuditLogJobData,
 } from '../lib/hr-background';
 
 console.log(
-  `[Worker Engine] Initializing connection to Redis at ${redisConnection.host}:${redisConnection.port}...`,
+  `[Worker Engine] Initializing connection to Redis at ${redisConnectionLabel}...`,
 );
 
 async function rollupAttendanceDailySummary(data: AttendanceRollupJobData) {
