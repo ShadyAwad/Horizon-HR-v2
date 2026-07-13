@@ -264,6 +264,25 @@
   -webkit-user-drag: none;
 }
 
+.stanza-control-center-backdrop {
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .stanza-control-center-backdrop {
+    background-color: rgb(0 0 0 / 0.58);
+  }
+}
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 @keyframes stanzaAttentionBadgeIn {
   from {
     opacity: 0.65;

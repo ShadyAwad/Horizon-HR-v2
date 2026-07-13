@@ -805,8 +805,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [profilePhotoSaving, setProfilePhotoSaving] = useState(false);
   const [profilePhotoMessage, setProfilePhotoMessage] = useState('');
   const [profilePhotoMessageType, setProfilePhotoMessageType] = useState<'success' | 'error'>('success');
-  const [isLanyardEligible, setIsLanyardEligible] = useState(false);
-  const [isLanyardControlCapable, setIsLanyardControlCapable] = useState(false);
+  const [isLanyardCapable, setIsLanyardCapable] = useState(false);
+  const [isDashboardVisible, setIsDashboardVisible] = useState(() => document.visibilityState === 'visible');
   const [isLanyardIdleReady, setIsLanyardIdleReady] = useState(false);
   const [isLanyardSceneReady, setIsLanyardSceneReady] = useState(false);
   const [lanyardAnchorNdc, setLanyardAnchorNdc] = useState<LanyardAnchorNdc | null>(null);
@@ -849,13 +849,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const desktopInputQuery = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
     const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
     const updateCapability = () => {
+      setIsDashboardVisible(document.visibilityState === 'visible');
+      if (!desktopInputQuery.matches) {
+        setIsLanyardCapable(false);
+        return;
+      }
+
       const effectiveType = connection?.effectiveType?.toLowerCase();
       const canvas = document.createElement('canvas');
       const hasWebGl = Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
-      setIsLanyardControlCapable(
-        window.innerWidth >= 1024 &&
+      setIsLanyardCapable(
+        desktopInputQuery.matches &&
         hasWebGl &&
         !reducedMotionQuery.matches &&
         connection?.saveData !== true &&
@@ -865,56 +872,24 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     };
     updateCapability();
     window.addEventListener('resize', updateCapability);
+    document.addEventListener('visibilitychange', updateCapability);
     reducedMotionQuery.addEventListener('change', updateCapability);
+    desktopInputQuery.addEventListener('change', updateCapability);
     connection?.addEventListener?.('change', updateCapability);
     return () => {
       window.removeEventListener('resize', updateCapability);
+      document.removeEventListener('visibilitychange', updateCapability);
       reducedMotionQuery.removeEventListener('change', updateCapability);
+      desktopInputQuery.removeEventListener('change', updateCapability);
       connection?.removeEventListener?.('change', updateCapability);
     };
   }, []);
 
-  useEffect(() => {
-    if (!lanyardEnabled) {
-      setIsLanyardEligible(false);
-      setIsLanyardIdleReady(false);
-      setIsLanyardSceneReady(false);
-      setLanyardAnchorNdc(null);
-      return;
-    }
-
-    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
-
-    const updateLanyardEligibility = () => {
-      const effectiveType = connection?.effectiveType?.toLowerCase();
-      setIsLanyardEligible(
-        window.innerWidth >= 1024 &&
-        !reducedMotionQuery.matches &&
-        document.visibilityState === 'visible' &&
-        connection?.saveData !== true &&
-        effectiveType !== 'slow-2g' &&
-        effectiveType !== '2g',
-      );
-    };
-
-    updateLanyardEligibility();
-    window.addEventListener('resize', updateLanyardEligibility);
-    document.addEventListener('visibilitychange', updateLanyardEligibility);
-    reducedMotionQuery.addEventListener('change', updateLanyardEligibility);
-    connection?.addEventListener?.('change', updateLanyardEligibility);
-
-    return () => {
-      window.removeEventListener('resize', updateLanyardEligibility);
-      document.removeEventListener('visibilitychange', updateLanyardEligibility);
-      reducedMotionQuery.removeEventListener('change', updateLanyardEligibility);
-      connection?.removeEventListener?.('change', updateLanyardEligibility);
-    };
-  }, [lanyardEnabled]);
+  const shouldMountLanyard = lanyardEnabled && isLanyardCapable && isDashboardVisible;
 
   useEffect(() => {
     const generation = ++lanyardMountGeneration.current;
-    if (!lanyardEnabled || !isLanyardEligible) {
+    if (!shouldMountLanyard) {
       setIsLanyardIdleReady(false);
       setIsLanyardSceneReady(false);
       return;
@@ -945,10 +920,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
       if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
     };
-  }, [isLanyardEligible, lanyardEnabled]);
+  }, [shouldMountLanyard]);
 
   useEffect(() => {
-    if (!isLanyardEligible || !isLanyardIdleReady) {
+    if (!shouldMountLanyard || !isLanyardIdleReady) {
       setLanyardAnchorNdc(null);
       return;
     }
@@ -980,7 +955,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [isLanyardEligible, isLanyardIdleReady]);
+  }, [isLanyardIdleReady, shouldMountLanyard]);
 
   const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
   const canPromptInstall = Boolean(installPrompt && !installDismissed && !isStandalone);
@@ -3603,7 +3578,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
         </p>
 
         <div className="mt-3 space-y-3">
-          {isLanyardControlCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
+          {isLanyardCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lanyardCard')}</p>
               <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
@@ -3739,7 +3714,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   ref={dashboardRootRef}
   dir={isRtl ? 'rtl' : 'ltr'}
   className={cn(
-    "h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
+    "h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
     isRtl ? "text-right" : "text-left"
   )}
 >
@@ -3793,7 +3768,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
 </div>
 
-      {lanyardEnabled && isLanyardEligible && isLanyardIdleReady && lanyardAnchorNdc && (
+      {shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc && (
         <DashboardLanyardBoundary>
           <Suspense fallback={null}>
             <StanzaDashboardLanyard
@@ -3950,7 +3925,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
       {showControlCenter && (
         <div
-          className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] md:bg-black/20"
+          className="stanza-control-center-backdrop fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] md:bg-black/20"
           onClick={() => setShowControlCenter(false)}
         >
           <section
@@ -3959,7 +3934,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
             aria-modal="true"
             aria-labelledby="stanza-control-center-title"
             className={cn(
-              "fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-h-[88dvh] overflow-y-auto rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
+              "fixed inset-x-auto left-[calc(0.75rem+env(safe-area-inset-left))] right-[calc(0.75rem+env(safe-area-inset-right))] bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-h-[88dvh] overflow-y-auto overscroll-contain rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
               "md:bottom-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]",
               isRtl ? "md:right-24 md:left-auto text-right" : "md:left-24 md:right-auto text-left"
             )}

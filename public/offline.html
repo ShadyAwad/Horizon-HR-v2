@@ -14,7 +14,14 @@
 
       body {
         min-height: 100vh;
+        min-height: 100dvh;
         margin: 0;
+        box-sizing: border-box;
+        padding:
+          calc(env(safe-area-inset-top) + 16px)
+          calc(env(safe-area-inset-right) + 16px)
+          calc(env(safe-area-inset-bottom) + 16px)
+          calc(env(safe-area-inset-left) + 16px);
         display: grid;
         place-items: center;
         background:
