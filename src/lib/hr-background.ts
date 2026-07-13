@@ -53,6 +53,16 @@ export const redisConnectionLabel = `${redisConnection.tls ? 'rediss' : 'redis'}
 let hrQueue: Queue | undefined;
 let dbPool: Pool | undefined;
 
+function getDatabaseSsl() {
+  if (process.env.DATABASE_SSL !== 'true') return undefined;
+
+  const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim();
+  return {
+    rejectUnauthorized: true,
+    ...(ca ? { ca } : {}),
+  };
+}
+
 export type AuditLogJobData = {
   tenantId: string;
   actorEmployeeId?: string | null;
@@ -84,7 +94,7 @@ export function getDbPool() {
   if (!dbPool) {
     dbPool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      ssl: getDatabaseSsl(),
     });
   }
 

@@ -1736,7 +1736,11 @@ async function startServer() {
     });
   });
 
-  app.set('trust proxy', 1);
+  const configuredProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+  app.set(
+    'trust proxy',
+    Number.isInteger(configuredProxyHops) && configuredProxyHops >= 0 ? configuredProxyHops : 0,
+  );
   app.disable('x-powered-by');
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -1780,9 +1784,12 @@ async function startServer() {
   app.use(profileImageStorage.publicPath, express.static(profileImageStorage.directory, {
     dotfiles: 'deny',
     fallthrough: false,
-    immutable: true,
+    immutable: false,
     index: false,
-    maxAge: '1y',
+    maxAge: 0,
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+    },
   }));
 
   // === HORIZON HR API ROUTES ===
@@ -4556,6 +4563,8 @@ app.get(
   requireRole(['employee', 'manager', 'hr_admin']),
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
+    const canViewPreciseLocations = req.authUser!.role !== 'employee'
+      || authUserHasPermission(req.authUser!, 'locations.read');
 
     if (!hasDatabaseConfig()) {
       return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company locations' });
@@ -4570,9 +4579,7 @@ app.get(
               name,
               location_type,
               address,
-              latitude,
-              longitude,
-              radius_meters,
+              ${canViewPreciseLocations ? 'latitude, longitude, radius_meters' : 'NULL::numeric AS latitude, NULL::numeric AS longitude, NULL::numeric AS radius_meters'},
               is_primary,
               is_active,
               created_at,
@@ -4588,7 +4595,7 @@ app.get(
         return result.rows;
       });
 
-      res.json({ success: true, locations });
+      res.json({ success: true, locations, coordinatesRestricted: !canViewPreciseLocations });
     } catch (error) {
       console.error('[Company Locations] Failed to load locations:', error);
       res.status(500).json({ success: false, error: 'Unable to load company locations' });
@@ -6649,6 +6656,7 @@ app.patch(
             WHERE tenant_id = $1
               AND id = $2
             LIMIT 1
+            FOR UPDATE
           `,
           [tenantId, id],
         );
@@ -6683,6 +6691,7 @@ app.patch(
               updated_at = NOW()
             WHERE tenant_id = $1
               AND id = $2
+              AND status = $5::varchar
             RETURNING
               id,
               employee_id,
@@ -6700,8 +6709,14 @@ app.patch(
               paid_at,
               cancelled_at
           `,
-          [tenantId, id, status, actorEmployeeId],
+          [tenantId, id, status, actorEmployeeId, existingRecord.status],
         );
+
+        if (updateResult.rowCount !== 1) {
+          const error = new Error('Payroll record changed before this update could be applied.');
+          (error as { statusCode?: number }).statusCode = 409;
+          throw error;
+        }
 
         const updatedRecord = updateResult.rows[0];
 
@@ -6733,6 +6748,18 @@ app.patch(
           ],
         );
 
+        await client.query(
+          `
+            INSERT INTO outbox_events (tenant_id, event_type, payload)
+            VALUES ($1, $2::varchar, $3::jsonb)
+          `,
+          [
+            tenantId,
+            'payroll.status.updated',
+            JSON.stringify({ payrollId: id, employeeId: existingRecord.employee_id, previousStatus: existingRecord.status, newStatus: status }),
+          ],
+        );
+
         return updatedRecord;
       });
 
@@ -6743,8 +6770,8 @@ app.patch(
       res.json({ success: true, payrollRecord });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 400) {
-        return res.status(400).json({ success: false, error: (error as Error).message });
+      if (statusCode === 400 || statusCode === 409) {
+        return res.status(statusCode).json({ success: false, error: (error as Error).message });
       }
 
       console.error('[Payroll] Failed to update payroll status:', error);
@@ -8184,6 +8211,10 @@ app.patch(
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    app.use((req, res, next) => {
+      if (req.path.endsWith('.map')) return res.sendStatus(404);
+      next();
+    });
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

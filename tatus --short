@@ -1,0 +1,185 @@
+warning: in the working copy of 'scripts/seed-demo.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/scripts/seed-demo.ts b/scripts/seed-demo.ts[m
+[1mindex 7e01fb2..dfb7f3f 100644[m
+[1m--- a/scripts/seed-demo.ts[m
+[1m+++ b/scripts/seed-demo.ts[m
+[36m@@ -57,6 +57,147 @@[m [mconst rolePermissions: Record<'employee' | 'manager', string[]> = {[m
+   ],[m
+ };[m
+ [m
+[32m+[m[32mtype HiringStage =[m
+[32m+[m[32m  | 'new'[m
+[32m+[m[32m  | 'screening'[m
+[32m+[m[32m  | 'hr_review'[m
+[32m+[m[32m  | 'hiring_manager_review'[m
+[32m+[m[32m  | 'interview'[m
+[32m+[m[32m  | 'final_review'[m
+[32m+[m[32m  | 'offer'[m
+[32m+[m[32m  | 'hired'[m
+[32m+[m[32m  | 'rejected';[m
+[32m+[m
+[32m+[m[32mtype HiringDemoCandidate = {[m
+[32m+[m[32m  fullName: string;[m
+[32m+[m[32m  email: string;[m
+[32m+[m[32m  phone: string;[m
+[32m+[m[32m  positionTitle: string;[m
+[32m+[m[32m  department: string;[m
+[32m+[m[32m  source: string;[m
+[32m+[m[32m  stage: HiringStage;[m
+[32m+[m[32m  appliedAt: string;[m
+[32m+[m[32m  owner: 'admin' | 'manager';[m
+[32m+[m[32m  updatedBy?: 'admin' | 'manager';[m
+[32m+[m[32m  history: Array<{[m
+[32m+[m[32m    previousStage: HiringStage | null;[m
+[32m+[m[32m    newStage: HiringStage;[m
+[32m+[m[32m    reason: string;[m
+[32m+[m[32m    occurredAt: string;[m
+[32m+[m[32m    actor: 'admin' | 'manager';[m
+[32m+[m[32m  }>;[m
+[32m+[m[32m  notes: Array<{[m
+[32m+[m[32m    text: string;[m
+[32m+[m[32m    type: 'general' | 'screening' | 'interview' | 'decision' | 'handoff';[m
+[32m+[m[32m    visibility: 'hiring_team' | 'hr_only';[m
+[32m+[m[32m    author: 'admin' | 'manager';[m
+[32m+[m[32m    createdAt: string;[m
+[32m+[m[32m  }>;[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst hiringDemoCandidates: HiringDemoCandidate[] = [[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Amira Hassan', email: 'amira.hassan@stanza-demo.invalid', phone: '+20 100 000 1001',[m
+[32m+[m[32m    positionTitle: 'People Operations Coordinator', department: 'People', source: 'Stanza Careers', stage: 'new', appliedAt: '2026-07-08T09:00:00.000Z', owner: 'admin',[m
+[32m+[m[32m    history: [{ previousStage: null, newStage: 'new', reason: 'Demo candidate created from the careers page.', occurredAt: '2026-07-08T09:00:00.000Z', actor: 'admin' }],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Resume received for the next intake review.', type: 'general', visibility: 'hiring_team', author: 'admin', createdAt: '2026-07-08T09:15:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Karim El Masry', email: 'karim.elmasry@stanza-demo.invalid', phone: '+20 100 000 1002',[m
+[32m+[m[32m    positionTitle: 'Frontend Engineer', department: 'Engineering', source: 'LinkedIn', stage: 'screening', appliedAt: '2026-07-04T09:00:00.000Z', owner: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo candidate created from LinkedIn.', occurredAt: '2026-07-04T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Initial profile matched the frontend opening.', occurredAt: '2026-07-05T10:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Screening call is scheduled to review React and accessibility experience.', type: 'screening', visibility: 'hiring_team', author: 'admin', createdAt: '2026-07-05T10:45:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Lina Farouk', email: 'lina.farouk@stanza-demo.invalid', phone: '+20 100 000 1003',[m
+[32m+[m[32m    positionTitle: 'Senior Payroll Analyst', department: 'Finance', source: 'Employee referral', stage: 'hr_review', appliedAt: '2026-06-28T09:00:00.000Z', owner: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo referral entered into the pipeline.', occurredAt: '2026-06-28T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Referral profile met baseline requirements.', occurredAt: '2026-06-29T11:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'Move to HR review after a positive screening call.', occurredAt: '2026-07-01T13:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Compensation expectations and payroll systems experience are ready for HR review.', type: 'screening', visibility: 'hr_only', author: 'admin', createdAt: '2026-07-01T13:15:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Omar Nabil', email: 'omar.nabil@stanza-demo.invalid', phone: '+20 100 000 1004',[m
+[32m+[m[32m    positionTitle: 'Operations Supervisor', department: 'Operations', source: 'Indeed', stage: 'hiring_manager_review', appliedAt: '2026-06-24T09:00:00.000Z', owner: 'manager', updatedBy: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo application imported from Indeed.', occurredAt: '2026-06-24T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Experience aligns with the operations team.', occurredAt: '2026-06-25T09:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'Screening references were positive.', occurredAt: '2026-06-26T14:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hr_review', newStage: 'hiring_manager_review', reason: 'Pending manager review handoff.', occurredAt: '2026-06-27T10:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Please review shift leadership experience before accepting the handoff.', type: 'handoff', visibility: 'hiring_team', author: 'admin', createdAt: '2026-06-27T10:05:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Salma Youssef', email: 'salma.youssef@stanza-demo.invalid', phone: '+20 100 000 1005',[m
+[32m+[m[32m    positionTitle: 'Product Designer', department: 'Product', source: 'Portfolio referral', stage: 'interview', appliedAt: '2026-06-20T09:00:00.000Z', owner: 'manager', updatedBy: 'manager',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo portfolio referral entered into the pipeline.', occurredAt: '2026-06-20T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Portfolio quality merited an introductory call.', occurredAt: '2026-06-21T10:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'HR screening completed successfully.', occurredAt: '2026-06-23T11:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hr_review', newStage: 'hiring_manager_review', reason: 'Handoff to the product hiring manager.', occurredAt: '2026-06-24T11:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hiring_manager_review', newStage: 'interview', reason: 'Hiring manager accepted the review and requested interviews.', occurredAt: '2026-06-26T15:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Portfolio review highlighted strong workflow and mobile product thinking.', type: 'interview', visibility: 'hiring_team', author: 'manager', createdAt: '2026-06-26T15:10:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Youssef Adel', email: 'youssef.adel@stanza-demo.invalid', phone: '+20 100 000 1006',[m
+[32m+[m[32m    positionTitle: 'Customer Success Lead', department: 'Customer Success', source: 'Recruiter outreach', stage: 'final_review', appliedAt: '2026-06-16T09:00:00.000Z', owner: 'admin', updatedBy: 'manager',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo sourced profile added to the pipeline.', occurredAt: '2026-06-16T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Candidate accepted the introductory call.', occurredAt: '2026-06-17T10:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'HR interview met the role requirements.', occurredAt: '2026-06-18T11:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hr_review', newStage: 'hiring_manager_review', reason: 'Assigned for leadership review.', occurredAt: '2026-06-19T13:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hiring_manager_review', newStage: 'interview', reason: 'Panel interview approved.', occurredAt: '2026-06-21T10:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'interview', newStage: 'final_review', reason: 'Panel feedback is complete; final decision required.', occurredAt: '2026-06-23T16:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Final decision required. Interview panel recommends proceeding to an offer discussion.', type: 'decision', visibility: 'hr_only', author: 'manager', createdAt: '2026-06-23T16:15:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Noor Ibrahim', email: 'noor.ibrahim@stanza-demo.invalid', phone: '+20 100 000 1007',[m
+[32m+[m[32m    positionTitle: 'Finance Specialist', department: 'Finance', source: 'Stanza Careers', stage: 'offer', appliedAt: '2026-06-12T09:00:00.000Z', owner: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo careers application received.', occurredAt: '2026-06-12T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Minimum finance experience confirmed.', occurredAt: '2026-06-13T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'Screening call completed.', occurredAt: '2026-06-14T10:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hr_review', newStage: 'hiring_manager_review', reason: 'Finance manager review completed.', occurredAt: '2026-06-15T11:30:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'hiring_manager_review', newStage: 'interview', reason: 'Technical interview scheduled.', occurredAt: '2026-06-17T11:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'interview', newStage: 'final_review', reason: 'Interview feedback was favorable.', occurredAt: '2026-06-19T14:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'final_review', newStage: 'offer', reason: 'Demo offer approved for delivery.', occurredAt: '2026-06-20T15:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Offer package is prepared and awaiting the candidate response.', type: 'decision', visibility: 'hr_only', author: 'admin', createdAt: '2026-06-20T15:10:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Tarek Samir', email: 'tarek.samir@stanza-demo.invalid', phone: '+20 100 000 1008',[m
+[32m+[m[32m    positionTitle: 'Warehouse Coordinator', department: 'Operations', source: 'Walk-in referral', stage: 'hired', appliedAt: '2026-06-06T09:00:00.000Z', owner: 'manager', updatedBy: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo referral recorded.', occurredAt: '2026-06-06T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Operations experience verified.', occurredAt: '2026-06-07T09:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'hr_review', reason: 'HR screening completed.', occurredAt: '2026-06-08T10:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hr_review', newStage: 'hiring_manager_review', reason: 'Manager interview requested.', occurredAt: '2026-06-09T10:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'hiring_manager_review', newStage: 'interview', reason: 'Manager interview completed.', occurredAt: '2026-06-10T11:00:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'interview', newStage: 'final_review', reason: 'Interview scorecard approved.', occurredAt: '2026-06-11T10:30:00.000Z', actor: 'manager' },[m
+[32m+[m[32m      { previousStage: 'final_review', newStage: 'offer', reason: 'Offer approved.', occurredAt: '2026-06-12T11:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'offer', newStage: 'hired', reason: 'Candidate accepted the demo offer.', occurredAt: '2026-06-14T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Candidate accepted and is ready for the onboarding workflow.', type: 'decision', visibility: 'hiring_team', author: 'admin', createdAt: '2026-06-14T09:10:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m    fullName: 'Hala Mostafa', email: 'hala.mostafa@stanza-demo.invalid', phone: '+20 100 000 1009',[m
+[32m+[m[32m    positionTitle: 'Talent Acquisition Partner', department: 'People', source: 'Agency partner', stage: 'rejected', appliedAt: '2026-06-08T09:00:00.000Z', owner: 'admin',[m
+[32m+[m[32m    history: [[m
+[32m+[m[32m      { previousStage: null, newStage: 'new', reason: 'Demo agency profile added.', occurredAt: '2026-06-08T09:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'new', newStage: 'screening', reason: 'Initial experience review completed.', occurredAt: '2026-06-09T09:30:00.000Z', actor: 'admin' },[m
+[32m+[m[32m      { previousStage: 'screening', newStage: 'rejected', reason: 'Role scope and candidate availability did not align.', occurredAt: '2026-06-10T12:00:00.000Z', actor: 'admin' },[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    notes: [{ text: 'Demo seed: Rejection recorded after a respectful screening review.', type: 'decision', visibility: 'hr_only', author: 'admin', createdAt: '2026-06-10T12:10:00.000Z' }],[m
+[32m+[m[32m  },[m
+[32m+[m[32m];[m
+[32m+[m
+ async function seedDemo() {[m
+   const pool = getDbPool();[m
+   const client = await pool.connect();[m
+[36m@@ -207,8 +348,11 @@[m [masync function seedDemo() {[m
+       [tenantId, employee.id, admin.id],[m
+     );[m
+ [m
+[32m+[m[32m    const hiringSeed = await seedHiringDemoData(client, tenantId, admin.id, manager.id);[m
+[32m+[m
+     await client.query('COMMIT');[m
+     console.log('Stanza demo seed completed.');[m
+[32m+[m[32m    console.log(`Hiring demo: ${hiringSeed.created} candidate record(s) created; ${hiringSeed.total} staged candidates available.`);[m
+     console.log(`Admin:    admin@stanza-demo.com / ${DEMO.password}`);[m
+     console.log(`Manager:  manager@stanza-demo.com / ${DEMO.password}`);[m
+     console.log(`Employee: employee@stanza-demo.com / ${DEMO.password}`);[m
+[36m@@ -221,6 +365,111 @@[m [masync function seedDemo() {[m
+   }[m
+ }[m
+ [m
+[32m+[m[32masync function seedHiringDemoData([m
+[32m+[m[32m  client: PoolClient,[m
+[32m+[m[32m  tenantId: string,[m
+[32m+[m[32m  adminId: string,[m
+[32m+[m[32m  managerId: string,[m
+[32m+[m[32m) {[m
+[32m+[m[32m  const employeeIdFor = (owner: 'admin' | 'manager') => owner === 'manager' ? managerId : adminId;[m
+[32m+[m[32m  const applicantIds = new Map<string, string>();[m
+[32m+[m[32m  let created = 0;[m
+[32m+[m
+[32m+[m[32m  for (const candidate of hiringDemoCandidates) {[m
+[32m+[m[32m    const ownerId = employeeIdFor(candidate.owner);[m
+[32m+[m[32m    const updatedById = employeeIdFor(candidate.updatedBy || candidate.owner);[m
+[32m+[m[32m    const inserted = await client.query<{ id: string }>([m
+[32m+[m[32m      `INSERT INTO hiring_applicants ([m
+[32m+[m[32m         tenant_id, full_name, email, phone, position_title, department, source, stage, statu

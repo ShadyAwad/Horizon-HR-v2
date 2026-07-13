@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export const CREATE_WORKSPACE_DRAFT_KEY = 'stanza.create-workspace-draft.v1';
+export const CREATE_WORKSPACE_DRAFT_KEY = 'stanza.create-workspace-draft.v2';
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CreateWorkspaceDraftData = {
@@ -32,7 +32,7 @@ export type CreateWorkspaceDraftData = {
 };
 
 type CreateWorkspaceDraftV1 = {
-  version: 1;
+  version: 2;
   updatedAt: string;
   currentStep: number;
   data: CreateWorkspaceDraftData;
@@ -47,8 +47,9 @@ function isFiniteCoordinate(value: unknown, min: number, max: number) {
 function isValidDraft(value: unknown): value is CreateWorkspaceDraftV1 {
   if (!value || typeof value !== 'object') return false;
   const draft = value as Partial<CreateWorkspaceDraftV1>;
-  if (draft.version !== 1 || typeof draft.updatedAt !== 'string' || !draft.data || typeof draft.currentStep !== 'number') return false;
-  if (Date.now() - new Date(draft.updatedAt).getTime() > DRAFT_TTL_MS) return false;
+  if (draft.version !== 2 || typeof draft.updatedAt !== 'string' || !draft.data || typeof draft.currentStep !== 'number') return false;
+  const updatedAt = new Date(draft.updatedAt).getTime();
+  if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > DRAFT_TTL_MS) return false;
   const data = draft.data;
   return typeof data.companyName === 'string'
     && typeof data.tenantSlug === 'string'
@@ -80,10 +81,23 @@ function isValidDraft(value: unknown): value is CreateWorkspaceDraftV1 {
 
 function safeStorage() {
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
+}
+
+function getDraftKey() {
+  const storage = safeStorage();
+  if (!storage) return CREATE_WORKSPACE_DRAFT_KEY;
+  let flowId = storage.getItem('stanza.create-workspace-flow');
+  if (!flowId) {
+    flowId = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    storage.setItem('stanza.create-workspace-flow', flowId);
+  }
+  return `${CREATE_WORKSPACE_DRAFT_KEY}.${flowId}`;
 }
 
 export function useCreateWorkspaceDraft() {
@@ -95,18 +109,18 @@ export function useCreateWorkspaceDraft() {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
     latestRef.current = null;
-    try { safeStorage()?.removeItem(CREATE_WORKSPACE_DRAFT_KEY); } catch { /* storage can be unavailable */ }
+    try { safeStorage()?.removeItem(getDraftKey()); } catch { /* storage can be unavailable */ }
     setStatus('idle');
   }, []);
 
   const restoreDraft = useCallback(() => {
     try {
       const storage = safeStorage();
-      const raw = storage?.getItem(CREATE_WORKSPACE_DRAFT_KEY);
+      const raw = storage?.getItem(getDraftKey());
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
       if (!isValidDraft(parsed)) {
-        storage?.removeItem(CREATE_WORKSPACE_DRAFT_KEY);
+        storage?.removeItem(getDraftKey());
         return null;
       }
       latestRef.current = parsed;
@@ -122,7 +136,7 @@ export function useCreateWorkspaceDraft() {
     const draft = latestRef.current;
     if (!draft) return;
     try {
-      safeStorage()?.setItem(CREATE_WORKSPACE_DRAFT_KEY, JSON.stringify(draft));
+      safeStorage()?.setItem(getDraftKey(), JSON.stringify(draft));
       setStatus('saved');
     } catch {
       setStatus('unavailable');
@@ -130,7 +144,7 @@ export function useCreateWorkspaceDraft() {
   }, []);
 
   const saveDraft = useCallback((currentStep: number, data: CreateWorkspaceDraftData, immediate = false) => {
-    latestRef.current = { version: 1, updatedAt: new Date().toISOString(), currentStep, data };
+    latestRef.current = { version: 2, updatedAt: new Date().toISOString(), currentStep, data };
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     if (immediate) {
       flush();

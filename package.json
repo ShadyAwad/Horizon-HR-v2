@@ -7,7 +7,7 @@
     "dev:server": "tsx server.ts",
     "dev:worker": "tsx watch src/workers/hr-worker.ts",
     "dev": "concurrently -n \"Server,Worker\" -c \"cyan,green\" \"npm:dev:server\" \"npm:dev:worker\"",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

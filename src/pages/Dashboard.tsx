@@ -325,9 +325,10 @@ type CompanyLocationRecord = {
   name: string;
   location_type: string;
   address?: string | null;
-  latitude: string | number;
-  longitude: string | number;
-  radius_meters: number;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  radius_meters: number | null;
+  coordinatesRestricted?: boolean;
   is_primary: boolean;
   is_active: boolean;
 };
@@ -3329,7 +3330,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               <div>
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
                 <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  {displayEnum(location.location_type)} - <span dir="ltr">{location.radius_meters}m</span>
+                  {displayEnum(location.location_type)}{location.radius_meters !== null && <> - <span dir="ltr">{location.radius_meters}m</span></>}
                 </p>
               </div>
               {location.is_primary && (
@@ -4622,7 +4623,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                                  <div>
                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{location.name}</p>
                                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                     {displayEnum(location.location_type)} - <span dir="ltr">{location.radius_meters}m</span>
+                                     {displayEnum(location.location_type)}{location.radius_meters !== null && <> - <span dir="ltr">{location.radius_meters}m</span></>}
                                    </p>
                                  </div>
                                  {location.is_primary && (
@@ -4631,9 +4632,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                                    </span>
                                  )}
                                </div>
-                               <p className="mt-2 font-mono text-[10px] text-slate-500">
-                                 <span dir="ltr">{Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}</span>
-                               </p>
+                               {location.latitude !== null && location.longitude !== null && (
+                                 <p className="mt-2 font-mono text-[10px] text-slate-500">
+                                   <span dir="ltr">{Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}</span>
+                                 </p>
+                               )}
                              </div>
                            ))}
 

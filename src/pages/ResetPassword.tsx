@@ -17,7 +17,15 @@ export function ResetPassword({ onNavigateLogin, onPulseStateChange }: {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const [token] = useState(() => {
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get('token') || '';
+    if (value) {
+      url.searchParams.delete('token');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+    return value;
+  });
 
   useEffect(() => {
     onPulseStateChange?.(isSubmitting ? 'loading' : 'idle');
