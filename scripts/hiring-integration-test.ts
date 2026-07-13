@@ -2,10 +2,10 @@ import 'dotenv/config';
 import { getDbPool } from '../src/lib/hr-background';
 
 type JsonObject = Record<string, any>;
-type Session = { id: string; tenantId: string; authToken?: string; role: string };
+type Session = { id: string; tenantId: string; sessionCookie?: string; role: string };
 
 const baseUrl = (process.env.HIRING_TEST_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-const password = process.env.HIRING_TEST_PASSWORD || 'StrongPass!123';
+const password = process.env.HIRING_TEST_PASSWORD || process.env.DEMO_PASSWORD;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const applicantEmail = `hiring-smoke-${runId}@example.com`;
 const passed: string[] = [];
@@ -21,12 +21,7 @@ function pass(label: string) {
 
 async function api(path: string, session?: Session, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
-  if (session?.authToken) {
-    headers.set('Authorization', `Bearer ${session.authToken}`);
-  } else if (session) {
-    headers.set('x-employee-id', session.id);
-    headers.set('x-tenant-id', session.tenantId);
-  }
+  if (session?.sessionCookie) headers.set('Cookie', session.sessionCookie);
   if (init.body) headers.set('Content-Type', 'application/json');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   const body = await response.json().catch(() => ({})) as JsonObject;
@@ -39,8 +34,9 @@ async function login(email: string): Promise<Session> {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  assert(response.ok && body.user?.authToken, `Login failed for ${email}: ${body.error || response.status}`);
-  return body.user;
+  const sessionCookie = response.headers.get('set-cookie')?.split(';', 1)[0];
+  assert(response.ok && body.user?.id && sessionCookie, `Login failed for ${email}: ${body.error || response.status}`);
+  return { ...body.user, sessionCookie };
 }
 
 async function expectStatus(label: string, expected: number, request: Promise<{ response: Response; body: JsonObject }>) {
@@ -52,6 +48,7 @@ async function expectStatus(label: string, expected: number, request: Promise<{ 
 
 async function main() {
   console.log(`Stanza Hiring integration test: ${baseUrl}`);
+  assert(password, 'Set HIRING_TEST_PASSWORD or DEMO_PASSWORD; no default credential is used.');
   const admin = await login(process.env.HIRING_TEST_ADMIN_EMAIL || 'admin@stanza-demo.com');
   const manager = await login(process.env.HIRING_TEST_MANAGER_EMAIL || 'manager@stanza-demo.com');
   const employee = await login(process.env.HIRING_TEST_EMPLOYEE_EMAIL || 'employee@stanza-demo.com');

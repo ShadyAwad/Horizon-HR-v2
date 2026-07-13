@@ -53,6 +53,30 @@ ON employees(email, tenant_id);
 CREATE INDEX IF NOT EXISTS employees_tenant_manager_idx
 ON employees(tenant_id, manager_id);
 
+-- =========================================================
+-- 2. Authentication Sessions
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    employee_id UUID NOT NULL,
+    session_token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+
+    CONSTRAINT auth_sessions_employee_tenant_fk
+        FOREIGN KEY (employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS auth_sessions_active_idx
+ON auth_sessions (session_token_hash, expires_at)
+WHERE revoked_at IS NULL;
+
 ALTER TABLE employees
 ADD COLUMN IF NOT EXISTS job_title VARCHAR(120);
 

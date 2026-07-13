@@ -10,7 +10,6 @@ type ApiResult = {
 type SmokeUser = {
   id: string;
   tenantId: string;
-  authToken: string;
   role: string;
 };
 
@@ -19,6 +18,7 @@ const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random()
 const smokePrefix = `Smoke Test ${runId}`;
 const failures: string[] = [];
 let authenticatedHeaders: HeadersInit | undefined;
+let sessionCookie: string | undefined;
 let createdBreakRequestId: string | undefined;
 
 function getRequiredEnv(...keys: string[]) {
@@ -36,8 +36,11 @@ async function request(path: string, init: RequestInit = {}): Promise<ApiResult>
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  if (sessionCookie && !headers.has('Cookie')) headers.set('Cookie', sessionCookie);
 
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
+  const setCookie = response.headers.get('set-cookie');
+  if (setCookie) sessionCookie = setCookie.split(';', 1)[0];
   const contentType = response.headers.get('content-type') || '';
   const body = contentType.includes('application/json')
     ? await response.json().catch(() => null) as JsonRecord | null
@@ -131,20 +134,18 @@ async function run() {
     const loginUser = asRecord(result.body?.user);
     const id = loginUser?.id;
     const tenantId = loginUser?.tenantId;
-    const authToken = loginUser?.authToken;
     const role = loginUser?.role;
 
-    if (typeof id !== 'string' || typeof tenantId !== 'string' || typeof authToken !== 'string' || typeof role !== 'string') {
-      throw new Error('Login response did not include authenticated user identity and token.');
+    if (typeof id !== 'string' || typeof tenantId !== 'string' || typeof role !== 'string' || !sessionCookie) {
+      throw new Error('Login response did not establish an authenticated session cookie.');
     }
 
     if (role !== 'hr_admin') {
       throw new Error(`Smoke credentials must belong to an hr_admin account; received ${role}.`);
     }
 
-    user = { id, tenantId, authToken, role };
+    user = { id, tenantId, role };
     authenticatedHeaders = {
-      Authorization: `Bearer ${authToken}`,
       'x-employee-id': id,
       'x-tenant-id': tenantId,
     };

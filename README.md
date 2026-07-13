@@ -12,12 +12,8 @@ Remove only the `stanza-demo` tenant and its dependent demo data:
 npm run db:reset:demo
 ```
 
-Demo accounts:
-
-- `admin@stanza-demo.com` / `StrongPass!123`
-- `manager@stanza-demo.com` / `StrongPass!123`
-- `employee@stanza-demo.com` / `StrongPass!123`
-
+Demo accounts use the emails seeded by the script. Set `DEMO_PASSWORD` only in
+your local demo environment; it is intentionally never printed or documented.
 Demo accounts are public portfolio fixtures. Do not use real sensitive data in demo mode.
 
 ## Local backend smoke test
@@ -31,7 +27,7 @@ npm run test:smoke
 
 The script checks health, login, notification settings, break requests,
 clock-in validation/auth errors, payroll, company feed, grievances, and signup
-validation. It uses a signed login token, never prints credentials or tokens,
+validation. It uses an HttpOnly session cookie, never prints credentials or tokens,
 and labels generated records `Smoke Test`. It cancels its temporary break
 request; feed drafts and low-priority grievances remain as harmless fixtures
 because those routes do not provide deletion endpoints.

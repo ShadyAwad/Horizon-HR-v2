@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
+
+const fetch = apiFetch;
 import type { AuthVisualState } from '../components/AuthShell';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { useLanguage } from '../lib/LanguageContext';

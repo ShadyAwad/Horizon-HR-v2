@@ -65,7 +65,7 @@ export async function sendWelcomeEmail({ to, name, workspaceName, includeWorkspa
   const loginUrl = `${(process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/`;
   const safeName = escapeHtml(name);
   const safeWorkspaceName = escapeHtml(workspaceName);
-  const demoNote = process.env.VITE_ENABLE_DEMO_LOGIN !== 'false'
+  const demoNote = process.env.STANZA_DEMO_ENV === 'true'
     ? '<p style="color:#9ca3af">This workspace may include portfolio demo fixtures. Do not use real sensitive data in demo mode.</p>'
     : '';
 

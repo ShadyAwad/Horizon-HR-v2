@@ -5,6 +5,7 @@ import { ThemeProvider } from './lib/ThemeContext';
 import { DemoNoticeModal } from './components/DemoNoticeModal';
 import { AuthShell, type AuthVisualState } from './components/AuthShell';
 import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
+import { apiFetch, apiUrl } from './lib/api';
 
 const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
 const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
@@ -26,7 +27,6 @@ export type AuthUser = {
   permissions?: string[];
   tenantId: string;
   tenant?: string | { id: string; slug: string; companyName: string };
-  authToken?: string;
   profileImageUrl?: string | null;
 };
 
@@ -43,8 +43,16 @@ function getStoredUser() {
   if (typeof window === 'undefined') return fallbackUser;
 
   try {
+    // Old clients stored bearer tokens here. Remove the token without sending it anywhere;
+    // the next request will use the HttpOnly session cookie established at login.
     const storedUser = window.localStorage.getItem('horizon-auth-user');
-    return storedUser ? JSON.parse(storedUser) as AuthUser : fallbackUser;
+    if (!storedUser) return fallbackUser;
+    const parsed = JSON.parse(storedUser) as AuthUser & { authToken?: string };
+    if (parsed.authToken) {
+      delete parsed.authToken;
+      window.localStorage.setItem('horizon-auth-user', JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     return fallbackUser;
   }
@@ -167,6 +175,7 @@ export default function App() {
     setAuthBackgroundPulse('loading');
     startAuthTransition('logging-out', async () => {
       await waitFor(180);
+      await apiFetch(apiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => undefined);
       window.localStorage.removeItem('horizon-auth-user');
       setFocusLoginEmail(true);
       setAuthState('login');

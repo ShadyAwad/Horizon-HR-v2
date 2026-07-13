@@ -8,7 +8,9 @@ import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
+
+const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
@@ -1505,7 +1507,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     'Content-Type': 'application/json',
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
-    ...(user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {}),
   });
 
   useEffect(() => {
@@ -1527,7 +1528,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     };
     void loadRosterEmployees();
     return () => { cancelled = true; };
-  }, [hasAuthenticatedDashboardUser, selectedRosterEmployeeId, user.id, user.tenantId, user.authToken]);
+  }, [hasAuthenticatedDashboardUser, selectedRosterEmployeeId, user.id, user.tenantId]);
 
   const loadRosterShifts = async () => {
     if (!hasAuthenticatedDashboardUser || !selectedRosterEmployeeId || rosterRange.error) return;
@@ -1793,7 +1794,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     'Content-Type': 'application/json',
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
-    ...(user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {}),
   });
 
   const loadResignations = async () => {
@@ -1869,9 +1869,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
   };
-  if (user.authToken) {
-    payrollHeaders.Authorization = `Bearer ${user.authToken}`;
-  }
 
   const handleProfilePhotoSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1901,8 +1898,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       'x-employee-id': user.id,
       'x-tenant-id': user.tenantId,
     };
-    if (user.authToken) headers.Authorization = `Bearer ${user.authToken}`;
-
     try {
       const response = await fetch(apiUrl('/api/profile/avatar'), { method: 'POST', headers, body });
       const data = await response.json();

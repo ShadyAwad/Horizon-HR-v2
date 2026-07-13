@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { BriefcaseBusiness, ChevronDown, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
+
+const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
@@ -111,7 +113,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const showEmailError = (emailTouched || loginSubmitted || Boolean(email.trim())) && !emailValidation.valid;
   const showPasswordError = passwordTouched && !password;
   const showRecoveryEmailError = (recoveryEmailTouched || recoverySubmitted || Boolean((recoveryEmail || email).trim())) && !recoveryEmailValidation.valid;
-  const demoLoginEnabled = import.meta.env.VITE_ENABLE_DEMO_LOGIN !== 'false';
+  const demoLoginEnabled = import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true';
   const demoAccounts = useMemo(() => [
     {
       email: 'admin@stanza-demo.com',
@@ -135,7 +137,9 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
 
   const fillDemoCredentials = (demoEmail: string) => {
     setEmail(demoEmail);
-    setPassword('StrongPass!123');
+    // Demo passwords remain server-side; the selector never ships a privileged
+    // credential in the client bundle or stores it in browser state.
+    setPassword('');
     setEmailTouched(false);
     setPasswordTouched(false);
     setLoginSubmitted(false);
@@ -199,7 +203,6 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
       
       if (data.success) {
         setPulseState('success');
-        window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
         onLoginSuccess(data.user);
       } else {
         setPulseState('error');
@@ -321,7 +324,6 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
           : verifyData.error || t('login.passkeySignIn'));
       }
 
-      window.localStorage.setItem('horizon-auth-user', JSON.stringify(verifyData.user));
       setPulseState('success');
       onLoginSuccess(verifyData.user);
     } catch (error) {

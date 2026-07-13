@@ -6,11 +6,35 @@ import { getDbPool } from '../src/lib/hr-background';
 const DEMO = {
   companyName: 'Stanza Demo Company',
   slug: 'stanza-demo',
-  password: 'StrongPass!123',
   latitude: 30.0444,
   longitude: 31.2357,
   radiusMeters: 500,
 } as const;
+
+function assertDemoMutationSafety() {
+  if (process.env.NODE_ENV === 'production') throw new Error('Demo seed is disabled in production.');
+  if (process.env.STANZA_DEMO_ENV !== 'true') throw new Error('Set STANZA_DEMO_ENV=true to seed demo data.');
+  if (process.env.ALLOW_DEMO_DATA_MUTATION !== 'true') throw new Error('Set ALLOW_DEMO_DATA_MUTATION=true to seed demo data.');
+
+  const rawDatabaseUrl = process.env.DATABASE_URL?.trim();
+  if (!rawDatabaseUrl) throw new Error('DATABASE_URL is required for demo seeding.');
+  let databaseUrl: URL;
+  try {
+    databaseUrl = new URL(rawDatabaseUrl);
+  } catch {
+    throw new Error('DATABASE_URL must be a valid PostgreSQL URL.');
+  }
+  const databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\/+/, ''));
+  const allowlist = (process.env.DEMO_DATABASE_ALLOWLIST || '').split(',').map((value) => value.trim()).filter(Boolean);
+  if (!databaseName || !allowlist.includes(databaseName)) {
+    throw new Error('The target database is not in DEMO_DATABASE_ALLOWLIST.');
+  }
+  const password = process.env.DEMO_PASSWORD?.trim();
+  if (!password || password.length < 12) throw new Error('Set DEMO_PASSWORD to a strong demo-only password.');
+
+  console.log(`Demo seed target: ${databaseUrl.hostname}:${databaseUrl.port || '5432'}/${databaseName}`);
+  return password;
+}
 
 const permissions = [
   ['locations.read', 'Read locations', 'View company locations.'],
@@ -199,6 +223,7 @@ const hiringDemoCandidates: HiringDemoCandidate[] = [
 ];
 
 async function seedDemo() {
+  const demoPassword = assertDemoMutationSafety();
   const pool = getDbPool();
   const client = await pool.connect();
 
@@ -258,7 +283,7 @@ async function seedDemo() {
       [tenantId],
     );
 
-    const passwordHash = bcrypt.hashSync(DEMO.password, 12);
+    const passwordHash = bcrypt.hashSync(demoPassword, 12);
     const admin = await upsertEmployee(client, tenantId, 'Shady Awad', 'admin@stanza-demo.com', passwordHash, 'hr_admin', 'HR Administrator');
     const manager = await upsertEmployee(client, tenantId, 'Demo Manager', 'manager@stanza-demo.com', passwordHash, 'manager', 'Operations Manager');
     const employee = await upsertEmployee(client, tenantId, 'Demo Employee', 'employee@stanza-demo.com', passwordHash, 'employee', 'Operations Associate', manager.id);
@@ -353,9 +378,7 @@ async function seedDemo() {
     await client.query('COMMIT');
     console.log('Stanza demo seed completed.');
     console.log(`Hiring demo: ${hiringSeed.created} candidate record(s) created; ${hiringSeed.total} staged candidates available.`);
-    console.log(`Admin:    admin@stanza-demo.com / ${DEMO.password}`);
-    console.log(`Manager:  manager@stanza-demo.com / ${DEMO.password}`);
-    console.log(`Employee: employee@stanza-demo.com / ${DEMO.password}`);
+    console.log('Demo accounts seeded. Passwords are intentionally omitted from output.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

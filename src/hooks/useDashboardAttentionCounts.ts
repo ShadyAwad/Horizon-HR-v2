@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export type DashboardAttentionCounts = {
   grievances: number;
@@ -26,7 +26,6 @@ const EMPTY_COUNTS: DashboardAttentionCounts = {
 type AttentionUser = {
   id: string;
   tenantId: string;
-  authToken?: string;
 };
 
 const normalizeCount = (value: unknown) => Math.max(0, Math.trunc(Number(value) || 0));
@@ -44,11 +43,10 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     requestRef.current = controller;
 
     try {
-      const response = await fetch(apiUrl('/api/dashboard/attention-counts'), {
+      const response = await apiFetch(apiUrl('/api/dashboard/attention-counts'), {
         headers: {
           'x-employee-id': user.id,
           'x-tenant-id': user.tenantId,
-          ...(user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {}),
         },
         signal: controller.signal,
       });
@@ -76,7 +74,7 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     } finally {
       if (requestRef.current === controller) requestRef.current = null;
     }
-  }, [enabled, user.authToken, user.id, user.tenantId]);
+  }, [enabled, user.id, user.tenantId]);
 
   useEffect(() => {
     if (!enabled) {

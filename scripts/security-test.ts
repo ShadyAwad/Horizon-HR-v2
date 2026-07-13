@@ -16,7 +16,7 @@ type ApiResult = {
 type TestUser = {
   id: string;
   tenantId: string;
-  authToken: string;
+  sessionCookie: string;
   role: string;
 };
 
@@ -135,7 +135,7 @@ function expectSafeError(result: ApiResult, context: string) {
 }
 
 function authHeaders(user: TestUser): HeadersInit {
-  return { Authorization: `Bearer ${user.authToken}` };
+  return { Cookie: user.sessionCookie };
 }
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -161,13 +161,13 @@ async function login(email: string, password: string): Promise<TestUser> {
   const user = asRecord(result.body?.user);
   const id = user?.id;
   const tenantId = user?.tenantId;
-  const authToken = user?.authToken;
   const role = user?.role;
-  if (typeof id !== 'string' || typeof tenantId !== 'string' || typeof authToken !== 'string' || typeof role !== 'string') {
-    throw new Error('Login response did not contain the expected token and identity fields.');
+  const sessionCookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];
+  if (typeof id !== 'string' || typeof tenantId !== 'string' || typeof role !== 'string' || !sessionCookie) {
+    throw new Error('Login response did not establish an authenticated session cookie.');
   }
 
-  return { id, tenantId, authToken, role };
+  return { id, tenantId, sessionCookie, role };
 }
 
 async function runOptionalAuthenticatedChecks() {
@@ -299,7 +299,7 @@ async function run() {
 
   await check('Dev auth headers require development or explicit opt-in', async () => {
     const serverSource = await readFile(path.join(rootDir, 'server.ts'), 'utf8');
-    if (!/function allowDevAuthHeaders\(\)\s*\{\s*return !isProduction\(\) \|\| process\.env\.DEV_AUTH_HEADERS === 'true';\s*\}/s.test(serverSource)) {
+    if (!/function allowDevAuthHeaders\(\)\s*\{\s*return !isProduction\(\) && process\.env\.DEV_AUTH_HEADERS === 'true';/s.test(serverSource)) {
       throw new Error('Legacy x-employee-id/x-tenant-id headers are not guarded by NODE_ENV or DEV_AUTH_HEADERS.');
     }
   });

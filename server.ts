@@ -301,7 +301,8 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const INVALID_LOGIN_TIMING_HASH = generatePasswordHash('stanza-invalid-login-timing-only');
-const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const AUTH_SESSION_COOKIE = 'stanza_session';
 const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PROFILE_IMAGE_SIZE = 512;
 const PROFILE_IMAGE_QUALITY = 80;
@@ -356,41 +357,6 @@ function isProduction() {
   return process.env.NODE_ENV === 'production';
 }
 
-function allowDevAuthHeaders() {
-  return !isProduction() || process.env.DEV_AUTH_HEADERS === 'true';
-}
-
-function getAuthTokenSecret() {
-  return process.env.AUTH_TOKEN_SECRET || process.env.SESSION_SECRET || (!isProduction() ? 'stanza-dev-auth-token-secret' : '');
-}
-
-function base64UrlEncode(value: string) {
-  return Buffer.from(value, 'utf8').toString('base64url');
-}
-
-function signAuthTokenPayload(payload: object) {
-  const secret = getAuthTokenSecret();
-  if (!secret) {
-    throw Object.assign(new Error('AUTH_TOKEN_SECRET is required in production.'), { statusCode: 500 });
-  }
-
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(encodedPayload)
-    .digest('base64url');
-
-  return `${encodedPayload}.${signature}`;
-}
-
-function createAuthToken(user: { id: string; tenant_id: string }) {
-  return signAuthTokenPayload({
-    employeeId: user.id,
-    tenantId: user.tenant_id,
-    exp: Date.now() + AUTH_TOKEN_TTL_MS,
-  });
-}
-
 function formatAuthUser(employee: AuthEmployeeRow) {
   return {
     id: employee.id,
@@ -403,8 +369,105 @@ function formatAuthUser(employee: AuthEmployeeRow) {
     permissions: employee.permissions || [],
     tenantId: employee.tenant_id,
     tenant: employee.company_name,
-    authToken: createAuthToken(employee),
   };
+}
+
+function hashSessionToken(token: string) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function getCookie(req: express.Request, name: string) {
+  const cookieHeader = req.header('cookie') || '';
+  for (const part of cookieHeader.split(';')) {
+    const [key, ...valueParts] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(valueParts.join('='));
+  }
+  return null;
+}
+
+function setAuthSessionCookie(res: express.Response, token: string) {
+  const secure = isProduction() ? '; Secure' : '';
+  const sameSite = isProduction() ? 'None' : 'Lax';
+  res.setHeader(
+    'Set-Cookie',
+    `${AUTH_SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly${secure}; SameSite=${sameSite}; Path=/; Max-Age=${Math.floor(AUTH_SESSION_TTL_MS / 1000)}`,
+  );
+}
+
+function clearAuthSessionCookie(res: express.Response) {
+  const secure = isProduction() ? '; Secure' : '';
+  const sameSite = isProduction() ? 'None' : 'Lax';
+  res.setHeader(
+    'Set-Cookie',
+    `${AUTH_SESSION_COOKIE}=; HttpOnly${secure}; SameSite=${sameSite}; Path=/; Max-Age=0`,
+  );
+}
+
+async function createAuthSession(employee: { id: string; tenant_id: string }, res: express.Response) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const pool = getDbPool();
+  // Rotate the account's active sessions on every new authentication so an old
+  // browser session cannot survive a login or privilege-changing re-auth.
+  await pool.query(
+    `UPDATE auth_sessions
+     SET revoked_at = NOW()
+     WHERE employee_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+    [employee.id, employee.tenant_id],
+  );
+  await pool.query(
+    `INSERT INTO auth_sessions (tenant_id, employee_id, session_token_hash, expires_at)
+     VALUES ($1, $2, $3, NOW() + ($4::bigint * INTERVAL '1 millisecond'))`,
+    [employee.tenant_id, employee.id, hashSessionToken(token), AUTH_SESSION_TTL_MS],
+  );
+  setAuthSessionCookie(res, token);
+}
+
+async function revokeAuthSession(req: express.Request, res: express.Response) {
+  const token = getCookie(req, AUTH_SESSION_COOKIE);
+  if (token) {
+    await getDbPool().query(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+       WHERE session_token_hash = $1 AND revoked_at IS NULL`,
+      [hashSessionToken(token)],
+    );
+  }
+  clearAuthSessionCookie(res);
+}
+
+async function getAuthSessionIdentity(req: express.Request) {
+  const token = getCookie(req, AUTH_SESSION_COOKIE);
+  if (!token) return null;
+
+  const result = await getDbPool().query<{ employee_id: string; tenant_id: string }>(
+    `SELECT employee_id, tenant_id
+     FROM auth_sessions
+     WHERE session_token_hash = $1
+       AND revoked_at IS NULL
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [hashSessionToken(token)],
+  );
+  const session = result.rows[0];
+  if (!session) return null;
+
+  await getDbPool().query(
+    `UPDATE auth_sessions SET last_used_at = NOW()
+     WHERE session_token_hash = $1`,
+    [hashSessionToken(token)],
+  );
+  return session;
+}
+
+function allowDevAuthHeaders() {
+  return !isProduction() && process.env.DEV_AUTH_HEADERS === 'true';
+}
+
+function isDemoEnvironment() {
+  return process.env.STANZA_DEMO_ENV === 'true';
+}
+
+function isDemoEmail(email: string) {
+  return email.endsWith('@stanza-demo.com');
 }
 
 function getWebAuthnConfig() {
@@ -441,63 +504,6 @@ function toWebAuthnCredential(row: WebAuthnCredentialRow): WebAuthnCredential {
     counter: Number(row.counter || 0),
     transports: row.transports || undefined,
   };
-}
-
-function getBearerToken(req: express.Request) {
-  const header = req.header('authorization') || '';
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match?.[1] || null;
-}
-
-function verifyAuthToken(req: express.Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, missing: true as const };
-
-  const [encodedPayload, signature] = token.split('.');
-  if (!encodedPayload || !signature) {
-    return { ok: false as const, missing: false as const };
-  }
-
-  const secret = getAuthTokenSecret();
-  if (!secret) {
-    return { ok: false as const, missing: false as const };
-  }
-
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(encodedPayload)
-    .digest('base64url');
-  const provided = Buffer.from(signature);
-  const expected = Buffer.from(expectedSignature);
-
-  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
-    return { ok: false as const, missing: false as const };
-  }
-
-  try {
-    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
-      employeeId?: unknown;
-      tenantId?: unknown;
-      exp?: unknown;
-    };
-
-    if (
-      typeof payload.employeeId !== 'string' ||
-      typeof payload.tenantId !== 'string' ||
-      typeof payload.exp !== 'number' ||
-      payload.exp < Date.now()
-    ) {
-      return { ok: false as const, missing: false as const };
-    }
-
-    return {
-      ok: true as const,
-      employeeId: payload.employeeId,
-      tenantId: payload.tenantId,
-    };
-  } catch {
-    return { ok: false as const, missing: false as const };
-  }
 }
 
 function checkLoginRateLimit(key: string) {
@@ -1185,24 +1191,11 @@ async function demoAuth(
   res: express.Response,
   next: express.NextFunction
 ) {
-  const tokenAuth = verifyAuthToken(req);
+  const sessionIdentity = await getAuthSessionIdentity(req);
+  const employeeId = sessionIdentity?.employee_id || (allowDevAuthHeaders() ? req.header('x-employee-id') : undefined);
+  const tenantId = sessionIdentity?.tenant_id || (allowDevAuthHeaders() ? req.header('x-tenant-id') : undefined);
 
-  /*
-    Production identity must come from a signed token issued by login/signup.
-    The legacy x-employee-id/x-tenant-id headers are kept only for local/demo
-    workflows unless DEV_AUTH_HEADERS=true is explicitly set.
-  */
-  if (!tokenAuth.ok && !tokenAuth.missing) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid authentication token.',
-    });
-  }
-
-  const employeeId = tokenAuth.ok ? tokenAuth.employeeId : req.header('x-employee-id');
-  const tenantId = tokenAuth.ok ? tokenAuth.tenantId : req.header('x-tenant-id');
-
-  if (!tokenAuth.ok && !allowDevAuthHeaders()) {
+  if (!sessionIdentity && !allowDevAuthHeaders()) {
     return res.status(401).json({
       success: false,
       error: 'Authentication token required.',
@@ -1699,6 +1692,10 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
 }
 
 async function startServer() {
+  if (isProduction() && process.env.DEV_AUTH_HEADERS === 'true') {
+    throw new Error('DEV_AUTH_HEADERS must be disabled in production.');
+  }
+
   const app = express();
   const PORT = 3000;
   const rateLimitHandler: Parameters<typeof rateLimit>[0]['handler'] = (_req, res) => {
@@ -1768,6 +1765,7 @@ async function startServer() {
     if (origin && allowedOrigins.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-employee-id, x-tenant-id');
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     }
@@ -1987,13 +1985,6 @@ async function startServer() {
       return res.status(503).json({
         success: false,
         error: 'DATABASE_URL is required for tenant registration.',
-      });
-    }
-
-    if (isProduction() && !getAuthTokenSecret()) {
-      return res.status(500).json({
-        success: false,
-        error: 'Authentication is not configured.',
       });
     }
 
@@ -2254,6 +2245,8 @@ async function startServer() {
         }),
       );
 
+      await createAuthSession(employee, res);
+
       res.status(201).json({
         success: true,
         message: normalizedWelcomeEmailOptions.sendWelcomeEmail && !welcomeEmailDelivered
@@ -2273,7 +2266,6 @@ async function startServer() {
           jobTitle: null,
           tenantId: employee.tenant_id,
           tenant: responseTenant,
-          authToken: createAuthToken(employee),
         },
       });
     } catch (error) {
@@ -2348,6 +2340,18 @@ async function startServer() {
   // 1. Auth Endpoint (Simulates secure iron-session check)
 
 
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    if (hasDatabaseConfig()) await revokeAuthSession(req, res);
+    else clearAuthSessionCookie(res);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Logout] Failed to revoke session:', error);
+    clearAuthSessionCookie(res);
+    res.status(500).json({ success: false, error: 'Unable to log out safely.' });
+  }
+});
+
 app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   const { email, password } = req.body as {
     email?: string;
@@ -2364,6 +2368,13 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   }
 
   const normalizedEmail = normalizedLoginEmail.value;
+
+  if (isDemoEmail(normalizedEmail) && !isDemoEnvironment()) {
+    return res.status(401).json({
+      success: false,
+      error: 'Demo accounts are disabled in this environment.',
+    });
+  }
   const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
   const rateLimit = checkLoginRateLimit(loginRateLimitKey);
 
@@ -2383,13 +2394,6 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     return res.status(503).json({
       success: false,
       error: 'DATABASE_URL is required for database-backed login.',
-    });
-  }
-
-  if (isProduction() && !getAuthTokenSecret()) {
-    return res.status(500).json({
-      success: false,
-      error: 'Authentication is not configured.',
     });
   }
 
@@ -2468,22 +2472,11 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     }
 
     clearFailedLogins(loginRateLimitKey);
+    await createAuthSession(employee, res);
 
     res.json({
       success: true,
-      user: {
-        id: employee.id,
-        email: employee.email,
-        name: employee.full_name,
-        role: employee.role,
-        jobTitle: employee.job_title,
-        profileImageUrl: employee.profile_image_url,
-        roleNames: employee.role_names,
-        permissions: employee.permissions,
-        tenantId: employee.tenant_id,
-        tenant: employee.company_name,
-        authToken: createAuthToken(employee),
-      },
+      user: formatAuthUser(employee),
     });
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
@@ -2530,6 +2523,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
         }
 
         clearFailedLogins(loginRateLimitKey);
+        await createAuthSession(fallbackEmployee, res);
 
         return res.json({
           success: true,
@@ -2544,7 +2538,6 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             permissions: fallbackEmployee.role === 'hr_admin' ? ['roles.manage'] : [],
             tenantId: fallbackEmployee.tenant_id,
             tenant: fallbackEmployee.company_name,
-            authToken: createAuthToken(fallbackEmployee),
           },
         });
       } catch (fallbackError) {
@@ -3070,6 +3063,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
     });
 
     clearFailedLogins(loginRateLimitKey);
+    await createAuthSession(loginUser, res);
     res.json({ success: true, user: formatAuthUser(loginUser) });
   } catch (error) {
     recordFailedLogin(loginRateLimitKey);
@@ -3616,6 +3610,12 @@ app.post(
             ],
           );
 
+          await client.query(
+            `UPDATE auth_sessions SET revoked_at = NOW()
+             WHERE tenant_id = $1 AND revoked_at IS NULL`,
+            [tenantId],
+          );
+
           await client.query('COMMIT');
           return { ...createdRole, permissions: validPermissionKeys };
         } catch (error) {
@@ -3881,6 +3881,12 @@ app.post(
           ],
         );
 
+        await client.query(
+          `UPDATE auth_sessions SET revoked_at = NOW()
+           WHERE tenant_id = $1 AND employee_id = $2 AND revoked_at IS NULL`,
+          [tenantId, employeeId],
+        );
+
         return insertResult.rows[0];
       });
 
@@ -3964,6 +3970,12 @@ app.delete(
             employeeId,
             JSON.stringify({ roleId }),
           ],
+        );
+
+        await client.query(
+          `UPDATE auth_sessions SET revoked_at = NOW()
+           WHERE tenant_id = $1 AND employee_id = $2 AND revoked_at IS NULL`,
+          [tenantId, employeeId],
         );
 
         return deleteResult.rows[0];
@@ -4340,9 +4352,22 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
       `
         UPDATE password_reset_tokens
         SET used_at = NOW()
-        WHERE id = $1
+        WHERE employee_id = $1
+          AND tenant_id = $2
+          AND used_at IS NULL
       `,
-      [token.id],
+      [token.employee_id, token.tenant_id],
+    );
+
+    await client.query(
+      `
+        UPDATE auth_sessions
+        SET revoked_at = NOW()
+        WHERE employee_id = $1
+          AND tenant_id = $2
+          AND revoked_at IS NULL
+      `,
+      [token.employee_id, token.tenant_id],
     );
 
     await client.query('COMMIT');
@@ -8226,4 +8251,7 @@ app.patch(
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error('[Horizon HR Network] Server startup failed:', error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

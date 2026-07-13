@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
 import type { AuthUser } from '../../App';
-import { apiUrl } from '../../lib/api';
+import { apiFetch, apiUrl } from '../../lib/api';
 import Lanyard from './Lanyard';
 import { buildStanzaBackBadgeSvg, buildStanzaFrontBadgeSvg, type StanzaBadgeLanguage } from './stanzaBadgeArtwork';
 
@@ -62,7 +62,7 @@ export default function StanzaDashboardLanyard({
       return () => controller.abort();
     }
 
-    void fetch(apiUrl(user.profileImageUrl), { signal: controller.signal, cache: 'force-cache' })
+    void apiFetch(apiUrl(user.profileImageUrl), { signal: controller.signal, cache: 'force-cache' })
       .then((response) => {
         if (!response.ok) throw new Error('Unable to load badge portrait.');
         return response.blob();

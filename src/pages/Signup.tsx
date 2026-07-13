@@ -7,7 +7,9 @@ import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { AuthTransitionLoader } from '../components/AuthTransitionLoader';
 import type { AuthVisualState } from '../components/AuthShell';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
+
+const fetch = apiFetch;
 import type { AuthUser } from '../App';
 import {
   validateEmail,
@@ -1107,9 +1109,6 @@ const [formData, setFormData] = useState<{
       const data = await res.json();
       
       if (data.success) {
-        if (data.user) {
-          window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
-        }
         if (data.user?.id && data.user?.tenantId) clearDraft();
         onSignupComplete(data.user);
       } else {

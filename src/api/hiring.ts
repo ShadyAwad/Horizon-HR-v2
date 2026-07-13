@@ -1,5 +1,5 @@
 import type { AuthUser } from '../App';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export const HIRING_STAGES = ['new', 'screening', 'hr_review', 'hiring_manager_review', 'interview', 'final_review', 'offer', 'hired', 'rejected', 'withdrawn'] as const;
 export const HIRING_NOTE_TYPES = ['general', 'screening', 'interview', 'decision', 'handoff'] as const;
@@ -63,7 +63,6 @@ function authHeaders(user: AuthUser, json = false) {
     'x-employee-id': user.id,
     'x-tenant-id': user.tenantId,
   };
-  if (user.authToken) headers.Authorization = `Bearer ${user.authToken}`;
   if (json) headers['Content-Type'] = 'application/json';
   return headers;
 }
@@ -79,7 +78,7 @@ function camelize<T>(value: T): T {
 
 async function request<T>(user: AuthUser, path: string, init: RequestInit = {}) {
   try {
-    const response = await fetch(apiUrl(path), {
+    const response = await apiFetch(apiUrl(path), {
       ...init,
       headers: { ...authHeaders(user, Boolean(init.body)), ...(init.headers || {}) },
     });
