@@ -806,6 +806,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [profilePhotoMessage, setProfilePhotoMessage] = useState('');
   const [profilePhotoMessageType, setProfilePhotoMessageType] = useState<'success' | 'error'>('success');
   const [isLanyardEligible, setIsLanyardEligible] = useState(false);
+  const [isLanyardControlCapable, setIsLanyardControlCapable] = useState(false);
   const [isLanyardIdleReady, setIsLanyardIdleReady] = useState(false);
   const [isLanyardSceneReady, setIsLanyardSceneReady] = useState(false);
   const [lanyardAnchorNdc, setLanyardAnchorNdc] = useState<LanyardAnchorNdc | null>(null);
@@ -845,6 +846,33 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   } = useStanzaPreferences();
 
   const geo = useGeolocation();
+
+  useEffect(() => {
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
+    const updateCapability = () => {
+      const effectiveType = connection?.effectiveType?.toLowerCase();
+      const canvas = document.createElement('canvas');
+      const hasWebGl = Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+      setIsLanyardControlCapable(
+        window.innerWidth >= 1024 &&
+        hasWebGl &&
+        !reducedMotionQuery.matches &&
+        connection?.saveData !== true &&
+        effectiveType !== 'slow-2g' &&
+        effectiveType !== '2g',
+      );
+    };
+    updateCapability();
+    window.addEventListener('resize', updateCapability);
+    reducedMotionQuery.addEventListener('change', updateCapability);
+    connection?.addEventListener?.('change', updateCapability);
+    return () => {
+      window.removeEventListener('resize', updateCapability);
+      reducedMotionQuery.removeEventListener('change', updateCapability);
+      connection?.removeEventListener?.('change', updateCapability);
+    };
+  }, []);
 
   useEffect(() => {
     if (!lanyardEnabled) {
@@ -3575,7 +3603,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
         </p>
 
         <div className="mt-3 space-y-3">
-          <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
+          {isLanyardControlCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lanyardCard')}</p>
               <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
@@ -3605,7 +3633,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 )} />
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
             <div className="min-w-0">
@@ -3770,8 +3798,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
           <Suspense fallback={null}>
             <StanzaDashboardLanyard
               anchorNdc={lanyardAnchorNdc}
-              eventSource={showControlCenter ? null : dashboardRootRef.current}
-              hidden={showControlCenter || !isLanyardSceneReady}
+              eventSource={dashboardRootRef.current}
+              hidden={!isLanyardSceneReady}
+              interactionEnabled={!showControlCenter}
               onReady={() => setIsLanyardSceneReady(true)}
               user={user}
             />
@@ -4036,7 +4065,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
             <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden max-w-full items-center gap-2 overflow-x-auto pb-1 md:flex [&>button]:shrink-0 [&>button]:whitespace-nowrap">
+                <div className="hidden max-w-full items-center gap-2 overflow-x-auto pb-1 md:flex [&>button]:min-w-max [&>button]:shrink-0 [&>button]:whitespace-nowrap">
                     <button 
                        onClick={() => {
                          setActiveTab('geofence');

@@ -30,9 +30,6 @@ declare module '@react-three/fiber' {
 
 // 1x1 transparent pixel — lets useTexture be called unconditionally when a
 // front/back image isn't supplied.
-const BLANK_PIXEL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
 // The card model's front face is UV-mapped to the LEFT half of the texture
 // atlas and the back face to the RIGHT half (measured from card.glb). Each
 // custom image is composited into its own half so the two faces render
@@ -72,6 +69,81 @@ const CARD_ATTACHMENT = {
   z: 0
 } as const;
 const CANVAS_CLEAR_COLOR = new THREE.Color(0x000000);
+const BADGE_ARTWORK_WIDTH = 1024;
+const BADGE_ARTWORK_HEIGHT = 1552;
+
+const waitForImageDecode = (image: HTMLImageElement) => {
+  if (typeof image.decode === 'function') {
+    return image.decode().catch(() => new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Badge artwork image could not be decoded.'));
+    }));
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('Badge artwork image could not be loaded.'));
+  });
+};
+
+function useRasterizedBadgeArtwork(svgMarkup: string | null, gl: THREE.WebGLRenderer) {
+  const textureRef = useRef<THREE.CanvasTexture | null>(null);
+  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let pendingTexture: THREE.CanvasTexture | null = null;
+    if (!svgMarkup) return undefined;
+
+    const objectUrl = URL.createObjectURL(new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' }));
+    const image = new Image();
+
+    void (async () => {
+      try {
+        image.src = objectUrl;
+        await waitForImageDecode(image);
+        if (cancelled) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = BADGE_ARTWORK_WIDTH;
+        canvas.height = BADGE_ARTWORK_HEIGHT;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Canvas 2D rendering is unavailable.');
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        pendingTexture = new THREE.CanvasTexture(canvas);
+        pendingTexture.colorSpace = THREE.SRGBColorSpace;
+        pendingTexture.wrapS = THREE.ClampToEdgeWrapping;
+        pendingTexture.wrapT = THREE.ClampToEdgeWrapping;
+        pendingTexture.minFilter = THREE.LinearMipmapLinearFilter;
+        pendingTexture.magFilter = THREE.LinearFilter;
+        pendingTexture.generateMipmaps = true;
+        pendingTexture.anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy());
+        pendingTexture.needsUpdate = true;
+
+        const previousTexture = textureRef.current;
+        textureRef.current = pendingTexture;
+        setTexture(pendingTexture);
+        previousTexture?.dispose();
+        pendingTexture = null;
+      } catch (error) {
+        if (import.meta.env.DEV && !cancelled) {
+          console.warn('[lanyard artwork] failed to rasterize badge texture', error);
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      pendingTexture?.dispose();
+    };
+  }, [gl, svgMarkup]);
+
+  useEffect(() => () => textureRef.current?.dispose(), []);
+  return texture;
+}
 
 interface LanyardProps {
   position?: [number, number, number];
@@ -86,6 +158,7 @@ interface LanyardProps {
   anchorNdc?: { x: number; y: number } | null;
   eventSource?: HTMLElement | null;
   paused?: boolean;
+  interactionEnabled?: boolean;
   onReady?: () => void;
 }
 
@@ -102,6 +175,7 @@ export default function Lanyard({
   anchorNdc = null,
   eventSource = null,
   paused = false,
+  interactionEnabled = true,
   onReady
 }: LanyardProps) {
   const cameraConfig = useMemo(
@@ -137,6 +211,7 @@ export default function Lanyard({
             lanyardWidth={lanyardWidth}
             anchorNdc={anchorNdc}
             interactionElement={eventSource}
+            interactionEnabled={interactionEnabled}
             idleVisualEnabled={!paused}
             onReady={onReady}
           />
@@ -192,6 +267,7 @@ interface BandProps {
   anchorNdc?: { x: number; y: number } | null;
   interactionElement?: HTMLElement | null;
   idleVisualEnabled?: boolean;
+  interactionEnabled?: boolean;
   onReady?: () => void;
 }
 
@@ -252,6 +328,7 @@ function Band({
   anchorNdc = null,
   interactionElement = null,
   idleVisualEnabled = true,
+  interactionEnabled = true,
   onReady
 }: BandProps) {
   const band = useRef<THREE.Mesh<InstanceType<typeof MeshLineGeometry>, InstanceType<typeof MeshLineMaterial>>>(null!);
@@ -265,6 +342,7 @@ function Band({
   const idleMotionPivot = useRef<THREE.Group>(null!);
   const flipTargetRef = useRef(0);
   const pointerGestureRef = useRef<PointerGesture | null>(null);
+  const pointerTargetRef = useRef<Element | null>(null);
   const readyFrames = useRef(0);
   const readyReported = useRef(false);
   const anchorLogged = useRef(false);
@@ -302,10 +380,10 @@ function Band({
 
   const { nodes, materials } = useGLTF(cardGLB) as any;
   const texture = useTexture(lanyardImage || STANZA_LANYARD_TEXTURE);
-  // useTexture must be called unconditionally; use a blank pixel when an image
-  // isn't supplied for a given face, then skip compositing it below.
-  const frontTex = useTexture(frontImage || BLANK_PIXEL);
-  const backTex = useTexture(backImage || BLANK_PIXEL);
+  // Rasterize self-contained SVG artwork before it reaches WebGL. This avoids
+  // browser-specific SVG texture decoding differences, notably in Firefox.
+  const frontTex = useRasterizedBadgeArtwork(frontImage, gl);
+  const backTex = useRasterizedBadgeArtwork(backImage, gl);
   const { faceGeometry, edgeGeometry } = useMemo(
     () => splitCardGeometry(nodes.card.geometry as THREE.BufferGeometry),
     [nodes.card.geometry]
@@ -347,8 +425,8 @@ function Band({
       ctx.restore();
     };
 
-    if (frontImage && frontTex.image) drawFitted(frontTex.image, FRONT_UV_RECT);
-    if (backImage && backTex.image) drawFitted(backTex.image, BACK_UV_RECT);
+    if (frontTex?.image) drawFitted(frontTex.image, FRONT_UV_RECT);
+    if (backTex?.image) drawFitted(backTex.image, BACK_UV_RECT);
 
     const composite = new THREE.CanvasTexture(canvas);
     composite.colorSpace = THREE.SRGBColorSpace;
@@ -385,6 +463,10 @@ function Band({
     edgeMaterial.dispose();
   }, [edgeGeometry, edgeMaterial, faceGeometry, faceMaterial]);
 
+  useEffect(() => () => {
+    if (cardMap !== materials.base.map) cardMap.dispose();
+  }, [cardMap, materials.base.map]);
+
   useEffect(() => {
     const anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy());
     const configureTexture = (map: THREE.Texture, clampToEdge: boolean) => {
@@ -402,7 +484,9 @@ function Band({
       map.needsUpdate = true;
     };
 
-    [cardMap, frontTex, backTex].forEach((map) => configureTexture(map, true));
+    [cardMap, frontTex, backTex]
+      .filter((map): map is THREE.Texture => Boolean(map))
+      .forEach((map) => configureTexture(map, true));
     configureTexture(texture, false);
   }, [backTex, cardMap, frontTex, gl, texture]);
   const [curve] = useState(
@@ -421,15 +505,30 @@ function Band({
   );
   const [dragged, drag] = useState<false | THREE.Vector3>(false);
   const isDraggingRef = useRef(false);
+  const interactionEnabledRef = useRef(interactionEnabled);
   const [hovered, hover] = useState(false);
 
   const endDrag = useCallback(() => {
+    const gesture = pointerGestureRef.current;
+    const pointerTarget = pointerTargetRef.current;
+    if (gesture && pointerTarget?.hasPointerCapture(gesture.pointerId)) {
+      pointerTarget.releasePointerCapture(gesture.pointerId);
+    }
     isDraggingRef.current = false;
     pointerGestureRef.current = null;
+    pointerTargetRef.current = null;
     document.documentElement.classList.remove('stanza-lanyard-dragging');
     interactionElement?.classList.remove('stanza-lanyard-interacting');
     drag(false);
   }, [interactionElement]);
+
+  useEffect(() => {
+    interactionEnabledRef.current = interactionEnabled;
+    if (!interactionEnabled) {
+      endDrag();
+      hover(false);
+    }
+  }, [endDrag, interactionEnabled]);
 
   useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], ROPE_SEGMENT_LENGTH]);
   useRopeJoint(j1, j2, [[0, 0, 0], [0, 0, 0], ROPE_SEGMENT_LENGTH]);
@@ -671,6 +770,7 @@ function Band({
             onPointerOver={() => hover(true)}
             onPointerOut={() => hover(false)}
             onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+              if (!interactionEnabledRef.current) return;
               const gesture = pointerGestureRef.current;
               if (!gesture || gesture.pointerId !== e.pointerId || gesture.moved) return;
               const deltaX = e.nativeEvent.clientX - gesture.startX;
@@ -685,6 +785,10 @@ function Band({
               drag(gesture.dragOffset);
             }}
             onPointerUp={(e: ThreeEvent<PointerEvent>) => {
+              if (!interactionEnabledRef.current) {
+                endDrag();
+                return;
+              }
               e.stopPropagation();
               const gesture = pointerGestureRef.current;
               if (gesture && gesture.pointerId === e.pointerId) {
@@ -705,9 +809,11 @@ function Band({
             onPointerCancel={endDrag}
             onLostPointerCapture={endDrag}
             onPointerDown={(e: ThreeEvent<PointerEvent>) => {
+              if (!interactionEnabledRef.current) return;
               e.stopPropagation();
               const target = e.target as Element;
               target.setPointerCapture(e.pointerId);
+              pointerTargetRef.current = target;
               pointerGestureRef.current = {
                 pointerId: e.pointerId,
                 startX: e.nativeEvent.clientX,

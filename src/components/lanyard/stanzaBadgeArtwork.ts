@@ -11,8 +11,6 @@ export type StanzaBadgeUser = {
   profileImageDataUrl?: string | null;
 };
 
-const svgDataUrl = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-
 const escapeXml = (value: string) => value
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -63,8 +61,14 @@ const fingerprintPaths = STANZA_FINGERPRINT_GROOVES
   .map((path) => `<path d="${path}"/>`)
   .join('');
 
+// Matches StanzaFingerprintMark: the shared 24px geometry, rounded caps and a
+// proportional 2px stroke. The surrounding group only scales the real mark.
+const fingerprintMark = (x: number, y: number, scale: number, color = '#18C98B') => `
+  <g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fingerprintPaths}</g>
+`;
+
 export function buildStanzaFrontBadgeSvg() {
-  return svgDataUrl(`
+  return `
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -72,30 +76,29 @@ export function buildStanzaFrontBadgeSvg() {
           <stop offset="0.55" stop-color="#061b13"/>
           <stop offset="1" stop-color="#020a07"/>
         </linearGradient>
-        <radialGradient id="glow" cx="50%" cy="36%" r="58%">
-          <stop offset="0" stop-color="#10b981" stop-opacity="0.32"/>
-          <stop offset="0.58" stop-color="#059669" stop-opacity="0.08"/>
+        <radialGradient id="glow" cx="50%" cy="35%" r="52%">
+          <stop offset="0" stop-color="#18C98B" stop-opacity="0.22"/>
+          <stop offset="0.56" stop-color="#0B6649" stop-opacity="0.09"/>
           <stop offset="1" stop-color="#020604" stop-opacity="0"/>
         </radialGradient>
-        <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="8" result="blur"/>
-          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
       </defs>
-      <rect x="0" y="0" width="100%" height="100%" fill="#06251b"/>
+      <rect x="0" y="0" width="100%" height="100%" fill="#041C15"/>
       <rect width="660" height="1000" fill="url(#bg)"/>
       <rect width="660" height="1000" fill="url(#glow)"/>
-      <path d="M0 170 C155 105 248 222 405 151 C515 101 590 107 660 73" fill="none" stroke="#34d399" stroke-opacity="0.08" stroke-width="2"/>
-      <path d="M0 204 C169 137 269 249 421 181 C533 131 599 137 660 106" fill="none" stroke="#34d399" stroke-opacity="0.06" stroke-width="2"/>
-      <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#6ee7b7" stroke-opacity="0.17" stroke-width="2"/>
-      <svg x="190" y="190" width="280" height="280" viewBox="${STANZA_FINGERPRINT_VIEW_BOX}" fill="none" stroke="#6ee7b7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)">${fingerprintPaths}</svg>
-      <text x="330" y="640" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="76" font-weight="750" letter-spacing="1"><tspan fill="#10b981">S</tspan><tspan fill="#ecfdf5">tanza</tspan></text>
-      <text x="330" y="696" text-anchor="middle" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="20" font-weight="650" letter-spacing="4">SECURE WORKFORCE</text>
-      <line x1="210" y1="756" x2="450" y2="756" stroke="#34d399" stroke-opacity="0.35"/>
-      <circle cx="300" cy="819" r="5" fill="#34d399"/>
-      <text x="322" y="827" fill="#a7f3d0" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" letter-spacing="3">VERIFIED ACCESS</text>
+      <path d="M0 170 C155 105 248 222 405 151 C515 101 590 107 660 73" fill="none" stroke="#18C98B" stroke-opacity="0.07" stroke-width="2"/>
+      <path d="M0 204 C169 137 269 249 421 181 C533 131 599 137 660 106" fill="none" stroke="#42E8AD" stroke-opacity="0.045" stroke-width="2"/>
+      <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#2B7A5D" stroke-opacity="0.38" stroke-width="2"/>
+      <circle cx="330" cy="330" r="172" fill="none" stroke="#18C98B" stroke-opacity="0.1" stroke-width="1"/>
+      <circle cx="330" cy="330" r="142" fill="none" stroke="#42E8AD" stroke-opacity="0.08" stroke-width="1" stroke-dasharray="2 10"/>
+      <g opacity="0.12">${fingerprintMark(190, 190, 11.666667, '#42E8AD')}</g>
+      ${fingerprintMark(190, 190, 11.666667)}
+      <text x="330" y="640" text-anchor="middle" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="76" font-weight="750" letter-spacing="1"><tspan fill="#18C98B">S</tspan><tspan fill="#E8F7F1">tanza</tspan></text>
+      <text x="330" y="696" text-anchor="middle" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="20" font-weight="650" letter-spacing="4">SECURE WORKFORCE</text>
+      <line x1="210" y1="756" x2="450" y2="756" stroke="#18C98B" stroke-opacity="0.3"/>
+      <circle cx="300" cy="819" r="5" fill="#42E8AD"/>
+      <text x="322" y="827" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="3">VERIFIED ACCESS</text>
     </svg>
-  `);
+  `;
 }
 
 export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
@@ -110,7 +113,7 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
     ? `<defs><clipPath id="portraitClip"><circle cx="520" cy="288" r="58"/></clipPath></defs><circle cx="520" cy="288" r="62" fill="#04110d" stroke="#34d399" stroke-opacity="0.65" stroke-width="4"/><image href="${escapeXml(user.profileImageDataUrl)}" x="462" y="230" width="116" height="116" preserveAspectRatio="xMidYMid slice" clip-path="url(#portraitClip)"/>`
     : '';
 
-  return svgDataUrl(`
+  return `
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -123,14 +126,14 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
           <stop offset="1" stop-color="#10b981" stop-opacity="0.12"/>
         </linearGradient>
       </defs>
-      <rect x="0" y="0" width="100%" height="100%" fill="#06251b"/>
+      <rect x="0" y="0" width="100%" height="100%" fill="#041C15"/>
       <rect width="660" height="1000" fill="url(#bg)"/>
       <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#6ee7b7" stroke-opacity="0.17" stroke-width="2"/>
       <rect x="42" y="42" width="576" height="152" rx="34" fill="url(#header)"/>
       <rect x="42" y="160" width="576" height="34" fill="#071a13"/>
-      <svg x="72" y="68" width="90" height="90" viewBox="${STANZA_FINGERPRINT_VIEW_BOX}" fill="none" stroke="#6ee7b7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fingerprintPaths}</svg>
-      <text x="174" y="113" fill="#ecfdf5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="38" font-weight="750">Employee Access</text>
-      <text x="174" y="151" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="650" letter-spacing="3">STANZA VERIFIED IDENTITY</text>
+      ${fingerprintMark(72, 68, 3.75)}
+      <text x="174" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">Employee Access</text>
+      <text x="174" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">STANZA VERIFIED IDENTITY</text>
 
       <text x="74" y="258" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3">EMPLOYEE</text>
       <text x="74" y="310" fill="#ecfdf5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="42" font-weight="750">${name}</text>
@@ -151,5 +154,5 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
       ${barcodeBars(user.id || tenant.identifier)}
       <text x="74" y="944" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">PROPERTY OF ${companyUpper}</text>
     </svg>
-  `);
+  `;
 }
