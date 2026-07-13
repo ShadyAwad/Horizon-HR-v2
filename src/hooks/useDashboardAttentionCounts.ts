@@ -9,6 +9,7 @@ export type DashboardAttentionCounts = {
   payroll: number;
   loans: number;
   notifications: number;
+  hiring: number;
 };
 
 const EMPTY_COUNTS: DashboardAttentionCounts = {
@@ -19,6 +20,7 @@ const EMPTY_COUNTS: DashboardAttentionCounts = {
   payroll: 0,
   loans: 0,
   notifications: 0,
+  hiring: 0,
 };
 
 type AttentionUser = {
@@ -64,6 +66,7 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
         payroll: normalizeCount(data.counts?.payroll),
         loans: normalizeCount(data.counts?.loans),
         notifications: normalizeCount(data.counts?.notifications),
+        hiring: normalizeCount(data.counts?.hiring),
       });
       setError(null);
     } catch (requestError) {

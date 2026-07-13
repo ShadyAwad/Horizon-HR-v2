@@ -36,6 +36,7 @@ import {
 } from './src/lib/validation';
 import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
 import { profileImageStorage } from './src/lib/profile-image-storage';
+import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 
 
 type ClockInBody = {  
@@ -1786,6 +1787,8 @@ async function startServer() {
 
   // === HORIZON HR API ROUTES ===
 
+  registerHiringRoutes(app, { demoAuth, requirePermission });
+
   app.get('/api/map-tiles/:z/:x/:y.png', async (req, res) => {
     const { z, x, y } = req.params;
     const maptilerKey = process.env.MAPTILER_KEY;
@@ -3280,6 +3283,9 @@ app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
   const canProcessResignations = authUserHasPermission(authUser, 'resignations.process');
   const canApprovePayroll = authUserHasPermission(authUser, 'payroll.approve');
   const canMarkPayrollPaid = authUserHasPermission(authUser, 'payroll.mark_paid');
+  const canViewHiring = authUserHasPermission(authUser, 'hiring.view');
+  const canManageHiring = authUserHasPermission(authUser, 'hiring.create') || authUserHasPermission(authUser, 'hiring.edit');
+  const canMakeHiringDecision = authUserHasPermission(authUser, 'hiring.make_final_decision');
 
   try {
     const counts = await withTenant(tenantId, async (client) => {
@@ -3343,7 +3349,17 @@ app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
           [...dashboardAttentionStatuses.payrollPayment],
         ],
       );
-      return result.rows[0];
+      const hiring = canViewHiring ? Number((await client.query<{ count: number }>(`
+        SELECT COUNT(DISTINCT a.id)::integer AS count
+        FROM hiring_applicants a
+        WHERE a.tenant_id=$1 AND a.status='active' AND (
+          a.current_owner_id=$2
+          OR EXISTS (SELECT 1 FROM hiring_handoffs h WHERE h.tenant_id=a.tenant_id AND h.applicant_id=a.id AND h.to_user_id=$2 AND h.status='pending')
+          OR ($3::boolean AND a.current_owner_id IS NULL AND a.stage IN ('new','hr_review'))
+          OR ($4::boolean AND a.stage='final_review' AND (a.current_owner_id IS NULL OR a.current_owner_id=$2))
+        )
+      `, [tenantId, authUser.employeeId, canManageHiring, canMakeHiringDecision])).rows[0]?.count || 0) : 0;
+      return { ...result.rows[0], hiring };
     });
 
     res.json({
@@ -3356,6 +3372,7 @@ app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
         payroll: counts.payroll,
         loans: 0,
         notifications: 0,
+        hiring: counts.hiring,
       },
       generatedAt: new Date().toISOString(),
     });

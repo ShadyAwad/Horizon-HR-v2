@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useRef, type ChangeEven
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -25,6 +25,7 @@ import {
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
 const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCropDialog').then((module) => ({ default: module.ProfilePhotoCropDialog })));
+const HiringPanel = lazy(() => import('../components/hiring/HiringPanel').then((module) => ({ default: module.HiringPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -700,7 +701,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1094,6 +1095,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const canManageCompensation = hasPermission(user, 'compensation.manage');
   const canManageLoans = hasPermission(user, 'loans.manage');
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
+  const canViewHiring = hasPermission(user, 'hiring.view');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -3862,9 +3864,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
           >
              <Newspaper className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => {
-              setActiveTab('profile');
+           <button
+             onClick={() => {
+               setActiveTab('profile');
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
               setShowResignationsPanel(false);
@@ -3902,10 +3904,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
           >
              <MessageSquare className="w-5 h-5" />
              <AttentionBadge count={attentionCounts.grievances} ariaLabel={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)} className="absolute end-0 top-0" />
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+           </button>
+           {canViewHiring && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('hiring'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'hiring' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)}
+               aria-label={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)}
+             >
+               <BriefcaseBusiness className="w-5 h-5" />
+               <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} className="absolute end-0 top-0" />
+             </button>
+           )}
+                     <button
+                        type="button"
+                        onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
             className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'resignations' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
             aria-label={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
@@ -4067,6 +4081,18 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                        {t('dash.roster')}
                        <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
+                    {canViewHiring && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('hiring'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'hiring' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                        aria-label={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)}
+                      >
+                        <BriefcaseBusiness className="w-4 h-4 hidden sm:block" />
+                        {t('hiring.title')}
+                        <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} />
+                      </button>
+                    )}
                     <button
                        onClick={() => {
                          setActiveTab('feed');
@@ -4131,6 +4157,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 </div>
 
                 {/* Tab Contents */}
+                {activeTab === 'hiring' && canViewHiring && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} />
+                  </Suspense>
+                )}
                 {activeTab === 'geofence' && (
                     <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="w-full max-w-full min-h-[calc(100dvh-145px)] md:min-h-0 bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-start md:justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
                        <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
