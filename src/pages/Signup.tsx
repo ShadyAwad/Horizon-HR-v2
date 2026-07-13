@@ -1,10 +1,12 @@
 import React, { useEffect, useState ,useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
-import { Fingerprint, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
+import { AuthTransitionLoader } from '../components/AuthTransitionLoader';
+import type { AuthVisualState } from '../components/AuthShell';
 import { apiUrl } from '../lib/api';
 import type { AuthUser } from '../App';
 import {
@@ -769,7 +771,11 @@ const InteractiveMap = ({
   );
 };
 
-export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin: () => void, onSignupComplete: (user?: AuthUser) => void }) {
+export function Signup({ onNavigateLogin, onSignupComplete, onPulseStateChange }: {
+  onNavigateLogin: () => void;
+  onSignupComplete: (user?: AuthUser) => void;
+  onPulseStateChange?: (pulseState: AuthVisualState) => void;
+}) {
   const { t, isRtl } = useLanguage();
   const formRef = useRef<HTMLFormElement | null>(null);
   const [step, setStep] = useState(1);
@@ -779,6 +785,9 @@ export function Signup({ onNavigateLogin, onSignupComplete }: { onNavigateLogin:
   const [formError, setFormError] = useState('');
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, string>>({});
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  useEffect(() => {
+    onPulseStateChange?.(isSubmitting ? 'loading' : 'idle');
+  }, [isSubmitting, onPulseStateChange]);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -1072,6 +1081,7 @@ className={cn(
   "relative z-10 mx-auto w-full rounded-2xl border border-slate-200 bg-white/95 px-5 py-6 shadow-xl backdrop-blur-none transition-[max-width] duration-300 dark:border-emerald-500/12 dark:bg-[#030b08]/88 dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] md:bg-white/85 md:backdrop-blur-xl md:dark:bg-[#030b08]/70 md:p-8",
   step === 3 ? "max-w-5xl" : "max-w-2xl"
 )}      >
+        {isSubmitting && <AuthTransitionLoader transition="creating-workspace" contained />}
         <div className="mb-6 flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-4">
 <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">              <Building2 className="w-6 h-6" />
@@ -1513,7 +1523,6 @@ className={cn(
              >
                {isSubmitting ? (
                  <span className="flex items-center gap-2">
-                   <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></span>
                    {t('signup.complete')}
                  </span>
                ) : step < 3 ? (

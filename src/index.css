@@ -110,11 +110,101 @@
   }
 }
 
+@keyframes stanzaFingerprintSurface {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 18px rgb(16 185 129 / 0.2);
+  }
+  50% {
+    transform: scale(1.035);
+    box-shadow: 0 0 28px rgb(52 211 153 / 0.34);
+  }
+}
+
+@keyframes stanzaFingerprintGroove {
+  0%, 10% {
+    opacity: 0.2;
+    stroke-dashoffset: 28;
+  }
+  28%, 78% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0.72;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes stanzaFingerprintGrooveSuccess {
+  0% {
+    opacity: 0.5;
+    stroke-dashoffset: 22;
+  }
+  68%, 100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+.stanza-fingerprint-loader {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #34d399, #059669);
+  color: #020604;
+  box-shadow: 0 0 20px rgb(16 185 129 / 0.3);
+}
+
+.stanza-fingerprint-loader-loading {
+  animation: stanzaFingerprintSurface 1.05s ease-in-out infinite;
+}
+
+.stanza-fingerprint-loader-success {
+  animation: stanzaFingerprintSurface 420ms ease-out 1;
+}
+
+.stanza-fingerprint-groove-base {
+  opacity: 0.3;
+}
+
+.stanza-fingerprint-groove {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  opacity: 0.2;
+  animation: stanzaFingerprintGroove 1.05s ease-in-out infinite;
+  animation-delay: calc(var(--stanza-groove-index) * 45ms);
+}
+
+.stanza-fingerprint-groove-success {
+  animation: stanzaFingerprintGrooveSuccess 180ms ease-out both;
+  animation-delay: calc(var(--stanza-groove-index) * 12ms);
+}
+
+.stanza-fingerprint-groove-error {
+  stroke: #fecaca;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+
+  .stanza-fingerprint-loader,
+  .stanza-fingerprint-groove {
+    animation: none !important;
+  }
+
+  .stanza-fingerprint-groove {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+
+  .stanza-fingerprint-groove-base {
+    opacity: 1;
   }
 }
 
@@ -130,4 +220,19 @@
     border-color: rgb(16 185 129 / 0.18) !important;
     transition: background-color 9999s ease-in-out 0s;
   }
+}
+.stanza-lanyard-dragging,
+.stanza-lanyard-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+.stanza-lanyard-dragging {
+  cursor: grabbing !important;
+  touch-action: none;
+}
+
+.stanza-dashboard-lanyard canvas {
+  -webkit-user-drag: none;
 }

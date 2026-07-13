@@ -4,30 +4,17 @@ import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
+import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
+import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import type { AuthUser } from '../App';
+import type { AuthVisualState } from '../components/AuthShell';
 import { validateEmail } from '../lib/validation';
 
 interface LoginProps {
   onLoginSuccess: (user?: AuthUser) => void;
   onNavigateSignup: () => void;
-  onPulseStateChange?: (pulseState: 'idle' | 'success' | 'error') => void;
+  onPulseStateChange?: (pulseState: AuthVisualState) => void;
   focusEmailOnMount?: boolean;
-}
-
-function FingerprintIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" />
-      <path d="M14 13.12c0 2.38 0 6.38-1 8.88" />
-      <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" />
-      <path d="M2 12a10 10 0 0 1 18-6" />
-      <path d="M2 16h.01" />
-      <path d="M21.8 16c.2-2 .131-5.354 0-6" />
-      <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2" />
-      <path d="M8.65 22c.21-.66.45-1.32.57-2" />
-      <path d="M9 6.8a6 6 0 0 1 9 5.2v2" />
-    </svg>
-  );
 }
 
 function CheckCircleIcon({ className = '' }: { className?: string }) {
@@ -100,7 +87,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const [loginSubmitted, setLoginSubmitted] = useState(false);
   const [recoverySubmitted, setRecoverySubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [pulseState, setPulseState] = useState<'idle' | 'success' | 'error'>('idle');
+  const [pulseState, setPulseState] = useState<AuthVisualState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -130,9 +117,11 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
     setPasswordTouched(false);
     setLoginSubmitted(false);
     setErrorMsg('');
+    setPulseState('idle');
   };
 
   useEffect(() => {
+    if (pulseState === 'success') return;
     onPulseStateChange?.(pulseState);
   }, [onPulseStateChange, pulseState]);
 
@@ -173,7 +162,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
 
     setIsLoading(true);
     setErrorMsg('');
-    setPulseState('idle');
+    setPulseState('loading');
 
     try {
       const res = await fetch(apiUrl('/api/auth/login'), {
@@ -277,7 +266,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
     setIsPasskeyLoading(true);
     setPasskeyMessage('');
     setErrorMsg('');
-    setPulseState('idle');
+    setPulseState('loading');
 
     try {
       const { startAuthentication } = await import('@simplewebauthn/browser');
@@ -364,7 +353,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
       {/* Main Login Panel */}
       <div className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-[#030b08]/70 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/12 rounded-2xl shadow-xl dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
         <div className="flex flex-col items-center mb-8">
-<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <FingerprintIcon className="w-8 h-8" />
+<div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <StanzaFingerprintMark size={32} />
           </div>
 <h1 className="text-2xl font-semibold tracking-tight">
   <BrandWordmark />
@@ -386,7 +375,10 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
               onBlur={() => setEmailTouched(true)}
               onChange={(e) => {
                 setEmail(e.target.value);
-                if (errorMsg) setErrorMsg('');
+                if (errorMsg) {
+                  setErrorMsg('');
+                  setPulseState('idle');
+                }
               }}
               placeholder="admin@stanza.com"
 className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "text-right" : ""}`}            />
@@ -411,7 +403,10 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
     onBlur={() => setPasswordTouched(true)}
     onChange={(e) => {
       setPassword(e.target.value);
-      if (errorMsg) setErrorMsg('');
+      if (errorMsg) {
+        setErrorMsg('');
+        setPulseState('idle');
+      }
     }}
     placeholder="••••••••"
     className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-emerald-50 placeholder:text-emerald-900/70 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-400 transition-all font-mono ${isRtl ? "pl-12 text-right" : "pr-12"}`}
@@ -457,9 +452,9 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
              "bg-emerald-500 text-black hover:bg-emerald-400 hover:scale-[1.02] shadow-[0_0_25px_rgba(16,185,129,0.18)]" 
             }`}
           >
-            {isLoading && pulseState === 'idle' ? (
+            {isLoading && pulseState === 'loading' ? (
               <span className="flex items-center gap-2">
-                <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></span>
+                <StanzaFingerprintLoader size="sm" />
                 {t('login.authenticating')}
               </span>
             ) : pulseState === 'success' ? (

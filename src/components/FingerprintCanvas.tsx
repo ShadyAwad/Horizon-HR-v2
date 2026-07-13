@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
+import type { AuthVisualState } from './AuthShell';
 
 interface FingerprintCanvasProps {
-  pulseState: 'idle' | 'success' | 'error';
+  pulseState: AuthVisualState;
   onPulseComplete?: () => void;
   staticMode?: boolean;
   refreshKey?: string | number;
@@ -25,7 +26,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
   useEffect(() => {
     if (pulseState !== pulseStateRef.current) {
       pulseStateRef.current = pulseState;
-      if (pulseState !== 'idle') {
+      if (pulseState === 'success' || pulseState === 'error') {
         pulseStartTimeRef.current = performance.now();
       } else {
         pulseStartTimeRef.current = null;
@@ -34,7 +35,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     onPulseCompleteRef.current = onPulseComplete;
     staticModeRef.current = staticMode;
 
-    if (reducedMotionRef.current && pulseState !== 'idle' && onPulseComplete) {
+    if (reducedMotionRef.current && (pulseState === 'success' || pulseState === 'error') && onPulseComplete) {
       const timeoutId = window.setTimeout(onPulseComplete, 150);
       return () => window.clearTimeout(timeoutId);
     }
@@ -130,9 +131,15 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       ctx.fillStyle = isDark ? '#020604' : '#f7fbf8';
       ctx.fillRect(0, 0, width, height);
 
+      const currentPulseState = pulseStateRef.current;
+      const ambientBreath = 0.5 + 0.5 * Math.sin(time * 0.0026);
       const glow = ctx.createRadialGradient(cx, cy * 0.78, 0, cx, cy * 0.78, Math.max(width, height) * 0.46);
-      glow.addColorStop(0, isDark ? 'rgba(16, 185, 129, 0.045)' : 'rgba(16, 185, 129, 0.055)');
-      glow.addColorStop(0.55, isDark ? 'rgba(6, 78, 59, 0.018)' : 'rgba(16, 185, 129, 0.018)');
+      glow.addColorStop(0, isDark
+        ? `rgba(16, 185, 129, ${0.075 + ambientBreath * 0.035})`
+        : `rgba(16, 185, 129, ${0.08 + ambientBreath * 0.03})`);
+      glow.addColorStop(0.55, isDark
+        ? `rgba(6, 78, 59, ${0.028 + ambientBreath * 0.012})`
+        : `rgba(16, 185, 129, ${0.03 + ambientBreath * 0.01})`);
       glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
@@ -142,7 +149,6 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       const ringsCount = Math.floor(maxRadius / baseSpacing);
 
       // Extract raw data from active refs securely
-      const currentPulseState = pulseStateRef.current;
       const pulseStartTime = pulseStartTimeRef.current;
 
       let pulseRadius = -1;
@@ -156,7 +162,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
         pulseRadius = elapsed * pulseSpeed;
 
         if (pulseRadius > maxRadius + pulseWidth && onPulseCompleteRef.current) {
-          // Trigger the callback cleanly and reset immediately
+          // Success and error share one complete wave before returning idle.
           const callback = onPulseCompleteRef.current;
           pulseStartTimeRef.current = null;
           pulseStateRef.current = 'idle';
@@ -190,19 +196,21 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
 let rVal = 16;
 let gVal = 185;
 let bVal = 129;
-let globalAlpha = 0.085 - (rIdx / ringsCount) * 0.06;
+let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
+
+        globalAlpha += ambientBreath * 0.012;
 
         if (isPulsing) {
           const distToPulse = Math.abs(ringBaseR - pulseRadius);
           
           if (distToPulse < pulseWidth) {
             const pulseFactor = 1.0 - (distToPulse / pulseWidth);
-            globalAlpha = globalAlpha + pulseFactor * 0.42; 
+            globalAlpha = globalAlpha + pulseFactor * 0.42;
 
             if (currentPulseState === 'success') {
-              rVal = Math.floor(rVal + pulseFactor * (16 - rVal));
-              gVal = Math.floor(gVal + pulseFactor * (185 - gVal));
-              bVal = Math.floor(bVal + pulseFactor * (129 - bVal));
+              rVal = Math.floor(rVal + pulseFactor * (52 - rVal));
+              gVal = Math.floor(gVal + pulseFactor * (211 - gVal));
+              bVal = Math.floor(bVal + pulseFactor * (153 - bVal));
             } else if (currentPulseState === 'error') {
               rVal = Math.floor(rVal + pulseFactor * (239 - rVal));
               gVal = Math.floor(gVal + pulseFactor * (68 - gVal));
@@ -239,7 +247,7 @@ let globalAlpha = 0.085 - (rIdx / ringsCount) * 0.06;
 
   return (
     <div className="absolute inset-0 z-0 overflow-hidden bg-transparent pointer-events-none">
-      <canvas ref={canvasRef} className="block antialiased" />
+      <canvas ref={canvasRef} data-auth-state={pulseState} className="block antialiased" />
     </div>
   );
 }

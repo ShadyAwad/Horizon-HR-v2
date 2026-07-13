@@ -1,10 +1,15 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { apiUrl } from '../lib/api';
+import type { AuthVisualState } from '../components/AuthShell';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { useLanguage } from '../lib/LanguageContext';
 import { validatePasswordStrength } from '../lib/validation';
+import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
 
-export function ResetPassword({ onNavigateLogin }: { onNavigateLogin: () => void }) {
+export function ResetPassword({ onNavigateLogin, onPulseStateChange }: {
+  onNavigateLogin: () => void;
+  onPulseStateChange?: (pulseState: AuthVisualState) => void;
+}) {
   const { t, isRtl } = useLanguage();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -13,6 +18,10 @@ export function ResetPassword({ onNavigateLogin }: { onNavigateLogin: () => void
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const token = new URLSearchParams(window.location.search).get('token') || '';
+
+  useEffect(() => {
+    onPulseStateChange?.(isSubmitting ? 'loading' : 'idle');
+  }, [isSubmitting, onPulseStateChange]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,7 +61,7 @@ export function ResetPassword({ onNavigateLogin }: { onNavigateLogin: () => void
             <input type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={t('reset.confirmPassword')} className="w-full rounded-lg border border-emerald-500/15 bg-black/35 px-3 py-3 pr-12 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500" required />
             <button type="button" aria-label={showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((value) => !value)} className="absolute inset-y-0 right-0 px-3 text-[10px] font-bold text-emerald-200/60 hover:text-emerald-300">{showConfirmPassword ? t('login.hidePassword') : t('login.showPassword')}</button>
           </div>
-          <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-xs font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:opacity-60">{isSubmitting ? t('reset.submitting') : t('reset.submit')}</button>
+          <button type="submit" disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-xs font-bold uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:opacity-60">{isSubmitting && <StanzaFingerprintLoader size="sm" />}{isSubmitting ? t('reset.updatingPassword') : t('reset.submit')}</button>
         </div>
         {message && <p className="mt-4 rounded-lg border border-emerald-500/15 bg-black/25 px-3 py-2 text-xs text-emerald-100/70">{message}</p>}
         <button type="button" onClick={onNavigateLogin} className="mt-5 text-xs font-semibold text-emerald-300 hover:text-emerald-200">{t('reset.backToLogin')}</button>

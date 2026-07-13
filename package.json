@@ -30,6 +30,9 @@
     "@lexical/rich-text": "^0.46.0",
     "@lexical/selection": "^0.46.0",
     "@lexical/utils": "^0.46.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/rapier": "^2.2.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",
     "@tailwindcss/vite": "^4.1.14",
@@ -45,6 +48,7 @@
     "lexical": "^0.46.0",
     "lucide-react": "^0.546.0",
     "maplibre-gl": "^5.24.0",
+    "meshline": "^3.3.1",
     "motion": "^12.23.24",
     "pdf-lib": "^1.17.1",
     "pg": "^8.22.0",
@@ -52,6 +56,7 @@
     "react-dom": "^19.0.1",
     "resend": "^6.17.2",
     "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {

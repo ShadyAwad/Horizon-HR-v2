@@ -3,7 +3,7 @@ import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
 import { DemoNoticeModal } from './components/DemoNoticeModal';
-import { AuthShell, type AuthBackgroundPulseState } from './components/AuthShell';
+import { AuthShell, type AuthVisualState } from './components/AuthShell';
 import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
 
 const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
@@ -12,7 +12,7 @@ const loadResetPassword = () => import('./pages/ResetPassword').then((module) =>
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
 const ResetPassword = lazy(loadResetPassword);
-const AUTH_TRANSITION_MINIMUM_MS = 220;
+const AUTH_TRANSITION_MINIMUM_MS = 280;
 
 const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
 
@@ -52,10 +52,11 @@ function getStoredUser() {
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
-  const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthBackgroundPulseState>('idle');
+  const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthVisualState>('idle');
   const [authTransition, setAuthTransition] = useState<AuthTransition | null>(null);
   const [focusLoginEmail, setFocusLoginEmail] = useState(false);
   const transitionInFlightRef = useRef<AuthTransition | null>(null);
+  const authPulseResolveRef = useRef<(() => void) | null>(null);
   const [serviceWorkerRegistration, setServiceWorkerRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [showDemoNotice, setShowDemoNotice] = useState(() => {
     try {
@@ -111,7 +112,13 @@ export default function App() {
   const isPasswordResetRoute = window.location.pathname === '/reset-password';
   const completeAuthPulse = () => {
     setAuthBackgroundPulse('idle');
+    authPulseResolveRef.current?.();
+    authPulseResolveRef.current = null;
   };
+
+  const waitForAuthPulse = () => new Promise<void>((resolve) => {
+    authPulseResolveRef.current = resolve;
+  });
 
   const startAuthTransition = (transition: AuthTransition, complete: () => Promise<void> | void) => {
     if (transitionInFlightRef.current) return;
@@ -146,8 +153,9 @@ export default function App() {
   const beginLogin = (user?: AuthUser) => {
     const nextUser = user || fallbackUser;
     setAuthBackgroundPulse('success');
+    const pulseComplete = waitForAuthPulse();
     startAuthTransition('logging-in', async () => {
-      await loadDashboard();
+      await Promise.all([loadDashboard(), pulseComplete]);
       setAuthUser(nextUser);
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
       setAuthState('authenticated');
@@ -155,6 +163,7 @@ export default function App() {
   };
 
   const beginLogout = () => {
+    setAuthBackgroundPulse('loading');
     startAuthTransition('logging-out', async () => {
       await waitFor(180);
       window.localStorage.removeItem('horizon-auth-user');
@@ -165,6 +174,7 @@ export default function App() {
 
   const openSignup = () => {
     setFocusLoginEmail(false);
+    setAuthBackgroundPulse('loading');
     startAuthTransition('opening-signup', async () => {
       await loadSignup();
       setAuthState('signup');
@@ -172,6 +182,7 @@ export default function App() {
   };
 
   const returnToLogin = () => {
+    setAuthBackgroundPulse('loading');
     startAuthTransition('returning-login', () => {
       setFocusLoginEmail(true);
       setAuthState('login');
@@ -179,6 +190,7 @@ export default function App() {
   };
 
   const returnFromResetToLogin = () => {
+    setAuthBackgroundPulse('loading');
     startAuthTransition('returning-login', () => {
       window.history.replaceState({}, '', '/');
       setFocusLoginEmail(true);
@@ -207,13 +219,14 @@ export default function App() {
                <AuthTransitionLoader transition={authTransition} />
              ) : isPasswordResetRoute ? (
                <Suspense fallback={<AuthTransitionLoader transition="returning-login" />}>
-                 <ResetPassword onNavigateLogin={returnFromResetToLogin} />
+                 <ResetPassword onNavigateLogin={returnFromResetToLogin} onPulseStateChange={setAuthBackgroundPulse} />
                </Suspense>
              ) : authState === 'signup' ? (
                <Suspense fallback={<AuthTransitionLoader transition="opening-signup" />}>
                  <Signup
                    onNavigateLogin={returnToLogin}
                    onSignupComplete={beginLogin}
+                   onPulseStateChange={setAuthBackgroundPulse}
                  />
                </Suspense>
              ) : (

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useState, useEffect, useRef, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
@@ -7,12 +7,49 @@ import {
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
+import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
+const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
+
+type DashboardNetworkInformation = {
+  saveData?: boolean;
+  effectiveType?: string;
+  addEventListener?: (type: 'change', listener: () => void) => void;
+  removeEventListener?: (type: 'change', listener: () => void) => void;
+};
+
+type DashboardIdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+type LanyardAnchorNdc = {
+  x: number;
+  y: number;
+};
+
+class DashboardLanyardBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    if (import.meta.env.DEV) {
+      console.warn('[Stanza Lanyard] Lazy load failed.', error, info.componentStack);
+    }
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 const RichFeedContent = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichFeedContent })));
 
 type BeforeInstallPromptEvent = Event & {
@@ -724,6 +761,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
+  const [isLanyardEligible, setIsLanyardEligible] = useState(false);
+  const [isLanyardIdleReady, setIsLanyardIdleReady] = useState(false);
+  const [isLanyardSceneReady, setIsLanyardSceneReady] = useState(false);
+  const [lanyardAnchorNdc, setLanyardAnchorNdc] = useState<LanyardAnchorNdc | null>(null);
+  const dashboardRootRef = useRef<HTMLDivElement>(null);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [controlCenterSections, setControlCenterSections] = useState({
     settings: true,
@@ -750,6 +792,94 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const { isDark, toggleTheme } = useTheme();
 
   const geo = useGeolocation();
+
+  useEffect(() => {
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
+
+    const updateLanyardEligibility = () => {
+      const effectiveType = connection?.effectiveType?.toLowerCase();
+      setIsLanyardEligible(
+        window.innerWidth >= 1024 &&
+        !reducedMotionQuery.matches &&
+        document.visibilityState === 'visible' &&
+        connection?.saveData !== true &&
+        effectiveType !== 'slow-2g' &&
+        effectiveType !== '2g',
+      );
+    };
+
+    updateLanyardEligibility();
+    window.addEventListener('resize', updateLanyardEligibility);
+    document.addEventListener('visibilitychange', updateLanyardEligibility);
+    reducedMotionQuery.addEventListener('change', updateLanyardEligibility);
+    connection?.addEventListener?.('change', updateLanyardEligibility);
+
+    return () => {
+      window.removeEventListener('resize', updateLanyardEligibility);
+      document.removeEventListener('visibilitychange', updateLanyardEligibility);
+      reducedMotionQuery.removeEventListener('change', updateLanyardEligibility);
+      connection?.removeEventListener?.('change', updateLanyardEligibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isLanyardEligible) {
+      setIsLanyardIdleReady(false);
+      setIsLanyardSceneReady(false);
+      return;
+    }
+
+    const idleWindow = window as DashboardIdleWindow;
+    let idleHandle: number | undefined;
+    let timeoutHandle: number | undefined;
+
+    if (idleWindow.requestIdleCallback) {
+      idleHandle = idleWindow.requestIdleCallback(() => setIsLanyardIdleReady(true), { timeout: 900 });
+    } else {
+      timeoutHandle = window.setTimeout(() => setIsLanyardIdleReady(true), 700);
+    }
+
+    return () => {
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+      if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
+    };
+  }, [isLanyardEligible]);
+
+  useEffect(() => {
+    if (!isLanyardEligible || !isLanyardIdleReady) {
+      setLanyardAnchorNdc(null);
+      return;
+    }
+
+    const trigger = document.getElementById('stanza-control-center-trigger');
+    if (!trigger) return;
+
+    let frame = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const rect = trigger.getBoundingClientRect();
+        const viewportWidth = Math.max(1, window.innerWidth);
+        const viewportHeight = Math.max(1, window.innerHeight);
+        setLanyardAnchorNdc({
+          x: ((rect.left + rect.width / 2) / viewportWidth) * 2 - 1,
+          y: -(rect.bottom / viewportHeight) * 2 + 1,
+        });
+      });
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(trigger);
+    window.addEventListener('resize', measure);
+    measure();
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [isLanyardEligible, isLanyardIdleReady]);
 
   const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
   const canPromptInstall = Boolean(installPrompt && !installDismissed && !isStandalone);
@@ -2401,6 +2531,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
     setActiveTab('profile');
     setShowPayrollPanel(false);
     setShowGrievancesPanel(true);
+    setShowResignationsPanel(false);
     setGrievanceMessageType('success');
     setGrievanceMessage(t('dash.leaveRequestOpened'));
     setGrievanceForm({
@@ -3198,6 +3329,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
 
   return (
 <div
+  ref={dashboardRootRef}
   dir={isRtl ? 'rtl' : 'ltr'}
   className={cn(
     "h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
@@ -3254,13 +3386,26 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
 </div>
 
+      {isLanyardEligible && isLanyardIdleReady && lanyardAnchorNdc && (
+        <DashboardLanyardBoundary>
+          <Suspense fallback={null}>
+            <StanzaDashboardLanyard
+              anchorNdc={lanyardAnchorNdc}
+              eventSource={showControlCenter ? null : dashboardRootRef.current}
+              hidden={showControlCenter || !isLanyardSceneReady}
+              onReady={() => setIsLanyardSceneReady(true)}
+            />
+          </Suspense>
+        </DashboardLanyardBoundary>
+      )}
+
       {/* Sidebar Navigation */}
 <aside
   className={cn(
     "fixed left-3 right-3 md:static md:left-auto md:right-auto",
     "bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-auto",
     "w-auto max-w-[calc(100vw-1.5rem)] md:w-16 lg:w-[72px] md:max-w-full",
-    "bg-white/80 dark:bg-[#061411]/80 backdrop-blur-md",
+    "isolate bg-white/85 dark:bg-[#061411]/85 backdrop-blur-[6px]",
     "border border-emerald-500/15 dark:border-emerald-900/40",
     "flex md:flex-col items-center",
     "py-2 md:py-5 px-2 md:px-0 gap-2 md:gap-6",
@@ -3292,7 +3437,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
             "hover:border-emerald-300/30 hover:opacity-100",
             showControlCenter && "border-emerald-300/40 opacity-100"
           )} />
-          <Fingerprint className="relative h-6 w-6 text-white dark:text-[#020604]" />
+          <StanzaFingerprintMark size={24} className="relative text-white dark:text-[#020604]" />
         </button>
         <nav className="flex md:flex-col gap-1.5 md:gap-4 min-w-0 flex-1 md:flex-none w-full items-center justify-start overflow-x-auto md:overflow-visible">
           <button 
@@ -3349,6 +3494,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
               setActiveTab('profile');
               setShowPayrollPanel(true);
               setShowGrievancesPanel(false);
+              setShowResignationsPanel(false);
             }}
             className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={t('profile.payroll')}
@@ -3550,6 +3696,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                          setActiveTab('profile');
                          setShowPayrollPanel(true);
                          setShowGrievancesPanel(false);
+                         setShowResignationsPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
@@ -3561,6 +3708,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                          setActiveTab('profile');
                          setShowPayrollPanel(false);
                          setShowGrievancesPanel(true);
+                         setShowResignationsPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                     >
@@ -4801,7 +4949,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                             </table>
                           </div>
                         </div>
-                      ) : showResignationsPanel ? (
+                      ) : activeTab === 'resignations' && showResignationsPanel ? (
                         <div className="space-y-4">
                           <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200"><FileText className="h-4 w-4 text-emerald-500" />{t('dash.resignations')}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('dash.resignationsHelp')}</p></div><button type="button" onClick={() => setShowResignationsPanel(false)} className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 dark:text-emerald-100/60">{t('dash.back')}</button></div>
                           <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
@@ -4816,7 +4964,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                           <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.myResignations')}</h4><button type="button" onClick={loadResignations} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">{t('dash.refresh')}</button></div><div className="space-y-2">{myResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold text-slate-800 dark:text-slate-100">{displayEnum(request.resignation_type)}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span></p>{request.reason && <p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{request.reason}</p>}</div><div className="flex items-center gap-2"><span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{displayEnum(request.status)}</span>{request.status === 'pending' && <button type="button" onClick={() => updateResignation(request.id, 'withdraw')} disabled={resignationUpdatingId === request.id} className="text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.withdraw')}</button>}</div></div>{request.review_note && <p className="mt-2 text-[11px] text-neutral-500 dark:text-emerald-100/45">{request.review_note}</p>}</div>)}{!resignationsLoading && myResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>
                           {canReviewResignations && <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.tenantResignations')}</h4><div className="space-y-2">{tenantResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.employee_id}</p><p className="text-[10px] text-neutral-500 dark:text-emerald-100/45" dir="ltr">{request.email}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span> · {request.reason}</p></div><div className="flex flex-wrap gap-2">{request.status === 'pending' && <><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'approved' })} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.approve')}</button><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'rejected' })} className="rounded border border-red-500/20 px-2 py-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.reject')}</button></>}{request.status === 'approved' && canProcessResignations && <button type="button" onClick={() => updateResignation(request.id, 'process')} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.markProcessed')}</button>}</div></div></div>)}{!resignationsLoading && tenantResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>}
                         </div>
-                      ) : showGrievancesPanel ? (
+                      ) : activeTab === 'profile' && showGrievancesPanel ? (
                         <div className="space-y-5">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
