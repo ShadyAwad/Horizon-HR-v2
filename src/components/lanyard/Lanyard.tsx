@@ -86,13 +86,19 @@ const waitForImageDecode = (image: HTMLImageElement) => {
   });
 };
 
-function useRasterizedBadgeArtwork(svgMarkup: string | null, gl: THREE.WebGLRenderer) {
+function useRasterizedBadgeArtwork(
+  svgMarkup: string | null,
+  gl: THREE.WebGLRenderer,
+  invalidate: () => void,
+) {
   const textureRef = useRef<THREE.CanvasTexture | null>(null);
+  const artworkGenerationRef = useRef(0);
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let pendingTexture: THREE.CanvasTexture | null = null;
+    const generation = ++artworkGenerationRef.current;
     if (!svgMarkup) return undefined;
 
     const objectUrl = URL.createObjectURL(new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' }));
@@ -102,7 +108,7 @@ function useRasterizedBadgeArtwork(svgMarkup: string | null, gl: THREE.WebGLRend
       try {
         image.src = objectUrl;
         await waitForImageDecode(image);
-        if (cancelled) return;
+        if (cancelled || generation !== artworkGenerationRef.current) return;
 
         const canvas = document.createElement('canvas');
         canvas.width = BADGE_ARTWORK_WIDTH;
@@ -121,9 +127,16 @@ function useRasterizedBadgeArtwork(svgMarkup: string | null, gl: THREE.WebGLRend
         pendingTexture.anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy());
         pendingTexture.needsUpdate = true;
 
+        if (cancelled || generation !== artworkGenerationRef.current) {
+          pendingTexture.dispose();
+          pendingTexture = null;
+          return;
+        }
+
         const previousTexture = textureRef.current;
         textureRef.current = pendingTexture;
         setTexture(pendingTexture);
+        invalidate();
         previousTexture?.dispose();
         pendingTexture = null;
       } catch (error) {
@@ -137,9 +150,10 @@ function useRasterizedBadgeArtwork(svgMarkup: string | null, gl: THREE.WebGLRend
 
     return () => {
       cancelled = true;
+      if (artworkGenerationRef.current === generation) artworkGenerationRef.current += 1;
       pendingTexture?.dispose();
     };
-  }, [gl, svgMarkup]);
+  }, [gl, invalidate, svgMarkup]);
 
   useEffect(() => () => textureRef.current?.dispose(), []);
   return texture;
@@ -159,6 +173,7 @@ interface LanyardProps {
   eventSource?: HTMLElement | null;
   paused?: boolean;
   interactionEnabled?: boolean;
+  artworkLanguage?: string;
   onReady?: () => void;
 }
 
@@ -176,6 +191,7 @@ export default function Lanyard({
   eventSource = null,
   paused = false,
   interactionEnabled = true,
+  artworkLanguage,
   onReady
 }: LanyardProps) {
   const cameraConfig = useMemo(
@@ -213,6 +229,7 @@ export default function Lanyard({
             interactionElement={eventSource}
             interactionEnabled={interactionEnabled}
             idleVisualEnabled={!paused}
+            artworkLanguage={artworkLanguage}
             onReady={onReady}
           />
         </Physics>
@@ -222,12 +239,13 @@ export default function Lanyard({
 }
 
 function LanyardCanvasLifecycle({ paused }: { paused: boolean }) {
-  const { gl } = useThree();
+  const { gl, invalidate } = useThree();
   const pausedRef = useRef(paused);
 
   useEffect(() => {
     pausedRef.current = paused;
-  }, [paused]);
+    if (!paused) invalidate();
+  }, [invalidate, paused]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -242,18 +260,25 @@ function LanyardCanvasLifecycle({ paused }: { paused: boolean }) {
     };
     const handleContextRestored = () => {
       if (import.meta.env.DEV) console.debug('[lanyard] webgl context restored');
+      invalidate();
+    };
+    const handleVisibilityChange = () => {
+      if (import.meta.env.DEV) console.debug('[lanyard] visibility', document.visibilityState);
+      if (document.visibilityState === 'visible') invalidate();
     };
 
     canvas.addEventListener('webglcontextlost', handleContextLost);
     canvas.addEventListener('webglcontextrestored', handleContextRestored);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     if (import.meta.env.DEV) console.debug('[lanyard] canvas mounted');
 
     return () => {
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (import.meta.env.DEV) console.debug('[lanyard] canvas unmounted');
     };
-  }, [gl]);
+  }, [gl, invalidate]);
 
   return null;
 }
@@ -268,6 +293,7 @@ interface BandProps {
   interactionElement?: HTMLElement | null;
   idleVisualEnabled?: boolean;
   interactionEnabled?: boolean;
+  artworkLanguage?: string;
   onReady?: () => void;
 }
 
@@ -329,6 +355,7 @@ function Band({
   interactionElement = null,
   idleVisualEnabled = true,
   interactionEnabled = true,
+  artworkLanguage,
   onReady
 }: BandProps) {
   const band = useRef<THREE.Mesh<InstanceType<typeof MeshLineGeometry>, InstanceType<typeof MeshLineMaterial>>>(null!);
@@ -351,15 +378,31 @@ function Band({
   const lastRepeatX = useRef(-2.5);
   const idleElapsed = useRef(0);
   const lastAppliedAnchor = useRef<THREE.Vector3 | null>(null);
+  const lastValidAnchorWorld = useRef(new THREE.Vector3(0, 4, 0));
   const onReadyRef = useRef(onReady);
-  const { camera, gl, size } = useThree();
+  const { camera, gl, invalidate, size } = useThree();
 
   const anchorWorld = useMemo(() => {
-    if (!anchorNdc) return new THREE.Vector3(0, 4, 0);
+    if (!anchorNdc || !Number.isFinite(anchorNdc.x) || !Number.isFinite(anchorNdc.y)) {
+      return lastValidAnchorWorld.current.clone();
+    }
 
     const projected = new THREE.Vector3(anchorNdc.x, anchorNdc.y, 0).unproject(camera);
     const direction = projected.sub(camera.position).normalize();
-    return camera.position.clone().add(direction.multiplyScalar(-camera.position.z / direction.z));
+    if (![direction.x, direction.y, direction.z].every(Number.isFinite) || Math.abs(direction.z) < 0.000001) {
+      if (import.meta.env.DEV) console.debug('[lanyard] rejected invalid anchor');
+      return lastValidAnchorWorld.current.clone();
+    }
+
+    const nextAnchor = camera.position.clone().add(direction.multiplyScalar(-camera.position.z / direction.z));
+    if (![nextAnchor.x, nextAnchor.y, nextAnchor.z].every(Number.isFinite)) {
+      if (import.meta.env.DEV) console.debug('[lanyard] rejected invalid anchor');
+      return lastValidAnchorWorld.current.clone();
+    }
+
+    lastValidAnchorWorld.current.copy(nextAnchor);
+    if (import.meta.env.DEV) console.debug('[lanyard] anchor world position', nextAnchor);
+    return nextAnchor;
   }, [anchorNdc, camera, size.width, size.height]);
 
   const vec = useMemo(() => new THREE.Vector3(), []);
@@ -382,8 +425,8 @@ function Band({
   const texture = useTexture(lanyardImage || STANZA_LANYARD_TEXTURE);
   // Rasterize self-contained SVG artwork before it reaches WebGL. This avoids
   // browser-specific SVG texture decoding differences, notably in Firefox.
-  const frontTex = useRasterizedBadgeArtwork(frontImage, gl);
-  const backTex = useRasterizedBadgeArtwork(backImage, gl);
+  const frontTex = useRasterizedBadgeArtwork(frontImage, gl, invalidate);
+  const backTex = useRasterizedBadgeArtwork(backImage, gl, invalidate);
   const { faceGeometry, edgeGeometry } = useMemo(
     () => splitCardGeometry(nodes.card.geometry as THREE.BufferGeometry),
     [nodes.card.geometry]
@@ -436,13 +479,15 @@ function Band({
     return composite;
   }, [frontImage, backImage, imageFit, frontTex, backTex, materials.base.map]);
 
-  const faceMaterial = useMemo(() => new THREE.MeshPhysicalMaterial({
+  const [faceMaterial] = useState(() => new THREE.MeshPhysicalMaterial({
     map: cardMap,
     clearcoat: 0.65,
     clearcoatRoughness: 0.15,
     roughness: 0.9,
     metalness: 0.8
-  }), [cardMap]);
+  }));
+  const faceMesh = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>>(null!);
+  const activeCardMap = useRef<THREE.Texture>(cardMap);
 
   const edgeMaterial = useMemo(() => {
     const material = (materials.base as THREE.MeshStandardMaterial).clone();
@@ -463,9 +508,28 @@ function Band({
     edgeMaterial.dispose();
   }, [edgeGeometry, edgeMaterial, faceGeometry, faceMaterial]);
 
+  useEffect(() => {
+    const previousMap = activeCardMap.current;
+    const visibleMaterial = faceMesh.current?.material || faceMaterial;
+    cardMap.needsUpdate = true;
+    visibleMaterial.map = cardMap;
+    visibleMaterial.needsUpdate = true;
+    activeCardMap.current = cardMap;
+    invalidate();
+
+    if (import.meta.env.DEV) {
+      console.debug('[lanyard] texture apply', artworkLanguage, {
+        attachedMaterial: faceMesh.current?.material === visibleMaterial,
+      });
+    }
+
+    if (previousMap !== cardMap && previousMap !== materials.base.map) previousMap.dispose();
+  }, [artworkLanguage, cardMap, faceMaterial, invalidate, materials.base.map]);
+
   useEffect(() => () => {
-    if (cardMap !== materials.base.map) cardMap.dispose();
-  }, [cardMap, materials.base.map]);
+    const currentMap = activeCardMap.current;
+    if (currentMap !== materials.base.map) currentMap.dispose();
+  }, [materials.base.map]);
 
   useEffect(() => {
     const anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy());
@@ -488,7 +552,8 @@ function Band({
       .filter((map): map is THREE.Texture => Boolean(map))
       .forEach((map) => configureTexture(map, true));
     configureTexture(texture, false);
-  }, [backTex, cardMap, frontTex, gl, texture]);
+    invalidate();
+  }, [backTex, cardMap, frontTex, gl, invalidate, texture]);
   const [curve] = useState(
     () =>
       new THREE.CatmullRomCurve3([
@@ -556,10 +621,23 @@ function Band({
     if (!fixed.current) return;
 
     if (lastAppliedAnchor.current?.distanceTo(anchorWorld) <= ANCHOR_EPSILON) return;
+
+    // A full sidebar-side change is wider than the live joint chain can absorb
+    // safely. Keep the last stable anchor until RTL relocation can be animated
+    // without teleporting or remounting the physics world.
+    if (
+      lastAppliedAnchor.current &&
+      Math.abs(anchorWorld.x - lastAppliedAnchor.current.x) > ROPE_SEGMENT_LENGTH * 2
+    ) {
+      if (import.meta.env.DEV) console.debug('[lanyard] preserving previous anchor during direction change');
+      return;
+    }
+
+    fixed.current.setTranslation(anchorWorld, true);
+
     if (!lastAppliedAnchor.current) lastAppliedAnchor.current = new THREE.Vector3();
     lastAppliedAnchor.current.copy(anchorWorld);
-    fixed.current.setTranslation(anchorWorld, true);
-    [j1, j2, j3, card].forEach(ref => ref.current?.wakeUp());
+    [j1, j2, j3, j4, card].forEach(ref => ref.current?.wakeUp());
   }, [anchorWorld]);
 
   useEffect(() => {
@@ -827,7 +905,7 @@ function Band({
             <group ref={idleMotionPivot}>
               <group position={[0, -CARD_ATTACHMENT.y, 0]} scale={BADGE_SCALE}>
                 <group position={[0, BADGE_GROUP_Y, -0.05]}>
-                  <mesh geometry={faceGeometry} material={faceMaterial} />
+                  <mesh ref={faceMesh} geometry={faceGeometry} material={faceMaterial} />
                   <mesh geometry={edgeGeometry} material={edgeMaterial} />
                   <mesh geometry={nodes.clip.geometry} material={materials.metal} material-roughness={0.3} />
                   <mesh geometry={nodes.clamp.geometry} material={materials.metal} />

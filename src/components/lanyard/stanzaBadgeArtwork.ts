@@ -11,6 +11,9 @@ export type StanzaBadgeUser = {
   profileImageDataUrl?: string | null;
 };
 
+export type StanzaBadgeLanguage = 'en' | 'ar';
+type StanzaBadgeArtworkOptions = { language?: StanzaBadgeLanguage; direction?: 'ltr' | 'rtl' };
+
 const escapeXml = (value: string) => value
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -67,9 +70,13 @@ const fingerprintMark = (x: number, y: number, scale: number, color = '#18C98B')
   <g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fingerprintPaths}</g>
 `;
 
-export function buildStanzaFrontBadgeSvg() {
+export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}) {
+  const language = options.language || 'en';
+  const isRtl = (options.direction || (language === 'ar' ? 'rtl' : 'ltr')) === 'rtl';
+  const secureWorkforce = isRtl ? 'منصة القوى العاملة' : 'SECURE WORKFORCE';
+  const verifiedAccess = isRtl ? 'وصول موثق' : 'VERIFIED ACCESS';
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000">
+    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#020604"/>
@@ -93,15 +100,36 @@ export function buildStanzaFrontBadgeSvg() {
       <g opacity="0.12">${fingerprintMark(190, 190, 11.666667, '#42E8AD')}</g>
       ${fingerprintMark(190, 190, 11.666667)}
       <text x="330" y="640" text-anchor="middle" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="76" font-weight="750" letter-spacing="1"><tspan fill="#18C98B">S</tspan><tspan fill="#E8F7F1">tanza</tspan></text>
-      <text x="330" y="696" text-anchor="middle" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="20" font-weight="650" letter-spacing="4">SECURE WORKFORCE</text>
+      <text x="330" y="696" text-anchor="middle" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="20" font-weight="650" letter-spacing="${isRtl ? '1' : '4'}">${secureWorkforce}</text>
       <line x1="210" y1="756" x2="450" y2="756" stroke="#18C98B" stroke-opacity="0.3"/>
       <circle cx="300" cy="819" r="5" fill="#42E8AD"/>
-      <text x="322" y="827" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="3">VERIFIED ACCESS</text>
+      <text x="322" y="827" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="${isRtl ? '1' : '3'}">${verifiedAccess}</text>
     </svg>
   `;
 }
 
-export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
+export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBadgeArtworkOptions = {}) {
+  const language = options.language || 'en';
+  const isRtl = (options.direction || (language === 'ar' ? 'rtl' : 'ltr')) === 'rtl';
+  const labels = isRtl ? {
+    access: 'دخول الموظف',
+    identity: 'هوية ستانزا الموثقة',
+    employee: 'الموظف',
+    workspace: 'مساحة العمل',
+    email: 'البريد الإلكتروني',
+    workspaceId: 'معرف مساحة العمل',
+    propertyOf: 'ملكية'
+  } : {
+    access: 'Employee Access',
+    identity: 'STANZA VERIFIED IDENTITY',
+    employee: 'EMPLOYEE',
+    workspace: 'WORKSPACE',
+    email: 'EMAIL',
+    workspaceId: 'WORKSPACE ID',
+    propertyOf: 'PROPERTY OF'
+  };
+  const textX = isRtl ? 586 : 74;
+  const textAnchor = isRtl ? 'end' : 'start';
   const tenant = tenantDetails(user);
   const name = cleanText(user.name, 'Stanza User', 30);
   const role = cleanText(roleLabel(user), 'Authorized Staff', 34);
@@ -109,12 +137,13 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
   const companyUpper = cleanText(tenant.company.toUpperCase(), 'STANZA WORKSPACE', 34);
   const email = cleanText(user.email, 'authorized@stanza.app', 42);
   const identifier = cleanText(tenant.identifier, 'STANZA-WORKSPACE', 32);
+  const portraitCenterX = isRtl ? 140 : 520;
   const portrait = user.profileImageDataUrl
-    ? `<defs><clipPath id="portraitClip"><circle cx="520" cy="288" r="58"/></clipPath></defs><circle cx="520" cy="288" r="62" fill="#04110d" stroke="#34d399" stroke-opacity="0.65" stroke-width="4"/><image href="${escapeXml(user.profileImageDataUrl)}" x="462" y="230" width="116" height="116" preserveAspectRatio="xMidYMid slice" clip-path="url(#portraitClip)"/>`
+    ? `<defs><clipPath id="portraitClip"><circle cx="${portraitCenterX}" cy="288" r="58"/></clipPath></defs><circle cx="${portraitCenterX}" cy="288" r="62" fill="#04110d" stroke="#34d399" stroke-opacity="0.65" stroke-width="4"/><image href="${escapeXml(user.profileImageDataUrl)}" x="${portraitCenterX - 58}" y="230" width="116" height="116" preserveAspectRatio="xMidYMid slice" clip-path="url(#portraitClip)"/>`
     : '';
 
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000">
+    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#020604"/>
@@ -132,27 +161,27 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser) {
       <rect x="42" y="42" width="576" height="152" rx="34" fill="url(#header)"/>
       <rect x="42" y="160" width="576" height="34" fill="#071a13"/>
       ${fingerprintMark(72, 68, 3.75)}
-      <text x="174" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">Employee Access</text>
-      <text x="174" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">STANZA VERIFIED IDENTITY</text>
+      <text x="174" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">${labels.access}</text>
+      <text x="174" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">${labels.identity}</text>
 
-      <text x="74" y="258" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3">EMPLOYEE</text>
-      <text x="74" y="310" fill="#ecfdf5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="42" font-weight="750">${name}</text>
-      <text x="74" y="351" fill="#a7f3d0" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="600">${role}</text>
+      <text x="${textX}" y="258" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3">${labels.employee}</text>
+      <text x="${textX}" y="310" text-anchor="${textAnchor}" fill="#ecfdf5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="42" font-weight="750">${name}</text>
+      <text x="${textX}" y="351" text-anchor="${textAnchor}" fill="#a7f3d0" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="600">${role}</text>
       ${portrait}
 
       <line x1="74" y1="402" x2="586" y2="402" stroke="#34d399" stroke-opacity="0.22"/>
-      <text x="74" y="453" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">WORKSPACE</text>
-      <text x="74" y="496" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="650">${company}</text>
+      <text x="${textX}" y="453" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">${labels.workspace}</text>
+      <text x="${textX}" y="496" text-anchor="${textAnchor}" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="650">${company}</text>
 
-      <text x="74" y="574" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">EMAIL</text>
-      <text x="74" y="614" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22">${email}</text>
+      <text x="${textX}" y="574" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">${labels.email}</text>
+      <text x="${textX}" y="614" text-anchor="${textAnchor}" direction="ltr" unicode-bidi="embed" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22">${email}</text>
 
-      <text x="74" y="694" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">WORKSPACE ID</text>
-      <text x="74" y="732" fill="#86bba5" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18" letter-spacing="1">${identifier}</text>
+      <text x="${textX}" y="694" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">${labels.workspaceId}</text>
+      <text x="${textX}" y="732" text-anchor="${textAnchor}" direction="ltr" unicode-bidi="embed" fill="#86bba5" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18" letter-spacing="1">${identifier}</text>
 
       <rect x="74" y="790" width="512" height="1" fill="#34d399" opacity="0.2"/>
       ${barcodeBars(user.id || tenant.identifier)}
-      <text x="74" y="944" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">PROPERTY OF ${companyUpper}</text>
+      <text x="${textX}" y="944" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">${labels.propertyOf} ${companyUpper}</text>
     </svg>
   `;
 }

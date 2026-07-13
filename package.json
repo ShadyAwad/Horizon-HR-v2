@@ -18,6 +18,7 @@
     "test:hiring:integration": "tsx scripts/hiring-integration-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
+    "assets:pwa": "node scripts/generate-pwa-icons.mjs",
     "analyze": "vite build --mode analyze",
     "security:audit": "npm audit",
     "check": "npm run lint && npm run build && npm audit",

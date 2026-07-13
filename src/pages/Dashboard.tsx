@@ -44,6 +44,22 @@ type LanyardAnchorNdc = {
   y: number;
 };
 
+const LANYARD_ANCHOR_VERTICAL_OFFSET_PX = 44;
+
+const isValidLanyardTriggerMeasurement = (trigger: HTMLElement, rect: DOMRect) => (
+  trigger.isConnected &&
+  rect.width > 0 &&
+  rect.height > 0 &&
+  [rect.left, rect.right, rect.top, rect.bottom, rect.width, rect.height].every(Number.isFinite)
+);
+
+const isValidLanyardAnchorNdc = (anchor: LanyardAnchorNdc) => (
+  Number.isFinite(anchor.x) &&
+  Number.isFinite(anchor.y) &&
+  Math.abs(anchor.x) <= 2 &&
+  Math.abs(anchor.y) <= 2
+);
+
 class DashboardLanyardBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
@@ -837,6 +853,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [pwaMessage, setPwaMessage] = useState('');
   const [pwaMessageType, setPwaMessageType] = useState<'success' | 'error' | 'info'>('info');
   const { t, lang, setLang, isRtl } = useLanguage();
+  const lanyardAnchorSide = isRtl ? 'right' : 'left';
   const { isDark, toggleTheme } = useTheme();
   const {
     lanyardEnabled,
@@ -852,8 +869,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const desktopInputQuery = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
     const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
+    const updateVisibility = () => setIsDashboardVisible(document.visibilityState === 'visible');
     const updateCapability = () => {
-      setIsDashboardVisible(document.visibilityState === 'visible');
       if (!desktopInputQuery.matches) {
         setIsLanyardCapable(false);
         return;
@@ -871,22 +888,23 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
         effectiveType !== '2g',
       );
     };
+    updateVisibility();
     updateCapability();
     window.addEventListener('resize', updateCapability);
-    document.addEventListener('visibilitychange', updateCapability);
+    document.addEventListener('visibilitychange', updateVisibility);
     reducedMotionQuery.addEventListener('change', updateCapability);
     desktopInputQuery.addEventListener('change', updateCapability);
     connection?.addEventListener?.('change', updateCapability);
     return () => {
       window.removeEventListener('resize', updateCapability);
-      document.removeEventListener('visibilitychange', updateCapability);
+      document.removeEventListener('visibilitychange', updateVisibility);
       reducedMotionQuery.removeEventListener('change', updateCapability);
       desktopInputQuery.removeEventListener('change', updateCapability);
       connection?.removeEventListener?.('change', updateCapability);
     };
   }, []);
 
-  const shouldMountLanyard = lanyardEnabled && isLanyardCapable && isDashboardVisible;
+  const shouldMountLanyard = lanyardEnabled && isLanyardCapable;
 
   useEffect(() => {
     const generation = ++lanyardMountGeneration.current;
@@ -929,34 +947,87 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       return;
     }
 
-    const trigger = document.getElementById('stanza-control-center-trigger');
-    if (!trigger) return;
+    let layoutFrame = 0;
+    let measureFrame = 0;
+    let retryFrame = 0;
+    let retriesRemaining = 4;
+    let observedTrigger: HTMLElement | null = null;
 
-    let frame = 0;
-    const measure = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const rect = trigger.getBoundingClientRect();
-        const viewportWidth = Math.max(1, window.innerWidth);
-        const viewportHeight = Math.max(1, window.innerHeight);
-        setLanyardAnchorNdc({
-          x: ((rect.left + rect.width / 2) / viewportWidth) * 2 - 1,
-          y: -(rect.bottom / viewportHeight) * 2 + 1,
-        });
-      });
+    const observer = new ResizeObserver(() => scheduleMeasurement(true));
+
+    const rejectMeasurement = () => {
+      if (import.meta.env.DEV) console.debug('[lanyard] rejected invalid anchor');
+      if (retriesRemaining <= 0) return;
+      retriesRemaining -= 1;
+      window.cancelAnimationFrame(retryFrame);
+      retryFrame = window.requestAnimationFrame(() => scheduleMeasurement(false));
     };
 
-    const observer = new ResizeObserver(measure);
-    observer.observe(trigger);
-    window.addEventListener('resize', measure);
-    measure();
+    const commitMeasurement = () => {
+      const trigger = document.getElementById('stanza-control-center-trigger');
+      if (!trigger) {
+        rejectMeasurement();
+        return;
+      }
+
+      if (observedTrigger !== trigger) {
+        observer.disconnect();
+        observer.observe(trigger);
+        observedTrigger = trigger;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      if (import.meta.env.DEV) console.debug('[lanyard] trigger rect', rect);
+      if (!isValidLanyardTriggerMeasurement(trigger, rect)) {
+        rejectMeasurement();
+        return;
+      }
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      if (!Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight) || viewportWidth <= 0 || viewportHeight <= 0) {
+        rejectMeasurement();
+        return;
+      }
+
+      const nextAnchor = {
+          x: ((rect.left + rect.width / 2) / viewportWidth) * 2 - 1,
+          y: -((rect.bottom + LANYARD_ANCHOR_VERTICAL_OFFSET_PX) / viewportHeight) * 2 + 1,
+      };
+      if (!isValidLanyardAnchorNdc(nextAnchor)) {
+        rejectMeasurement();
+        return;
+      }
+
+      setLanyardAnchorNdc((current) => (
+        current && Math.abs(current.x - nextAnchor.x) <= 0.0001 && Math.abs(current.y - nextAnchor.y) <= 0.0001
+          ? current
+          : nextAnchor
+      ));
+    };
+
+    function scheduleMeasurement(resetRetries: boolean) {
+      if (resetRetries) retriesRemaining = 4;
+      window.cancelAnimationFrame(layoutFrame);
+      window.cancelAnimationFrame(measureFrame);
+      layoutFrame = window.requestAnimationFrame(() => {
+        measureFrame = window.requestAnimationFrame(commitMeasurement);
+      });
+    }
+
+    const handleResize = () => scheduleMeasurement(true);
+    if (import.meta.env.DEV) console.debug('[lanyard] direction changed', isRtl ? 'rtl' : 'ltr');
+    window.addEventListener('resize', handleResize);
+    scheduleMeasurement(true);
 
     return () => {
-      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(layoutFrame);
+      window.cancelAnimationFrame(measureFrame);
+      window.cancelAnimationFrame(retryFrame);
       observer.disconnect();
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', handleResize);
     };
-  }, [isLanyardIdleReady, shouldMountLanyard]);
+  }, [interfaceScale, isLanyardIdleReady, isRtl, shouldMountLanyard]);
 
   const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
   const canPromptInstall = Boolean(installPrompt && !installDismissed && !isStandalone);
@@ -3777,7 +3848,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               anchorNdc={lanyardAnchorNdc}
               eventSource={dashboardRootRef.current}
               hidden={!isLanyardSceneReady}
-              interactionEnabled={!showControlCenter}
+              interactionEnabled={!showControlCenter && isDashboardVisible}
+              paused={!isDashboardVisible}
+              language={lang}
+              direction={isRtl ? 'rtl' : 'ltr'}
+              anchorSide={lanyardAnchorSide}
               onReady={() => setIsLanyardSceneReady(true)}
               user={user}
             />

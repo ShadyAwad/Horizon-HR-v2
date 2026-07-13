@@ -2,9 +2,7 @@ import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode
 import type { AuthUser } from '../../App';
 import { apiUrl } from '../../lib/api';
 import Lanyard from './Lanyard';
-import { buildStanzaBackBadgeSvg, buildStanzaFrontBadgeSvg } from './stanzaBadgeArtwork';
-
-const stanzaFrontImage = buildStanzaFrontBadgeSvg();
+import { buildStanzaBackBadgeSvg, buildStanzaFrontBadgeSvg, type StanzaBadgeLanguage } from './stanzaBadgeArtwork';
 
 const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -36,6 +34,10 @@ export default function StanzaDashboardLanyard({
   eventSource,
   hidden,
   interactionEnabled,
+  paused,
+  language,
+  direction,
+  anchorSide,
   onReady,
   user,
 }: {
@@ -43,10 +45,15 @@ export default function StanzaDashboardLanyard({
   eventSource?: HTMLElement | null;
   hidden: boolean;
   interactionEnabled: boolean;
+  paused: boolean;
+  language: StanzaBadgeLanguage;
+  direction: 'ltr' | 'rtl';
+  anchorSide: 'left' | 'right';
   onReady?: () => void;
   user: AuthUser;
 }) {
   const [profileImageDataUrl, setProfileImageDataUrl] = useState<string | null>(null);
+  const stanzaFrontImage = useMemo(() => buildStanzaFrontBadgeSvg({ language, direction }), [direction, language]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,15 +77,20 @@ export default function StanzaDashboardLanyard({
   }, [user.profileImageUrl]);
 
   const stanzaBackImage = useMemo(
-    () => buildStanzaBackBadgeSvg({ ...user, profileImageDataUrl }),
-    [profileImageDataUrl, user.email, user.id, user.jobTitle, user.name, user.role, user.tenant, user.tenantId]
+    () => buildStanzaBackBadgeSvg({ ...user, profileImageDataUrl }, { language, direction }),
+    [direction, language, profileImageDataUrl, user.email, user.id, user.jobTitle, user.name, user.role, user.tenant, user.tenantId]
   );
+
+  useEffect(() => {
+    if (import.meta.env.DEV) console.debug('[lanyard] artwork changed', language);
+  }, [language]);
 
   return (
     <div
       aria-label="Flip employee identification badge"
       role="group"
       aria-hidden={hidden || !interactionEnabled}
+      data-anchor-side={anchorSide}
       className="stanza-dashboard-lanyard pointer-events-none fixed inset-0 z-[15] h-[100dvh] w-screen overflow-hidden bg-transparent transition-opacity duration-200"
       style={{ opacity: hidden ? 0 : 1 }}
     >
@@ -89,8 +101,9 @@ export default function StanzaDashboardLanyard({
           fov={20}
           anchorNdc={anchorNdc}
           eventSource={eventSource}
-          paused={hidden}
+          paused={hidden || paused}
           interactionEnabled={interactionEnabled}
+          artworkLanguage={language}
           frontImage={stanzaFrontImage}
           backImage={stanzaBackImage}
           imageFit="cover"

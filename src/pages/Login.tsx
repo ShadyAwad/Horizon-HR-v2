@@ -7,6 +7,7 @@ import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
+import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
 import type { AuthUser } from '../App';
 import type { AuthVisualState } from '../components/AuthShell';
 import { validateEmail } from '../lib/validation';
@@ -588,6 +589,8 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
           >
             {t('login.registerTenant')}
           </button>
+
+          <PwaInstallPrompt />
 
           <a
             href="https://shadyawad.github.io/portfolio/"
