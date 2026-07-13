@@ -263,3 +263,18 @@
 .stanza-dashboard-lanyard canvas {
   -webkit-user-drag: none;
 }
+
+@keyframes stanzaAttentionBadgeIn {
+  from {
+    opacity: 0.65;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.stanza-attention-badge {
+  animation: stanzaAttentionBadgeIn 180ms ease-out both;
+}

@@ -4,6 +4,8 @@ type WelcomeEmailInput = {
   to: string;
   name: string;
   workspaceName: string;
+  includeWorkspaceName: boolean;
+  includeLoginEmail: boolean;
 };
 
 type PasswordResetEmailInput = {
@@ -59,7 +61,7 @@ async function sendEmail(input: { to: string; subject: string; html: string; tex
   }
 }
 
-export async function sendWelcomeEmail({ to, name, workspaceName }: WelcomeEmailInput): Promise<EmailDeliveryResult> {
+export async function sendWelcomeEmail({ to, name, workspaceName, includeWorkspaceName, includeLoginEmail }: WelcomeEmailInput): Promise<EmailDeliveryResult> {
   const loginUrl = `${(process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/`;
   const safeName = escapeHtml(name);
   const safeWorkspaceName = escapeHtml(workspaceName);
@@ -67,11 +69,18 @@ export async function sendWelcomeEmail({ to, name, workspaceName }: WelcomeEmail
     ? '<p style="color:#9ca3af">This workspace may include portfolio demo fixtures. Do not use real sensitive data in demo mode.</p>'
     : '';
 
+  const workspaceSection = includeWorkspaceName ? `<p><strong>Workspace:</strong> ${safeWorkspaceName}</p>` : '';
+  const loginSection = includeLoginEmail ? `<p><strong>Sign-in email:</strong> ${escapeHtml(to)}</p>` : '';
+  const textSections = [
+    includeWorkspaceName ? `Workspace: ${workspaceName}` : '',
+    includeLoginEmail ? `Sign-in email: ${to}` : '',
+  ].filter(Boolean).join('\n');
+
   return sendEmail({
     to,
     subject: 'Welcome to Stanza',
-    html: `<main style="background:#020f0a;color:#e6fff5;padding:32px;font-family:Arial,sans-serif"><h1 style="color:#34d399">Welcome to Stanza</h1><p>Hello ${safeName},</p><p><strong>${safeWorkspaceName}</strong> is ready. Sign in to start managing workforce operations.</p><p><a href="${loginUrl}" style="display:inline-block;background:#10b981;color:#02120b;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:700">Open Stanza</a></p><p>${loginUrl}</p>${demoNote}</main>`,
-    text: `Welcome to Stanza, ${name}. ${workspaceName} is ready. Sign in at ${loginUrl}`,
+    html: `<main style="background:#020f0a;color:#e6fff5;padding:32px;font-family:Arial,sans-serif"><h1 style="color:#34d399">Welcome to Stanza</h1><p>Hello ${safeName},</p><p>Your account is ready. Sign in to start managing workforce operations.</p>${workspaceSection}${loginSection}<p><a href="${loginUrl}" style="display:inline-block;background:#10b981;color:#02120b;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:700">Open Stanza</a></p><p>${loginUrl}</p><p style="color:#9ca3af">Stanza will never send or ask you to send your password by email.</p>${demoNote}</main>`,
+    text: `Welcome to Stanza, ${name}. Your account is ready.\n${textSections}\n\nOpen Stanza: ${loginUrl}\n\nStanza will never send or ask you to send your password by email.`,
   });
 }
 

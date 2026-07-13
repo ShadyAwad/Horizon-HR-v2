@@ -47,7 +47,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5173,
       allowedHosts: [
-        'antique-researchers-saskatchewan-phoenix.trycloudflare.com',
+        'courtesy-reached-reached-powell.trycloudflare.com',
       ],
 
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

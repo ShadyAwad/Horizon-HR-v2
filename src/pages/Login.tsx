@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
+import { BriefcaseBusiness, ChevronDown, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiUrl } from '../lib/api';
@@ -100,6 +101,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
+  const [selectedDemoEmail, setSelectedDemoEmail] = useState<string | null>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
@@ -109,6 +111,26 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const showPasswordError = passwordTouched && !password;
   const showRecoveryEmailError = (recoveryEmailTouched || recoverySubmitted || Boolean((recoveryEmail || email).trim())) && !recoveryEmailValidation.valid;
   const demoLoginEnabled = import.meta.env.VITE_ENABLE_DEMO_LOGIN !== 'false';
+  const demoAccounts = useMemo(() => [
+    {
+      email: 'admin@stanza-demo.com',
+      label: t('login.hrAdminDemo'),
+      description: t('login.demoHrAdminDescription'),
+      Icon: ShieldCheck,
+    },
+    {
+      email: 'manager@stanza-demo.com',
+      label: t('login.managerDemo'),
+      description: t('login.demoManagerDescription'),
+      Icon: BriefcaseBusiness,
+    },
+    {
+      email: 'employee@stanza-demo.com',
+      label: t('login.employeeDemo'),
+      description: t('login.demoEmployeeDescription'),
+      Icon: UserRoundCheck,
+    },
+  ], [t]);
 
   const fillDemoCredentials = (demoEmail: string) => {
     setEmail(demoEmail);
@@ -118,6 +140,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
     setLoginSubmitted(false);
     setErrorMsg('');
     setPulseState('idle');
+    setSelectedDemoEmail(demoEmail);
   };
 
   useEffect(() => {
@@ -490,29 +513,64 @@ className={`w-full bg-white/80 dark:bg-[#04110d]/80 border border-emerald-500/15
           </div>
 
           {demoLoginEnabled && (
-            <div className="rounded-lg border border-emerald-500/15 bg-black/15 p-3">
+            <div className="rounded-xl border border-emerald-500/25 bg-[rgba(6,31,23,0.72)] p-1 shadow-[inset_0_1px_0_rgba(221,248,238,0.05)]">
               <button
                 type="button"
                 onClick={() => setShowDemoAccounts((current) => !current)}
                 aria-expanded={showDemoAccounts}
-                className={`w-full text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-300 ${isRtl ? 'text-right' : 'text-left'}`}
+                aria-controls="demo-account-panel"
+                aria-label={`${t('login.useDemoAccount')}. ${t('login.demoExploreRoles')}`}
+                className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-colors duration-200 hover:bg-[rgba(10,58,42,0.82)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 ${isRtl ? 'text-right' : ''}`}
               >
-                {t('login.useDemoAccount')}
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-[inset_0_1px_0_rgba(221,248,238,0.08)]">
+                  <UsersRound className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-bold text-[#DDF8EE]">{t('login.useDemoAccount')}</span>
+                  <span className="mt-0.5 block text-[10px] leading-4 text-emerald-200/70">{t('login.demoExploreRoles')}</span>
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-emerald-200/75 transition-transform duration-200 motion-reduce:transition-none ${showDemoAccounts ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
               </button>
-              {showDemoAccounts && (
-                <div className="mt-3 space-y-2">
-                  {[
-                    ['admin@stanza-demo.com', t('login.hrAdminDemo')],
-                    ['manager@stanza-demo.com', t('login.managerDemo')],
-                    ['employee@stanza-demo.com', t('login.employeeDemo')],
-                  ].map(([demoEmail, label]) => (
-                    <button key={demoEmail} type="button" title={t('login.fillDemoCredentials')} onClick={() => fillDemoCredentials(demoEmail)} className={`w-full rounded border border-emerald-500/15 px-3 py-2 text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:text-emerald-100/75 ${isRtl ? 'text-right' : 'text-left'}`}>
-                      {label}
-                    </button>
-                  ))}
-                  <p className="text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">{t('login.demoCredentialsNote')}</p>
+              <div
+                id="demo-account-panel"
+                aria-hidden={!showDemoAccounts}
+                className={`grid transition-[grid-template-rows,opacity,transform] duration-[220ms] ease-out motion-reduce:translate-y-0 motion-reduce:transition-none ${showDemoAccounts ? 'mt-1 [grid-template-rows:1fr] translate-y-0 opacity-100' : '[grid-template-rows:0fr] -translate-y-1 opacity-0'}`}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div className="space-y-2 px-1 pb-1 pt-2">
+                    {demoAccounts.map(({ email: demoEmail, label, description, Icon }) => {
+                      const selected = selectedDemoEmail === demoEmail;
+
+                      return (
+                        <button
+                          key={demoEmail}
+                          type="button"
+                          title={t('login.fillDemoCredentials')}
+                          disabled={!showDemoAccounts}
+                          tabIndex={showDemoAccounts ? 0 : -1}
+                          aria-pressed={selected}
+                          aria-label={`${label}. ${description}. ${t('login.fillDemoCredentials')}`}
+                          onClick={() => fillDemoCredentials(demoEmail)}
+                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 disabled:pointer-events-none ${selected ? 'border-emerald-300/50 bg-emerald-500/15 text-emerald-50' : 'border-emerald-500/15 bg-black/20 text-emerald-50/90 hover:border-emerald-300/45 hover:bg-emerald-500/10'} ${isRtl ? 'text-right' : ''}`}
+                        >
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${selected ? 'border-emerald-300/35 bg-emerald-400/15 text-emerald-200' : 'border-emerald-500/15 bg-black/20 text-emerald-200/75'}`}>
+                            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[11px] font-bold">{label}</span>
+                            <span className="mt-0.5 block text-[10px] leading-4 text-emerald-100/55">{description}</span>
+                          </span>
+                          {selected && <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-200">{t('login.demoSelected')}</span>}
+                        </button>
+                      );
+                    })}
+                    <p className="px-1 pt-0.5 text-[10px] leading-4 text-emerald-100/45">{t('login.demoCredentialsNote')}</p>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </form>

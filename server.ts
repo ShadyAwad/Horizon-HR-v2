@@ -60,6 +60,36 @@ type CompanyLocationInput = {
   isActive?: boolean;
 };
 
+type RosterShiftStatus = 'scheduled' | 'cancelled';
+
+type RosterShiftInput = {
+  employeeId?: string;
+  startTime?: string;
+  endTime?: string;
+  notes?: string | null;
+  overrideCodes?: string[];
+  overrideReason?: string;
+};
+
+type WelcomeEmailOptions = {
+  sendWelcomeEmail: boolean;
+  includeWorkspaceName: boolean;
+  includeLoginEmail: boolean;
+  credentialDelivery: 'none' | 'setup_link';
+};
+
+type RosterWarning = {
+  code: 'APPROVED_LEAVE_CONFLICT' | 'WEEKLY_HOURS_EXCEEDED';
+  message: string;
+  currentMinutes?: number;
+  proposedMinutes?: number;
+  thresholdMinutes?: number;
+  leaveRequestId?: string;
+  leaveType?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
 type CustomTenantRoleInput = {
   name?: string;
   description?: string;
@@ -649,6 +679,15 @@ const resignationTypes: ResignationType[] = ['voluntary', 'personal_reasons', 'c
 const resignationStatuses: ResignationStatus[] = ['pending', 'approved', 'rejected', 'withdrawn', 'processed'];
 const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
 const payrollStatuses: PayrollStatus[] = ['draft', 'approved', 'paid', 'cancelled'];
+const dashboardAttentionStatuses = {
+  breakRequests: ['pending'],
+  grievances: ['open', 'under_review'],
+  leaveRequests: ['pending'],
+  payrollApproval: ['draft'],
+  payrollPayment: ['approved'],
+  resignationReview: ['pending'],
+  resignationProcessing: ['approved'],
+} as const;
 const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
 const loanStatuses: LoanStatus[] = ['active', 'paid', 'cancelled'];
 const loanRepaymentFrequencies: LoanRepaymentFrequency[] = ['monthly', 'weekly', 'one_time'];
@@ -989,6 +1028,8 @@ async function seedTenantRolesAndPermissions(
         ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
         ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
         ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
+        ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
+        ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
         ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
         ('payroll.view_all', 'View all payroll', 'View tenant payroll records.'),
         ('payroll.run', 'Run payroll', 'Generate tenant payroll.'),
@@ -1052,6 +1093,8 @@ async function seedTenantRolesAndPermissions(
           ('manager', 'break_requests.review'),
           ('manager', 'break_requests.view_all'),
           ('manager', 'leave.review'),
+          ('manager', 'roster.view_all'),
+          ('manager', 'roster.manage'),
           ('manager', 'payroll.view_self'),
           ('manager', 'payroll.export_pdf'),
           ('manager', 'loans.view_self'),
@@ -1357,6 +1400,108 @@ function requireResignationPermission(permissionKey: string, fallbackRoles: Empl
 
 function authUserHasPermission(authUser: AuthenticatedUser, permissionKey: string) {
   return authUser.role === 'hr_admin' || Boolean(authUser.permissions?.includes(permissionKey));
+}
+
+const DEFAULT_ROSTER_WEEKLY_HOURS = 40;
+
+function getRosterWeeklyThresholdMinutes() {
+  const configuredHours = Number(process.env.ROSTER_WEEKLY_HOURS_THRESHOLD);
+  const hours = Number.isFinite(configuredHours) && configuredHours > 0
+    ? configuredHours
+    : DEFAULT_ROSTER_WEEKLY_HOURS;
+  return Math.round(hours * 60);
+}
+
+function parseRosterTimestamp(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getIsoWeekBounds(timestamp: Date) {
+  const utcDate = new Date(Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate()));
+  const day = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() - day + 1);
+  const start = utcDate;
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 7);
+  return { start, end };
+}
+
+function rosterCanViewAll(authUser: AuthenticatedUser) {
+  return authUserHasPermission(authUser, 'roster.view_all') || authUserHasPermission(authUser, 'roster.manage');
+}
+
+function rosterCanManage(authUser: AuthenticatedUser) {
+  return authUserHasPermission(authUser, 'roster.manage');
+}
+
+async function validateRosterWarnings(
+  client: PoolClient,
+  tenantId: string,
+  employeeId: string,
+  startTime: Date,
+  endTime: Date,
+  excludeShiftId?: string,
+) {
+  const warnings: RosterWarning[] = [];
+  const leaveResult = await client.query<{
+    id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+  }>(
+    `
+      SELECT id, leave_type, start_date::text, end_date::text
+      FROM leave_requests
+      WHERE tenant_id = $1
+        AND employee_id = $2
+        AND status = 'approved'
+        AND leave_type = 'annual'
+        AND start_date <= ($4::timestamptz AT TIME ZONE 'UTC')::date
+        AND end_date >= ($3::timestamptz AT TIME ZONE 'UTC')::date
+    `,
+    [tenantId, employeeId, startTime.toISOString(), endTime.toISOString()],
+  );
+
+  for (const leave of leaveResult.rows) {
+    warnings.push({
+      code: 'APPROVED_LEAVE_CONFLICT',
+      message: 'This employee is on approved annual leave.',
+      leaveRequestId: leave.id,
+      leaveType: leave.leave_type,
+      startDate: leave.start_date,
+      endDate: leave.end_date,
+    });
+  }
+
+  const week = getIsoWeekBounds(startTime);
+  const weeklyResult = await client.query<{ minutes: string }>(
+    `
+      SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(end_time, $4::timestamptz) - GREATEST(start_time, $3::timestamptz))) / 60), 0)::bigint AS minutes
+      FROM roster_shifts
+      WHERE tenant_id = $1
+        AND employee_id = $2
+        AND status = 'scheduled'
+        AND start_time < $4::timestamptz
+        AND end_time > $3::timestamptz
+        AND ($5::uuid IS NULL OR id <> $5::uuid)
+    `,
+    [tenantId, employeeId, week.start.toISOString(), week.end.toISOString(), excludeShiftId ?? null],
+  );
+  const currentMinutes = Number(weeklyResult.rows[0]?.minutes ?? 0);
+  const proposedMinutes = currentMinutes + Math.round((endTime.getTime() - startTime.getTime()) / 60_000);
+  const thresholdMinutes = getRosterWeeklyThresholdMinutes();
+  if (proposedMinutes > thresholdMinutes) {
+    warnings.push({
+      code: 'WEEKLY_HOURS_EXCEEDED',
+      message: `This schedule would total ${Math.round(proposedMinutes / 60)} hours.`,
+      currentMinutes,
+      proposedMinutes,
+      thresholdMinutes,
+    });
+  }
+  return warnings;
 }
 
 function apiErrorHandler(
@@ -1715,6 +1860,7 @@ async function startServer() {
       lat,
       lng,
       radius,
+      welcomeEmailOptions,
     } = req.body as {
       companyName?: string;
       tenantSlug?: string;
@@ -1730,6 +1876,18 @@ async function startServer() {
       lat?: number | string;
       lng?: number | string;
       radius?: number | string;
+      welcomeEmailOptions?: Partial<WelcomeEmailOptions>;
+    };
+
+    const defaultWelcomeEmailOptions: WelcomeEmailOptions = {
+      sendWelcomeEmail: true,
+      includeWorkspaceName: true,
+      includeLoginEmail: true,
+      credentialDelivery: 'none',
+    };
+    const normalizedWelcomeEmailOptions = {
+      ...defaultWelcomeEmailOptions,
+      ...(welcomeEmailOptions || {}),
     };
 
     const normalizedCompanyName = validateRequiredText(companyName, { label: 'companyName', max: 255 });
@@ -1796,6 +1954,22 @@ async function startServer() {
         code: 'VALIDATION_ERROR',
         message: 'Please fix the highlighted fields.',
         fields: { customRoles: normalizedCustomRoles.error },
+      });
+    }
+
+    if (
+      (welcomeEmailOptions !== undefined && (typeof welcomeEmailOptions !== 'object' || Array.isArray(welcomeEmailOptions)))
+      ||
+      typeof normalizedWelcomeEmailOptions.sendWelcomeEmail !== 'boolean'
+      || typeof normalizedWelcomeEmailOptions.includeWorkspaceName !== 'boolean'
+      || typeof normalizedWelcomeEmailOptions.includeLoginEmail !== 'boolean'
+      || normalizedWelcomeEmailOptions.credentialDelivery !== 'none'
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Welcome email options are invalid for self-service signup.',
+        fields: { welcomeEmailOptions: 'Password setup links are not available during self-service signup.' },
       });
     }
 
@@ -2024,6 +2198,11 @@ async function startServer() {
               radius: location.radius_meters,
               isPrimary: location.is_primary,
             })),
+            welcomeEmail: {
+              requested: normalizedWelcomeEmailOptions.sendWelcomeEmail,
+              includeWorkspaceName: normalizedWelcomeEmailOptions.includeWorkspaceName,
+              includeLoginEmail: normalizedWelcomeEmailOptions.includeLoginEmail,
+            },
           }),
         ],
       );
@@ -2036,15 +2215,44 @@ async function startServer() {
         companyName: tenant.company_name,
       };
 
-      await sendWelcomeEmail({
-        to: employee.email,
-        name: employee.full_name,
-        workspaceName: tenant.company_name,
-      });
+      let welcomeEmailDelivered = false;
+      if (normalizedWelcomeEmailOptions.sendWelcomeEmail) {
+        const delivery = await sendWelcomeEmail({
+          to: employee.email,
+          name: employee.full_name,
+          workspaceName: tenant.company_name,
+          includeWorkspaceName: normalizedWelcomeEmailOptions.includeWorkspaceName,
+          includeLoginEmail: normalizedWelcomeEmailOptions.includeLoginEmail,
+        });
+        welcomeEmailDelivered = delivery.delivered;
+      }
+
+      await enqueueBestEffort(
+        'welcome email audit log',
+        () => enqueueAuditLog({
+          tenantId: tenant.id,
+          actorEmployeeId: employee.id,
+          action: normalizedWelcomeEmailOptions.sendWelcomeEmail
+            ? (welcomeEmailDelivered ? 'welcome_email_sent' : 'welcome_email_delivery_failed')
+            : 'welcome_email_disabled',
+          entityType: 'employee',
+          entityId: employee.id,
+          metadata: {
+            includeWorkspaceName: normalizedWelcomeEmailOptions.includeWorkspaceName,
+            includeLoginEmail: normalizedWelcomeEmailOptions.includeLoginEmail,
+          },
+        }),
+      );
 
       res.status(201).json({
         success: true,
-        message: 'Tenant registered successfully.',
+        message: normalizedWelcomeEmailOptions.sendWelcomeEmail && !welcomeEmailDelivered
+          ? 'Tenant registered successfully. The welcome email could not be sent yet.'
+          : 'Tenant registered successfully.',
+        welcomeEmail: {
+          requested: normalizedWelcomeEmailOptions.sendWelcomeEmail,
+          delivered: welcomeEmailDelivered,
+        },
         tenant: responseTenant,
         locations: createdLocations,
         user: {
@@ -3052,6 +3260,110 @@ app.get(
     }
   },
 );
+
+app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  const { tenantId } = authUser;
+
+  if (!hasDatabaseConfig()) {
+    return res.status(503).json({ success: false, error: 'DATABASE_URL is required for dashboard attention counts' });
+  }
+
+  // These booleans mirror the mutation routes. Modules without a pending state or
+  // per-user read model intentionally remain zero instead of inferring unread work.
+  const canReviewBreakRequests = authUserHasPermission(authUser, 'break_requests.review')
+    || authUserHasPermission(authUser, 'break_requests.view_all');
+  const canReviewGrievances = authUser.role === 'manager' || authUser.role === 'hr_admin';
+  const canReviewLeaveRequests = authUser.role === 'manager' || authUser.role === 'hr_admin';
+  const canReviewResignations = authUser.role === 'manager'
+    || authUserHasPermission(authUser, 'resignations.review');
+  const canProcessResignations = authUserHasPermission(authUser, 'resignations.process');
+  const canApprovePayroll = authUserHasPermission(authUser, 'payroll.approve');
+  const canMarkPayrollPaid = authUserHasPermission(authUser, 'payroll.mark_paid');
+
+  try {
+    const counts = await withTenant(tenantId, async (client) => {
+      const result = await client.query<{
+        grievances: number;
+        resignations: number;
+        leave_requests: number;
+        break_requests: number;
+        payroll: number;
+      }>(
+        `
+          SELECT
+            CASE WHEN $2::boolean THEN (
+              SELECT COUNT(*)::integer FROM grievances
+              WHERE tenant_id = $1 AND status = ANY($9::varchar[])
+            ) ELSE 0 END AS grievances,
+            (
+              CASE WHEN $3::boolean THEN (
+                SELECT COUNT(*)::integer FROM resignation_requests
+                WHERE tenant_id = $1 AND status = ANY($10::varchar[])
+              ) ELSE 0 END
+              + CASE WHEN $4::boolean THEN (
+                SELECT COUNT(*)::integer FROM resignation_requests
+                WHERE tenant_id = $1 AND status = ANY($11::varchar[])
+              ) ELSE 0 END
+            )::integer AS resignations,
+            CASE WHEN $5::boolean THEN (
+              SELECT COUNT(*)::integer FROM leave_requests
+              WHERE tenant_id = $1 AND status = ANY($12::varchar[])
+            ) ELSE 0 END AS leave_requests,
+            CASE WHEN $6::boolean THEN (
+              SELECT COUNT(*)::integer FROM break_requests
+              WHERE tenant_id = $1 AND status = ANY($13::varchar[])
+            ) ELSE 0 END AS break_requests,
+            (
+              CASE WHEN $7::boolean THEN (
+                SELECT COUNT(*)::integer FROM payroll_records
+                WHERE tenant_id = $1 AND status = ANY($14::varchar[])
+              ) ELSE 0 END
+              + CASE WHEN $8::boolean THEN (
+                SELECT COUNT(*)::integer FROM payroll_records
+                WHERE tenant_id = $1 AND status = ANY($15::varchar[])
+              ) ELSE 0 END
+            )::integer AS payroll
+        `,
+        [
+          tenantId,
+          canReviewGrievances,
+          canReviewResignations,
+          canProcessResignations,
+          canReviewLeaveRequests,
+          canReviewBreakRequests,
+          canApprovePayroll,
+          canMarkPayrollPaid,
+          [...dashboardAttentionStatuses.grievances],
+          [...dashboardAttentionStatuses.resignationReview],
+          [...dashboardAttentionStatuses.resignationProcessing],
+          [...dashboardAttentionStatuses.leaveRequests],
+          [...dashboardAttentionStatuses.breakRequests],
+          [...dashboardAttentionStatuses.payrollApproval],
+          [...dashboardAttentionStatuses.payrollPayment],
+        ],
+      );
+      return result.rows[0];
+    });
+
+    res.json({
+      success: true,
+      counts: {
+        grievances: counts.grievances,
+        resignations: counts.resignations,
+        leaveRequests: counts.leave_requests,
+        breakRequests: counts.break_requests,
+        payroll: counts.payroll,
+        loans: 0,
+        notifications: 0,
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Dashboard] Failed to load attention counts:', error);
+    res.status(500).json({ success: false, error: 'Unable to load dashboard attention counts' });
+  }
+});
 
 app.get('/api/resignations/me', demoAuth, requireResignationPermission('resignations.view_own', ['employee', 'manager', 'hr_admin']), async (req, res) => {
   const { tenantId, employeeId } = req.authUser!;
@@ -5172,6 +5484,161 @@ app.patch(
     }
   },
 );
+
+app.get('/api/roster/employees', demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  if (!rosterCanViewAll(authUser)) {
+    return res.json({ success: true, employees: [{ id: authUser.employeeId, fullName: authUser.email, email: authUser.email, role: authUser.role }] });
+  }
+
+  try {
+    const employees = await withTenant(authUser.tenantId, async (client) => {
+      const result = await client.query<{ id: string; full_name: string; email: string; role: EmployeeRole }>(
+        `SELECT id, full_name, email, role FROM employees WHERE tenant_id = $1 ORDER BY full_name ASC, email ASC`,
+        [authUser.tenantId],
+      );
+      return result.rows.map((employee) => ({ id: employee.id, fullName: employee.full_name, email: employee.email, role: employee.role }));
+    });
+    res.json({ success: true, employees });
+  } catch (error) {
+    console.error('[Roster] Failed to load employees:', error);
+    res.status(500).json({ success: false, error: 'Unable to load roster employees.' });
+  }
+});
+
+app.get('/api/roster/shifts', demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  const requestedEmployeeId = typeof req.query.employeeId === 'string' ? req.query.employeeId : authUser.employeeId;
+  const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : undefined;
+  const endDate = typeof req.query.endDate === 'string' ? req.query.endDate : undefined;
+  if (!isUuid(requestedEmployeeId) || (startDate && !isValidDateInput(startDate)) || (endDate && !isValidDateInput(endDate))) {
+    return res.status(400).json({ success: false, error: 'employeeId and date range are invalid.' });
+  }
+  if (requestedEmployeeId !== authUser.employeeId && !rosterCanViewAll(authUser)) {
+    return res.status(403).json({ success: false, error: 'You do not have permission to view this roster.' });
+  }
+  try {
+    const shifts = await withTenant(authUser.tenantId, async (client) => {
+      const result = await client.query(
+        `
+          SELECT id, employee_id, start_time, end_time, status, notes, override_codes, override_reason
+          FROM roster_shifts
+          WHERE tenant_id = $1 AND employee_id = $2
+            AND ($3::date IS NULL OR end_time > $3::date)
+            AND ($4::date IS NULL OR start_time < ($4::date + INTERVAL '1 day'))
+          ORDER BY start_time ASC
+        `,
+        [authUser.tenantId, requestedEmployeeId, startDate ?? null, endDate ?? null],
+      );
+      return result.rows;
+    });
+    res.json({ success: true, shifts });
+  } catch (error) {
+    console.error('[Roster] Failed to load shifts:', error);
+    res.status(500).json({ success: false, error: 'Unable to load roster shifts.' });
+  }
+});
+
+async function saveRosterShift(req: express.Request, res: express.Response, shiftId?: string) {
+  const authUser = req.authUser!;
+  if (!rosterCanManage(authUser)) {
+    return res.status(403).json({ success: false, error: 'You do not have permission to manage rosters.' });
+  }
+  const body = req.body as RosterShiftInput;
+  const employeeId = body.employeeId;
+  const startTime = parseRosterTimestamp(body.startTime);
+  const endTime = parseRosterTimestamp(body.endTime);
+  const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 1000) : null;
+  const requestedOverrideCodes = Array.isArray(body.overrideCodes)
+    ? [...new Set(body.overrideCodes.filter((code): code is RosterWarning['code'] => code === 'APPROVED_LEAVE_CONFLICT' || code === 'WEEKLY_HOURS_EXCEEDED'))]
+    : [];
+  const overrideReason = typeof body.overrideReason === 'string' ? body.overrideReason.trim().slice(0, 500) : '';
+
+  if (!isUuid(employeeId) || !startTime || !endTime || endTime <= startTime) {
+    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: 'employeeId, startTime, and an endTime after startTime are required.' });
+  }
+  if (requestedOverrideCodes.length > 0 && !overrideReason) {
+    return res.status(400).json({ success: false, code: 'OVERRIDE_REASON_REQUIRED', error: 'An override reason is required.' });
+  }
+
+  try {
+    const savedShift = await withTenant(authUser.tenantId, async (client) => {
+      // Serialise a single employee schedule before rechecking conflicts.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, [authUser.tenantId, employeeId]);
+      const employeeResult = await client.query(`SELECT id FROM employees WHERE tenant_id = $1 AND id = $2`, [authUser.tenantId, employeeId]);
+      if (employeeResult.rowCount === 0) {
+        const missing = new Error('Employee not found.');
+        (missing as Error & { statusCode: number }).statusCode = 404;
+        throw missing;
+      }
+      const overlaps = await client.query<{ id: string; start_time: string; end_time: string }>(
+        `SELECT id, start_time, end_time FROM roster_shifts WHERE tenant_id = $1 AND employee_id = $2 AND status = 'scheduled' AND start_time < $4 AND end_time > $3 AND ($5::uuid IS NULL OR id <> $5::uuid)`,
+        [authUser.tenantId, employeeId, startTime.toISOString(), endTime.toISOString(), shiftId ?? null],
+      );
+      if (overlaps.rowCount > 0) {
+        const conflict = new Error('This employee already has a shift during this time.');
+        Object.assign(conflict, { statusCode: 409, code: 'SHIFT_OVERLAP', conflicts: overlaps.rows.map((row) => ({ shiftId: row.id, startTime: row.start_time, endTime: row.end_time })) });
+        throw conflict;
+      }
+      const warnings = await validateRosterWarnings(client, authUser.tenantId, employeeId, startTime, endTime, shiftId);
+      const unacknowledged = warnings.filter((warning) => !requestedOverrideCodes.includes(warning.code));
+      if (unacknowledged.length > 0) {
+        const warningError = new Error('Scheduling confirmation is required.');
+        Object.assign(warningError, { statusCode: 409, code: 'ROSTER_WARNING_CONFIRMATION_REQUIRED', warnings: unacknowledged });
+        throw warningError;
+      }
+      const result = shiftId
+        ? await client.query(
+          `UPDATE roster_shifts SET employee_id = $3, start_time = $4, end_time = $5, notes = $6, override_codes = $7::text[], override_reason = $8, updated_by = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $9 RETURNING *`,
+          [authUser.tenantId, authUser.employeeId, employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null, shiftId],
+        )
+        : await client.query(
+          `INSERT INTO roster_shifts (tenant_id, employee_id, created_by, updated_by, start_time, end_time, notes, override_codes, override_reason) VALUES ($1, $2, $3, $3, $4, $5, $6, $7::text[], $8) RETURNING *`,
+          [authUser.tenantId, employeeId, authUser.employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null],
+        );
+      if (result.rowCount === 0) {
+        const missing = new Error('Roster shift not found.');
+        (missing as Error & { statusCode: number }).statusCode = 404;
+        throw missing;
+      }
+      if (requestedOverrideCodes.length > 0) {
+        await client.query(
+          `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'roster.warning_overridden', 'roster_shift', $3, $4::jsonb)`,
+          [authUser.tenantId, authUser.employeeId, result.rows[0].id, JSON.stringify({ employeeId, warningCodes: requestedOverrideCodes, overrideReason, startTime: startTime.toISOString(), endTime: endTime.toISOString() })],
+        );
+      }
+      return result.rows[0];
+    });
+    res.status(shiftId ? 200 : 201).json({ success: true, shift: savedShift });
+  } catch (error) {
+    const rosterError = error as Error & { statusCode?: number; code?: string; conflicts?: unknown; warnings?: unknown };
+    if (rosterError.code === '23P01') {
+      return res.status(409).json({ success: false, code: 'SHIFT_OVERLAP', error: 'This employee already has a shift during this time.' });
+    }
+    if (rosterError.statusCode) {
+      return res.status(rosterError.statusCode).json({ success: false, code: rosterError.code, error: rosterError.message, conflicts: rosterError.conflicts, warnings: rosterError.warnings, requiresConfirmation: rosterError.code === 'ROSTER_WARNING_CONFIRMATION_REQUIRED' });
+    }
+    console.error('[Roster] Failed to save shift:', error);
+    return res.status(500).json({ success: false, error: 'Unable to save roster shift.' });
+  }
+}
+
+app.post('/api/roster/shifts', demoAuth, (req, res) => saveRosterShift(req, res));
+app.patch('/api/roster/shifts/:id', demoAuth, (req, res) => isUuid(req.params.id) ? saveRosterShift(req, res, req.params.id) : res.status(400).json({ success: false, error: 'Invalid roster shift id.' }));
+
+app.patch('/api/roster/shifts/:id/cancel', demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  if (!rosterCanManage(authUser)) return res.status(403).json({ success: false, error: 'You do not have permission to manage rosters.' });
+  if (!isUuid(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid roster shift id.' });
+  try {
+    const result = await withTenant(authUser.tenantId, (client) => client.query(`UPDATE roster_shifts SET status = 'cancelled', updated_by = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $3 RETURNING *`, [authUser.tenantId, authUser.employeeId, req.params.id]));
+    if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Roster shift not found.' });
+    return res.json({ success: true, shift: result.rows[0] });
+  } catch (error) {
+    console.error('[Roster] Failed to cancel shift:', error);
+    return res.status(500).json({ success: false, error: 'Unable to cancel roster shift.' });
+  }
+});
 
 app.post(
   '/api/leave-requests',

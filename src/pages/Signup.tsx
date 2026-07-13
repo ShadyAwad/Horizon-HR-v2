@@ -1,4 +1,4 @@
-import React, { useEffect, useState ,useRef } from 'react';
+import React, { useEffect, useMemo, useState ,useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, ArrowRight, ArrowLeft, MapPin, Building2, Wallet, Globe, Info, Eye, EyeOff } from 'lucide-react';
@@ -15,6 +15,7 @@ import {
   validateRadiusMeters,
   type PasswordRuleKey,
 } from '../lib/validation';
+import { useCreateWorkspaceDraft, type CreateWorkspaceDraftData } from '../hooks/useCreateWorkspaceDraft';
 
 
 type InteractiveMapProps = {
@@ -785,6 +786,9 @@ export function Signup({ onNavigateLogin, onSignupComplete, onPulseStateChange }
   const [formError, setFormError] = useState('');
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, string>>({});
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const { clearDraft, restoreDraft, saveDraft, status: draftStatus } = useCreateWorkspaceDraft();
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [didRestoreDraft, setDidRestoreDraft] = useState(false);
   useEffect(() => {
     onPulseStateChange?.(isSubmitting ? 'loading' : 'idle');
   }, [isSubmitting, onPulseStateChange]);
@@ -832,6 +836,46 @@ const [formData, setFormData] = useState<{
   ]);
   const [customRoles, setCustomRoles] = useState<SignupCustomRole[]>([]);
   const [selectedLocationIndex, setSelectedLocationIndex] = useState(0);
+  const [welcomeEmailOptions, setWelcomeEmailOptions] = useState({
+    sendWelcomeEmail: true,
+    includeWorkspaceName: true,
+    includeLoginEmail: true,
+  });
+
+  useEffect(() => {
+    const draft = restoreDraft();
+    if (draft) {
+      const { locations: restoredLocations, customRoles: restoredRoles, selectedLocationIndex: restoredLocationIndex, welcomeEmailOptions: restoredWelcomeEmailOptions, ...restoredFormData } = draft.data;
+      setDidRestoreDraft(true);
+      setStep(Math.min(3, Math.max(1, draft.currentStep)));
+      setFormData((current) => ({ ...current, ...restoredFormData }));
+      setLocations(restoredLocations);
+      setCustomRoles(restoredRoles);
+      setWelcomeEmailOptions(restoredWelcomeEmailOptions);
+      setSelectedLocationIndex(Math.max(0, Math.min(restoredLocationIndex, restoredLocations.length - 1)));
+    }
+    setDraftHydrated(true);
+  }, [restoreDraft]);
+
+  const draftData = useMemo<CreateWorkspaceDraftData>(() => ({
+    companyName: formData.companyName,
+    tenantSlug: formData.tenantSlug,
+    adminRole: formData.adminRole,
+    currency: formData.currency,
+    capacity: formData.capacity,
+    allowsLoans: formData.allowsLoans,
+    lat: formData.lat,
+    lng: formData.lng,
+    radius: formData.radius,
+    locations,
+    customRoles,
+    selectedLocationIndex,
+    welcomeEmailOptions,
+  }), [formData.companyName, formData.tenantSlug, formData.adminRole, formData.currency, formData.capacity, formData.allowsLoans, formData.lat, formData.lng, formData.radius, locations, customRoles, selectedLocationIndex, welcomeEmailOptions]);
+
+  useEffect(() => {
+    if (draftHydrated && !isSubmitting) saveDraft(step, draftData);
+  }, [draftHydrated, isSubmitting, step, draftData, saveDraft]);
 
   const selectedLocation = locations[selectedLocationIndex] || locations[0];
   const adminEmailValidation = validateEmail(formData.adminEmail);
@@ -937,8 +981,30 @@ const [formData, setFormData] = useState<{
     setTouchedFields((current) => ({ ...current, [field]: true }));
   };
 
-  const nextStep = () => setStep(prev => Math.min(prev + 1, 3));
-  const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
+  const nextStep = () => {
+    saveDraft(Math.min(step + 1, 3), draftData, true);
+    setStep(prev => Math.min(prev + 1, 3));
+  };
+  const prevStep = () => {
+    saveDraft(Math.max(step - 1, 1), draftData, true);
+    setStep(prev => Math.max(prev - 1, 1));
+  };
+
+  const startOver = () => {
+    if (window.confirm(t('signup.draftStartOverConfirm'))) {
+      clearDraft();
+      setDidRestoreDraft(false);
+      setStep(1);
+      setFormData({ companyName: '', tenantSlug: '', adminFullName: '', adminEmail: '', adminPassword: '', adminRole: 'hr_admin', currency: 'USD', capacity: '100-500', allowsLoans: false, lat: null, lng: null, radius: 100 });
+      setConfirmPassword('');
+      setLocations([{ name: t('signup.locationTypeHeadquarters'), locationType: 'headquarters', address: '', lat: null, lng: null, radius: 100, isPrimary: true }]);
+      setCustomRoles([]);
+      setWelcomeEmailOptions({ sendWelcomeEmail: true, includeWorkspaceName: true, includeLoginEmail: true });
+      setSelectedLocationIndex(0);
+      setFormError('');
+      setRegisterFieldErrors({});
+    }
+  };
 
   const handleNextStep = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -994,6 +1060,7 @@ const [formData, setFormData] = useState<{
     }
     
     setIsSubmitting(true);
+    saveDraft(step, draftData, true);
     
     try {
       const primaryLocation = locations.find((location) => location.isPrimary) || locations[0];
@@ -1034,6 +1101,7 @@ const [formData, setFormData] = useState<{
           radius: normalizedPrimaryLocation.radius,
           locations: normalizedLocations,
           customRoles: customRoles.filter((role) => role.name.trim()),
+          welcomeEmailOptions: { ...welcomeEmailOptions, credentialDelivery: 'none' },
         })
       });
       const data = await res.json();
@@ -1042,6 +1110,7 @@ const [formData, setFormData] = useState<{
         if (data.user) {
           window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
         }
+        if (data.user?.id && data.user?.tenantId) clearDraft();
         onSignupComplete(data.user);
       } else {
         const duplicateEmail = data.code === 'EMAIL_UNAVAILABLE';
@@ -1098,6 +1167,11 @@ className={cn(
             ))}
           </div>
         </div>
+
+        {draftHydrated && <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-y border-emerald-500/10 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700/60 dark:text-emerald-100/45">
+          <span>{didRestoreDraft ? t('signup.draftRestored') : draftStatus === 'saving' ? t('signup.draftSaving') : t('signup.draftSaved')}</span>
+          <button type="button" onClick={startOver} className="text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-300">{t('signup.draftStartOver')}</button>
+        </div>}
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
           <AnimatePresence mode="wait">
@@ -1342,6 +1416,19 @@ className={cn(
                         {t('signup.noCustomRoles')}
                       </p>
                     )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-[#04110d]/60">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">{t('signup.welcomeEmail')}</h3>
+                  <p className="mt-1 text-xs text-emerald-700/60 dark:text-emerald-100/45">{t('signup.welcomeEmailSecurity')}</p>
+                  <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-slate-700 dark:text-emerald-100/75">
+                    <input type="checkbox" checked={welcomeEmailOptions.sendWelcomeEmail} onChange={(event) => setWelcomeEmailOptions((current) => ({ ...current, sendWelcomeEmail: event.target.checked }))} className="h-4 w-4 accent-emerald-500" />
+                    {t('signup.sendWelcomeEmail')}
+                  </label>
+                  <div className={cn('mt-3 space-y-2 ps-7 text-xs transition-opacity', !welcomeEmailOptions.sendWelcomeEmail && 'pointer-events-none opacity-45')}>
+                    <label className="flex items-center gap-3"><input type="checkbox" checked={welcomeEmailOptions.includeWorkspaceName} onChange={(event) => setWelcomeEmailOptions((current) => ({ ...current, includeWorkspaceName: event.target.checked }))} disabled={!welcomeEmailOptions.sendWelcomeEmail} className="h-4 w-4 accent-emerald-500" />{t('signup.includeWorkspaceName')}</label>
+                    <label className="flex items-center gap-3"><input type="checkbox" checked={welcomeEmailOptions.includeLoginEmail} onChange={(event) => setWelcomeEmailOptions((current) => ({ ...current, includeLoginEmail: event.target.checked }))} disabled={!welcomeEmailOptions.sendWelcomeEmail} className="h-4 w-4 accent-emerald-500" />{t('signup.includeLoginEmail')}</label>
                   </div>
                 </div>
               </motion.div>

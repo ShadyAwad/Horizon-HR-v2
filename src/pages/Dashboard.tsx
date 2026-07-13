@@ -13,6 +13,8 @@ import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 import { UserAvatar } from '../components/UserAvatar';
+import { AttentionBadge } from '../components/AttentionBadge';
+import { useDashboardAttentionCounts } from '../hooks/useDashboardAttentionCounts';
 import {
   INTERFACE_SCALE_STEP,
   MAX_INTERFACE_SCALE,
@@ -76,6 +78,8 @@ type ClockActionState =
   | 'clocked_out';
 
 type ShiftRow = {
+  id?: string;
+  employeeId?: string;
   day: string;
   date: string;
   shiftStart: string;
@@ -83,6 +87,28 @@ type ShiftRow = {
   breakStart: string;
   breakEnd: string;
   type: string;
+};
+
+type RosterEmployee = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: AuthUser['role'];
+};
+
+type RosterWarning = {
+  code: 'APPROVED_LEAVE_CONFLICT' | 'WEEKLY_HOURS_EXCEEDED';
+  message: string;
+  currentMinutes?: number;
+  proposedMinutes?: number;
+  thresholdMinutes?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+type PendingRosterSave = {
+  shift: ShiftRow;
+  warnings: RosterWarning[];
 };
 
 type NotificationSettings = {
@@ -695,6 +721,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [rosterStartDate, setRosterStartDate] = useState(() => toRosterDateKey(getWeekStart(new Date())));
   const [rosterRangeWeeks, setRosterRangeWeeks] = useState<1 | 2 | 4 | 'custom'>(1);
   const [rosterCustomEndDate, setRosterCustomEndDate] = useState(() => toRosterDateKey(addRosterDays(getWeekStart(new Date()), 6)));
+  const [rosterEmployees, setRosterEmployees] = useState<RosterEmployee[]>([]);
+  const [selectedRosterEmployeeId, setSelectedRosterEmployeeId] = useState(user.id);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [rosterMessage, setRosterMessage] = useState('');
+  const [pendingRosterSave, setPendingRosterSave] = useState<PendingRosterSave | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings[]>(readStoredNotifications);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
@@ -1026,7 +1058,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     }
   };
 
-  const canManageRoster = user.role === 'hr_admin' || user.role === 'manager';
+  const canManageRoster = hasPermission(user, 'roster.manage');
+  const canViewAllRosters = hasPermission(user, 'roster.view_all') || canManageRoster;
   const rosterEndDate = rosterRangeWeeks === 'custom'
     ? rosterCustomEndDate
     : toRosterDateKey(addRosterDays(fromRosterDateKey(rosterStartDate) || getWeekStart(new Date()), rosterRangeWeeks * 7 - 1));
@@ -1035,7 +1068,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const visibleSchedule = rosterDays.map((date) => {
     const dateKey = toRosterDateKey(date);
     const storedShift = schedule.find((shift) => shift.date === dateKey);
-    return storedShift ? { ...getDefaultShiftForDate(date), ...storedShift } : getDefaultShiftForDate(date);
+    if (storedShift) return { ...getDefaultShiftForDate(date), ...storedShift };
+    return rosterLoaded
+      ? { day: date.toLocaleDateString('en-US', { weekday: 'long' }), date: dateKey, shiftStart: '', shiftEnd: '', breakStart: '', breakEnd: '', type: 'Unscheduled' }
+      : getDefaultShiftForDate(date);
   });
   const missingCompensationProfiles = compensationProfiles.filter((profile) => !profile.id);
   const compensationPayTypes: CompensationPayType[] = ['monthly', 'hourly', 'weekly', 'annual'];
@@ -1078,6 +1114,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       : t('profile.subtitle');
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
   const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
+  const { counts: attentionCounts, refresh: refreshAttentionCounts } = useDashboardAttentionCounts(
+    user,
+    hasAuthenticatedDashboardUser,
+  );
+  const payrollAttentionCount = attentionCounts.payroll + attentionCounts.loans;
+  const attentionAriaLabel = (label: string, count: number) => (
+    count > 0 ? `${label}: ${count} ${t('dash.actionItems')}` : label
+  );
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
   const displayRole = (role: AuthUser['role']) => {
@@ -1380,9 +1424,75 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     }
   };
 
+  const rosterHeaders = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    'x-employee-id': user.id,
+    'x-tenant-id': user.tenantId,
+    ...(user.authToken ? { Authorization: `Bearer ${user.authToken}` } : {}),
+  });
+
   useEffect(() => {
-    window.localStorage.setItem('horizon-roster', JSON.stringify(schedule));
-  }, [schedule]);
+    if (!hasAuthenticatedDashboardUser) return;
+    let cancelled = false;
+    const loadRosterEmployees = async () => {
+      try {
+        const response = await fetch(apiUrl('/api/roster/employees'), { headers: rosterHeaders() });
+        const data = await response.json();
+        if (!response.ok || !data.success || cancelled) return;
+        const employees = data.employees as RosterEmployee[];
+        setRosterEmployees(employees);
+        if (!employees.some((employee) => employee.id === selectedRosterEmployeeId)) {
+          setSelectedRosterEmployeeId(user.id);
+        }
+      } catch {
+        // The legacy local draft remains available when the API is unavailable.
+      }
+    };
+    void loadRosterEmployees();
+    return () => { cancelled = true; };
+  }, [hasAuthenticatedDashboardUser, selectedRosterEmployeeId, user.id, user.tenantId, user.authToken]);
+
+  const loadRosterShifts = async () => {
+    if (!hasAuthenticatedDashboardUser || !selectedRosterEmployeeId || rosterRange.error) return;
+    setRosterLoading(true);
+    try {
+      const query = new URLSearchParams({ employeeId: selectedRosterEmployeeId, startDate: rosterStartDate, endDate: rosterEndDate });
+      const response = await fetch(apiUrl(`/api/roster/shifts?${query.toString()}`), { headers: rosterHeaders() });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load roster shifts.');
+      const shifts = (data.shifts as Array<{ id: string; employee_id: string; start_time: string; end_time: string; notes?: string | null }>).map((shift) => {
+        const start = new Date(shift.start_time);
+        const end = new Date(shift.end_time);
+        return {
+          id: shift.id,
+          employeeId: shift.employee_id,
+          day: start.toLocaleDateString('en-US', { weekday: 'long' }),
+          date: toRosterDateKey(start),
+          shiftStart: start.toTimeString().slice(0, 5),
+          shiftEnd: end.toTimeString().slice(0, 5),
+          breakStart: '',
+          breakEnd: '',
+          type: shift.notes || 'Scheduled',
+        };
+      });
+      setSchedule(shifts);
+      setRosterLoaded(true);
+      setRosterMessage('');
+    } catch (error) {
+      setRosterMessage((error as Error).message || 'Unable to load roster shifts.');
+    } finally {
+      setRosterLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'roster') void loadRosterShifts();
+  }, [activeTab, selectedRosterEmployeeId, rosterStartDate, rosterEndDate]);
+
+  useEffect(() => {
+    // Legacy drafts are intentionally retained, never merged into server records.
+    if (!rosterLoaded) window.localStorage.setItem('horizon-roster', JSON.stringify(schedule));
+  }, [rosterLoaded, schedule]);
 
   useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -1488,7 +1598,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     try {
       const res = await fetch(apiUrl('/api/clock-out'), {
         method: 'POST',
-        headers: payrollHeaders,
+        headers: rosterHeaders(),
         body: JSON.stringify({
           tenantId: user.tenantId,
           employeeId: user.id,
@@ -1521,14 +1631,57 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     }, 4000);
   };
 
-  const updateShift = (date: string, field: keyof ShiftRow, value: string) => {
-    setSchedule((current) => {
-      const existingShift = current.find((shift) => shift.date === date);
-      const nextShift = { ...(existingShift || getDefaultShiftForDate(fromRosterDateKey(date) || new Date())), [field]: value };
-      return existingShift
-        ? current.map((shift) => shift.date === date ? nextShift : shift)
-        : [...current, nextShift];
+  const persistRosterShift = async (shift: ShiftRow, overrideCodes: string[] = [], overrideReason = '') => {
+    const startTime = new Date(`${shift.date}T${shift.shiftStart}:00`);
+    const endTime = new Date(`${shift.date}T${shift.shiftEnd}:00`);
+    if (!shift.shiftStart || !shift.shiftEnd || Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
+      setRosterMessage(t('dash.rosterEndAfterStart'));
+      return;
+    }
+    const localConflict = schedule.some((existing) => {
+      if (!existing.id || existing.id === shift.id || !existing.shiftStart || !existing.shiftEnd) return false;
+      const existingStart = new Date(`${existing.date}T${existing.shiftStart}:00`);
+      const existingEnd = new Date(`${existing.date}T${existing.shiftEnd}:00`);
+      return existingStart < endTime && existingEnd > startTime;
     });
+    if (localConflict) {
+      setRosterMessage(t('dash.rosterShiftOverlap'));
+      return;
+    }
+    try {
+      const response = await fetch(apiUrl(shift.id ? `/api/roster/shifts/${shift.id}` : '/api/roster/shifts'), {
+        method: shift.id ? 'PATCH' : 'POST',
+        headers: payrollHeaders,
+        body: JSON.stringify({
+          employeeId: selectedRosterEmployeeId,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          notes: shift.type === 'Unscheduled' ? null : shift.type,
+          overrideCodes,
+          overrideReason,
+        }),
+      });
+      const data = await response.json();
+      if (data.requiresConfirmation) {
+        setPendingRosterSave({ shift, warnings: data.warnings || [] });
+        return;
+      }
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save roster shift.');
+      await loadRosterShifts();
+    } catch (error) {
+      setRosterMessage((error as Error).message || 'Unable to save roster shift.');
+    }
+  };
+
+  const updateShift = (date: string, field: keyof ShiftRow, value: string) => {
+    const existingShift = schedule.find((shift) => shift.date === date);
+    const nextShift = { ...(existingShift || { ...getDefaultShiftForDate(fromRosterDateKey(date) || new Date()), employeeId: selectedRosterEmployeeId }), [field]: value };
+    setSchedule((current) => existingShift
+      ? current.map((shift) => shift.date === date ? nextShift : shift)
+      : [...current, nextShift]);
+    if ((field === 'shiftStart' || field === 'shiftEnd') && nextShift.shiftStart && nextShift.shiftEnd) {
+      void persistRosterShift(nextShift);
+    }
   };
 
   const setRosterRange = (value: '1' | '2' | '4' | 'custom') => {
@@ -1605,6 +1758,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       setResignationMessage(t('dash.resignationSubmitted'));
       setResignationForm({ requestedLastWorkingDay: '', resignationType: 'voluntary', reason: '' });
       await loadResignations();
+      await refreshAttentionCounts();
     } catch (error) {
       setResignationMessageType('error');
       setResignationMessage(error instanceof Error ? error.message : t('dash.resignationSubmitError'));
@@ -1624,6 +1778,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       setResignationMessageType('success');
       setResignationMessage(path === 'withdraw' ? t('dash.resignationWithdrawn') : path === 'process' ? t('dash.resignationProcessed') : body?.status === 'approved' ? t('dash.resignationApproved') : t('dash.resignationRejected'));
       await loadResignations();
+      await refreshAttentionCounts();
     } catch (error) {
       setResignationMessageType('error');
       setResignationMessage(error instanceof Error ? error.message : t('dash.resignationUpdateError'));
@@ -1826,6 +1981,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       setBreakRequestMessageType('success');
       setBreakRequestMessage(t('dash.breakRequestSent'));
       await loadBreakRequests(false);
+      await refreshAttentionCounts();
     } catch (error) {
       setBreakRequestMessageType('error');
       setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakRequestServerError'));
@@ -1858,6 +2014,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       setBreakRequestMessageType('success');
       setBreakRequestMessage(t('dash.breakCancelled'));
       await loadBreakRequests(false);
+      await refreshAttentionCounts();
     } catch (error) {
       setBreakRequestMessageType('error');
       setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakCancelServerError'));
@@ -1899,6 +2056,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       setBreakRequestMessageType('success');
       setBreakRequestMessage(`Break request ${status}.`);
       await loadBreakRequests(false);
+      await refreshAttentionCounts();
     } catch (error) {
       setBreakRequestMessageType('error');
       setBreakRequestMessage(error instanceof Error ? error.message : t('dash.breakReviewServerError'));
@@ -2339,6 +2497,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
       if (res.ok && data.success) {
         await loadEmployeeLoans();
+        await refreshAttentionCounts();
         setLoanForm((current) => ({
           ...defaultLoanForm,
           employeeId: current.employeeId,
@@ -2381,6 +2540,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
       if (res.ok && data.success) {
         await loadEmployeeLoans();
+        await refreshAttentionCounts();
         setPayrollMessageType('success');
         setPayrollMessage(t('dash.loanStatusUpdated'));
       } else {
@@ -2419,6 +2579,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
       if (res.ok && data.success) {
         await loadPayrollRecords(false);
+        await refreshAttentionCounts();
         setPayrollMessageType('success');
         setPayrollMessage(`${t('dash.payrollStatusUpdated')} ${displayEnum(status)}.`);
       } else {
@@ -2481,6 +2642,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       if (res.ok && data.success) {
         await loadPayrollRecords(false);
         await loadEmployeeLoans();
+        await refreshAttentionCounts();
         setSkippedPayrollEmployees(data.skippedEmployees || []);
         setLoanDeductionsApplied(Number(data.loanDeductionsApplied || 0));
         setPayrollMessageType('success');
@@ -2677,6 +2839,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       if (res.ok && data.success) {
         setGrievanceForm(defaultGrievanceForm);
         await loadGrievances(false);
+        await refreshAttentionCounts();
         setGrievanceMessageType('success');
         setGrievanceMessage(t('dash.grievanceFiled'));
       } else {
@@ -2713,6 +2876,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
       if (res.ok && data.success) {
         await loadGrievances(false);
+        await refreshAttentionCounts();
         setGrievanceMessageType('success');
         setGrievanceMessage(t('dash.grievanceStatusUpdated'));
       } else {
@@ -3662,11 +3826,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title={t('dash.geoOp')}
-            aria-label={t('dash.geoOp')}
+            className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'geofence' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={attentionAriaLabel(t('dash.geoOp'), attentionCounts.breakRequests)}
+            aria-label={attentionAriaLabel(t('dash.geoOp'), attentionCounts.breakRequests)}
           >
              <Map className="w-5 h-5" />
+             <AttentionBadge count={attentionCounts.breakRequests} ariaLabel={attentionAriaLabel(t('dash.geoOp'), attentionCounts.breakRequests)} className="absolute end-0 top-0" />
           </button>
           <button 
             onClick={() => {
@@ -3674,11 +3839,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               setShowPayrollPanel(false);
               setShowGrievancesPanel(false);
             }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title={t('dash.roster')}
-            aria-label={t('dash.roster')}
+            className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'roster' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)}
+            aria-label={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)}
           >
              <Calendar className="w-5 h-5" />
+             <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} className="absolute end-0 top-0" />
           </button>
           <button
             onClick={() => {
@@ -3712,11 +3878,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               setShowGrievancesPanel(false);
               setShowResignationsPanel(false);
             }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title={t('profile.payroll')}
-            aria-label={t('profile.payroll')}
+            className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={attentionAriaLabel(t('profile.payroll'), payrollAttentionCount)}
+            aria-label={attentionAriaLabel(t('profile.payroll'), payrollAttentionCount)}
           >
              <DollarSign className="w-5 h-5" />
+             <AttentionBadge count={payrollAttentionCount} ariaLabel={attentionAriaLabel(t('profile.payroll'), payrollAttentionCount)} className="absolute end-0 top-0" />
           </button>
           <button 
             onClick={() => {
@@ -3725,20 +3892,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
               setShowGrievancesPanel(true);
               setShowResignationsPanel(false);
             }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title={t('dash.grievances')}
-            aria-label={t('dash.grievances')}
+            className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)}
+            aria-label={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)}
           >
              <MessageSquare className="w-5 h-5" />
+             <AttentionBadge count={attentionCounts.grievances} ariaLabel={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)} className="absolute end-0 top-0" />
           </button>
           <button
             type="button"
             onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
-            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'resignations' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
-            title={t('dash.resignations')}
-            aria-label={t('dash.resignations')}
+            className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'resignations' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
+            aria-label={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
           >
             <FileText className="w-5 h-5" />
+            <AttentionBadge count={attentionCounts.resignations} ariaLabel={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)} className="absolute end-0 top-0" />
           </button>
         </nav>
       </aside>
@@ -3867,7 +4036,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
             <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden md:flex items-center gap-2">
+                <div className="hidden max-w-full items-center gap-2 overflow-x-auto pb-1 md:flex [&>button]:shrink-0 [&>button]:whitespace-nowrap">
                     <button 
                        onClick={() => {
                          setActiveTab('geofence');
@@ -3875,9 +4044,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                          setShowGrievancesPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'geofence' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
-                    >
+                       aria-label={attentionAriaLabel(t('dash.geoOp'), attentionCounts.breakRequests)}
+                     >
                        <MapPin className="w-4 h-4 hidden sm:block" />
                        {t('dash.geoOp')}
+                       <AttentionBadge count={attentionCounts.breakRequests} ariaLabel={attentionAriaLabel(t('dash.geoOp'), attentionCounts.breakRequests)} />
                     </button>
                     <button 
                        onClick={() => {
@@ -3886,9 +4057,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                          setShowGrievancesPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'roster' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
-                    >
+                       aria-label={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)}
+                     >
                        <Calendar className="w-4 h-4 hidden sm:block" />
                        {t('dash.roster')}
+                       <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
                     <button
                        onClick={() => {
@@ -3921,9 +4094,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                          setShowResignationsPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showPayrollPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
-                    >
+                       aria-label={attentionAriaLabel(t('profile.payroll'), payrollAttentionCount)}
+                     >
                        <DollarSign className="w-4 h-4 hidden sm:block" />
                        {t('profile.payroll')}
+                       <AttentionBadge count={payrollAttentionCount} ariaLabel={attentionAriaLabel(t('profile.payroll'), payrollAttentionCount)} />
                     </button>
                     <button 
                        onClick={() => {
@@ -3933,17 +4108,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                          setShowResignationsPanel(false);
                        }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'profile' && showGrievancesPanel ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
-                    >
+                       aria-label={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)}
+                     >
                        <MessageSquare className="w-4 h-4 hidden sm:block" />
                        {t('dash.grievances')}
+                       <AttentionBadge count={attentionCounts.grievances} ariaLabel={attentionAriaLabel(t('dash.grievances'), attentionCounts.grievances)} />
                     </button>
                     <button
                        type="button"
                        onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'resignations' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
-                    >
+                       aria-label={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
+                     >
                        <FileText className="w-4 h-4 hidden sm:block" />
                        {t('dash.resignations')}
+                       <AttentionBadge count={attentionCounts.resignations} ariaLabel={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)} />
                     </button>
                 </div>
 
@@ -4417,11 +4596,26 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                              </div>
                            </div>
                          )}
+                         {canViewAllRosters && (
+                           <label className="mt-3 block max-w-sm">
+                             <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterEmployee')}</span>
+                             <select
+                               value={selectedRosterEmployeeId}
+                               onChange={(event) => setSelectedRosterEmployeeId(event.target.value)}
+                               className="mt-1 block w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                             >
+                               {rosterEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} ({employee.email})</option>)}
+                             </select>
+                           </label>
+                         )}
                        </div>
 
                        {rosterRange.error ? (
                          <p className="m-4 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">{t('dash.rosterRangeTooLarge')}</p>
                        ) : (
+                       <>
+                       {rosterMessage && <p className="mx-4 mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-200">{rosterMessage}</p>}
+                       {rosterLoading && <p className="mx-4 mt-4 text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterLoading')}</p>}
                        <div className="w-full max-w-full overflow-x-auto flex-1">
                          <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                            <thead>
@@ -4499,8 +4693,32 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                            </tbody>
                          </table>
                        </div>
+                       </>
                        )}
                     </motion.div>
+                )}
+
+                {pendingRosterSave && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Scheduling warning">
+                    <div className="w-full max-w-md rounded-xl border border-amber-400/25 bg-neutral-950 p-5 text-emerald-50 shadow-2xl">
+                      <h3 className="text-sm font-bold uppercase tracking-widest text-amber-200">{t('dash.rosterSchedulingWarning')}</h3>
+                      <div className="mt-3 space-y-2 text-xs text-emerald-100/70">
+                        {pendingRosterSave.warnings.map((warning) => <p key={warning.code}>{warning.message}{warning.startDate && warning.endDate ? ` ${warning.startDate} - ${warning.endDate}.` : ''}{warning.thresholdMinutes ? ` ${Math.round((warning.proposedMinutes || 0) / 60)}h / ${Math.round(warning.thresholdMinutes / 60)}h.` : ''}</p>)}
+                      </div>
+                      <label className="mt-4 block text-[10px] font-bold uppercase tracking-widest text-emerald-100/55">{t('dash.rosterOverrideReason')}
+                        <input id="roster-override-reason" className="mt-1 w-full rounded border border-emerald-500/20 bg-black/40 px-3 py-2 text-xs text-emerald-50" />
+                      </label>
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button type="button" onClick={() => setPendingRosterSave(null)} className="rounded border border-emerald-500/20 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-100/70">Cancel</button>
+                        <button type="button" onClick={() => {
+                          const reason = (document.getElementById('roster-override-reason') as HTMLInputElement | null)?.value || '';
+                          const pending = pendingRosterSave;
+                          setPendingRosterSave(null);
+                          void persistRosterShift(pending.shift, pending.warnings.map((warning) => warning.code), reason);
+                        }} className="rounded bg-amber-400 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-950">{t('dash.rosterScheduleAnyway')}</button>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 {activeTab === 'feed' && (
