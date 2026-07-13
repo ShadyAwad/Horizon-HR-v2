@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import sharp from 'sharp';
 import { createServer as createViteServer } from 'vite';
 import type { PoolClient } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -33,6 +35,7 @@ import {
   validateRequiredText,
 } from './src/lib/validation';
 import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
+import { profileImageStorage } from './src/lib/profile-image-storage';
 
 
 type ClockInBody = {  
@@ -221,6 +224,7 @@ type AuthEmployeeRow = {
   full_name: string;
   role: string;
   job_title: string | null;
+  profile_image_url: string | null;
   role_names: string[];
   permissions: string[];
   company_name: string;
@@ -267,6 +271,9 @@ const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const INVALID_LOGIN_TIMING_HASH = generatePasswordHash('stanza-invalid-login-timing-only');
 const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const PROFILE_IMAGE_SIZE = 512;
+const PROFILE_IMAGE_QUALITY = 80;
 
 type LoginAttemptState = {
   failedAttempts: number;
@@ -360,6 +367,7 @@ function formatAuthUser(employee: AuthEmployeeRow) {
     name: employee.full_name,
     role: employee.role,
     jobTitle: employee.job_title,
+    profileImageUrl: employee.profile_image_url,
     roleNames: employee.role_names || [],
     permissions: employee.permissions || [],
     tenantId: employee.tenant_id,
@@ -1469,6 +1477,7 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
         employees.full_name,
         employees.role,
         employees.job_title,
+        employees.profile_image_url,
         COALESCE(
           array_remove(array_agg(DISTINCT assigned_role.name), NULL),
           ARRAY[]::varchar[]
@@ -1510,6 +1519,7 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
         employees.full_name,
         employees.role,
         employees.job_title,
+        employees.profile_image_url,
         COALESCE(
           array_remove(array_agg(DISTINCT assigned_role.name), NULL),
           ARRAY[]::varchar[]
@@ -1564,6 +1574,21 @@ async function startServer() {
   const passwordResetRequestRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 5);
   const passwordResetConfirmRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 10);
   const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
+  const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
+  const avatarUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: PROFILE_IMAGE_MAX_BYTES, files: 1 },
+    fileFilter: (_req, file, callback) => {
+      callback(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype));
+    },
+  }).single('avatar');
+  const parseAvatarUpload = (req: express.Request, res: express.Response) => new Promise<Express.Multer.File>((resolve, reject) => {
+    avatarUpload(req, res, (error) => {
+      if (error) return reject(error);
+      if (!req.file) return reject(Object.assign(new Error('Unsupported image format.'), { statusCode: 415 }));
+      resolve(req.file);
+    });
+  });
 
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -1603,6 +1628,16 @@ async function startServer() {
 
     next();
   });
+
+  // Avatar URLs are intentionally public but use opaque UUID filenames. Writes
+  // remain authenticated and tenant-scoped; no filesystem paths are exposed.
+  app.use(profileImageStorage.publicPath, express.static(profileImageStorage.directory, {
+    dotfiles: 'deny',
+    fallthrough: false,
+    immutable: true,
+    index: false,
+    maxAge: '1y',
+  }));
 
   // === HORIZON HR API ROUTES ===
 
@@ -2148,6 +2183,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       full_name: string;
       role: string;
       job_title: string | null;
+      profile_image_url: string | null;
       role_names: string[];
       permissions: string[];
       password_hash: string | null;
@@ -2161,6 +2197,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
           employees.full_name,
           employees.role,
           employees.job_title,
+          employees.profile_image_url,
           COALESCE(
             array_remove(array_agg(DISTINCT assigned_role.name), NULL),
             ARRAY[]::varchar[]
@@ -2222,6 +2259,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
         name: employee.full_name,
         role: employee.role,
         jobTitle: employee.job_title,
+        profileImageUrl: employee.profile_image_url,
         roleNames: employee.role_names,
         permissions: employee.permissions,
         tenantId: employee.tenant_id,
@@ -2283,6 +2321,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             name: fallbackEmployee.full_name,
             role: fallbackEmployee.role,
             jobTitle: null,
+            profileImageUrl: null,
             roleNames: [],
             permissions: fallbackEmployee.role === 'hr_admin' ? ['roles.manage'] : [],
             tenantId: fallbackEmployee.tenant_id,
@@ -2300,6 +2339,100 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Unable to authenticate user.',
+    });
+  }
+});
+
+app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  let newProfileImageUrl: string | null = null;
+  let databaseUpdated = false;
+
+  try {
+    const file = await parseAvatarUpload(req, res);
+    const input = sharp(file.buffer, { animated: false, failOn: 'error', limitInputPixels: 40_000_000 });
+    const metadata = await input.metadata();
+
+    if (!metadata.format || !['jpeg', 'png', 'webp'].includes(metadata.format) || (metadata.pages || 1) > 1) {
+      return res.status(415).json({ success: false, code: 'UNSUPPORTED_IMAGE', message: 'Unsupported image format.' });
+    }
+
+    const processedImage = await input
+      .rotate()
+      .resize(PROFILE_IMAGE_SIZE, PROFILE_IMAGE_SIZE, { fit: 'cover', position: 'attention' })
+      .webp({ quality: PROFILE_IMAGE_QUALITY })
+      .toBuffer();
+
+    newProfileImageUrl = await profileImageStorage.write(processedImage);
+
+    const previousProfileImageUrl = await withTenant(authUser.tenantId, async (client) => {
+      const current = await client.query<{ profile_image_url: string | null }>(
+        `SELECT profile_image_url FROM employees WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+        [authUser.tenantId, authUser.employeeId],
+      );
+      if (current.rowCount === 0) throw Object.assign(new Error('Employee profile not found.'), { statusCode: 404 });
+
+      await client.query(
+        `UPDATE employees SET profile_image_url = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
+        [authUser.tenantId, authUser.employeeId, newProfileImageUrl],
+      );
+      await client.query(
+        `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+         VALUES ($1, $2, 'profile.avatar_updated', 'employee', $2, $3::jsonb)`,
+        [authUser.tenantId, authUser.employeeId, JSON.stringify({ profileImageUrl: newProfileImageUrl })],
+      );
+      return current.rows[0].profile_image_url;
+    });
+    databaseUpdated = true;
+
+    await profileImageStorage.remove(previousProfileImageUrl).catch((error) => {
+      console.error('[Profile Avatar] Previous file cleanup failed:', error);
+    });
+    return res.json({ success: true, message: 'Profile photo updated.', profileImageUrl: newProfileImageUrl });
+  } catch (error) {
+    if (newProfileImageUrl && !databaseUpdated) await profileImageStorage.remove(newProfileImageUrl).catch(() => undefined);
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ success: false, code: 'IMAGE_TOO_LARGE', message: 'Image is too large.' });
+    }
+    const statusCode = Number((error as { statusCode?: number }).statusCode) || 422;
+    if (!isProduction()) console.error('[Profile Avatar] Upload failed:', error);
+    return res.status(statusCode).json({
+      success: false,
+      code: statusCode === 415 ? 'UNSUPPORTED_IMAGE' : 'IMAGE_PROCESSING_FAILED',
+      message: statusCode === 415 ? 'Unsupported image format.' : 'Could not process image.',
+    });
+  }
+});
+
+app.delete('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) => {
+  const authUser = req.authUser!;
+  try {
+    const previousProfileImageUrl = await withTenant(authUser.tenantId, async (client) => {
+      const current = await client.query<{ profile_image_url: string | null }>(
+        `SELECT profile_image_url FROM employees WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+        [authUser.tenantId, authUser.employeeId],
+      );
+      if (current.rowCount === 0) throw Object.assign(new Error('Employee profile not found.'), { statusCode: 404 });
+      await client.query(
+        `UPDATE employees SET profile_image_url = NULL, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
+        [authUser.tenantId, authUser.employeeId],
+      );
+      await client.query(
+        `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+         VALUES ($1, $2, 'profile.avatar_removed', 'employee', $2, '{}'::jsonb)`,
+        [authUser.tenantId, authUser.employeeId],
+      );
+      return current.rows[0].profile_image_url;
+    });
+    await profileImageStorage.remove(previousProfileImageUrl).catch((error) => {
+      console.error('[Profile Avatar] Removed file cleanup failed:', error);
+    });
+    return res.json({ success: true, profileImageUrl: null });
+  } catch (error) {
+    console.error('[Profile Avatar] Remove failed:', error);
+    return res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
+      success: false,
+      message: 'Unable to remove profile photo.',
     });
   }
 });

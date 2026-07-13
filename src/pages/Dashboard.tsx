@@ -1,8 +1,8 @@
-import { Component, lazy, Suspense, useState, useEffect, useRef, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useState, useEffect, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -12,9 +12,17 @@ import { apiUrl } from '../lib/api';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
+import { UserAvatar } from '../components/UserAvatar';
+import {
+  INTERFACE_SCALE_STEP,
+  MAX_INTERFACE_SCALE,
+  MIN_INTERFACE_SCALE,
+  useStanzaPreferences,
+} from '../lib/StanzaPreferencesContext';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
+const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCropDialog').then((module) => ({ default: module.ProfilePhotoCropDialog })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -665,7 +673,7 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void }) {
+export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
@@ -761,13 +769,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoSaving, setProfilePhotoSaving] = useState(false);
+  const [profilePhotoMessage, setProfilePhotoMessage] = useState('');
+  const [profilePhotoMessageType, setProfilePhotoMessageType] = useState<'success' | 'error'>('success');
   const [isLanyardEligible, setIsLanyardEligible] = useState(false);
   const [isLanyardIdleReady, setIsLanyardIdleReady] = useState(false);
   const [isLanyardSceneReady, setIsLanyardSceneReady] = useState(false);
   const [lanyardAnchorNdc, setLanyardAnchorNdc] = useState<LanyardAnchorNdc | null>(null);
+  const lanyardMountGeneration = useRef(0);
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [controlCenterSections, setControlCenterSections] = useState({
+    personalization: true,
     settings: true,
     passkeys: false,
     readiness: false,
@@ -790,10 +804,25 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   const [pwaMessageType, setPwaMessageType] = useState<'success' | 'error' | 'info'>('info');
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
+  const {
+    lanyardEnabled,
+    interfaceScale,
+    setLanyardEnabled,
+    setInterfaceScale,
+    resetInterfaceScale,
+  } = useStanzaPreferences();
 
   const geo = useGeolocation();
 
   useEffect(() => {
+    if (!lanyardEnabled) {
+      setIsLanyardEligible(false);
+      setIsLanyardIdleReady(false);
+      setIsLanyardSceneReady(false);
+      setLanyardAnchorNdc(null);
+      return;
+    }
+
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
 
@@ -821,10 +850,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
       reducedMotionQuery.removeEventListener('change', updateLanyardEligibility);
       connection?.removeEventListener?.('change', updateLanyardEligibility);
     };
-  }, []);
+  }, [lanyardEnabled]);
 
   useEffect(() => {
-    if (!isLanyardEligible) {
+    const generation = ++lanyardMountGeneration.current;
+    if (!lanyardEnabled || !isLanyardEligible) {
       setIsLanyardIdleReady(false);
       setIsLanyardSceneReady(false);
       return;
@@ -834,17 +864,28 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
     let idleHandle: number | undefined;
     let timeoutHandle: number | undefined;
 
-    if (idleWindow.requestIdleCallback) {
-      idleHandle = idleWindow.requestIdleCallback(() => setIsLanyardIdleReady(true), { timeout: 900 });
-    } else {
-      timeoutHandle = window.setTimeout(() => setIsLanyardIdleReady(true), 700);
-    }
+    const markIdleReady = () => {
+      if (lanyardMountGeneration.current !== generation) return;
+      setIsLanyardIdleReady(true);
+    };
+
+    // Fiber releases an unmounted WebGL context on a short delay. Keep the
+    // replacement scene behind that cleanup window during rapid preference toggles.
+    timeoutHandle = window.setTimeout(() => {
+      if (lanyardMountGeneration.current !== generation) return;
+      if (idleWindow.requestIdleCallback) {
+        idleHandle = idleWindow.requestIdleCallback(markIdleReady, { timeout: 900 });
+      } else {
+        markIdleReady();
+      }
+    }, 650);
 
     return () => {
+      if (lanyardMountGeneration.current === generation) lanyardMountGeneration.current += 1;
       if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
       if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
     };
-  }, [isLanyardEligible]);
+  }, [isLanyardEligible, lanyardEnabled]);
 
   useEffect(() => {
     if (!isLanyardEligible || !isLanyardIdleReady) {
@@ -1035,7 +1076,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
       : showResignationsPanel
         ? t('dash.resignations')
       : t('profile.subtitle');
-  const userInitials = user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   const pendingOwnBreakRequest = breakRequests.find((request) => request.status === 'pending');
   const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
@@ -1600,6 +1640,78 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   if (user.authToken) {
     payrollHeaders.Authorization = `Bearer ${user.authToken}`;
   }
+
+  const handleProfilePhotoSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setProfilePhotoMessageType('error');
+      setProfilePhotoMessage(t('profile.unsupportedImage'));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setProfilePhotoMessageType('error');
+      setProfilePhotoMessage(t('profile.imageTooLarge'));
+      return;
+    }
+    setProfilePhotoMessage('');
+    setProfilePhotoFile(file);
+  };
+
+  const uploadProfilePhoto = async (blob: Blob) => {
+    if (isOffline || profilePhotoSaving) return;
+    setProfilePhotoSaving(true);
+    setProfilePhotoMessage('');
+    const body = new FormData();
+    body.append('avatar', blob, 'profile-photo.webp');
+    const headers: Record<string, string> = {
+      'x-employee-id': user.id,
+      'x-tenant-id': user.tenantId,
+    };
+    if (user.authToken) headers.Authorization = `Bearer ${user.authToken}`;
+
+    try {
+      const response = await fetch(apiUrl('/api/profile/avatar'), { method: 'POST', headers, body });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        const message = data.code === 'IMAGE_TOO_LARGE'
+          ? t('profile.imageTooLarge')
+          : data.code === 'UNSUPPORTED_IMAGE'
+            ? t('profile.unsupportedImage')
+            : t('profile.couldNotProcessImage');
+        throw new Error(message);
+      }
+      onUserUpdate({ ...user, profileImageUrl: data.profileImageUrl });
+      setProfilePhotoFile(null);
+      setProfilePhotoMessageType('success');
+      setProfilePhotoMessage(t('profile.photoUpdated'));
+    } catch (error) {
+      setProfilePhotoMessageType('error');
+      setProfilePhotoMessage(error instanceof Error ? error.message : t('profile.couldNotProcessImage'));
+    } finally {
+      setProfilePhotoSaving(false);
+    }
+  };
+
+  const removeProfilePhoto = async () => {
+    if (isOffline || profilePhotoSaving || !user.profileImageUrl) return;
+    setProfilePhotoSaving(true);
+    setProfilePhotoMessage('');
+    try {
+      const response = await fetch(apiUrl('/api/profile/avatar'), { method: 'DELETE', headers: payrollHeaders });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(t('profile.couldNotProcessImage'));
+      onUserUpdate({ ...user, profileImageUrl: null });
+      setProfilePhotoMessageType('success');
+      setProfilePhotoMessage(t('profile.photoRemoved'));
+    } catch (error) {
+      setProfilePhotoMessageType('error');
+      setProfilePhotoMessage(error instanceof Error ? error.message : t('profile.couldNotProcessImage'));
+    } finally {
+      setProfilePhotoSaving(false);
+    }
+  };
 
   const loadClockStatus = async (preserveLastEvent = false) => {
     if (!hasAuthenticatedDashboardUser) return;
@@ -3141,11 +3253,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="h-12 w-12 shrink-0 rounded-full border-2 border-emerald-500 bg-white p-0.5 dark:bg-black">
-            <div className="flex h-full w-full items-center justify-center rounded-full bg-emerald-500/10 text-sm font-black tracking-widest text-neutral-800 dark:bg-emerald-950/50 dark:text-white">
-              {userInitials}
-            </div>
-          </div>
+          <UserAvatar name={user.name} imageUrl={user.profileImageUrl} className="h-12 w-12" />
           <div className="min-w-0">
             <p className="truncate text-sm font-black text-slate-900 dark:text-emerald-50">{user.name}</p>
             <p className="truncate text-xs text-neutral-500 dark:text-emerald-100/50">{user.email}</p>
@@ -3284,6 +3392,113 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
     </div>
   );
 
+  const renderPersonalizationPanel = () => {
+    const percentage = Math.round(interfaceScale * 100);
+    const scaleLabel = interfaceScale <= 0.9
+      ? t('dash.interfaceCompact')
+      : interfaceScale === 1
+        ? t('dash.interfaceDefault')
+        : interfaceScale <= 1.1
+          ? t('dash.interfaceLarge')
+          : t('dash.interfaceExtraLarge');
+    const atMinimum = interfaceScale <= MIN_INTERFACE_SCALE;
+    const atMaximum = interfaceScale >= MAX_INTERFACE_SCALE;
+
+    return (
+      <div className="stanza-preference-surface rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+        <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
+          {t('dash.personalization')}
+        </p>
+
+        <div className="mt-3 space-y-3">
+          <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lanyardCard')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
+                {t('dash.lanyardCardDescription')}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/55">
+                {lanyardEnabled ? t('dash.on') : t('dash.off')}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={lanyardEnabled}
+                aria-label={t('dash.lanyardCard')}
+                onClick={() => setLanyardEnabled(!lanyardEnabled)}
+                className={cn(
+                  "relative h-7 w-12 shrink-0 rounded-full border p-0.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]",
+                  lanyardEnabled
+                    ? "border-emerald-400 bg-emerald-500"
+                    : "border-emerald-500/20 bg-neutral-200 dark:bg-black/60",
+                )}
+              >
+                <span className={cn(
+                  "block h-5 w-5 rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none",
+                  lanyardEnabled ? "translate-x-5" : "translate-x-0",
+                )} />
+              </button>
+            </div>
+          </div>
+
+          <div className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.interfaceSize')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
+                {t('dash.interfaceSizeDescription')}
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2" dir="ltr">
+              <button
+                type="button"
+                onClick={() => setInterfaceScale(interfaceScale - INTERFACE_SCALE_STEP)}
+                disabled={atMinimum}
+                aria-label={t('dash.decreaseInterfaceSize')}
+                title={t('dash.decreaseInterfaceSize')}
+                className="stanza-preference-control flex min-h-10 min-w-10 items-center justify-center border border-emerald-500/20 bg-white text-emerald-700 outline-none transition hover:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none dark:bg-black/45 dark:text-emerald-300"
+              >
+                <Minus className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <div
+                className="stanza-preference-control flex min-h-10 min-w-[7.5rem] flex-col items-center justify-center border border-emerald-500/15 bg-emerald-500/5 px-3 py-1 text-center"
+                role="status"
+                aria-live="polite"
+                aria-label={`${t('dash.interfaceSize')}: ${percentage}% - ${scaleLabel}`}
+              >
+                <span className="text-sm font-black text-neutral-800 dark:text-emerald-50">{percentage}%</span>
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{scaleLabel}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInterfaceScale(interfaceScale + INTERFACE_SCALE_STEP)}
+                disabled={atMaximum}
+                aria-label={t('dash.increaseInterfaceSize')}
+                title={t('dash.increaseInterfaceSize')}
+                className="stanza-preference-control flex min-h-10 min-w-10 items-center justify-center border border-emerald-500/20 bg-white text-emerald-700 outline-none transition hover:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none dark:bg-black/45 dark:text-emerald-300"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={resetInterfaceScale}
+                disabled={interfaceScale === 1}
+                aria-label={t('dash.resetInterfaceSize')}
+                title={t('dash.resetInterfaceSize')}
+                className="stanza-preference-control flex min-h-10 items-center gap-2 border border-emerald-500/20 bg-white px-3 text-xs font-bold uppercase tracking-widest text-emerald-700 outline-none transition hover:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none dark:bg-black/45 dark:text-emerald-300"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                {t('dash.reset')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderControlCenterSettings = () => (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
       <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.settings')}</p>
@@ -3386,7 +3601,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
 </div>
 
-      {isLanyardEligible && isLanyardIdleReady && lanyardAnchorNdc && (
+      {lanyardEnabled && isLanyardEligible && isLanyardIdleReady && lanyardAnchorNdc && (
         <DashboardLanyardBoundary>
           <Suspense fallback={null}>
             <StanzaDashboardLanyard
@@ -3394,6 +3609,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
               eventSource={showControlCenter ? null : dashboardRootRef.current}
               hidden={showControlCenter || !isLanyardSceneReady}
               onReady={() => setIsLanyardSceneReady(true)}
+              user={user}
             />
           </Suspense>
         </DashboardLanyardBoundary>
@@ -3571,6 +3787,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
 
             <div className="divide-y divide-emerald-500/15">
               {renderControlCenterAccount()}
+              {renderControlCenterAccordion(
+                'personalization',
+                t('dash.personalization'),
+                `${t('dash.interfaceSize')} ${Math.round(interfaceScale * 100)}% - ${lanyardEnabled ? t('dash.on') : t('dash.off')}`,
+                renderPersonalizationPanel(),
+              )}
               {renderControlCenterAccordion(
                 'settings',
                 t('dash.settings'),
@@ -5159,6 +5381,56 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
                         </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                         <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
+                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                             <div className="flex min-w-0 items-center gap-4">
+                               <UserAvatar name={user.name} imageUrl={user.profileImageUrl} className="h-20 w-20" />
+                               <div className="min-w-0">
+                                 <h3 className="text-sm font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('profile.photo')}</h3>
+                                 <p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">{t('profile.photoHelp')}</p>
+                               </div>
+                             </div>
+                             <div className="flex flex-wrap gap-2">
+                               <label className={cn(
+                                 "inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-black transition hover:bg-emerald-400 focus-within:ring-2 focus-within:ring-emerald-300",
+                                 (isOffline || profilePhotoSaving) && "pointer-events-none opacity-50",
+                               )}>
+                                 <Camera className="h-4 w-4" aria-hidden="true" />
+                                 {user.profileImageUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
+                                 <input
+                                   type="file"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   onChange={handleProfilePhotoSelection}
+                                   disabled={isOffline || profilePhotoSaving}
+                                   aria-label={user.profileImageUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
+                                   className="sr-only"
+                                 />
+                               </label>
+                               {user.profileImageUrl && (
+                                 <button
+                                   type="button"
+                                   onClick={() => void removeProfilePhoto()}
+                                   disabled={isOffline || profilePhotoSaving}
+                                   className="inline-flex items-center gap-2 rounded-lg border border-red-500/20 px-3 py-2 text-xs font-bold text-red-600 transition hover:border-red-400 disabled:cursor-wait disabled:opacity-50 dark:text-red-300"
+                                 >
+                                   <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                   {t('profile.removePhoto')}
+                                 </button>
+                               )}
+                             </div>
+                           </div>
+                           {profilePhotoMessage && (
+                             <p className={cn(
+                               "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
+                               profilePhotoMessageType === 'success'
+                                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                 : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300",
+                             )} role="status">
+                               {profilePhotoMessage}
+                             </p>
+                           )}
+                         </div>
+
                          <div className="md:col-span-2">
                            {renderNotificationSettingsPanel()}
                          </div>
@@ -5340,6 +5612,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice }: { user: AuthUser
 
         </div>
       </main>
+      {profilePhotoFile && (
+        <Suspense fallback={null}>
+          <ProfilePhotoCropDialog
+            file={profilePhotoFile}
+            saving={profilePhotoSaving}
+            labels={{
+              title: t('profile.cropPhoto'),
+              zoom: t('profile.zoom'),
+              cancel: t('profile.cancel'),
+              save: t('profile.savePhoto'),
+            }}
+            onCancel={() => !profilePhotoSaving && setProfilePhotoFile(null)}
+            onSave={(blob) => void uploadProfilePhoto(blob)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

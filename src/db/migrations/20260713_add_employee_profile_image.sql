@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE employees
+ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
+
+COMMIT;

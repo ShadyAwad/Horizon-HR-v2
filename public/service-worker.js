@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'stanza-static-v5';
-const RUNTIME_CACHE = 'stanza-runtime-v5';
+const STATIC_CACHE = 'stanza-static-v6';
+const RUNTIME_CACHE = 'stanza-runtime-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -53,6 +53,10 @@ function offlineJsonResponse() {
 
 function isApiRequest(url) {
   return url.pathname.startsWith('/api/');
+}
+
+function isProfileImageRequest(url) {
+  return url.pathname.startsWith('/profile-images/');
 }
 
 function isStaticAssetRequest(request, url) {
@@ -138,6 +142,13 @@ self.addEventListener('fetch', (event) => {
     // password reset, payroll, grievance, company feed, clock, or leave writes offline could
     // duplicate sensitive actions or replay stale credentials/payroll changes.
     event.respondWith(request.method === 'GET' ? networkOnlyApi(request) : networkOnlyMutation(request));
+    return;
+  }
+
+  if (isProfileImageRequest(url)) {
+    // Profile photos are user-specific media. Keep them out of shared PWA caches;
+    // the avatar component falls back to initials when the network is unavailable.
+    event.respondWith(networkOnlyApi(request));
     return;
   }
 

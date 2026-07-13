@@ -2,10 +2,18 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import {
+  initializeStanzaPreferences,
+  StanzaPreferencesProvider,
+} from './lib/StanzaPreferencesContext';
+
+initializeStanzaPreferences();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <StanzaPreferencesProvider>
+      <App />
+    </StanzaPreferencesProvider>
   </StrictMode>,
 );
 

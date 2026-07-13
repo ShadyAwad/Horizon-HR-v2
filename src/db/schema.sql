@@ -56,6 +56,9 @@ ON employees(tenant_id, manager_id);
 ALTER TABLE employees
 ADD COLUMN IF NOT EXISTS job_title VARCHAR(120);
 
+ALTER TABLE employees
+ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
+
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS employee_tenant_isolation ON employees;

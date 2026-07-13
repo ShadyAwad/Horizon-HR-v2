@@ -4,5 +4,6 @@ dist/
 coverage/
 .DS_Store
 *.log
+uploads/profile-images/
 .env*
 !.env.example

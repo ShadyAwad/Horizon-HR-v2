@@ -27,6 +27,7 @@ export type AuthUser = {
   tenantId: string;
   tenant?: string | { id: string; slug: string; companyName: string };
   authToken?: string;
+  profileImageUrl?: string | null;
 };
 
 const fallbackUser: AuthUser = {
@@ -172,6 +173,11 @@ export default function App() {
     });
   };
 
+  const updateAuthUser = (nextUser: AuthUser) => {
+    setAuthUser(nextUser);
+    window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
+  };
+
   const openSignup = () => {
     setFocusLoginEmail(false);
     setAuthBackgroundPulse('loading');
@@ -209,6 +215,7 @@ export default function App() {
                  user={authUser}
                  onLogout={beginLogout}
                  onShowDemoNotice={() => setShowDemoNotice(true)}
+                 onUserUpdate={updateAuthUser}
                />
              </Suspense>
              {authTransition === 'logging-out' && <AuthTransitionLoader transition="logging-out" overlay />}
