@@ -352,7 +352,8 @@ VALUES
     ('hiring.advance_stage', 'Advance hiring stages', 'Move applicants through permitted stages.'),
     ('hiring.make_final_decision', 'Make hiring decisions', 'Approve offers and final outcomes.'),
     ('hiring.archive', 'Archive hiring candidates', 'Archive applicant records.'),
-    ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.')
+    ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
+    ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
 ON CONFLICT (permission_key) DO UPDATE SET
     label = EXCLUDED.label,
     description = EXCLUDED.description;

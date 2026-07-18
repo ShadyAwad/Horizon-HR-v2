@@ -2,6 +2,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import type { PoolClient } from 'pg';
 import { getDbPool } from '../src/lib/hr-background';
+import { assertDatabaseMutationSafety } from './mutation-safety';
 
 const DEMO = {
   companyName: 'Stanza Demo Company',
@@ -10,31 +11,6 @@ const DEMO = {
   longitude: 31.2357,
   radiusMeters: 500,
 } as const;
-
-function assertDemoMutationSafety() {
-  if (process.env.NODE_ENV === 'production') throw new Error('Demo seed is disabled in production.');
-  if (process.env.STANZA_DEMO_ENV !== 'true') throw new Error('Set STANZA_DEMO_ENV=true to seed demo data.');
-  if (process.env.ALLOW_DEMO_DATA_MUTATION !== 'true') throw new Error('Set ALLOW_DEMO_DATA_MUTATION=true to seed demo data.');
-
-  const rawDatabaseUrl = process.env.DATABASE_URL?.trim();
-  if (!rawDatabaseUrl) throw new Error('DATABASE_URL is required for demo seeding.');
-  let databaseUrl: URL;
-  try {
-    databaseUrl = new URL(rawDatabaseUrl);
-  } catch {
-    throw new Error('DATABASE_URL must be a valid PostgreSQL URL.');
-  }
-  const databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\/+/, ''));
-  const allowlist = (process.env.DEMO_DATABASE_ALLOWLIST || '').split(',').map((value) => value.trim()).filter(Boolean);
-  if (!databaseName || !allowlist.includes(databaseName)) {
-    throw new Error('The target database is not in DEMO_DATABASE_ALLOWLIST.');
-  }
-  const password = process.env.DEMO_PASSWORD?.trim();
-  if (!password || password.length < 12) throw new Error('Set DEMO_PASSWORD to a strong demo-only password.');
-
-  console.log(`Demo seed target: ${databaseUrl.hostname}:${databaseUrl.port || '5432'}/${databaseName}`);
-  return password;
-}
 
 const permissions = [
   ['locations.read', 'Read locations', 'View company locations.'],
@@ -66,6 +42,7 @@ const permissions = [
   ['feed.read', 'Read company feed', 'Read company feed posts.'],
   ['feed.publish', 'Publish company feed', 'Create and manage company feed posts.'],
   ['roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'],
+  ['roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.'],
 ] as const;
 
 const rolePermissions: Record<'employee' | 'manager', string[]> = {
@@ -223,7 +200,10 @@ const hiringDemoCandidates: HiringDemoCandidate[] = [
 ];
 
 async function seedDemo() {
-  const demoPassword = assertDemoMutationSafety();
+  if (process.env.STANZA_DEMO_ENV !== 'true') throw new Error('Set STANZA_DEMO_ENV=true to seed demo data.');
+  if (process.env.ALLOW_DEMO_DATA_MUTATION !== 'true') throw new Error('Set ALLOW_DEMO_DATA_MUTATION=true to seed demo data.');
+  assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Demo seed', true, true);
+  const demoPassword = process.env.DEMO_PASSWORD!.trim();
   const pool = getDbPool();
   const client = await pool.connect();
 

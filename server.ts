@@ -387,7 +387,7 @@ function getCookie(req: express.Request, name: string) {
 
 function setAuthSessionCookie(res: express.Response, token: string) {
   const secure = isProduction() ? '; Secure' : '';
-  const sameSite = isProduction() ? 'None' : 'Lax';
+  const sameSite = 'Lax';
   res.setHeader(
     'Set-Cookie',
     `${AUTH_SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly${secure}; SameSite=${sameSite}; Path=/; Max-Age=${Math.floor(AUTH_SESSION_TTL_MS / 1000)}`,
@@ -396,7 +396,7 @@ function setAuthSessionCookie(res: express.Response, token: string) {
 
 function clearAuthSessionCookie(res: express.Response) {
   const secure = isProduction() ? '; Secure' : '';
-  const sameSite = isProduction() ? 'None' : 'Lax';
+  const sameSite = 'Lax';
   res.setHeader(
     'Set-Cookie',
     `${AUTH_SESSION_COOKIE}=; HttpOnly${secure}; SameSite=${sameSite}; Path=/; Max-Age=0`,
@@ -1055,7 +1055,8 @@ async function seedTenantRolesAndPermissions(
         ('resignations.process', 'Process resignation requests', 'Mark approved resignation requests as processed.'),
         ('feed.read', 'Read company feed', 'Read company feed posts.'),
         ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
-        ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.')
+        ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
+        ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
       ON CONFLICT (permission_key) DO UPDATE SET
         label = EXCLUDED.label,
         description = EXCLUDED.description
@@ -1396,6 +1397,16 @@ function authUserHasPermission(authUser: AuthenticatedUser, permissionKey: strin
   return authUser.role === 'hr_admin' || Boolean(authUser.permissions?.includes(permissionKey));
 }
 
+function privilegeLevel(systemKey: string | null | undefined, permissions: string[] = []) {
+  if (systemKey === 'hr_admin' || permissions.includes('roles.assign_privileged')) return 3;
+  if (systemKey === 'manager' || permissions.includes('roles.manage')) return 2;
+  return 1;
+}
+
+function isPrivilegedRole(systemKey: string | null | undefined, permissions: string[] = []) {
+  return privilegeLevel(systemKey, permissions) >= 3;
+}
+
 const DEFAULT_ROSTER_WEEKLY_HOURS = 40;
 
 function getRosterWeeklyThresholdMinutes() {
@@ -1694,6 +1705,9 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
 async function startServer() {
   if (isProduction() && process.env.DEV_AUTH_HEADERS === 'true') {
     throw new Error('DEV_AUTH_HEADERS must be disabled in production.');
+  }
+  if (isProduction() && process.env.VITE_ENABLE_DEMO_LOGIN === 'true') {
+    throw new Error('VITE_ENABLE_DEMO_LOGIN must be false in production.');
   }
 
   const app = express();
@@ -3651,6 +3665,10 @@ app.put(
     const { permissionKeys = [] } = req.body as { permissionKeys?: string[] };
     const normalizedPermissionKeys = [...new Set(Array.isArray(permissionKeys) ? permissionKeys : [])];
 
+    if (normalizedPermissionKeys.includes('roles.assign_privileged') && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+      return res.status(403).json({ success: false, error: 'Privileged permission assignment requires an authorized administrator.' });
+    }
+
     if (!hasDatabaseConfig()) {
       return res.status(503).json({ success: false, error: 'DATABASE_URL is required for tenant roles' });
     }
@@ -3837,13 +3855,19 @@ app.post(
         );
         if (!employeeResult.rows[0]) return null;
 
-        const roleResult = await client.query<{ id: string; name: string }>(
+        const roleResult = await client.query<{ id: string; name: string; system_key: string | null; permissions: string[] }>(
           `
-            SELECT id, name
+            SELECT tenant_roles.id, tenant_roles.name, tenant_roles.system_key,
+              COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key)
+                FILTER (WHERE tenant_role_permissions.permission_key IS NOT NULL), ARRAY[]::varchar[]) AS permissions
             FROM tenant_roles
-            WHERE tenant_id = $1
-              AND id = $2
-              AND is_active = true
+            LEFT JOIN tenant_role_permissions
+              ON tenant_role_permissions.tenant_id = tenant_roles.tenant_id
+             AND tenant_role_permissions.role_id = tenant_roles.id
+            WHERE tenant_roles.tenant_id = $1
+              AND tenant_roles.id = $2
+              AND tenant_roles.is_active = true
+            GROUP BY tenant_roles.id
             LIMIT 1
           `,
           [tenantId, roleId],
@@ -3851,6 +3875,22 @@ app.post(
         const tenantRole = roleResult.rows[0];
         if (!tenantRole) {
           throw Object.assign(new Error('Tenant role not found.'), { statusCode: 400 });
+        }
+
+        const actorLevel = privilegeLevel(req.authUser!.role, req.authUser!.permissions || []);
+        const targetLevel = privilegeLevel(tenantRole.system_key, tenantRole.permissions);
+        const privilegedTarget = isPrivilegedRole(tenantRole.system_key, tenantRole.permissions);
+        if (tenantRole.system_key === 'hr_admin' && req.authUser!.role !== 'hr_admin') {
+          throw Object.assign(new Error('Only an authorized tenant administrator may assign HR Admin.'), { statusCode: 403 });
+        }
+        if (targetLevel > actorLevel) {
+          throw Object.assign(new Error('You cannot assign a role with greater privileges than your own.'), { statusCode: 403 });
+        }
+        if (employeeId === actorEmployeeId && targetLevel > actorLevel) {
+          throw Object.assign(new Error('You cannot elevate your own privileges.'), { statusCode: 403 });
+        }
+        if (privilegedTarget && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+          throw Object.assign(new Error('Privileged role assignment requires roles.assign_privileged.'), { statusCode: 403 });
         }
 
         const insertResult = await client.query(
@@ -3874,10 +3914,10 @@ app.post(
           [
             tenantId,
             actorEmployeeId,
-            'employee_role_assigned',
+            privilegedTarget ? 'privileged_role_assigned' : 'employee_role_assigned',
             'employee',
             employeeId,
-            JSON.stringify({ roleId, roleName: tenantRole.name }),
+            JSON.stringify({ roleId, roleName: tenantRole.name, systemKey: tenantRole.system_key, privileged: privilegedTarget }),
           ],
         );
 
@@ -3897,8 +3937,8 @@ app.post(
       res.json({ success: true, assignment });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 400) {
-        return res.status(400).json({ success: false, error: (error as Error).message });
+      if (statusCode === 400 || statusCode === 403) {
+        return res.status(statusCode).json({ success: false, error: (error as Error).message });
       }
 
       console.error('[Roles] Failed to assign role:', error);
@@ -3944,6 +3984,27 @@ app.delete(
           throw Object.assign(new Error('Cannot remove the final role assignment for this employee.'), { statusCode: 400 });
         }
 
+        const roleResult = await client.query<{ name: string; system_key: string | null; permissions: string[] }>(
+          `SELECT tenant_roles.name, tenant_roles.system_key,
+             COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key)
+               FILTER (WHERE tenant_role_permissions.permission_key IS NOT NULL), ARRAY[]::varchar[]) AS permissions
+           FROM tenant_roles
+           LEFT JOIN tenant_role_permissions
+             ON tenant_role_permissions.tenant_id = tenant_roles.tenant_id
+            AND tenant_role_permissions.role_id = tenant_roles.id
+           WHERE tenant_roles.tenant_id = $1 AND tenant_roles.id = $2
+           GROUP BY tenant_roles.id`,
+          [tenantId, roleId],
+        );
+        const tenantRole = roleResult.rows[0];
+        const privilegedRemoval = Boolean(tenantRole && isPrivilegedRole(tenantRole.system_key, tenantRole.permissions));
+        if (privilegedRemoval && employeeId === actorEmployeeId) {
+          throw Object.assign(new Error('You cannot remove your own privileged role.'), { statusCode: 403 });
+        }
+        if (privilegedRemoval && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+          throw Object.assign(new Error('Privileged role removal requires roles.assign_privileged.'), { statusCode: 403 });
+        }
+
         const deleteResult = await client.query<{ id: string }>(
           `
             DELETE FROM employee_role_assignments
@@ -3965,10 +4026,10 @@ app.delete(
           [
             tenantId,
             actorEmployeeId,
-            'employee_role_removed',
+            privilegedRemoval ? 'privileged_role_removed' : 'employee_role_removed',
             'employee',
             employeeId,
-            JSON.stringify({ roleId }),
+            JSON.stringify({ roleId, roleName: tenantRole?.name, systemKey: tenantRole?.system_key, privileged: privilegedRemoval }),
           ],
         );
 
@@ -3988,8 +4049,8 @@ app.delete(
       res.json({ success: true, removed });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 400) {
-        return res.status(400).json({ success: false, error: (error as Error).message });
+      if (statusCode === 400 || statusCode === 403) {
+        return res.status(statusCode).json({ success: false, error: (error as Error).message });
       }
 
       console.error('[Roles] Failed to remove role:', error);

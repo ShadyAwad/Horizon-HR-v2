@@ -1,43 +1,14 @@
 import 'dotenv/config';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { getDbPool } from '../src/lib/hr-background';
+import { assertDatabaseMutationSafety, requireDestructiveConfirmation } from './mutation-safety';
 
 const DEMO_SLUG = 'stanza-demo';
 
-function assertDemoMutationSafety() {
-  if (process.env.NODE_ENV === 'production') throw new Error('Demo reset is disabled in production.');
+async function resetDemo() {
   if (process.env.STANZA_DEMO_ENV !== 'true') throw new Error('Set STANZA_DEMO_ENV=true to reset demo data.');
   if (process.env.ALLOW_DEMO_DATA_MUTATION !== 'true') throw new Error('Set ALLOW_DEMO_DATA_MUTATION=true to reset demo data.');
-  const rawDatabaseUrl = process.env.DATABASE_URL?.trim();
-  if (!rawDatabaseUrl) throw new Error('DATABASE_URL is required for demo reset.');
-  let databaseUrl: URL;
-  try {
-    databaseUrl = new URL(rawDatabaseUrl);
-  } catch {
-    throw new Error('DATABASE_URL must be a valid PostgreSQL URL.');
-  }
-  const databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\/+/, ''));
-  const allowlist = (process.env.DEMO_DATABASE_ALLOWLIST || '').split(',').map((value) => value.trim()).filter(Boolean);
-  if (!databaseName || !allowlist.includes(databaseName)) throw new Error('The target database is not in DEMO_DATABASE_ALLOWLIST.');
-  console.log(`Demo reset target: ${databaseUrl.hostname}:${databaseUrl.port || '5432'}/${databaseName}`);
-}
-
-async function confirmReset() {
-  if (process.env.DEMO_RESET_CONFIRM === DEMO_SLUG) return;
-  if (!input.isTTY) throw new Error(`Set DEMO_RESET_CONFIRM=${DEMO_SLUG} for non-interactive demo reset.`);
-  const readline = createInterface({ input, output });
-  try {
-    const answer = await readline.question(`Type ${DEMO_SLUG} to confirm deleting only the demo tenant: `);
-    if (answer.trim() !== DEMO_SLUG) throw new Error('Demo reset confirmation did not match.');
-  } finally {
-    readline.close();
-  }
-}
-
-async function resetDemo() {
-  assertDemoMutationSafety();
-  await confirmReset();
+  assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Demo reset', false, true);
+  await requireDestructiveConfirmation(DEMO_SLUG, 'demo reset');
   const pool = getDbPool();
   const client = await pool.connect();
 

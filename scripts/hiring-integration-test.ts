@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import { getDbPool } from '../src/lib/hr-background';
+import { assertHttpMutationSafety } from './mutation-safety';
 
 type JsonObject = Record<string, any>;
 type Session = { id: string; tenantId: string; sessionCookie?: string; role: string };
 
-const baseUrl = (process.env.HIRING_TEST_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const baseUrl = assertHttpMutationSafety(process.env.HIRING_TEST_BASE_URL || 'http://localhost:3000', 'Hiring integration test');
 const password = process.env.HIRING_TEST_PASSWORD || process.env.DEMO_PASSWORD;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const applicantEmail = `hiring-smoke-${runId}@example.com`;

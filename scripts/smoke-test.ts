@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { assertHttpMutationSafety } from './mutation-safety';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -13,7 +14,7 @@ type SmokeUser = {
   role: string;
 };
 
-const baseUrl = (process.env.SMOKE_TEST_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const baseUrl = assertHttpMutationSafety(process.env.SMOKE_TEST_BASE_URL || 'http://localhost:3000', 'Smoke test');
 const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random().toString(36).slice(2, 8)}`;
 const smokePrefix = `Smoke Test ${runId}`;
 const failures: string[] = [];
