@@ -343,7 +343,8 @@ type FeedPost = {
   id: string;
   author_employee_id: string;
   author_name?: string;
-  author_email?: string;
+  author_role?: 'employee' | 'manager' | 'hr_admin' | string;
+  author_avatar_url?: string | null;
   title: string;
   post_type: FeedPostType;
   content_text: string;

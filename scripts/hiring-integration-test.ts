@@ -55,6 +55,7 @@ async function main() {
   const employee = await login(process.env.HIRING_TEST_EMPLOYEE_EMAIL || 'employee@stanza-demo.com');
   assert(admin.tenantId === manager.tenantId && manager.tenantId === employee.tenantId, 'Demo users must share a tenant.');
   pass('Demo sessions authenticated');
+  const pool = getDbPool();
 
   const unauthorized = await expectStatus('Ordinary employee is denied Hiring access', 403, api('/api/hiring/applicants', employee));
   assert(unauthorized.success === false, 'Denied response should be unsuccessful.');
@@ -125,6 +126,25 @@ async function main() {
   await expectStatus('Duplicate pending handoff is rejected', 409, api(`/api/hiring/applicants/${applicantId}/handoff`, admin, {
     method: 'POST', body: JSON.stringify({ reviewerId: manager.id }),
   }));
+  await pool.query('UPDATE employees SET is_active = false WHERE tenant_id = $1 AND id = $2', [admin.tenantId, manager.id]);
+  await expectStatus('Inactive reviewer is rejected at handoff time', 422, api(`/api/hiring/applicants/${applicantId}/handoff`, admin, {
+    method: 'POST', body: JSON.stringify({ reviewerId: manager.id }),
+  }));
+  await pool.query('UPDATE employees SET is_active = true WHERE tenant_id = $1 AND id = $2', [admin.tenantId, manager.id]);
+  const managerAssignments = await pool.query<{ role_id: string }>(
+    'SELECT role_id FROM employee_role_assignments WHERE tenant_id = $1 AND employee_id = $2',
+    [admin.tenantId, manager.id],
+  );
+  await pool.query('DELETE FROM employee_role_assignments WHERE tenant_id = $1 AND employee_id = $2', [admin.tenantId, manager.id]);
+  await expectStatus('Permission-revoked reviewer is rejected at handoff time', 422, api(`/api/hiring/applicants/${applicantId}/handoff`, admin, {
+    method: 'POST', body: JSON.stringify({ reviewerId: manager.id }),
+  }));
+  for (const assignment of managerAssignments.rows) {
+    await pool.query(
+      'INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [admin.tenantId, manager.id, assignment.role_id],
+    );
+  }
   const managerCountAfter = await api('/api/dashboard/attention-counts', manager);
   assert(Number(managerCountAfter.body.counts?.hiring) >= Number(managerCountBefore.body.counts?.hiring), 'Hiring attention count did not reflect recipient work.');
 
@@ -144,7 +164,6 @@ async function main() {
     method: 'POST', body: JSON.stringify({ targetStage: 'offer', expectedCurrentStage: 'final_review' }),
   }));
 
-  const pool = getDbPool();
   const verification = await pool.query<JsonObject>(`
     SELECT
       (SELECT count(*)::int FROM hiring_stage_history WHERE tenant_id=$1 AND applicant_id=$2::uuid) AS history_count,

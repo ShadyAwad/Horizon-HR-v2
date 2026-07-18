@@ -344,13 +344,31 @@ function getMapTilerMapId() {
 }
 
 function getRequestIp(req: express.Request) {
-  const forwardedFor = req.header('x-forwarded-for');
-  const forwardedIp = forwardedFor?.split(',')[0]?.trim();
-  return forwardedIp || req.ip || req.socket.remoteAddress || 'unknown';
+  // Express resolves req.ip using the configured trust-proxy topology. Never
+  // parse X-Forwarded-For directly: an untrusted client can spoof its first value.
+  const address = req.ip || req.socket.remoteAddress || 'unknown';
+  const normalized = address.replace(/^::ffff:/i, '').toLowerCase();
+  return normalized === '::1' ? '127.0.0.1' : normalized;
 }
 
-function getLoginRateLimitKey(req: express.Request, normalizedEmail: string) {
-  return `${normalizedEmail}:${getRequestIp(req)}`;
+function getLoginRateLimitKeys(req: express.Request, normalizedEmail: string) {
+  return [`account:${normalizedEmail}`, `ip:${getRequestIp(req)}`];
+}
+
+function checkLoginRateLimits(keys: string[]) {
+  for (const key of keys) {
+    const result = checkLoginRateLimit(key);
+    if (result.locked) return result;
+  }
+  return { locked: false as const };
+}
+
+function recordLoginFailures(keys: string[]) {
+  keys.forEach((key) => recordFailedLogin(key));
+}
+
+function clearLoginRateLimits(keys: string[]) {
+  keys.forEach((key) => clearFailedLogins(key));
 }
 
 function isProduction() {
@@ -2312,20 +2330,20 @@ async function startServer() {
       });
 
       if ((error as { code?: string }).code === 'EMAIL_ALREADY_REGISTERED') {
-        return res.status(409).json({
+        return res.status(400).json({
           success: false,
-          code: 'EMAIL_UNAVAILABLE',
-          message: 'This email cannot be used for a new workspace. Try signing in or recovering your account.',
-          fields: { adminEmail: 'This email cannot be used for a new workspace. Try signing in or recovering your account.' },
+          code: 'REGISTRATION_UNAVAILABLE',
+          message: 'Unable to create workspace with these details.',
+          fields: { form: 'Unable to create workspace with these details.' },
         });
       }
 
       if ((error as { code?: string }).code === '23505') {
-        return res.status(409).json({
+        return res.status(400).json({
           success: false,
-          code: 'WORKSPACE_UNAVAILABLE',
-          message: 'This workspace name is unavailable. Try another name.',
-          fields: { tenantSlug: 'This workspace name is unavailable. Try another name.' },
+          code: 'REGISTRATION_UNAVAILABLE',
+          message: 'Unable to create workspace with these details.',
+          fields: { form: 'Unable to create workspace with these details.' },
         });
       }
 
@@ -2389,8 +2407,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       error: 'Demo accounts are disabled in this environment.',
     });
   }
-  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
-  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+  const loginRateLimitKeys = getLoginRateLimitKeys(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimits(loginRateLimitKeys);
 
   if (rateLimit.locked) {
     return res.status(429).json({
@@ -2465,7 +2483,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 
     if (result.rowCount === 0) {
       verifyPassword(password, INVALID_LOGIN_TIMING_HASH);
-      recordFailedLogin(loginRateLimitKey);
+      recordLoginFailures(loginRateLimitKeys);
 
       return res.status(401).json({
         success: false,
@@ -2477,7 +2495,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     const passwordValid = verifyPassword(password, employee.password_hash);
 
     if (!passwordValid) {
-      recordFailedLogin(loginRateLimitKey);
+      recordLoginFailures(loginRateLimitKeys);
 
       return res.status(401).json({
         success: false,
@@ -2485,7 +2503,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       });
     }
 
-    clearFailedLogins(loginRateLimitKey);
+    clearLoginRateLimits(loginRateLimitKeys);
     await createAuthSession(employee, res);
 
     res.json({
@@ -2529,14 +2547,14 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
         );
 
         if (!fallbackEmployee || !fallbackPasswordValid) {
-          recordFailedLogin(loginRateLimitKey);
+          recordLoginFailures(loginRateLimitKeys);
           return res.status(401).json({
             success: false,
             error: 'Invalid email or password.',
           });
         }
 
-        clearFailedLogins(loginRateLimitKey);
+          clearLoginRateLimits(loginRateLimitKeys);
         await createAuthSession(fallbackEmployee, res);
 
         return res.json({
@@ -2739,7 +2757,7 @@ app.post('/api/auth/passkeys/register/options', sensitiveAuthRateLimiter, demoAu
           transports: credential.transports || undefined,
         })),
         authenticatorSelection: {
-          residentKey: 'preferred',
+          residentKey: 'required',
           userVerification: 'required',
         },
       });
@@ -2887,8 +2905,8 @@ app.post('/api/auth/passkeys/login/options', passkeyLoginRateLimiter, async (req
   }
 
   const normalizedEmail = normalizedPasskeyEmail.value;
-  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
-  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+  const loginRateLimitKeys = getLoginRateLimitKeys(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimits(loginRateLimitKeys);
 
   if (rateLimit.locked) {
     return res.status(429).json({
@@ -2904,52 +2922,39 @@ app.post('/api/auth/passkeys/login/options', passkeyLoginRateLimiter, async (req
     assertWebAuthnOriginAllowed(origin);
 
     const employee = await fetchAuthEmployeeByEmail(normalizedEmail);
-    if (!employee) {
-      recordFailedLogin(loginRateLimitKey);
-      return res.status(401).json({ success: false, error: 'Invalid passkey sign in.' });
-    }
-
-    const options = await withTenant(employee.tenant_id, async (client) => {
-      const credentials = await client.query<WebAuthnCredentialRow>(
-        `
-          SELECT *
-          FROM user_webauthn_credentials
-          WHERE tenant_id = $1
-            AND employee_id = $2
-          ORDER BY created_at DESC
-        `,
-        [employee.tenant_id, employee.id],
-      );
-
-      if (credentials.rowCount === 0) {
-        throw Object.assign(new Error('Invalid passkey sign in.'), { statusCode: 401 });
-      }
-
-      const authenticationOptions = await generateAuthenticationOptions({
-        rpID,
-        timeout: 60_000,
-        userVerification: 'required',
-        allowCredentials: credentials.rows.map((credentialRow) => ({
-          id: credentialRow.credential_id,
-          transports: credentialRow.transports || undefined,
-        })),
-      });
-
-      await storeWebAuthnChallenge(
-        client,
-        employee.tenant_id,
-        employee.id,
-        authenticationOptions.challenge,
-        'authentication',
-      );
-
-      return authenticationOptions;
+    const options = await generateAuthenticationOptions({
+      rpID,
+      timeout: 60_000,
+      userVerification: 'required',
+      // Keep the public response independent of account/passkey existence.
+      // Discoverable credentials let the authenticator select the credential.
+      allowCredentials: [],
     });
+
+    if (employee) {
+      await withTenant(employee.tenant_id, async (client) => {
+        const credentials = await client.query(
+          `SELECT 1 FROM user_webauthn_credentials
+            WHERE tenant_id = $1 AND employee_id = $2
+            LIMIT 1`,
+          [employee.tenant_id, employee.id],
+        );
+        if (credentials.rowCount > 0) {
+          await storeWebAuthnChallenge(
+            client,
+            employee.tenant_id,
+            employee.id,
+            options.challenge,
+            'authentication',
+          );
+        }
+      });
+    }
 
     res.json({ success: true, options });
   } catch (error) {
     if (Number((error as { statusCode?: number }).statusCode) === 401) {
-      recordFailedLogin(loginRateLimitKey);
+      recordLoginFailures(loginRateLimitKeys);
     }
 
     console.error('[Passkeys] Failed to create login options:', error);
@@ -2976,8 +2981,8 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
   }
 
   const normalizedEmail = normalizedPasskeyEmail.value;
-  const loginRateLimitKey = getLoginRateLimitKey(req, normalizedEmail);
-  const rateLimit = checkLoginRateLimit(loginRateLimitKey);
+  const loginRateLimitKeys = getLoginRateLimitKeys(req, normalizedEmail);
+  const rateLimit = checkLoginRateLimits(loginRateLimitKeys);
 
   if (rateLimit.locked) {
     return res.status(429).json({
@@ -2994,7 +2999,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
 
     const employee = await fetchAuthEmployeeByEmail(normalizedEmail);
     if (!employee) {
-      recordFailedLogin(loginRateLimitKey);
+      recordLoginFailures(loginRateLimitKeys);
       return res.status(401).json({ success: false, error: 'Invalid passkey sign in.' });
     }
 
@@ -3076,11 +3081,11 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
       return employee;
     });
 
-    clearFailedLogins(loginRateLimitKey);
+    clearLoginRateLimits(loginRateLimitKeys);
     await createAuthSession(loginUser, res);
     res.json({ success: true, user: formatAuthUser(loginUser) });
   } catch (error) {
-    recordFailedLogin(loginRateLimitKey);
+    recordLoginFailures(loginRateLimitKeys);
     console.error('[Passkeys] Failed to verify login:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
@@ -4623,8 +4628,18 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
           });
         }
 
-        console.warn('[Clock-In] Falling back to demo attendance store.');
+        return res.status(503).json({
+          success: false,
+          error: 'Attendance service is temporarily unavailable. Please try again.',
+        });
       }
+    }
+
+    if (!isDemoEnvironment()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Attendance service is temporarily unavailable. Please try again.',
+      });
     }
 
     const demoClockIn = recordDemoClockIn(tenantId, employeeId, clockedIn);
@@ -4998,6 +5013,12 @@ app.get('/api/clock-status', demoAuthWhenDatabaseConfigured, async (req, res) =>
 
   try {
     if (!hasDatabaseConfig()) {
+      if (!isDemoEnvironment()) {
+        return res.status(503).json({
+          success: false,
+          error: 'Attendance service is temporarily unavailable. Please try again.',
+        });
+      }
       const openLog = demoOpenTimeLogs.get(getAttendanceKey(tenantId, employeeId));
       return res.json({
         success: true,
@@ -5035,7 +5056,7 @@ app.get('/api/clock-status', demoAuthWhenDatabaseConfigured, async (req, res) =>
     });
   } catch (error) {
     console.error('[Clock-Status] Failed to load active shift:', error);
-    res.status(500).json({ success: false, error: 'Unable to load clock status.' });
+    res.status(503).json({ success: false, error: 'Attendance service is temporarily unavailable. Please try again.' });
   }
 });
 
@@ -5055,6 +5076,12 @@ app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
     const clockOutTime = new Date();
 
     if (!hasDatabaseConfig()) {
+      if (!isDemoEnvironment()) {
+        return res.status(503).json({
+          success: false,
+          error: 'Attendance service is temporarily unavailable. Please try again.',
+        });
+      }
       const demoClockOut = recordDemoClockOut(tenantId, employeeId);
       return res.status(demoClockOut.status).json(demoClockOut.body);
     }
@@ -5121,9 +5148,10 @@ app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
   } catch (error) {
     console.error('[Clock-Out] Failed to record clock-out:', error);
 
-    console.warn('[Clock-Out] Falling back to demo attendance store.');
-    const demoClockOut = recordDemoClockOut(tenantId, employeeId);
-    res.status(demoClockOut.status).json(demoClockOut.body);
+    res.status(503).json({
+      success: false,
+      error: 'Attendance service is temporarily unavailable. Please try again.',
+    });
   }
 });
 
@@ -5849,47 +5877,68 @@ if (!status) {
 
     try {
       const leaveRequest = await withTenant(tenantId, async (client) => {
+        const current = await client.query<{ id: string; employee_id: string; status: string }>(
+          `SELECT id, employee_id, status
+             FROM leave_requests
+            WHERE tenant_id = $1 AND id = $2
+            FOR UPDATE`,
+          [tenantId, id],
+        );
+        if (!current.rows[0]) {
+          throw Object.assign(new Error('Leave request not found'), { statusCode: 404 });
+        }
+        if (current.rows[0].status !== 'pending') {
+          throw Object.assign(new Error('Leave request has already been decided.'), { statusCode: 409 });
+        }
+
         const result = await client.query<{ id: string; employee_id: string; status: string }>(
-`
-  UPDATE leave_requests
-  SET
-    status = $3::varchar,
-    approved_by = CASE 
-      WHEN $3::varchar = 'approved' THEN $2
-      ELSE approved_by
-    END,
-    updated_at = NOW()
-  WHERE tenant_id = $1
-    AND id = $4
-  RETURNING id, employee_id, status
-`,
+          `UPDATE leave_requests
+              SET status = $3::varchar,
+                  approved_by = CASE WHEN $3::varchar = 'approved' THEN $2 ELSE approved_by END,
+                  updated_at = NOW()
+            WHERE tenant_id = $1 AND id = $4 AND status = 'pending'
+            RETURNING id, employee_id, status`,
           [tenantId, actorEmployeeId, status, id],
         );
+        const row = result.rows[0];
+        if (!row) {
+          throw Object.assign(new Error('Leave request was changed concurrently.'), { statusCode: 409 });
+        }
 
-        return result.rows[0];
+        const setting = await client.query<{ enabled: boolean }>(
+          `SELECT enabled FROM user_notification_settings
+            WHERE tenant_id = $1 AND employee_id = $2
+              AND channel = 'in_app' AND notification_key = 'leave_updates'
+            LIMIT 1`,
+          [tenantId, row.employee_id],
+        );
+        if (setting.rows[0]?.enabled !== false) {
+          await client.query(
+            `INSERT INTO outbox_events (tenant_id, event_type, payload)
+             VALUES ($1, 'notification.leave_updated', $2::jsonb)`,
+            [tenantId, JSON.stringify({
+              notificationKey: 'leave_updates',
+              leaveRequestId: row.id,
+              recipientEmployeeIds: [row.employee_id],
+              title: status === 'approved' ? 'Leave approved' : status === 'rejected' ? 'Leave rejected' : 'Leave cancelled',
+              status,
+            })],
+          );
+        }
+        await client.query(
+          `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+           VALUES ($1, $2, 'leave_status_changed', 'leave_request', $3, $4::jsonb)`,
+          [tenantId, actorEmployeeId, row.id, JSON.stringify({ employeeId: row.employee_id, status })],
+        );
+        return row;
       });
-
-      if (!leaveRequest) {
-        return res.status(404).json({ error: 'Leave request not found' });
-      }
-
-      await enqueueBestEffort(
-        'leave status audit log',
-        () => enqueueAuditLog({
-          tenantId,
-          actorEmployeeId,
-          action: 'leave_status_changed',
-          entityType: 'leave_request',
-          entityId: leaveRequest.id,
-          metadata: {
-            employeeId: leaveRequest.employee_id,
-            status: leaveRequest.status,
-          },
-        }),
-      );
 
       res.json({ success: true, leaveRequest });
     } catch (error) {
+      const typed = error as { statusCode?: number; message?: string };
+      if (typed.statusCode === 404 || typed.statusCode === 409) {
+        return res.status(typed.statusCode).json({ success: false, error: typed.message });
+      }
       console.error('[Leave] Failed to update leave request status:', error);
       res.status(500).json({ error: 'Unable to update leave request status' });
     }
@@ -7996,7 +8045,8 @@ app.get(
               company_feed_posts.id,
               company_feed_posts.author_employee_id,
               author.full_name AS author_name,
-              author.email AS author_email,
+              author.role AS author_role,
+              author.profile_image_url AS author_avatar_url,
               company_feed_posts.title,
               company_feed_posts.post_type,
               company_feed_posts.content_text,
@@ -8072,6 +8122,8 @@ app.get(
               company_feed_posts.author_employee_id,
               author.full_name AS author_name,
               author.email AS author_email,
+              author.role AS author_role,
+              author.profile_image_url AS author_avatar_url,
               company_feed_posts.title,
               company_feed_posts.post_type,
               company_feed_posts.content_text,
@@ -8101,7 +8153,7 @@ app.get(
               ON company_feed_visibility.post_id = company_feed_posts.id
              AND company_feed_visibility.tenant_id = company_feed_posts.tenant_id
             WHERE company_feed_posts.tenant_id = $1
-            GROUP BY company_feed_posts.id, author.full_name, author.email
+            GROUP BY company_feed_posts.id, author.full_name, author.email, author.role, author.profile_image_url
             ORDER BY company_feed_posts.created_at DESC
             LIMIT 100
           `,

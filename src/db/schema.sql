@@ -83,6 +83,28 @@ ADD COLUMN IF NOT EXISTS job_title VARCHAR(120);
 ALTER TABLE employees
 ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
 
+-- Employment lifecycle fields used by permission-aware reviewer selection.
+-- Existing employees remain active when this is applied.
+ALTER TABLE employees
+ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+ALTER TABLE employees
+ADD COLUMN IF NOT EXISTS employment_status VARCHAR(30) NOT NULL DEFAULT 'active';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'employees_employment_status_chk'
+    ) THEN
+        ALTER TABLE employees
+        ADD CONSTRAINT employees_employment_status_chk
+        CHECK (employment_status IN ('active', 'terminated', 'archived'));
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS employees_tenant_reviewer_eligibility_idx
+ON employees(tenant_id, is_active, employment_status, role);
+
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS employee_tenant_isolation ON employees;

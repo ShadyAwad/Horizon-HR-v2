@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export const CREATE_WORKSPACE_DRAFT_KEY = 'stanza.create-workspace-draft.v2';
-const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const CREATE_WORKSPACE_DRAFT_KEY = 'stanza.create-workspace-draft.v3';
+const LEGACY_CREATE_WORKSPACE_DRAFT_PREFIX = 'stanza.create-workspace-draft.v2';
+const CREATE_WORKSPACE_FLOW_KEY = 'stanza.create-workspace-flow';
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type CreateWorkspaceDraftData = {
   companyName: string;
@@ -32,7 +34,7 @@ export type CreateWorkspaceDraftData = {
 };
 
 type CreateWorkspaceDraftV1 = {
-  version: 2;
+  version: 3;
   updatedAt: string;
   currentStep: number;
   data: CreateWorkspaceDraftData;
@@ -40,14 +42,10 @@ type CreateWorkspaceDraftV1 = {
 
 type DraftStatus = 'idle' | 'saving' | 'saved' | 'restored' | 'unavailable';
 
-function isFiniteCoordinate(value: unknown, min: number, max: number) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
-}
-
 function isValidDraft(value: unknown): value is CreateWorkspaceDraftV1 {
   if (!value || typeof value !== 'object') return false;
   const draft = value as Partial<CreateWorkspaceDraftV1>;
-  if (draft.version !== 2 || typeof draft.updatedAt !== 'string' || !draft.data || typeof draft.currentStep !== 'number') return false;
+  if (draft.version !== 3 || typeof draft.updatedAt !== 'string' || !draft.data || typeof draft.currentStep !== 'number') return false;
   const updatedAt = new Date(draft.updatedAt).getTime();
   if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > DRAFT_TTL_MS) return false;
   const data = draft.data;
@@ -59,8 +57,9 @@ function isValidDraft(value: unknown): value is CreateWorkspaceDraftV1 {
     && typeof data.allowsLoans === 'boolean'
     && Array.isArray(data.locations)
     && Array.isArray(data.customRoles)
-    && (data.lat === null || isFiniteCoordinate(data.lat, -90, 90))
-    && (data.lng === null || isFiniteCoordinate(data.lng, -180, 180))
+    // Exact geofence coordinates are intentionally never persisted in browser storage.
+    && data.lat === null
+    && data.lng === null
     && typeof data.radius === 'number' && data.radius >= 25 && data.radius <= 5000
     && Number.isInteger(data.selectedLocationIndex)
     && typeof data.welcomeEmailOptions?.sendWelcomeEmail === 'boolean'
@@ -73,8 +72,8 @@ function isValidDraft(value: unknown): value is CreateWorkspaceDraftV1 {
       && ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'].includes(location.locationType)
       && typeof location.isPrimary === 'boolean'
       && typeof location.radius === 'number' && location.radius >= 25 && location.radius <= 5000
-      && (location.lat === null || isFiniteCoordinate(location.lat, -90, 90))
-      && (location.lng === null || isFiniteCoordinate(location.lng, -180, 180))
+      && location.lat === null
+      && location.lng === null
     ))
     && data.customRoles.every((role) => role && typeof role.name === 'string' && typeof role.description === 'string');
 }
@@ -87,15 +86,23 @@ function safeStorage() {
   }
 }
 
+function removeLegacyDrafts(storage: Storage | null) {
+  if (!storage) return;
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index);
+    if (key?.startsWith(LEGACY_CREATE_WORKSPACE_DRAFT_PREFIX)) storage.removeItem(key);
+  }
+}
+
 function getDraftKey() {
   const storage = safeStorage();
   if (!storage) return CREATE_WORKSPACE_DRAFT_KEY;
-  let flowId = storage.getItem('stanza.create-workspace-flow');
+  let flowId = storage.getItem(CREATE_WORKSPACE_FLOW_KEY);
   if (!flowId) {
     flowId = typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    storage.setItem('stanza.create-workspace-flow', flowId);
+    storage.setItem(CREATE_WORKSPACE_FLOW_KEY, flowId);
   }
   return `${CREATE_WORKSPACE_DRAFT_KEY}.${flowId}`;
 }
@@ -109,18 +116,24 @@ export function useCreateWorkspaceDraft() {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
     latestRef.current = null;
-    try { safeStorage()?.removeItem(getDraftKey()); } catch { /* storage can be unavailable */ }
+    try {
+      const storage = safeStorage();
+      storage?.removeItem(getDraftKey());
+      storage?.removeItem(CREATE_WORKSPACE_FLOW_KEY);
+    } catch { /* storage can be unavailable */ }
     setStatus('idle');
   }, []);
 
   const restoreDraft = useCallback(() => {
     try {
       const storage = safeStorage();
+      removeLegacyDrafts(storage);
       const raw = storage?.getItem(getDraftKey());
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
       if (!isValidDraft(parsed)) {
         storage?.removeItem(getDraftKey());
+        storage?.removeItem(CREATE_WORKSPACE_FLOW_KEY);
         return null;
       }
       latestRef.current = parsed;
@@ -136,7 +149,13 @@ export function useCreateWorkspaceDraft() {
     const draft = latestRef.current;
     if (!draft) return;
     try {
-      safeStorage()?.setItem(getDraftKey(), JSON.stringify(draft));
+      const persistableData: CreateWorkspaceDraftData = {
+        ...draft.data,
+        lat: null,
+        lng: null,
+        locations: draft.data.locations.map((location) => ({ ...location, lat: null, lng: null })),
+      };
+      safeStorage()?.setItem(getDraftKey(), JSON.stringify({ ...draft, data: persistableData }));
       setStatus('saved');
     } catch {
       setStatus('unavailable');
@@ -144,7 +163,7 @@ export function useCreateWorkspaceDraft() {
   }, []);
 
   const saveDraft = useCallback((currentStep: number, data: CreateWorkspaceDraftData, immediate = false) => {
-    latestRef.current = { version: 2, updatedAt: new Date().toISOString(), currentStep, data };
+    latestRef.current = { version: 3, updatedAt: new Date().toISOString(), currentStep, data };
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     if (immediate) {
       flush();

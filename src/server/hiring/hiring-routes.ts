@@ -61,6 +61,24 @@ const assertUuid = (value: unknown, code = 'HIRING_APPLICANT_NOT_FOUND') => {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw fail(404, code, 'Hiring record not found.');
   return value;
 };
+const eligibleReviewerWhere = `
+  e.tenant_id = $1
+  AND e.is_active = true
+  AND e.employment_status = 'active'
+  AND EXISTS (
+    SELECT 1
+    FROM employee_role_assignments era
+    JOIN tenant_roles tr
+      ON tr.tenant_id = era.tenant_id
+     AND tr.id = era.role_id
+     AND tr.is_active = true
+    JOIN tenant_role_permissions trp
+      ON trp.tenant_id = tr.tenant_id
+     AND trp.role_id = tr.id
+    WHERE era.tenant_id = e.tenant_id
+      AND era.employee_id = e.id
+      AND trp.permission_key = 'hiring.view'
+  )`;
 
 export function registerHiringRoutes(app: express.Express, { demoAuth, requirePermission }: HiringRouteDependencies) {
   app.get('/api/hiring/reviewers', demoAuth, requirePermission('hiring.assign'), async (req, res) => {
@@ -70,10 +88,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         SELECT e.id, e.full_name AS "displayName", e.role, e.job_title AS "roleLabel",
           COALESCE(array_remove(array_agg(DISTINCT trp.permission_key), NULL), ARRAY[]::varchar[]) AS permissions
         FROM employees e
-        JOIN employee_role_assignments era ON era.tenant_id=e.tenant_id AND era.employee_id=e.id
-        JOIN tenant_roles tr ON tr.tenant_id=era.tenant_id AND tr.id=era.role_id AND tr.is_active=true
-        JOIN tenant_role_permissions trp ON trp.tenant_id=tr.tenant_id AND trp.role_id=tr.id
-        WHERE e.tenant_id=$1 AND trp.permission_key='hiring.view'
+        WHERE ${eligibleReviewerWhere}
         GROUP BY e.id ORDER BY e.full_name`, [tenantId])).rows);
       res.json({ success: true, reviewers });
     } catch (error) { handleError(res, error, 'Failed to load reviewers'); }
@@ -202,7 +217,13 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
       const result = await withTenant(tenantId, async (client) => {
         const applicant = (await client.query(`SELECT * FROM hiring_applicants WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId, id])).rows[0];
         if (!applicant) throw fail(404, 'HIRING_APPLICANT_NOT_FOUND', 'Applicant not found.');
-        const reviewer = (await client.query(`SELECT e.id FROM employees e WHERE e.tenant_id=$1 AND e.id=$2 AND EXISTS(SELECT 1 FROM employee_role_assignments era JOIN tenant_roles tr ON tr.tenant_id=era.tenant_id AND tr.id=era.role_id AND tr.is_active=true JOIN tenant_role_permissions trp ON trp.tenant_id=tr.tenant_id AND trp.role_id=tr.id WHERE era.tenant_id=e.tenant_id AND era.employee_id=e.id AND trp.permission_key='hiring.view')`, [tenantId, reviewerId])).rows[0];
+        const reviewer = (await client.query(
+          `SELECT e.id
+             FROM employees e
+            WHERE e.id = $2 AND ${eligibleReviewerWhere}
+            FOR UPDATE`,
+          [tenantId, reviewerId],
+        )).rows[0];
         if (!reviewer) throw fail(422, 'HIRING_REVIEWER_INELIGIBLE', 'Reviewer is not eligible for Hiring review.');
         if (target !== undefined && (!isHiringStage(target) || !canTransitionHiringStage(applicant.stage, target, permissions))) throw fail(409, 'HIRING_INVALID_TRANSITION', 'Target stage is not allowed.');
         if ((await client.query(`SELECT 1 FROM hiring_handoffs WHERE tenant_id=$1 AND applicant_id=$2 AND to_user_id=$3 AND status='pending'`, [tenantId, id, reviewerId])).rowCount) throw fail(409, 'HIRING_HANDOFF_ALREADY_PENDING', 'A pending handoff already exists for this reviewer.');

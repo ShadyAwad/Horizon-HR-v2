@@ -1112,24 +1112,17 @@ const [formData, setFormData] = useState<{
         if (data.user?.id && data.user?.tenantId) clearDraft();
         onSignupComplete(data.user);
       } else {
-        const duplicateEmail = data.code === 'EMAIL_UNAVAILABLE';
-        const duplicateWorkspace = data.code === 'WORKSPACE_UNAVAILABLE';
+        const registrationUnavailable = data.code === 'REGISTRATION_UNAVAILABLE';
         const rateLimited = data.code === 'RATE_LIMITED';
-        const fieldErrors = duplicateEmail
-          ? { adminEmail: t('signup.emailUnavailable') }
-          : duplicateWorkspace
-            ? { tenantSlug: t('signup.workspaceUnavailable') }
-            : data.fields || {};
+        const fieldErrors = registrationUnavailable
+          ? { form: data.message || t('signup.registerError') }
+          : data.fields || {};
 
         setRegisterFieldErrors(fieldErrors);
         setFormError(
-          duplicateEmail
-            ? t('signup.emailUnavailable')
-            : duplicateWorkspace
-              ? t('signup.workspaceUnavailable')
-              : rateLimited
-                ? t('signup.rateLimited')
-              : data.message || data.error || t('signup.registerError'),
+          rateLimited
+            ? t('signup.rateLimited')
+            : data.message || data.error || t('signup.registerError'),
         );
         setIsSubmitting(false);
       }
