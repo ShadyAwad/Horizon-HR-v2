@@ -1,6 +1,7 @@
 import 'dotenv/config';
+import bcrypt from 'bcryptjs';
 import { getDbPool } from '../src/lib/hr-background';
-import { assertHttpMutationSafety } from './mutation-safety';
+import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
 
 type JsonObject = Record<string, any>;
 type Session = { id: string; tenantId: string; sessionCookie?: string; role: string };
@@ -10,6 +11,12 @@ const password = process.env.HIRING_TEST_PASSWORD || process.env.DEMO_PASSWORD;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const applicantEmail = `hiring-smoke-${runId}@example.com`;
 const passed: string[] = [];
+const isolationFixture = {
+  slug: 'stanza-hiring-integration-isolation',
+  companyName: 'Stanza Hiring Integration Isolation',
+  email: 'hiring-integration-reader@stanza.test',
+  roleName: 'Hiring Integration Reader',
+} as const;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -40,6 +47,86 @@ async function login(email: string): Promise<Session> {
   return { ...body.user, sessionCookie };
 }
 
+async function setupOtherTenantHiringFixture(
+  pool: ReturnType<typeof getDbPool>,
+): Promise<{ tenantId: string; email: string }> {
+  assert(password, 'Set HIRING_TEST_PASSWORD or DEMO_PASSWORD; no default credential is used.');
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const tenant = await client.query<{ id: string }>(
+      `INSERT INTO tenants (slug, company_name)
+       VALUES ($1, $2)
+       ON CONFLICT (slug) DO UPDATE SET company_name = EXCLUDED.company_name, updated_at = NOW()
+       RETURNING id`,
+      [isolationFixture.slug, isolationFixture.companyName],
+    );
+    const tenantId = tenant.rows[0].id;
+    const role = await client.query<{ id: string }>(
+      `INSERT INTO tenant_roles (tenant_id, name, description, is_system, is_active)
+       VALUES ($1, $2, 'Dedicated cross-tenant Hiring integration-test role.', false, true)
+       ON CONFLICT (tenant_id, name) DO UPDATE
+       SET description = EXCLUDED.description, is_active = true, updated_at = NOW()
+       RETURNING id`,
+      [tenantId, isolationFixture.roleName],
+    );
+    const passwordHash = bcrypt.hashSync(password, 12);
+    const employee = await client.query<{ id: string }>(
+      `INSERT INTO employees (tenant_id, email, full_name, password_hash, role, job_title, is_active, employment_status)
+       VALUES ($1, $2, 'Hiring Integration Reader', $3, 'employee', 'Integration Test Reader', true, 'active')
+       ON CONFLICT (email, tenant_id) DO UPDATE
+       SET full_name = EXCLUDED.full_name,
+           password_hash = EXCLUDED.password_hash,
+           role = EXCLUDED.role,
+           job_title = EXCLUDED.job_title,
+           is_active = true,
+           employment_status = 'active',
+           updated_at = NOW()
+       RETURNING id`,
+      [tenantId, isolationFixture.email, passwordHash],
+    );
+    const permission = await client.query(
+      `INSERT INTO tenant_role_permissions (tenant_id, role_id, permission_key)
+       SELECT $1, $2, permission_key
+       FROM tenant_permissions
+       WHERE permission_key = 'hiring.view'
+       ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
+       RETURNING permission_key`,
+      [tenantId, role.rows[0].id],
+    );
+    if (permission.rowCount === 0) {
+      const existingPermission = await client.query(
+        `SELECT 1 FROM tenant_role_permissions
+         WHERE tenant_id = $1 AND role_id = $2 AND permission_key = 'hiring.view'`,
+        [tenantId, role.rows[0].id],
+      );
+      assert(existingPermission.rowCount === 1, 'Hiring permission is unavailable for the integration fixture.');
+    }
+    await client.query(
+      `INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, employee_id, role_id) DO NOTHING`,
+      [tenantId, employee.rows[0].id, role.rows[0].id],
+    );
+    await client.query('COMMIT');
+    return { tenantId, email: isolationFixture.email };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function cleanupOtherTenantHiringFixture(pool: ReturnType<typeof getDbPool>, tenantId: string) {
+  await pool.query(
+    `DELETE FROM tenants
+     WHERE id = $1 AND slug = $2 AND company_name = $3`,
+    [tenantId, isolationFixture.slug, isolationFixture.companyName],
+  );
+}
+
 async function expectStatus(label: string, expected: number, request: Promise<{ response: Response; body: JsonObject }>) {
   const result = await request;
   assert(result.response.status === expected, `${label}: expected ${expected}, received ${result.response.status} (${result.body.code || result.body.error || 'no error'})`);
@@ -50,6 +137,7 @@ async function expectStatus(label: string, expected: number, request: Promise<{ 
 async function main() {
   console.log(`Stanza Hiring integration test: ${baseUrl}`);
   assert(password, 'Set HIRING_TEST_PASSWORD or DEMO_PASSWORD; no default credential is used.');
+  assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Hiring integration test');
   const admin = await login(process.env.HIRING_TEST_ADMIN_EMAIL || 'admin@stanza-demo.com');
   const manager = await login(process.env.HIRING_TEST_MANAGER_EMAIL || 'manager@stanza-demo.com');
   const employee = await login(process.env.HIRING_TEST_EMPLOYEE_EMAIL || 'employee@stanza-demo.com');
@@ -190,12 +278,13 @@ async function main() {
   assert(new Set(rlsPolicies.rows.map((row) => row.table_name)).size === 4, 'One or more Hiring tables lack tenant RLS policy enforcement.');
   pass('All Hiring tables have app.current_tenant RLS policies');
 
-  const otherEmployee = await pool.query<{ id: string; tenant_id: string; role: string }>("SELECT id,tenant_id,role FROM employees WHERE tenant_id <> $1 AND role='hr_admin' LIMIT 1", [admin.tenantId]);
-  if (otherEmployee.rows[0]) {
-    const otherSession: Session = { id: otherEmployee.rows[0].id, tenantId: otherEmployee.rows[0].tenant_id, role: otherEmployee.rows[0].role };
-    await expectStatus('Other tenant cannot read applicant', 404, api(`/api/hiring/applicants/${applicantId}`, otherSession));
-  } else {
-    console.log('SKIP  Cross-tenant API read (no second tenant employee exists)');
+  const otherTenantFixture = await setupOtherTenantHiringFixture(pool);
+  try {
+    assert(otherTenantFixture.tenantId !== admin.tenantId, 'Cross-tenant fixture belongs to the primary tenant.');
+    const otherTenantSession = await login(otherTenantFixture.email);
+    await expectStatus('Other tenant cannot read applicant', 404, api(`/api/hiring/applicants/${applicantId}`, otherTenantSession));
+  } finally {
+    await cleanupOtherTenantHiringFixture(pool, otherTenantFixture.tenantId);
   }
 
   await expectStatus('Applicant soft archive succeeds', 200, api(`/api/hiring/applicants/${applicantId}/archive`, admin, { method: 'POST' }));
