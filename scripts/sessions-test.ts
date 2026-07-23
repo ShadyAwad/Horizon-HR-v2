@@ -17,7 +17,8 @@ async function request(path: string, init: RequestInit = {}) {
 }
 
 async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
-  const result = await request('/api/auth/demo-session', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ role }) });
+  const email = { hr_admin: 'admin@stanza-demo.com', manager: 'manager@stanza-demo.com', employee: 'employee@stanza-demo.com' }[role];
+  const result = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD || 'StrongPass!123' }) });
   assert(result.response.status === 200, `${role} session setup failed (${result.response.status}). Run against explicit demo mode.`);
   const cookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];
   assert(cookie && /HttpOnly/i.test(result.response.headers.get('set-cookie') || ''), 'Session cookie was not HttpOnly.');

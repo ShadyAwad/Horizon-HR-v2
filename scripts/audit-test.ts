@@ -26,10 +26,11 @@ async function api(path: string, init: RequestInit = {}) {
 }
 
 async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
-  const result = await api('/api/auth/demo-session', {
+  const email = { hr_admin: 'admin@stanza-demo.com', manager: 'manager@stanza-demo.com', employee: 'employee@stanza-demo.com' }[role];
+  const result = await api('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: baseUrl },
-    body: JSON.stringify({ role }),
+    body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD || 'StrongPass!123' }),
   });
   assert(result.response.status === 200, `${role} demo session failed with ${result.response.status}.`);
   const cookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];
