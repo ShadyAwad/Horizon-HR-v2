@@ -2,6 +2,7 @@ import type express from 'express';
 import type { PoolClient } from 'pg';
 import { validateEmail } from '../../lib/validation';
 import { withTenant } from '../../lib/hr-background';
+import { recordAuditEvent } from '../audit/audit-events';
 import {
   HIRING_NOTE_TYPES,
   HIRING_NOTE_VISIBILITIES,
@@ -205,7 +206,14 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         const row = (await client.query(`UPDATE hiring_applicants SET stage=$3,updated_by=$4,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING *`, [tenantId, id, target, employeeId])).rows[0];
         await client.query(`INSERT INTO hiring_stage_history(tenant_id,applicant_id,actor_id,previous_stage,new_stage,reason)VALUES($1,$2,$3,$4,$5,$6)`, [tenantId, id, employeeId, current.stage, target, reason]);
         await client.query(`UPDATE hiring_handoffs SET status='completed',completed_at=NOW() WHERE tenant_id=$1 AND applicant_id=$2 AND status IN('pending','acknowledged')`, [tenantId, id]);
-        await audit(client, tenantId, employeeId, 'hiring.stage.changed', 'hiring_applicant', id, { previousStage: current.stage, newStage: target, reason });
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: employeeId,
+          action: 'hiring.stage_changed',
+          targetType: 'hiring_applicant',
+          targetId: id,
+          metadata: { previousStage: current.stage, newStage: target },
+        });
         await outbox(client, tenantId, 'hiring.stage.changed', { applicantId: id, previousStage: current.stage, newStage: target, currentOwnerId: row.current_owner_id });
         if (target === 'final_review') await outbox(client, tenantId, 'hiring.final_decision.requested', { applicantId: id, currentOwnerId: row.current_owner_id });
         return row;

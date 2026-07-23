@@ -48,6 +48,7 @@ import {
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-employees-routes';
 import { registerAuditRoutes } from './src/server/audit/audit-routes';
+import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
   assertPortfolioDemoSessionStartup,
   getPortfolioDemoSessionConfig,
@@ -482,11 +483,47 @@ async function createAuthSession(
 async function revokeAuthSession(req: express.Request, res: express.Response) {
   const token = getCookie(req, AUTH_SESSION_COOKIE);
   if (token) {
-    await getDbPool().query(
-      `UPDATE auth_sessions SET revoked_at = NOW()
-       WHERE session_token_hash = $1 AND revoked_at IS NULL`,
-      [hashSessionToken(token)],
-    );
+    const client = await getDbPool().connect();
+    try {
+      await client.query('BEGIN');
+      const sessionResult = await client.query<{
+        id: string;
+        tenant_id: string;
+        employee_id: string;
+      }>(
+        `SELECT id, tenant_id, employee_id
+           FROM auth_sessions
+          WHERE session_token_hash = $1
+            AND revoked_at IS NULL
+          FOR UPDATE`,
+        [hashSessionToken(token)],
+      );
+      const session = sessionResult.rows[0];
+      if (session) {
+        await client.query(
+          `UPDATE auth_sessions SET revoked_at = NOW() WHERE id = $1`,
+          [session.id],
+        );
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1, true)`,
+          [session.tenant_id],
+        );
+        await recordAuditEvent(client, {
+          tenantId: session.tenant_id,
+          actorId: session.employee_id,
+          action: 'auth.session.revoked',
+          targetType: 'auth_session',
+          targetId: session.id,
+          metadata: { revocationType: 'logout' },
+        });
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
   clearAuthSessionCookie(req, res);
 }
@@ -4119,20 +4156,18 @@ app.post(
           [tenantId, employeeId, roleId, actorEmployeeId],
         );
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            privilegedTarget ? 'privileged_role_assigned' : 'employee_role_assigned',
-            'employee',
-            employeeId,
-            JSON.stringify({ roleId, roleName: tenantRole.name, systemKey: tenantRole.system_key, privileged: privilegedTarget }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: privilegedTarget ? 'employee.role.privileged_assigned' : 'employee.role.assigned',
+          targetType: 'employee',
+          targetId: employeeId,
+          metadata: {
+            roleName: tenantRole.name,
+            systemKey: tenantRole.system_key,
+            privileged: privilegedTarget,
+          },
+        });
 
         await client.query(
           `UPDATE auth_sessions SET revoked_at = NOW()
@@ -4231,20 +4266,18 @@ app.delete(
 
         if (!deleteResult.rows[0]) return null;
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            privilegedRemoval ? 'privileged_role_removed' : 'employee_role_removed',
-            'employee',
-            employeeId,
-            JSON.stringify({ roleId, roleName: tenantRole?.name, systemKey: tenantRole?.system_key, privileged: privilegedRemoval }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: privilegedRemoval ? 'employee.role.privileged_removed' : 'employee.role.removed',
+          targetType: 'employee',
+          targetId: employeeId,
+          metadata: {
+            roleName: tenantRole?.name,
+            systemKey: tenantRole?.system_key,
+            privileged: privilegedRemoval,
+          },
+        });
 
         await client.query(
           `UPDATE auth_sessions SET revoked_at = NOW()
@@ -5001,32 +5034,19 @@ app.post(
 
         const created = result.rows[0];
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'company_location_created',
-            'company_location',
-            created.id,
-            JSON.stringify({
-              name: location.name,
-              locationType: location.locationType,
-              radius: location.radiusMeters,
-              isPrimary: location.isPrimary,
-            }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: 'geofence.created',
+          targetType: 'company_location',
+          targetId: created.id,
+          metadata: {
+            name: location.name,
+            locationType: location.locationType,
+            radius: location.radiusMeters,
+            isPrimary: location.isPrimary,
+          },
+        });
 
         return created;
       });
@@ -5160,33 +5180,20 @@ app.patch(
 
         const updated = result.rows[0];
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'company_location_updated',
-            'company_location',
-            id,
-            JSON.stringify({
-              name: location.name,
-              locationType: location.locationType,
-              radius: location.radiusMeters,
-              isPrimary: location.isPrimary,
-              isActive: location.isActive,
-            }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: 'geofence.updated',
+          targetType: 'company_location',
+          targetId: id,
+          metadata: {
+            name: location.name,
+            locationType: location.locationType,
+            radius: location.radiusMeters,
+            isPrimary: location.isPrimary,
+            isActive: location.isActive,
+          },
+        });
 
         return updated;
       });
@@ -6387,33 +6394,18 @@ app.put(
 
         const insertedProfile = insertResult.rows[0];
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'employee_compensation_updated',
-            'employee_compensation_profile',
-            insertedProfile.id,
-            JSON.stringify({
-              employeeId: targetEmployeeId,
-              payType,
-              baseAmount: normalizedBaseAmount,
-              currency: profileCurrency,
-              effectiveFrom: normalizedEffectiveFrom,
-            }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: 'employee.salary.updated',
+          targetType: 'employee',
+          targetId: targetEmployeeId,
+          metadata: {
+            payType,
+            currency: profileCurrency,
+            effectiveFrom: normalizedEffectiveFrom,
+          },
+        });
 
         return insertedProfile;
       });
@@ -7063,33 +7055,24 @@ app.patch(
 
         const updatedRecord = updateResult.rows[0];
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'payroll_status_updated',
-            'payroll_record',
-            id,
-            JSON.stringify({
-              previousStatus: existingRecord.status,
-              newStatus: status,
-              employeeId: existingRecord.employee_id,
-              payPeriodStart: existingRecord.pay_period_start,
-              payPeriodEnd: existingRecord.pay_period_end,
-            }),
-          ],
-        );
+        const payrollAuditAction = status === 'approved'
+          ? 'payroll.approved'
+          : status === 'paid'
+            ? 'payroll.paid'
+            : 'payroll.cancelled';
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: payrollAuditAction,
+          targetType: 'payroll_record',
+          targetId: id,
+          metadata: {
+            previousStatus: existingRecord.status,
+            newStatus: status,
+            payPeriodStart: existingRecord.pay_period_start,
+            payPeriodEnd: existingRecord.pay_period_end,
+          },
+        });
 
         await client.query(
           `
@@ -7784,31 +7767,17 @@ app.patch(
 
         const updatedGrievance = updateResult.rows[0];
 
-        await client.query(
-          `
-            INSERT INTO audit_logs (
-              tenant_id,
-              actor_employee_id,
-              action,
-              entity_type,
-              entity_id,
-              metadata
-            )
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-          `,
-          [
-            tenantId,
-            actorEmployeeId,
-            'grievance_status_updated',
-            'grievance',
-            id,
-            JSON.stringify({
-              previousStatus,
-              newStatus: status,
-              assignedTo: assignedTo ?? updatedGrievance.assigned_to,
-            }),
-          ],
-        );
+        await recordAuditEvent(client, {
+          tenantId,
+          actorId: actorEmployeeId,
+          action: 'grievance.status_changed',
+          targetType: 'grievance',
+          targetId: id,
+          metadata: {
+            previousStatus,
+            newStatus: status,
+          },
+        });
 
         return updatedGrievance;
       });
