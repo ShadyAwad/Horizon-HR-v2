@@ -356,6 +356,7 @@ declare global {
   namespace Express {
     interface Request {
       authUser?: AuthenticatedUser;
+      authSessionId?: string;
     }
   }
 }
@@ -385,6 +386,41 @@ function getRequestIp(req: express.Request) {
   const address = req.ip || req.socket.remoteAddress || 'unknown';
   const normalized = address.replace(/^::ffff:/i, '').toLowerCase();
   return normalized === '::1' ? '127.0.0.1' : normalized;
+}
+
+function maskSessionIp(ip: string) {
+  if (!ip || ip === 'unknown') return 'IP unavailable';
+  if (ip.includes(':')) {
+    const segments = ip.split(':').filter(Boolean);
+    return segments.length >= 2 ? `${segments.slice(0, 2).join(':')}::/64` : 'IPv6 network';
+  }
+  const octets = ip.split('.');
+  return octets.length === 4 ? `${octets[0]}.${octets[1]}.${octets[2]}.0/24` : 'IP unavailable';
+}
+
+function getSessionDeviceLabel(req: express.Request) {
+  const userAgent = req.header('user-agent') || '';
+  const browser = /firefox/i.test(userAgent) ? 'Firefox'
+    : /edg\//i.test(userAgent) ? 'Edge'
+      : /chrome|crios/i.test(userAgent) ? 'Chrome'
+        : /safari/i.test(userAgent) ? 'Safari' : 'Browser';
+  const os = /windows/i.test(userAgent) ? 'Windows'
+    : /android/i.test(userAgent) ? 'Android'
+      : /iphone|ipad|ios/i.test(userAgent) ? 'iOS'
+        : /mac os|macintosh/i.test(userAgent) ? 'macOS'
+          : /linux/i.test(userAgent) ? 'Linux' : 'Unknown OS';
+  return `${browser} on ${os}`;
+}
+
+function isSameOriginSessionMutation(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!isSameOriginSessionRequest(req)) {
+    return res.status(403).json({
+      success: false,
+      code: 'CSRF_REJECTED',
+      error: 'Cross-site session actions are not allowed.',
+    });
+  }
+  return next();
 }
 
 function getLoginRateLimitKeys(req: express.Request, normalizedEmail: string) {
@@ -464,18 +500,19 @@ async function createAuthSession(
 ) {
   const token = crypto.randomBytes(32).toString('base64url');
   const pool = getDbPool();
-  // Rotate the account's active sessions on every new authentication so an old
-  // browser session cannot survive a login or privilege-changing re-auth.
   await pool.query(
-    `UPDATE auth_sessions
-     SET revoked_at = NOW()
-     WHERE employee_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
-    [employee.id, employee.tenant_id],
-  );
-  await pool.query(
-    `INSERT INTO auth_sessions (tenant_id, employee_id, session_token_hash, expires_at)
-     VALUES ($1, $2, $3, NOW() + ($4::bigint * INTERVAL '1 millisecond'))`,
-    [employee.tenant_id, employee.id, hashSessionToken(token), AUTH_SESSION_TTL_MS],
+    `INSERT INTO auth_sessions (
+       tenant_id, employee_id, session_token_hash, expires_at, device_label, ip_masked, location_label
+     )
+     VALUES ($1, $2, $3, NOW() + ($4::bigint * INTERVAL '1 millisecond'), $5, $6, 'Location unavailable')`,
+    [
+      employee.tenant_id,
+      employee.id,
+      hashSessionToken(token),
+      AUTH_SESSION_TTL_MS,
+      getSessionDeviceLabel(req),
+      maskSessionIp(getRequestIp(req)),
+    ],
   );
   setAuthSessionCookie(req, res, token);
 }
@@ -532,8 +569,8 @@ async function getAuthSessionIdentity(req: express.Request) {
   const token = getCookie(req, AUTH_SESSION_COOKIE);
   if (!token) return null;
 
-  const result = await getDbPool().query<{ employee_id: string; tenant_id: string }>(
-    `SELECT employee_id, tenant_id
+  const result = await getDbPool().query<{ id: string; employee_id: string; tenant_id: string }>(
+    `SELECT id, employee_id, tenant_id
      FROM auth_sessions
      WHERE session_token_hash = $1
        AND revoked_at IS NULL
@@ -546,8 +583,9 @@ async function getAuthSessionIdentity(req: express.Request) {
 
   await getDbPool().query(
     `UPDATE auth_sessions SET last_used_at = NOW()
-     WHERE session_token_hash = $1`,
-    [hashSessionToken(token)],
+     WHERE id = $1
+       AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '5 minutes')`,
+    [session.id],
   );
   return session;
 }
@@ -1313,6 +1351,7 @@ async function demoAuth(
   next: express.NextFunction
 ) {
   const sessionIdentity = await getAuthSessionIdentity(req);
+  if (sessionIdentity) req.authSessionId = sessionIdentity.id;
   const employeeId = sessionIdentity?.employee_id || (allowDevAuthHeaders() ? req.header('x-employee-id') : undefined);
   const tenantId = sessionIdentity?.tenant_id || (allowDevAuthHeaders() ? req.header('x-tenant-id') : undefined);
 
@@ -1502,6 +1541,18 @@ function requirePermission(permissionKey: string) {
       error: 'You do not have permission to perform this action.',
     });
   };
+}
+
+function requireHrAdminSessionCenter(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  if (!req.authUser) return res.status(401).json({ success: false, error: 'Authentication required.' });
+  if (req.authUser.role !== 'hr_admin' || !authUserHasPermission(req.authUser, 'sessions.manage')) {
+    return res.status(403).json({ success: false, error: 'You do not have permission to manage tenant sessions.' });
+  }
+  return next();
 }
 
 function requireResignationPermission(permissionKey: string, fallbackRoles: EmployeeRole[]) {
@@ -1928,6 +1979,7 @@ async function startServer() {
   const passwordResetConfirmRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 10);
   const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
   const portfolioDemoSessionRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 8);
+  const sessionManagementRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 30);
   const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const feedImageRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 30);
   const avatarUpload = multer({
@@ -2596,6 +2648,149 @@ app.get('/api/auth/session', demoAuth, async (req, res) => {
     console.error('[Auth session] Failed:', error);
     return res.status(503).json({ success: false, error: 'Unable to restore the session.' });
   }
+});
+
+const sessionSelect = `
+  SELECT id, employee_id, tenant_id, device_label, ip_masked, location_label,
+         created_at, last_used_at, expires_at, revoked_at
+    FROM auth_sessions`;
+
+function presentSession(row: Record<string, unknown>, currentSessionId?: string) {
+  const revokedAt = row.revoked_at as string | null;
+  const expiresAt = row.expires_at as string;
+  const expired = !revokedAt && new Date(expiresAt).getTime() <= Date.now();
+  return {
+    id: row.id,
+    isCurrent: row.id === currentSessionId,
+    deviceLabel: row.device_label || 'Unknown device',
+    ipMasked: row.ip_masked || 'IP unavailable',
+    locationLabel: row.location_label || 'Location unavailable',
+    createdAt: row.created_at,
+    lastActiveAt: row.last_used_at,
+    expiresAt,
+    status: revokedAt ? 'revoked' : expired ? 'expired' : 'active',
+  };
+}
+
+app.get('/api/auth/sessions', demoAuth, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const authUser = req.authUser!;
+  const result = await getDbPool().query<Record<string, unknown>>(
+    `${sessionSelect}
+      WHERE tenant_id = $1 AND employee_id = $2
+      ORDER BY (id = $3) DESC, COALESCE(last_used_at, created_at) DESC
+      LIMIT 100`,
+    [authUser.tenantId, authUser.employeeId, req.authSessionId || ''],
+  );
+  return res.json({ success: true, sessions: result.rows.map((row) => presentSession(row, req.authSessionId)) });
+});
+
+app.delete('/api/auth/sessions/:sessionId', sessionManagementRateLimiter, demoAuth, isSameOriginSessionMutation, async (req, res) => {
+  const authUser = req.authUser!;
+  const { sessionId } = req.params;
+  if (!isUuid(sessionId)) return res.status(400).json({ success: false, code: 'SESSION_ID_INVALID', error: 'Invalid session identifier.' });
+  if (sessionId === req.authSessionId) return res.status(409).json({ success: false, code: 'CURRENT_SESSION_PROTECTED', error: 'Use Log Out to end this current session.' });
+
+  const revoked = await withTenant(authUser.tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE id = $1 AND tenant_id = $2 AND employee_id = $3
+          AND revoked_at IS NULL AND expires_at > NOW()
+        RETURNING id`,
+      [sessionId, authUser.tenantId, authUser.employeeId],
+    );
+    if (!result.rows[0]) return false;
+    await recordAuditEvent(client, {
+      tenantId: authUser.tenantId, actorId: authUser.employeeId, action: 'auth.session.revoked',
+      targetType: 'auth_session', targetId: sessionId, metadata: { revocationType: 'self_service' },
+    });
+    return true;
+  });
+  if (!revoked) return res.status(404).json({ success: false, error: 'Session not found.' });
+  return res.json({ success: true, revokedSessionId: sessionId });
+});
+
+app.post('/api/auth/sessions/revoke-others', sessionManagementRateLimiter, demoAuth, isSameOriginSessionMutation, async (req, res) => {
+  const authUser = req.authUser!;
+  const revokedCount = await withTenant(authUser.tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE tenant_id = $1 AND employee_id = $2 AND id <> $3
+          AND revoked_at IS NULL AND expires_at > NOW()
+        RETURNING id`,
+      [authUser.tenantId, authUser.employeeId, req.authSessionId || ''],
+    );
+    await recordAuditEvent(client, {
+      tenantId: authUser.tenantId, actorId: authUser.employeeId, action: 'auth.sessions.revoked_all',
+      targetType: 'auth_session', targetId: req.authSessionId || authUser.employeeId,
+      metadata: { revokedCount: result.rowCount, revocationType: 'self_service' },
+    });
+    return result.rowCount;
+  });
+  return res.json({ success: true, revokedCount });
+});
+
+app.get('/api/hr/session-center', demoAuth, requirePermission('sessions.manage'), requireHrAdminSessionCenter, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const authUser = req.authUser!;
+  const status = typeof req.query.status === 'string' ? req.query.status : 'active';
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
+  const result = await getDbPool().query<Record<string, unknown>>(
+    `SELECT auth_sessions.id, auth_sessions.employee_id, auth_sessions.tenant_id, auth_sessions.device_label,
+            auth_sessions.ip_masked, auth_sessions.location_label, auth_sessions.created_at,
+            auth_sessions.last_used_at, auth_sessions.expires_at, auth_sessions.revoked_at,
+            employees.full_name AS employee_name, employees.email AS employee_email, employees.role AS employee_role
+       FROM auth_sessions
+       JOIN employees ON employees.id = auth_sessions.employee_id AND employees.tenant_id = auth_sessions.tenant_id
+      WHERE auth_sessions.tenant_id = $1
+        AND ($2 = '' OR employees.full_name ILIKE '%' || $2 || '%' OR employees.email ILIKE '%' || $2 || '%')
+        AND ($3 = 'all' OR ($3 = 'active' AND auth_sessions.revoked_at IS NULL AND auth_sessions.expires_at > NOW())
+             OR ($3 = 'revoked' AND auth_sessions.revoked_at IS NOT NULL)
+             OR ($3 = 'expired' AND auth_sessions.revoked_at IS NULL AND auth_sessions.expires_at <= NOW()))
+      ORDER BY COALESCE(auth_sessions.last_used_at, auth_sessions.created_at) DESC
+      LIMIT 200`,
+    [authUser.tenantId, search, ['active', 'revoked', 'expired', 'all'].includes(status) ? status : 'active'],
+  );
+  return res.json({ success: true, sessions: result.rows.map((row) => ({ ...presentSession(row, req.authSessionId), employee: { id: row.employee_id, name: row.employee_name, email: row.employee_email, role: row.employee_role } })) });
+});
+
+app.delete('/api/hr/session-center/:sessionId', sessionManagementRateLimiter, demoAuth, requirePermission('sessions.manage'), requireHrAdminSessionCenter, isSameOriginSessionMutation, async (req, res) => {
+  const authUser = req.authUser!;
+  const { sessionId } = req.params;
+  if (!isUuid(sessionId)) return res.status(400).json({ success: false, code: 'SESSION_ID_INVALID', error: 'Invalid session identifier.' });
+  if (sessionId === req.authSessionId) return res.status(409).json({ success: false, code: 'CURRENT_SESSION_PROTECTED', error: 'Administrators cannot revoke their own current session here.' });
+  const revoked = await withTenant(authUser.tenantId, async (client) => {
+    const result = await client.query<{ employee_id: string }>(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+        RETURNING employee_id`, [sessionId, authUser.tenantId]);
+    if (!result.rows[0]) return false;
+    await recordAuditEvent(client, { tenantId: authUser.tenantId, actorId: authUser.employeeId, action: 'auth.session.revoked_by_admin', targetType: 'auth_session', targetId: sessionId, metadata: { revocationType: 'admin' } });
+    return true;
+  });
+  if (!revoked) return res.status(404).json({ success: false, error: 'Session not found.' });
+  return res.json({ success: true, revokedSessionId: sessionId });
+});
+
+app.post('/api/hr/session-center/employees/:employeeId/revoke-all', sessionManagementRateLimiter, demoAuth, requirePermission('sessions.manage'), requireHrAdminSessionCenter, isSameOriginSessionMutation, async (req, res) => {
+  const authUser = req.authUser!;
+  const { employeeId } = req.params;
+  if (!isUuid(employeeId)) return res.status(400).json({ success: false, code: 'EMPLOYEE_ID_INVALID', error: 'Invalid employee identifier.' });
+  if (employeeId === authUser.employeeId) return res.status(409).json({ success: false, code: 'CURRENT_SESSION_PROTECTED', error: 'Use the self-service control to revoke your other sessions.' });
+  const revokedCount = await withTenant(authUser.tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE tenant_id = $1 AND employee_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+        RETURNING id`, [authUser.tenantId, employeeId]);
+    if (result.rowCount === 0) {
+      const employee = await client.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2`, [employeeId, authUser.tenantId]);
+      if (!employee.rows[0]) return -1;
+    }
+    await recordAuditEvent(client, { tenantId: authUser.tenantId, actorId: authUser.employeeId, action: 'auth.sessions.revoked_all', targetType: 'employee', targetId: employeeId, metadata: { revokedCount: result.rowCount, revocationType: 'admin' } });
+    return result.rowCount;
+  });
+  if (revokedCount < 0) return res.status(404).json({ success: false, error: 'Employee not found.' });
+  return res.json({ success: true, revokedCount });
 });
 
 app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {

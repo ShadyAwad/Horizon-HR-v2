@@ -69,6 +69,8 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
   'passkey.registered': { canonicalAction: 'auth.passkey.registered', module: 'auth', summary: 'Passkey registered', severity: 'informational', metadataKeys: ['deviceLabel'] },
   'passkey.login': { canonicalAction: 'auth.passkey.login', module: 'auth', summary: 'Signed in with passkey', severity: 'informational' },
   'auth.session.revoked': { canonicalAction: 'auth.session.revoked', module: 'auth', summary: 'Authentication session revoked', severity: 'informational' },
+  'auth.sessions.revoked_all': { canonicalAction: 'auth.sessions.revoked_all', module: 'auth', summary: 'Other authentication sessions revoked', severity: 'informational', metadataKeys: ['revokedCount', 'revocationType'] },
+  'auth.session.revoked_by_admin': { canonicalAction: 'auth.session.revoked_by_admin', module: 'auth', summary: 'Authentication session revoked by administrator', severity: 'warning', metadataKeys: ['revocationType'] },
   notification_settings_updated: { canonicalAction: 'notifications.settings_updated', module: 'notifications', summary: 'Notification settings updated', metadataKeys: ['updatedSettingCount'] },
   'resignation.created': { canonicalAction: 'resignation.created', module: 'resignations', summary: 'Resignation requested', metadataKeys: ['requestedLastWorkingDay', 'resignationType'] },
   'resignation.approved': { canonicalAction: 'resignation.approved', module: 'resignations', summary: 'Resignation approved' },
@@ -172,6 +174,8 @@ const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
   'grievance.status_changed': ['previousStatus', 'newStatus'],
   'hiring.stage_changed': ['previousStage', 'newStage'],
   'auth.session.revoked': ['revocationType'],
+  'auth.sessions.revoked_all': ['revokedCount', 'revocationType'],
+  'auth.session.revoked_by_admin': ['revocationType'],
 };
 
 export async function recordAuditEvent(

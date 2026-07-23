@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type C
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -37,6 +37,8 @@ const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCrop
 const HiringPanel = lazy(() => import('../components/hiring/HiringPanel').then((module) => ({ default: module.HiringPanel })));
 const LiveEmployeesPanel = lazy(() => import('../components/live-employees/LiveEmployeesPanel').then((module) => ({ default: module.LiveEmployeesPanel })));
 const AuditTrailPanel = lazy(() => import('../components/audit/AuditTrailPanel').then((module) => ({ default: module.AuditTrailPanel })));
+const SessionManagementPanel = lazy(() => import('../components/sessions/SessionManagementPanel').then((module) => ({ default: module.SessionManagementPanel })));
+const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCenterPanel').then((module) => ({ default: module.SessionCenterPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -732,7 +734,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1190,6 +1192,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const canViewHiring = hasPermission(user, 'hiring.view');
   const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
+  const canManageSessions = user.role === 'hr_admin' && hasPermission(user, 'sessions.manage');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4052,6 +4055,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                <ScrollText className="w-5 h-5" />
              </button>
            )}
+           {canManageSessions && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('sessionCenter'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'sessionCenter' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={t('sessions.sessionCenter')}
+               aria-label={t('sessions.sessionCenter')}
+             >
+               <ShieldCheck className="w-5 h-5" />
+             </button>
+           )}
                      <button
                         type="button"
                         onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
@@ -4249,6 +4263,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                         {t('audit.title')}
                       </button>
                     )}
+                    {canManageSessions && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('sessionCenter'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'sessionCenter' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                        aria-label={t('sessions.sessionCenter')}
+                      >
+                        <ShieldCheck className="w-4 h-4 hidden sm:block" />
+                        {t('sessions.sessionCenter')}
+                      </button>
+                    )}
                     <button
                        onClick={() => {
                          setActiveTab('feed');
@@ -4326,6 +4351,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 {activeTab === 'audit' && canViewAudit && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <AuditTrailPanel />
+                  </Suspense>
+                )}
+                {activeTab === 'sessionCenter' && canManageSessions && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <SessionCenterPanel />
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
@@ -5867,6 +5897,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
 
                          <div className="md:col-span-2">
                            {renderNotificationSettingsPanel()}
+                         </div>
+
+                         <div className="md:col-span-2">
+                           <Suspense fallback={<div className="min-h-24 animate-pulse border-t border-emerald-500/15" />}>
+                             <SessionManagementPanel />
+                           </Suspense>
                          </div>
 
                          {canManageRoles && (

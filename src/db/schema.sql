@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
     expires_at TIMESTAMPTZ NOT NULL,
     last_used_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ,
+    device_label VARCHAR(160) NOT NULL DEFAULT 'Unknown device',
+    ip_masked VARCHAR(64) NOT NULL DEFAULT 'IP unavailable',
+    location_label VARCHAR(160) NOT NULL DEFAULT 'Location unavailable',
 
     CONSTRAINT auth_sessions_employee_tenant_fk
         FOREIGN KEY (employee_id, tenant_id)
@@ -75,6 +78,10 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 
 CREATE INDEX IF NOT EXISTS auth_sessions_active_idx
 ON auth_sessions (session_token_hash, expires_at)
+WHERE revoked_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS auth_sessions_tenant_employee_lifecycle_idx
+ON auth_sessions (tenant_id, employee_id, last_used_at DESC)
 WHERE revoked_at IS NULL;
 
 ALTER TABLE employees
@@ -376,6 +383,7 @@ VALUES
     ('hiring.make_final_decision', 'Make hiring decisions', 'Approve offers and final outcomes.'),
     ('hiring.archive', 'Archive hiring candidates', 'Archive applicant records.'),
     ('audit.view', 'View audit trail', 'View tenant-scoped audit events.'),
+    ('sessions.manage', 'Manage sessions', 'Manage active sessions for employees in the tenant.'),
     ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
     ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
 ON CONFLICT (permission_key) DO UPDATE SET

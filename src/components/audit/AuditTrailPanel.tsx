@@ -74,6 +74,8 @@ const ACTION_TRANSLATIONS: Record<string, TranslationKey> = {
   'auth.passkey.login': 'audit.action.passkeyLogin',
   'auth.passkey.registered': 'audit.action.passkeyRegistered',
   'auth.session.revoked': 'audit.action.sessionRevoked',
+  'auth.sessions.revoked_all': 'audit.action.sessionsRevokedAll',
+  'auth.session.revoked_by_admin': 'audit.action.sessionRevokedByAdmin',
   'employee.role.assigned': 'audit.action.roleAssigned',
   'employee.role.privileged_assigned': 'audit.action.privilegedRoleAssigned',
   'employee.role.removed': 'audit.action.roleRemoved',
