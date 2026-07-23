@@ -209,4 +209,15 @@ test('read-only renderer avoids raw HTML and scales across 50 validated posts', 
   assert.ok(performance.now() - startedAt < 250, '50 feed documents should validate without editor instances');
 });
 
+test('server image boundary is permissioned, decoded, re-encoded, and private', () => {
+  const source = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  assert.match(source, /'\/api\/company-feed\/images'/);
+  assert.match(source, /requirePermission\('feed\.publish'\)/);
+  assert.match(source, /limitInputPixels: FEED_IMAGE_MAX_INPUT_PIXELS/);
+  assert.match(source, /\.webp\(\{ quality: 84 \}\)/);
+  assert.match(source, /Only JPEG, PNG, and WebP images are supported/);
+  assert.match(source, /Cache-Control', 'private, no-store'/);
+  assert.match(source, /X-Content-Type-Options', 'nosniff'/);
+});
+
 console.log(`Editor contract checks passed: ${passed}`);

@@ -102,7 +102,9 @@ async function check(name: string, operation: () => Promise<void>) {
 
 async function request(pathname: string, init: RequestInit = {}): Promise<ApiResult> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const response = await fetch(`${baseUrl}${pathname}`, { ...init, headers });
   const text = await response.text();
@@ -230,6 +232,43 @@ async function runOptionalAuthenticatedChecks() {
       });
       expectStatus(result, 400, 'Grievance status validation');
       expectSafeError(result, 'Grievance status validation');
+    });
+
+    await check('Company Feed rejects malformed editor documents', async () => {
+      const result = await request('/api/company-feed/posts', {
+        method: 'POST',
+        headers: authHeaders(admin!),
+        body: JSON.stringify({
+          title: 'Security validation probe',
+          postType: 'announcement',
+          contentText: 'Visible text',
+          contentJson: {
+            root: {
+              type: 'root',
+              children: [{ type: 'script', children: [{ type: 'text', text: 'Visible text' }] }],
+            },
+          },
+          status: 'draft',
+          visibility: [{ type: 'all' }],
+          editorFormat: 'lexical-v1',
+          editorSchemaVersion: 1,
+        }),
+      });
+      expectStatus(result, 400, 'Company Feed malformed editor document');
+      expectSafeError(result, 'Company Feed malformed editor document');
+    });
+
+    await check('Company Feed image upload rejects decoded SVG input', async () => {
+      const form = new FormData();
+      form.append('image', new Blob(['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'], { type: 'image/png' }), 'forged.png');
+      form.append('altText', 'Forged image');
+      const result = await request('/api/company-feed/images', {
+        method: 'POST',
+        headers: authHeaders(admin!),
+        body: form,
+      });
+      expectStatus(result, [415, 422], 'Company Feed decoded SVG rejection');
+      expectSafeError(result, 'Company Feed decoded SVG rejection');
     });
   }
 
@@ -475,6 +514,7 @@ async function run() {
       '/api/payroll',
       '/api/grievances',
       '/api/company-feed/admin',
+      '/api/company-feed/images/00000000-0000-0000-0000-000000000000',
     ];
 
     for (const endpoint of endpoints) {

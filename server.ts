@@ -42,6 +42,7 @@ import {
   FEED_IMAGE_ALT_MAX_LENGTH,
   FEED_EDITOR_FORMAT,
   FEED_EDITOR_SCHEMA_VERSION,
+  normalizeFeedImageDimensions,
   validateFeedEditorDocument,
 } from './src/lib/feed-editor-contract';
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
@@ -8058,16 +8059,15 @@ app.post(
       });
       await Promise.all(staleStorageKeys.map((key) => companyFeedImageStorage.remove(key)));
 
-      const displayWidth = Math.min(processed.info.width, 1_200);
-      const displayHeight = Math.max(1, Math.round(processed.info.height * (displayWidth / processed.info.width)));
+      const displayDimensions = normalizeFeedImageDimensions(processed.info.width, processed.info.height);
       return res.status(201).json({
         success: true,
         image: {
           id: imageId,
           url: `/api/company-feed/images/${imageId}`,
           altText,
-          width: displayWidth,
-          height: displayHeight,
+          width: displayDimensions.width,
+          height: displayDimensions.height,
         },
       });
     } catch (error) {
