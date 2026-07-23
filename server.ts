@@ -47,6 +47,7 @@ import {
 } from './src/lib/feed-editor-contract';
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-employees-routes';
+import { registerAuditRoutes } from './src/server/audit/audit-routes';
 import {
   assertPortfolioDemoSessionStartup,
   getPortfolioDemoSessionConfig,
@@ -1136,6 +1137,7 @@ async function seedTenantRolesAndPermissions(
         ('resignations.process', 'Process resignation requests', 'Mark approved resignation requests as processed.'),
         ('feed.read', 'Read company feed', 'Read company feed posts.'),
         ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
+        ('audit.view', 'View audit trail', 'View tenant-scoped audit events.'),
         ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
         ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
       ON CONFLICT (permission_key) DO UPDATE SET
@@ -1984,6 +1986,7 @@ async function startServer() {
 
   registerHiringRoutes(app, { demoAuth, requirePermission });
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
+  registerAuditRoutes(app, { demoAuth, requirePermission });
 
   app.get('/api/map-tiles/:z/:x/:y.png', async (req, res) => {
     const { z, x, y } = req.params;

@@ -375,6 +375,7 @@ VALUES
     ('hiring.advance_stage', 'Advance hiring stages', 'Move applicants through permitted stages.'),
     ('hiring.make_final_decision', 'Make hiring decisions', 'Approve offers and final outcomes.'),
     ('hiring.archive', 'Archive hiring candidates', 'Archive applicant records.'),
+    ('audit.view', 'View audit trail', 'View tenant-scoped audit events.'),
     ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
     ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
 ON CONFLICT (permission_key) DO UPDATE SET
@@ -1708,6 +1709,9 @@ ON audit_logs(tenant_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS audit_logs_tenant_entity_idx
 ON audit_logs(tenant_id, entity_type, entity_id);
+
+CREATE INDEX IF NOT EXISTS audit_logs_tenant_action_time_idx
+ON audit_logs(tenant_id, action, created_at DESC);
 
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
