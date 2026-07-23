@@ -180,11 +180,30 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
            WHERE tenant_id = $1`,
           [tenantId],
         );
+        const actionFacets = await client.query<{ action: string; entity_type: string }>(
+          `SELECT DISTINCT action, entity_type
+           FROM audit_logs
+           WHERE tenant_id = $1
+           ORDER BY action ASC`,
+          [tenantId],
+        );
+        const actorFacets = await client.query<{ id: string; display_name: string; role: string }>(
+          `SELECT DISTINCT employees.id, employees.full_name AS display_name, employees.role
+           FROM audit_logs
+           INNER JOIN employees
+             ON employees.tenant_id = audit_logs.tenant_id
+            AND employees.id = audit_logs.actor_employee_id
+           WHERE audit_logs.tenant_id = $1
+           ORDER BY employees.full_name ASC`,
+          [tenantId],
+        );
 
         return {
           total: Number(count.rows[0]?.total || 0),
           rows: rows.rows,
           summary: summary.rows[0],
+          actionFacets: actionFacets.rows,
+          actorFacets: actorFacets.rows,
         };
       });
 
@@ -222,6 +241,17 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
           securityEvents: Number(result.summary?.security_events || 0),
           employeeChanges: Number(result.summary?.employee_changes || 0),
           rejectedActions: Number(result.summary?.rejected_actions || 0),
+        },
+        filters: {
+          actions: [...new Set(result.actionFacets.map((facet) => (
+            presentAuditEvent(facet.action, facet.entity_type, {}).action
+          )))].sort(),
+          modules: AUDIT_MODULES,
+          actors: result.actorFacets.map((actor) => ({
+            id: actor.id,
+            displayName: actor.display_name,
+            role: actor.role,
+          })),
         },
         events,
       });
