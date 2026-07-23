@@ -4,6 +4,7 @@ import {
   FEED_EDITOR_FORMAT,
   FEED_EDITOR_SCHEMA_VERSION,
   isSafeFeedLink,
+  normalizeFeedImageDimensions,
   validateFeedEditorDocument,
 } from '../src/lib/feed-editor-contract';
 
@@ -145,6 +146,53 @@ test('editor source keeps explicit RTL, logical spacing, and accessible mobile c
   assert.match(source, /aria-expanded=/);
   assert.match(source, /h-11 w-11/);
   assert.match(source, /max-w-\[calc\(100vw-2rem\)\]/);
+});
+
+test('feed image nodes accept only internal UUID URLs and bounded metadata', () => {
+  const id = '53f746a3-77e8-4e33-a7ab-c1178d516bc1';
+  const image = {
+    root: {
+      type: 'root',
+      children: [{
+        type: 'image',
+        version: 1,
+        uploadId: id,
+        src: `/api/company-feed/images/${id}`,
+        altText: 'Team workshop',
+        width: 640,
+        height: 360,
+      }],
+    },
+  };
+  assert.equal(validateFeedEditorDocument(image, 'Team workshop').ok, true);
+  assert.equal(validateFeedEditorDocument({
+    root: {
+      type: 'root',
+      children: [{ ...image.root.children[0], src: 'https://attacker.example/image.png' }],
+    },
+  }, 'Team workshop').ok, false);
+  assert.equal(validateFeedEditorDocument({
+    root: {
+      type: 'root',
+      children: [{ ...image.root.children[0], altText: 'x'.repeat(241) }],
+    },
+  }).ok, false);
+});
+
+test('image resize dimensions are clamped while preserving aspect ratio', () => {
+  assert.deepEqual(normalizeFeedImageDimensions(40, 20), { width: 80, height: 40 });
+  assert.deepEqual(normalizeFeedImageDimensions(2400, 1200), { width: 1200, height: 600 });
+});
+
+test('image editor registers upload, paste, drop, retry, and alt-text behavior', () => {
+  const editorSource = readFileSync(new URL('../src/components/RichTextEditor.tsx', import.meta.url), 'utf8');
+  const nodeSource = readFileSync(new URL('../src/components/lexical/FeedImageNode.tsx', import.meta.url), 'utf8');
+  assert.match(editorSource, /PASTE_COMMAND/);
+  assert.match(editorSource, /DROP_COMMAND/);
+  assert.match(editorSource, /retryUpload/);
+  assert.match(nodeSource, /imageAltText/);
+  assert.match(nodeSource, /onPointerDown=\{startResize\}/);
+  assert.doesNotMatch(nodeSource, /data:image\//);
 });
 
 console.log(`Editor contract checks passed: ${passed}`);

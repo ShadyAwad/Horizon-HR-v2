@@ -36,7 +36,10 @@ import {
 } from './src/lib/validation';
 import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
 import { profileImageStorage } from './src/lib/profile-image-storage';
+import { companyFeedImageStorage } from './src/lib/company-feed-image-storage';
 import {
+  collectFeedImageIds,
+  FEED_IMAGE_ALT_MAX_LENGTH,
   FEED_EDITOR_FORMAT,
   FEED_EDITOR_SCHEMA_VERSION,
   validateFeedEditorDocument,
@@ -323,6 +326,11 @@ const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_SESSION_COOKIE = 'stanza_session';
 const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PROFILE_IMAGE_SIZE = 512;
+const FEED_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const FEED_IMAGE_MAX_INPUT_PIXELS = 40_000_000;
+const FEED_IMAGE_MAX_INPUT_DIMENSION = 12_000;
+const FEED_IMAGE_MAX_STORED_DIMENSION = 2_400;
+const FEED_IMAGE_PENDING_TTL_HOURS = 24;
 const PROFILE_IMAGE_QUALITY = 80;
 
 type LoginAttemptState = {
@@ -1858,6 +1866,7 @@ async function startServer() {
   const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
   const portfolioDemoSessionRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 8);
   const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
+  const feedImageRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 30);
   const avatarUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: PROFILE_IMAGE_MAX_BYTES, files: 1 },
@@ -1869,6 +1878,17 @@ async function startServer() {
     avatarUpload(req, res, (error) => {
       if (error) return reject(error);
       if (!req.file) return reject(Object.assign(new Error('Unsupported image format.'), { statusCode: 415 }));
+      resolve(req.file);
+    });
+  });
+  const feedImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: FEED_IMAGE_MAX_BYTES, files: 1, fields: 2 },
+  }).single('image');
+  const parseFeedImageUpload = (req: express.Request, res: express.Response) => new Promise<Express.Multer.File>((resolve, reject) => {
+    feedImageUpload(req, res, (error) => {
+      if (error) return reject(error);
+      if (!req.file) return reject(Object.assign(new Error('Select an image to upload.'), { statusCode: 400 }));
       resolve(req.file);
     });
   });
@@ -7942,6 +7962,193 @@ app.get(
 );
 
 app.post(
+  '/api/company-feed/images',
+  feedImageRateLimiter,
+  demoAuth,
+  requirePermission('feed.publish'),
+  async (req, res) => {
+    if (!isSameOriginSessionRequest(req)) {
+      return res.status(403).json({ success: false, error: 'Image upload must originate from Stanza.' });
+    }
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed images.' });
+    }
+
+    const tenantId = req.authUser!.tenantId;
+    const actorEmployeeId = req.authUser!.employeeId;
+    const imageId = crypto.randomUUID();
+    let storageKey: string | null = null;
+
+    try {
+      const file = await parseFeedImageUpload(req, res);
+      const altText = typeof req.body.altText === 'string' ? req.body.altText.trim() : '';
+      if (altText.length > FEED_IMAGE_ALT_MAX_LENGTH) {
+        return res.status(400).json({ success: false, error: 'Image alt text is too long.' });
+      }
+
+      const input = sharp(file.buffer, {
+        animated: false,
+        failOn: 'error',
+        limitInputPixels: FEED_IMAGE_MAX_INPUT_PIXELS,
+      });
+      const metadata = await input.metadata();
+      const width = metadata.width || 0;
+      const height = metadata.height || 0;
+      if (
+        !metadata.format ||
+        !['jpeg', 'png', 'webp'].includes(metadata.format) ||
+        (metadata.pages || 1) !== 1
+      ) {
+        return res.status(415).json({ success: false, error: 'Only JPEG, PNG, and WebP images are supported.' });
+      }
+      if (
+        width < 1 ||
+        height < 1 ||
+        width > FEED_IMAGE_MAX_INPUT_DIMENSION ||
+        height > FEED_IMAGE_MAX_INPUT_DIMENSION ||
+        width * height > FEED_IMAGE_MAX_INPUT_PIXELS
+      ) {
+        return res.status(422).json({ success: false, error: 'Image dimensions are not supported.' });
+      }
+
+      const processed = await input
+        .rotate()
+        .resize({
+          width: FEED_IMAGE_MAX_STORED_DIMENSION,
+          height: FEED_IMAGE_MAX_STORED_DIMENSION,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 84 })
+        .toBuffer({ resolveWithObject: true });
+
+      storageKey = await companyFeedImageStorage.write(tenantId, imageId, processed.data);
+      const staleStorageKeys = await withTenant(tenantId, async (client) => {
+        const stale = await client.query<{ storage_key: string }>(
+          `DELETE FROM company_feed_images
+           WHERE id IN (
+             SELECT id
+             FROM company_feed_images
+             WHERE tenant_id = $1
+               AND post_id IS NULL
+               AND created_at < NOW() - ($2::integer * INTERVAL '1 hour')
+             ORDER BY created_at
+             LIMIT 25
+           )
+           RETURNING storage_key`,
+          [tenantId, FEED_IMAGE_PENDING_TTL_HOURS],
+        );
+        await client.query(
+          `INSERT INTO company_feed_images (
+             id, tenant_id, uploaded_by, storage_key, width, height, original_bytes, stored_bytes
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            imageId,
+            tenantId,
+            actorEmployeeId,
+            storageKey,
+            processed.info.width,
+            processed.info.height,
+            file.size,
+            processed.data.length,
+          ],
+        );
+        return stale.rows.map((row) => row.storage_key);
+      });
+      await Promise.all(staleStorageKeys.map((key) => companyFeedImageStorage.remove(key)));
+
+      const displayWidth = Math.min(processed.info.width, 1_200);
+      const displayHeight = Math.max(1, Math.round(processed.info.height * (displayWidth / processed.info.width)));
+      return res.status(201).json({
+        success: true,
+        image: {
+          id: imageId,
+          url: `/api/company-feed/images/${imageId}`,
+          altText,
+          width: displayWidth,
+          height: displayHeight,
+        },
+      });
+    } catch (error) {
+      if (storageKey) await companyFeedImageStorage.remove(storageKey).catch(() => undefined);
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Image must be 8 MB or smaller.' });
+      }
+      const statusCode = Number((error as { statusCode?: number }).statusCode) || 422;
+      if (!isProduction()) console.error('[Company Feed Image] Upload failed:', error);
+      return res.status(statusCode).json({
+        success: false,
+        error: statusCode === 400 ? (error as Error).message : 'Unable to process this image.',
+      });
+    }
+  },
+);
+
+app.get(
+  '/api/company-feed/images/:id',
+  demoAuth,
+  requirePermission('feed.read'),
+  async (req, res) => {
+    const imageId = req.params.id;
+    if (!isUuid(imageId)) return res.status(404).end();
+
+    const authUser = req.authUser!;
+    try {
+      const image = await withTenant(authUser.tenantId, async (client) => {
+        const canPublish = authUserHasPermission(authUser, 'feed.publish');
+        const result = await client.query<{ storage_key: string }>(
+          `SELECT image.storage_key
+           FROM company_feed_images image
+           LEFT JOIN company_feed_posts post
+             ON post.id = image.post_id
+            AND post.tenant_id = image.tenant_id
+           WHERE image.tenant_id = $1
+             AND image.id = $2
+             AND (
+               image.uploaded_by = $3
+               OR $4::boolean = true
+               OR (
+                 image.status = 'attached'
+                 AND post.status = 'published'
+                 AND (
+                   EXISTS (
+                     SELECT 1 FROM company_feed_visibility visibility
+                     WHERE visibility.tenant_id = image.tenant_id
+                       AND visibility.post_id = post.id
+                       AND visibility.visibility_type = 'all'
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM company_feed_visibility visibility
+                     WHERE visibility.tenant_id = image.tenant_id
+                       AND visibility.post_id = post.id
+                       AND visibility.visibility_type = 'role'
+                       AND visibility.role = $5
+                   )
+                 )
+               )
+             )
+           LIMIT 1`,
+          [authUser.tenantId, imageId, authUser.employeeId, canPublish, authUser.role],
+        );
+        return result.rows[0] || null;
+      });
+      if (!image) return res.status(404).end();
+
+      const contents = await companyFeedImageStorage.read(image.storage_key);
+      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', 'inline');
+      return res.send(contents);
+    } catch (error) {
+      if (!isProduction()) console.error('[Company Feed Image] Read failed:', error);
+      return res.status(404).end();
+    }
+  },
+);
+
+app.post(
   '/api/company-feed/posts',
   demoAuth,
   requirePermission('feed.publish'),
@@ -7987,6 +8194,7 @@ app.post(
       });
     }
 
+    let feedImageIds: string[] = [];
     if (contentJson != null) {
       const validation = validateFeedEditorDocument(contentJson, normalizedContent);
       if (validation.ok === false) {
@@ -7995,6 +8203,7 @@ app.post(
           error: validation.error,
         });
       }
+      feedImageIds = collectFeedImageIds(contentJson);
     }
 
     const serializedContentJson = contentJson == null ? null : JSON.stringify(contentJson);
@@ -8131,6 +8340,31 @@ app.post(
         );
 
         const createdPost = postResult.rows[0];
+
+        if (feedImageIds.length > 0) {
+          const ownedImages = await client.query<{ id: string }>(
+            `SELECT id
+             FROM company_feed_images
+             WHERE tenant_id = $1
+               AND uploaded_by = $2
+               AND status = 'pending'
+               AND post_id IS NULL
+               AND id = ANY($3::uuid[])
+             FOR UPDATE`,
+            [tenantId, actorEmployeeId, feedImageIds],
+          );
+          if (ownedImages.rowCount !== feedImageIds.length) {
+            throw Object.assign(new Error('One or more feed images are unavailable.'), { statusCode: 400 });
+          }
+          await client.query(
+            `UPDATE company_feed_images
+             SET status = 'attached', post_id = $4, attached_at = NOW()
+             WHERE tenant_id = $1
+               AND uploaded_by = $2
+               AND id = ANY($3::uuid[])`,
+            [tenantId, actorEmployeeId, feedImageIds, createdPost.id],
+          );
+        }
 
         for (const rule of normalizedVisibility.visibility) {
           await client.query(

@@ -39,11 +39,18 @@ const ALLOWED_NODE_TYPES = new Set([
   'list',
   'listitem',
   'link',
+  'image',
 ]);
 const ALLOWED_TEXT_FORMAT_MASK = 1 | 2 | 4 | 8;
 const MAX_DOCUMENT_DEPTH = 32;
 const MAX_DOCUMENT_NODES = 2_000;
 const MAX_LINK_LENGTH = 2_048;
+export const FEED_IMAGE_ALT_MAX_LENGTH = 240;
+export const FEED_IMAGE_MIN_DISPLAY_WIDTH = 80;
+export const FEED_IMAGE_MAX_DISPLAY_WIDTH = 1_200;
+export const FEED_IMAGE_MAX_DISPLAY_HEIGHT = 1_200;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FEED_IMAGE_URL_PATTERN = /^\/api\/company-feed\/images\/([0-9a-f-]{36})$/i;
 const COLOR_SET = new Set<string>(FEED_TEXT_COLORS);
 const FONT_SIZE_SET = new Set<string>(FEED_FONT_SIZES);
 
@@ -93,6 +100,39 @@ export function isSafeFeedLink(value: unknown): value is string {
   }
 }
 
+export function validateFeedImageAttributes(node: JsonRecord) {
+  const uploadId = typeof node.uploadId === 'string' ? node.uploadId : '';
+  const sourceMatch = typeof node.src === 'string' ? FEED_IMAGE_URL_PATTERN.exec(node.src) : null;
+  const altText = typeof node.altText === 'string' ? node.altText : '';
+  const width = Number(node.width);
+  const height = Number(node.height);
+
+  return Boolean(
+    UUID_PATTERN.test(uploadId) &&
+    sourceMatch?.[1]?.toLowerCase() === uploadId.toLowerCase() &&
+    altText.length <= FEED_IMAGE_ALT_MAX_LENGTH &&
+    Number.isInteger(width) &&
+    width >= FEED_IMAGE_MIN_DISPLAY_WIDTH &&
+    width <= FEED_IMAGE_MAX_DISPLAY_WIDTH &&
+    Number.isInteger(height) &&
+    height >= 1 &&
+    height <= FEED_IMAGE_MAX_DISPLAY_HEIGHT,
+  );
+}
+
+export function normalizeFeedImageDimensions(width: number, height: number) {
+  const safeWidth = Math.round(Math.min(
+    FEED_IMAGE_MAX_DISPLAY_WIDTH,
+    Math.max(FEED_IMAGE_MIN_DISPLAY_WIDTH, Number.isFinite(width) ? width : FEED_IMAGE_MIN_DISPLAY_WIDTH),
+  ));
+  const ratio = width > 0 && height > 0 ? height / width : 1;
+  const safeHeight = Math.round(Math.min(
+    FEED_IMAGE_MAX_DISPLAY_HEIGHT,
+    Math.max(1, safeWidth * ratio),
+  ));
+  return { width: safeWidth, height: safeHeight };
+}
+
 function validateNode(
   node: unknown,
   depth: number,
@@ -124,6 +164,10 @@ function validateNode(
 
   if (type === 'linebreak') return null;
 
+  if (type === 'image') {
+    return validateFeedImageAttributes(node) ? null : 'Editor image attributes are invalid.';
+  }
+
   if (type === 'heading' && !['h1', 'h2', 'h3', 'h4'].includes(String(node.tag))) {
     return 'Editor heading level is not supported.';
   }
@@ -153,6 +197,7 @@ function extractNodeText(node: JsonRecord): string {
   const type = node.type == null && Array.isArray(node.children) ? 'root' : String(node.type || '');
   if (type === 'text') return typeof node.text === 'string' ? node.text : '';
   if (type === 'linebreak') return '\n';
+  if (type === 'image') return typeof node.altText === 'string' ? node.altText : '';
   if (!Array.isArray(node.children)) return '';
 
   const childText = node.children
@@ -160,6 +205,21 @@ function extractNodeText(node: JsonRecord): string {
     .map(extractNodeText);
   if (type === 'root' || type === 'list') return childText.join('\n');
   return childText.join('');
+}
+
+export function collectFeedImageIds(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.root)) return [];
+  const ids = new Set<string>();
+
+  const visit = (node: JsonRecord) => {
+    if (node.type === 'image' && typeof node.uploadId === 'string' && UUID_PATTERN.test(node.uploadId)) {
+      ids.add(node.uploadId.toLowerCase());
+    }
+    if (Array.isArray(node.children)) node.children.filter(isRecord).forEach(visit);
+  };
+
+  visit(value.root);
+  return [...ids];
 }
 
 export function normalizeFeedEditorText(value: string) {

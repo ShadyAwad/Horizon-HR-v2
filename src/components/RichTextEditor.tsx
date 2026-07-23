@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { $createParagraphNode, $getRoot, $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, FORMAT_TEXT_COMMAND, REDO_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND, type EditorState } from 'lexical';
+import { $createParagraphNode, $getRoot, $getSelection, $insertNodes, $isRangeSelection, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_LOW, DROP_COMMAND, FORMAT_TEXT_COMMAND, PASTE_COMMAND, REDO_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND, type EditorState } from 'lexical';
 import { $isLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { ListItemNode, ListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
@@ -14,10 +14,12 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { $getSelectionStyleValueForProperty, $patchStyleText, $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
-import { Bold, Italic, Link, List, ListOrdered, Palette, Pilcrow, Redo2, Smile, Strikethrough, Type, Underline, Undo2, Unlink } from 'lucide-react';
+import { Bold, ImagePlus, Italic, Link, List, ListOrdered, Palette, Pilcrow, Redo2, RefreshCw, Smile, Strikethrough, Type, Underline, Undo2, Unlink } from 'lucide-react';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { FEED_FONT_SIZES, FEED_TEXT_COLORS, isSafeFeedLink } from '../lib/feed-editor-contract';
+import { apiUrl } from '../lib/api';
 import { cn } from '../lib/utils';
+import { $createFeedImageNode, FeedImageNode } from './lexical/FeedImageNode';
 
 type RichTextPayload = {
   json: unknown;
@@ -125,6 +127,168 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+type UploadedFeedImage = {
+  id: string;
+  url: string;
+  altText: string;
+  width: number;
+  height: number;
+};
+
+function uploadFeedImage(
+  file: File,
+  altText: string,
+  onProgress: (progress: number) => void,
+) {
+  return new Promise<UploadedFeedImage>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', apiUrl('/api/company-feed/images'));
+    request.withCredentials = true;
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener('load', () => {
+      try {
+        const payload = JSON.parse(request.responseText) as {
+          success?: boolean;
+          image?: UploadedFeedImage;
+          error?: string;
+        };
+        if (request.status === 201 && payload.success && payload.image) resolve(payload.image);
+        else reject(new Error(payload.error || 'Unable to upload image.'));
+      } catch {
+        reject(new Error('Unable to upload image.'));
+      }
+    });
+    request.addEventListener('error', () => reject(new Error('Unable to upload image.')));
+    request.addEventListener('abort', () => reject(new Error('Image upload was cancelled.')));
+    const form = new FormData();
+    form.append('image', file);
+    form.append('altText', altText);
+    request.send(form);
+  });
+}
+
+function ImageUploadControl() {
+  const [editor] = useLexicalComposerContext();
+  const { t } = useLanguage();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const lastFileRef = useRef<File | null>(null);
+  const [uploadState, setUploadState] = useState<{
+    status: 'idle' | 'uploading' | 'error';
+    progress: number;
+    error: string;
+  }>({ status: 'idle', progress: 0, error: '' });
+
+  const insertUploadedImage = useCallback((image: UploadedFeedImage) => {
+    editor.update(() => {
+      const imageNode = $createFeedImageNode({
+        uploadId: image.id,
+        src: image.url,
+        altText: image.altText,
+        width: image.width,
+        height: image.height,
+      });
+      $insertNodes([imageNode]);
+      const paragraph = $createParagraphNode();
+      imageNode.insertAfter(paragraph);
+      paragraph.select();
+    });
+  }, [editor]);
+
+  const upload = useCallback(async (file: File) => {
+    if (uploadState.status === 'uploading') return;
+    lastFileRef.current = file;
+    setUploadState({ status: 'uploading', progress: 0, error: '' });
+    const defaultAlt = file.name.replace(/\.[^.]+$/u, '').slice(0, 240);
+    try {
+      const image = await uploadFeedImage(file, defaultAlt, (progress) => {
+        setUploadState({ status: 'uploading', progress, error: '' });
+      });
+      insertUploadedImage(image);
+      setUploadState({ status: 'idle', progress: 100, error: '' });
+    } catch (error) {
+      setUploadState({
+        status: 'error',
+        progress: 0,
+        error: error instanceof Error ? error.message : t('editor.imageUploadFailed'),
+      });
+    }
+  }, [insertUploadedImage, t, uploadState.status]);
+
+  useEffect(() => mergeRegister(
+    editor.registerCommand(
+      PASTE_COMMAND,
+      (event: ClipboardEvent) => {
+        const file = Array.from(event.clipboardData?.files || []).find((entry) => entry.type.startsWith('image/'));
+        if (!file) return false;
+        event.preventDefault();
+        void upload(file);
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    ),
+    editor.registerCommand(
+      DROP_COMMAND,
+      (event: DragEvent) => {
+        const file = Array.from(event.dataTransfer?.files || []).find((entry) => entry.type.startsWith('image/'));
+        if (!file) return false;
+        event.preventDefault();
+        void upload(file);
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    ),
+  ), [editor, upload]);
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) void upload(file);
+        }}
+      />
+      <button
+        type="button"
+        aria-label={t('editor.insertImage')}
+        title={t('editor.insertImage')}
+        disabled={uploadState.status === 'uploading'}
+        onClick={() => inputRef.current?.click()}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-emerald-500/20 bg-white/80 text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100/70 sm:h-8 sm:w-8"
+      >
+        <ImagePlus className="h-4 w-4" />
+      </button>
+      {uploadState.status === 'uploading' && (
+        <span role="status" aria-live="polite" className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+          {uploadState.progress}%
+        </span>
+      )}
+      {uploadState.status === 'error' && (
+        <div role="alert" className="absolute left-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded border border-red-300/40 bg-white p-3 text-xs text-red-700 shadow-xl dark:bg-neutral-950 dark:text-red-300">
+          <p>{uploadState.error}</p>
+          <button
+            type="button"
+            disabled={!lastFileRef.current}
+            onClick={() => {
+              if (lastFileRef.current) void upload(lastFileRef.current);
+            }}
+            className="mt-2 flex min-h-11 items-center gap-2 rounded border border-red-400/30 px-3 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t('editor.retryUpload')}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -440,6 +604,7 @@ function EditorToolbar() {
           </div>
         )}
       </div>
+      <ImageUploadControl />
       <div className="relative">
         <button
           type="button"
@@ -602,7 +767,7 @@ export function RichTextEditor({
     namespace: readOnly ? 'StanzaFeedReader' : 'StanzaFeedComposer',
     editable: !readOnly,
     editorState: getInitialEditorState(valueJson),
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, FeedImageNode],
     onError(error: Error) {
       throw error;
     },

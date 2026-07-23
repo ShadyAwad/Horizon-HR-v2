@@ -1518,6 +1518,57 @@ WITH CHECK (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 );
 
+CREATE TABLE IF NOT EXISTS company_feed_images (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    uploaded_by UUID NOT NULL,
+    post_id UUID REFERENCES company_feed_posts(id) ON DELETE SET NULL,
+    storage_key VARCHAR(160) NOT NULL UNIQUE,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    original_bytes INTEGER NOT NULL,
+    stored_bytes INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    attached_at TIMESTAMPTZ,
+
+    CONSTRAINT company_feed_images_uploader_tenant_fk
+        FOREIGN KEY (uploaded_by, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE CASCADE,
+    CONSTRAINT company_feed_images_dimensions_chk
+        CHECK (width BETWEEN 1 AND 2400 AND height BETWEEN 1 AND 2400),
+    CONSTRAINT company_feed_images_bytes_chk
+        CHECK (original_bytes > 0 AND stored_bytes > 0),
+    CONSTRAINT company_feed_images_status_chk
+        CHECK (status IN ('pending', 'attached')),
+    CONSTRAINT company_feed_images_attachment_chk
+        CHECK (
+            (status = 'pending' AND post_id IS NULL AND attached_at IS NULL)
+            OR (status = 'attached' AND attached_at IS NOT NULL)
+        )
+);
+
+CREATE INDEX IF NOT EXISTS company_feed_images_tenant_post_idx
+ON company_feed_images(tenant_id, post_id);
+
+CREATE INDEX IF NOT EXISTS company_feed_images_unattached_cleanup_idx
+ON company_feed_images(tenant_id, created_at)
+WHERE post_id IS NULL;
+
+ALTER TABLE company_feed_images ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS company_feed_images_tenant_isolation ON company_feed_images;
+
+CREATE POLICY company_feed_images_tenant_isolation
+ON company_feed_images
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
 CREATE TABLE IF NOT EXISTS company_feed_visibility (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
