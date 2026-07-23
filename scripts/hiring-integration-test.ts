@@ -49,7 +49,7 @@ async function login(email: string): Promise<Session> {
 
 async function setupOtherTenantHiringFixture(
   pool: ReturnType<typeof getDbPool>,
-): Promise<{ tenantId: string; email: string }> {
+): Promise<{ tenantId: string; employeeId: string; email: string }> {
   assert(password, 'Set HIRING_TEST_PASSWORD or DEMO_PASSWORD; no default credential is used.');
   const client = await pool.connect();
 
@@ -110,7 +110,7 @@ async function setupOtherTenantHiringFixture(
       [tenantId, employee.rows[0].id, role.rows[0].id],
     );
     await client.query('COMMIT');
-    return { tenantId, email: isolationFixture.email };
+    return { tenantId, employeeId: employee.rows[0].id, email: isolationFixture.email };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -144,6 +144,23 @@ async function main() {
   assert(admin.tenantId === manager.tenantId && manager.tenantId === employee.tenantId, 'Demo users must share a tenant.');
   pass('Demo sessions authenticated');
   const pool = getDbPool();
+
+  const eligibleReviewers = await expectStatus('Authorized user can load eligible Hiring reviewers', 200, api('/api/hiring/reviewers', admin));
+  assert(eligibleReviewers.reviewers.some((reviewer: JsonObject) => reviewer.id === manager.id), 'Eligible manager is missing from the reviewer list.');
+  assert(!eligibleReviewers.reviewers.some((reviewer: JsonObject) => reviewer.id === employee.id), 'Employee without Hiring permission was exposed as a reviewer.');
+
+  await pool.query('UPDATE employees SET is_active = false WHERE tenant_id = $1 AND id = $2', [admin.tenantId, manager.id]);
+  const reviewersWithoutInactive = await expectStatus('Inactive employees are excluded from Hiring reviewers', 200, api('/api/hiring/reviewers', admin));
+  assert(!reviewersWithoutInactive.reviewers.some((reviewer: JsonObject) => reviewer.id === manager.id), 'Inactive manager remained in the reviewer list.');
+  await pool.query('UPDATE employees SET is_active = true WHERE tenant_id = $1 AND id = $2', [admin.tenantId, manager.id]);
+
+  const reviewerIsolationFixture = await setupOtherTenantHiringFixture(pool);
+  try {
+    const tenantScopedReviewers = await expectStatus('Other-tenant employees are excluded from Hiring reviewers', 200, api('/api/hiring/reviewers', admin));
+    assert(!tenantScopedReviewers.reviewers.some((reviewer: JsonObject) => reviewer.id === reviewerIsolationFixture.employeeId), 'Other-tenant employee leaked into the reviewer list.');
+  } finally {
+    await cleanupOtherTenantHiringFixture(pool, reviewerIsolationFixture.tenantId);
+  }
 
   const unauthorized = await expectStatus('Ordinary employee is denied Hiring access', 403, api('/api/hiring/applicants', employee));
   assert(unauthorized.success === false, 'Denied response should be unsuccessful.');

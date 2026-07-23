@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
 import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -37,7 +37,18 @@ import {
 import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
 import { profileImageStorage } from './src/lib/profile-image-storage';
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
+import {
+  assertPortfolioDemoSessionStartup,
+  getPortfolioDemoSessionConfig,
+  parsePortfolioDemoRole,
+  type PortfolioDemoRole,
+  type PortfolioDemoSessionConfig,
+} from './src/server/portfolio-demo-session';
 
+loadDotenv();
+if (process.env.NODE_ENV !== 'production') {
+  loadDotenv({ path: '.env.development.local', override: true });
+}
 
 type ClockInBody = {  
   tenantId?: string;
@@ -486,6 +497,20 @@ function isDemoEnvironment() {
 
 function isDemoEmail(email: string) {
   return email.endsWith('@stanza-demo.com');
+}
+
+function isSameOriginSessionRequest(req: express.Request) {
+  const origin = req.header('origin');
+  const fetchSite = req.header('sec-fetch-site');
+
+  // The session cookie is SameSite=Lax. Reject cross-site browser requests as
+  // an additional CSRF boundary for this unauthenticated session-issuing route.
+  if (fetchSite === 'cross-site') return false;
+  if (!origin) return true;
+
+  const expectedOrigin = (process.env.APP_BASE_URL || `${req.protocol}://${req.get('host') || ''}`)
+    .replace(/\/$/, '');
+  return origin === expectedOrigin;
 }
 
 function getWebAuthnConfig() {
@@ -1677,6 +1702,66 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
   return result.rows[0] || null;
 }
 
+async function fetchPortfolioDemoEmployee(
+  config: PortfolioDemoSessionConfig,
+  role: PortfolioDemoRole,
+) {
+  const result = await getDbPool().query<AuthEmployeeRow>(
+    `
+      SELECT
+        employees.id,
+        employees.tenant_id,
+        employees.email,
+        employees.full_name,
+        employees.role,
+        employees.job_title,
+        employees.profile_image_url,
+        COALESCE(
+          array_remove(array_agg(DISTINCT assigned_role.name), NULL),
+          ARRAY[]::varchar[]
+        ) AS role_names,
+        COALESCE(
+          array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
+          ARRAY[]::varchar[]
+        ) AS permissions,
+        tenants.company_name
+      FROM employees
+      INNER JOIN tenants
+        ON tenants.id = employees.tenant_id
+      LEFT JOIN employee_role_assignments
+        ON employee_role_assignments.tenant_id = employees.tenant_id
+       AND employee_role_assignments.employee_id = employees.id
+      LEFT JOIN tenant_roles assigned_role
+        ON assigned_role.tenant_id = employees.tenant_id
+       AND assigned_role.id = employee_role_assignments.role_id
+      LEFT JOIN tenant_role_permissions
+        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+       AND tenant_role_permissions.role_id = assigned_role.id
+      WHERE LOWER(employees.email) = $1
+        AND tenants.slug = $2
+        AND employees.role = $3
+        AND employees.is_active = true
+        AND employees.employment_status = 'active'
+      GROUP BY employees.id, tenants.company_name
+      LIMIT 1
+    `,
+    [config.accounts[role], config.tenantSlug, role],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function validatePortfolioDemoFixtures(config: PortfolioDemoSessionConfig) {
+  try {
+    const accounts = await Promise.all(
+      (['hr_admin', 'manager', 'employee'] as const).map((role) => fetchPortfolioDemoEmployee(config, role)),
+    );
+    return accounts.every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
 async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
   const result = await getDbPool().query<AuthEmployeeRow>(
     `
@@ -1711,6 +1796,8 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
        AND tenant_role_permissions.role_id = assigned_role.id
       WHERE employees.tenant_id = $1
         AND employees.id = $2
+        AND employees.is_active = true
+        AND employees.employment_status = 'active'
       GROUP BY employees.id, tenants.company_name
       LIMIT 1
     `,
@@ -1726,6 +1813,19 @@ async function startServer() {
   }
   if (isProduction() && process.env.VITE_ENABLE_DEMO_LOGIN === 'true') {
     throw new Error('VITE_ENABLE_DEMO_LOGIN must be false in production.');
+  }
+  assertPortfolioDemoSessionStartup();
+
+  const portfolioDemoConfig = getPortfolioDemoSessionConfig();
+  const portfolioDemoFixturesReady = portfolioDemoConfig
+    ? await validatePortfolioDemoFixtures(portfolioDemoConfig)
+    : false;
+  if (!isProduction()) {
+    console.log(`[Stanza] Portfolio demo session: ${portfolioDemoConfig ? 'enabled' : 'disabled'}`);
+    console.log(`[Stanza] Demo environment: ${process.env.STANZA_DEMO_ENV === 'true' ? 'enabled' : 'disabled'}`);
+    if (portfolioDemoConfig) {
+      console.log(`[Stanza] Demo fixtures: ${portfolioDemoFixturesReady ? 'ready' : 'unavailable'}`);
+    }
   }
 
   const app = express();
@@ -1749,6 +1849,7 @@ async function startServer() {
   const passwordResetRequestRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 5);
   const passwordResetConfirmRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 10);
   const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
+  const portfolioDemoSessionRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 8);
   const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const avatarUpload = multer({
     storage: multer.memoryStorage(),
@@ -1778,11 +1879,16 @@ async function startServer() {
           directives: {
             defaultSrc: ["'self'"],
             baseUri: ["'self'"],
-            connectSrc: ["'self'", 'https://api.maptiler.com', 'https://*.maptiler.com'],
+            // GLTFLoader decodes the card's embedded texture through a temporary
+            // same-document blob URL; MapTiler remains the only remote origin.
+            connectSrc: ["'self'", 'blob:', 'https://api.maptiler.com', 'https://*.maptiler.com'],
             fontSrc: ["'self'", 'data:'],
             imgSrc: ["'self'", 'data:', 'blob:', 'https://api.maptiler.com', 'https://*.maptiler.com'],
             objectSrc: ["'none'"],
-            scriptSrc: ["'self'"],
+            // Rapier initializes its bundled WebAssembly module at runtime. This
+            // narrow CSP source permits Wasm compilation without enabling general
+            // JavaScript eval, which remains prohibited.
+            scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
             styleSrc: ["'self'", "'unsafe-inline'", 'https://api.maptiler.com', 'https://*.maptiler.com'],
             workerSrc: ["'self'", 'blob:'],
           },
@@ -2384,6 +2490,21 @@ app.post('/api/auth/logout', async (req, res) => {
   }
 });
 
+app.get('/api/auth/session', demoAuth, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const authUser = req.authUser!;
+    const employee = await fetchAuthEmployeeById(authUser.tenantId, authUser.employeeId);
+    if (!employee) {
+      return res.status(401).json({ success: false, error: 'Authentication required.' });
+    }
+    return res.json({ success: true, user: formatAuthUser(employee) });
+  } catch (error) {
+    console.error('[Auth session] Failed:', error);
+    return res.status(503).json({ success: false, error: 'Unable to restore the session.' });
+  }
+});
+
 app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   const { email, password } = req.body as {
     email?: string;
@@ -2583,6 +2704,37 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       success: false,
       error: 'Unable to authenticate user.',
     });
+  }
+});
+
+app.post('/api/auth/demo-session', portfolioDemoSessionRateLimiter, async (req, res) => {
+  const config = getPortfolioDemoSessionConfig();
+  if (!config) {
+    return res.status(404).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
+  }
+
+  if (!isSameOriginSessionRequest(req)) {
+    return res.status(403).json({ success: false, code: 'DEMO_SESSION_ORIGIN_REJECTED', error: 'Demo access must be requested from Stanza.' });
+  }
+
+  const role = parsePortfolioDemoRole(req.body);
+  if (!role) {
+    return res.status(400).json({ success: false, code: 'DEMO_SESSION_INVALID_REQUEST', error: 'Select an available demo role.' });
+  }
+
+  try {
+    // Account email and tenant are selected only from server configuration;
+    // callers can choose one fixed demo experience, never an identity.
+    const employee = await fetchPortfolioDemoEmployee(config, role);
+    if (!employee) {
+      return res.status(503).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
+    }
+
+    await createAuthSession(employee, res);
+    return res.json({ success: true, user: formatAuthUser(employee) });
+  } catch (error) {
+    console.error('[Portfolio demo session] Failed:', error);
+    return res.status(503).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
   }
 });
 

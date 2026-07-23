@@ -233,15 +233,87 @@
 
 
 @layer base {
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus,
-  input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 1000px rgb(2 4 3 / 0.72) inset !important;
-    -webkit-text-fill-color: #ecfdf5 !important;
-    caret-color: #ecfdf5;
-    border-color: rgb(16 185 129 / 0.18) !important;
-    transition: background-color 9999s ease-in-out 0s;
+  .stanza-login-input {
+    --stanza-login-input-bg: rgb(255 255 255 / 0.8);
+    --stanza-login-input-text: #0f172a;
+  }
+
+  .dark .stanza-login-input {
+    --stanza-login-input-bg: rgb(4 17 13 / 0.8);
+    --stanza-login-input-text: #ecfdf5;
+  }
+
+  .stanza-login-input:-webkit-autofill,
+  .stanza-login-input:-webkit-autofill:hover,
+  .stanza-login-input:-webkit-autofill:focus,
+  .stanza-login-input:-webkit-autofill:active {
+    background-color: var(--stanza-login-input-bg) !important;
+    background-image: none !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    -webkit-text-fill-color: var(--stanza-login-input-text) !important;
+    color: var(--stanza-login-input-text) !important;
+    caret-color: var(--stanza-login-input-text) !important;
+    filter: none !important;
+    transition: background-color 9999s ease-in-out 0s !important;
+  }
+
+  .stanza-login-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+  }
+
+  .stanza-login-input:-moz-autofill,
+  .stanza-login-input:-moz-autofill:hover,
+  .stanza-login-input:-moz-autofill:focus,
+  .stanza-login-input:-moz-autofill:active {
+    background-color: var(--stanza-login-input-bg) !important;
+    background-image: none !important;
+    box-shadow: 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    -webkit-text-fill-color: var(--stanza-login-input-text) !important;
+    color: var(--stanza-login-input-text) !important;
+    caret-color: var(--stanza-login-input-text) !important;
+    filter: none !important;
+    transition: background-color 9999s ease-in-out 0s !important;
+  }
+
+  /* Keep Firefox's password-manager preview selector isolated: Firefox builds
+     that do not expose it to author CSS must not invalidate the autofill rule. */
+  .stanza-login-input:-moz-autofill-preview {
+    background-color: var(--stanza-login-input-bg) !important;
+    background-image: none !important;
+    box-shadow: 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    -webkit-text-fill-color: var(--stanza-login-input-text) !important;
+    color: var(--stanza-login-input-text) !important;
+    caret-color: var(--stanza-login-input-text) !important;
+    filter: none !important;
+    transition: background-color 9999s ease-in-out 0s !important;
+  }
+
+  .stanza-login-input:-moz-autofill:focus {
+    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+  }
+
+  .stanza-login-input:-moz-autofill-preview:focus {
+    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+  }
+
+  .stanza-login-input:autofill,
+  .stanza-login-input:autofill:hover,
+  .stanza-login-input:autofill:focus,
+  .stanza-login-input:autofill:active {
+    background-color: var(--stanza-login-input-bg) !important;
+    background-image: none !important;
+    box-shadow: 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    -webkit-text-fill-color: var(--stanza-login-input-text) !important;
+    color: var(--stanza-login-input-text) !important;
+    caret-color: var(--stanza-login-input-text) !important;
+    filter: none !important;
+    transition: background-color 9999s ease-in-out 0s !important;
+  }
+
+  .stanza-login-input:autofill:focus {
+    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
   }
 }
 .stanza-lanyard-dragging,

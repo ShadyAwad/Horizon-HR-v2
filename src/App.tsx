@@ -61,6 +61,7 @@ function getStoredUser() {
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthVisualState>('idle');
   const [authTransition, setAuthTransition] = useState<AuthTransition | null>(null);
   const [focusLoginEmail, setFocusLoginEmail] = useState(false);
@@ -83,6 +84,33 @@ export default function App() {
     }
     setShowDemoNotice(false);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (window.location.pathname === '/reset-password') {
+      setSessionChecked(true);
+      return () => { cancelled = true; };
+    }
+
+    void apiFetch(apiUrl('/api/auth/session'))
+      .then(async (response) => {
+        if (!response.ok) throw new Error('No active session.');
+        const data = await response.json() as { success?: boolean; user?: AuthUser };
+        if (!data.success || !data.user) throw new Error('No active session.');
+        if (cancelled) return;
+        setAuthUser(data.user);
+        window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
+        setAuthState('authenticated');
+      })
+      .catch(() => {
+        if (!cancelled) window.localStorage.removeItem('horizon-auth-user');
+      })
+      .finally(() => {
+        if (!cancelled) setSessionChecked(true);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const titles = {
@@ -217,7 +245,11 @@ export default function App() {
     <ThemeProvider>
       <LanguageProvider>
         <div className="w-full min-h-screen bg-[#020604] text-emerald-50 transition-colors duration-300">
-         {authState === 'authenticated' ? (
+         {!sessionChecked ? (
+           <AuthShell pulseState="idle" onPulseComplete={() => undefined}>
+             <AuthTransitionLoader transition="logging-in" />
+           </AuthShell>
+         ) : authState === 'authenticated' ? (
            <>
              <Suspense fallback={<AuthTransitionLoader transition="logging-in" overlay />}>
                <Dashboard

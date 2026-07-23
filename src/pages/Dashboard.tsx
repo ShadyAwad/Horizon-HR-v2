@@ -3655,13 +3655,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 {t('dash.lanyardCardDescription')}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/55">
+            <div className="grid shrink-0 grid-cols-[minmax(3.75rem,auto)_3rem] items-center gap-3" dir={isRtl ? "rtl" : "ltr"}>
+              <span className="min-w-[3.75rem] whitespace-nowrap text-center text-xs font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/55">
                 {lanyardEnabled ? t('dash.on') : t('dash.off')}
               </span>
               <button
                 type="button"
                 role="switch"
+                dir="ltr"
                 aria-checked={lanyardEnabled}
                 aria-label={t('dash.lanyardCard')}
                 onClick={() => setLanyardEnabled(!lanyardEnabled)}

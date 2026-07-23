@@ -4,6 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  assertPortfolioDemoSessionStartup,
+  getPortfolioDemoSessionConfig,
+  parsePortfolioDemoRole,
+} from '../src/server/portfolio-demo-session';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -253,6 +258,94 @@ async function runOptionalAuthenticatedChecks() {
   });
 }
 
+async function runOptionalPortfolioDemoSessionChecks() {
+  if (process.env.PORTFOLIO_DEMO_SESSION_TEST !== 'true') {
+    const disabled = await request('/api/auth/demo-session', {
+      method: 'POST',
+      body: JSON.stringify({ role: 'employee' }),
+    });
+    expectStatus(disabled, 404, 'Portfolio demo session disabled by default');
+    pass('Portfolio demo session is unavailable without demo mode');
+    warn('Portfolio demo session runtime checks', 'Set PORTFOLIO_DEMO_SESSION_TEST=true against the isolated demo target to verify session cookies and rate limiting.');
+    return;
+  }
+
+  const tenantIds = new Set<string>();
+  for (const role of ['hr_admin', 'manager', 'employee'] as const) {
+    const result = await request('/api/auth/demo-session', {
+      method: 'POST',
+      headers: { Origin: baseUrl },
+      body: JSON.stringify({ role }),
+    });
+    expectStatus(result, 200, `Portfolio demo ${role} session`);
+    const user = asRecord(result.body?.user);
+    const cookie = result.response.headers.get('set-cookie') || '';
+    if (user?.role !== role || typeof user?.tenantId !== 'string') {
+      throw new Error(`Portfolio demo ${role} response returned an unexpected identity.`);
+    }
+    if (!/HttpOnly/i.test(cookie) || !/SameSite=Lax/i.test(cookie) || !/stanza_session=/i.test(cookie)) {
+      throw new Error(`Portfolio demo ${role} session did not set the hardened cookie.`);
+    }
+    if (/password|token|hash/i.test(JSON.stringify(result.body))) {
+      throw new Error(`Portfolio demo ${role} response exposed credential material.`);
+    }
+    tenantIds.add(user.tenantId);
+
+    const sessionResult = await request('/api/auth/session', {
+      headers: { Cookie: cookie.split(';', 1)[0] },
+    });
+    expectStatus(sessionResult, 200, `Portfolio demo ${role} session restore`);
+    const restoredUser = asRecord(sessionResult.body?.user);
+    if (restoredUser?.role !== role || restoredUser?.tenantId !== user.tenantId) {
+      throw new Error(`Portfolio demo ${role} session did not restore the same tenant identity.`);
+    }
+
+    const logoutResult = await request('/api/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: cookie.split(';', 1)[0] },
+    });
+    expectStatus(logoutResult, 200, `Portfolio demo ${role} logout`);
+    if (!/stanza_session=;.*Max-Age=0/i.test(logoutResult.response.headers.get('set-cookie') || '')) {
+      throw new Error(`Portfolio demo ${role} logout did not clear the session cookie.`);
+    }
+
+    const revokedSession = await request('/api/auth/session', {
+      headers: { Cookie: cookie.split(';', 1)[0] },
+    });
+    expectStatus(revokedSession, 401, `Portfolio demo ${role} revoked session`);
+  }
+  if (tenantIds.size !== 1) throw new Error('Portfolio demo roles were not scoped to one tenant.');
+
+  const arbitraryFields = await request('/api/auth/demo-session', {
+    method: 'POST',
+    headers: { Origin: baseUrl },
+    body: JSON.stringify({ role: 'employee', email: 'attacker@example.test', tenantId: '00000000-0000-0000-0000-000000000000' }),
+  });
+  expectStatus(arbitraryFields, 400, 'Portfolio demo arbitrary identity fields');
+
+  const crossOrigin = await request('/api/auth/demo-session', {
+    method: 'POST',
+    headers: { Origin: 'https://attacker.example', 'Sec-Fetch-Site': 'cross-site' },
+    body: JSON.stringify({ role: 'employee' }),
+  });
+  expectStatus(crossOrigin, 403, 'Portfolio demo cross-origin request');
+
+  let rateLimited = false;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await request('/api/auth/demo-session', {
+      method: 'POST',
+      headers: { Origin: baseUrl },
+      body: JSON.stringify({ role: 'employee' }),
+    });
+    if (result.response.status === 429) {
+      rateLimited = true;
+      break;
+    }
+  }
+  if (!rateLimited) throw new Error('Portfolio demo session rate limiting did not activate.');
+  pass('Portfolio demo session cookies, tenant isolation, origin checks, and rate limiting');
+}
+
 async function run() {
   console.log(`Stanza security test: ${baseUrl}`);
 
@@ -304,6 +397,50 @@ async function run() {
     }
   });
 
+  await check('Portfolio demo session is explicitly gated', async () => {
+    if (getPortfolioDemoSessionConfig({}) !== null) {
+      throw new Error('Portfolio demo session is enabled without explicit configuration.');
+    }
+    if (getPortfolioDemoSessionConfig({
+      STANZA_DEMO_ENV: 'true',
+      ENABLE_PORTFOLIO_DEMO_SESSION: 'true',
+    }) === null) {
+      throw new Error('Valid isolated demo configuration was rejected.');
+    }
+    if (parsePortfolioDemoRole({ role: 'hr_admin', email: 'attacker@example.test' }) !== null
+      || parsePortfolioDemoRole({ role: 'owner' }) !== null
+      || parsePortfolioDemoRole({ tenantId: 'attacker' }) !== null) {
+      throw new Error('Portfolio demo session accepts caller-controlled identity fields.');
+    }
+    let startupBlocked = false;
+    try {
+      assertPortfolioDemoSessionStartup({ NODE_ENV: 'production', ENABLE_PORTFOLIO_DEMO_SESSION: 'true', STANZA_DEMO_ENV: 'false' });
+    } catch {
+      startupBlocked = true;
+    }
+    if (!startupBlocked) throw new Error('Production startup permits portfolio demo sessions outside demo mode.');
+  });
+
+  await check('Original dashboard lanyard is demo-independent and ships its production asset', async () => {
+    const dashboardSource = await readFile(path.join(rootDir, 'src', 'pages', 'Dashboard.tsx'), 'utf8');
+    const lanyardSource = await readFile(path.join(rootDir, 'src', 'components', 'lanyard', 'Lanyard.tsx'), 'utf8');
+    if (dashboardSource.includes('VITE_ENABLE_DEMO_LOGIN')) {
+      throw new Error('Dashboard lanyard visibility is coupled to the demo-login build flag.');
+    }
+    if (dashboardSource.includes('DashboardLanyardFallback') || dashboardSource.includes('data-lanyard-visibility="fallback"')) {
+      throw new Error('A static dashboard fallback is replacing or competing with the original lanyard.');
+    }
+    const requiredSceneFeatures = ['<Canvas', '<Physics', 'useRopeJoint(', 'useSphericalJoint(', 'onPointerDown=', 'cardGLB'];
+    if (!dashboardSource.includes('<StanzaDashboardLanyard')
+      || !requiredSceneFeatures.every((feature) => lanyardSource.includes(feature))) {
+      throw new Error('The original Canvas, Rapier joints, GLB card, or drag interaction is missing.');
+    }
+    const assetFiles = await filesRecursively(path.join(rootDir, 'dist', 'assets'));
+    if (!assetFiles.some((file) => /^card-[\w-]+\.glb$/i.test(path.basename(file)))) {
+      throw new Error('The production build does not include the lanyard GLB asset.');
+    }
+  });
+
   await check('Security headers', async () => {
     const result = await request('/');
     expectStatus(result, 200, 'Home page');
@@ -318,6 +455,16 @@ async function run() {
       throw new Error('x-frame-options or CSP frame-ancestors is missing.');
     }
     if (!headers.get('content-security-policy')) warn('Content Security Policy', 'Not enabled for this server mode. Production Helmet CSP is still expected.');
+    const contentSecurityPolicy = headers.get('content-security-policy') || '';
+    if (contentSecurityPolicy && contentSecurityPolicy.includes("'unsafe-eval'")) {
+      throw new Error('Content Security Policy enables unrestricted JavaScript eval.');
+    }
+    if (process.env.NODE_ENV === 'production' && !contentSecurityPolicy.includes("'wasm-unsafe-eval'")) {
+      throw new Error('Production CSP does not permit the Rapier WebAssembly runtime.');
+    }
+    if (process.env.NODE_ENV === 'production' && !/connect-src[^;]*\bblob:/i.test(contentSecurityPolicy)) {
+      throw new Error('Production CSP does not permit GLTF embedded-texture decoding.');
+    }
   });
 
   await check('Auth-required endpoints reject anonymous access', async () => {
@@ -403,6 +550,7 @@ async function run() {
       /app\.post\('\/api\/auth\/reset-password',\s*passwordResetConfirmRateLimiter/s,
       /app\.post\('\/api\/auth\/passkeys\/login\/options',\s*passkeyLoginRateLimiter/s,
       /app\.post\('\/api\/auth\/passkeys\/login\/verify',\s*passkeyLoginRateLimiter/s,
+      /app\.post\('\/api\/auth\/demo-session',\s*portfolioDemoSessionRateLimiter/s,
     ];
     if (!requiredBindings.every((pattern) => pattern.test(serverSource))) {
       throw new Error('One or more sensitive auth routes are missing their configured rate limiter.');
@@ -410,6 +558,7 @@ async function run() {
   });
 
   await runOptionalAuthenticatedChecks();
+  await runOptionalPortfolioDemoSessionChecks();
 
   if (failures.length > 0) {
     console.error(`\nSecurity checks failed: ${failures.length}`);

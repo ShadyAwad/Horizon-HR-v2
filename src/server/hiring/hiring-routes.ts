@@ -67,17 +67,17 @@ const eligibleReviewerWhere = `
   AND e.employment_status = 'active'
   AND EXISTS (
     SELECT 1
-    FROM employee_role_assignments era
-    JOIN tenant_roles tr
-      ON tr.tenant_id = era.tenant_id
-     AND tr.id = era.role_id
-     AND tr.is_active = true
-    JOIN tenant_role_permissions trp
-      ON trp.tenant_id = tr.tenant_id
-     AND trp.role_id = tr.id
-    WHERE era.tenant_id = e.tenant_id
-      AND era.employee_id = e.id
-      AND trp.permission_key = 'hiring.view'
+    FROM employee_role_assignments eligibility_era
+    JOIN tenant_roles eligibility_role
+      ON eligibility_role.tenant_id = eligibility_era.tenant_id
+     AND eligibility_role.id = eligibility_era.role_id
+     AND eligibility_role.is_active = true
+    JOIN tenant_role_permissions eligibility_permission
+      ON eligibility_permission.tenant_id = eligibility_role.tenant_id
+     AND eligibility_permission.role_id = eligibility_role.id
+    WHERE eligibility_era.tenant_id = e.tenant_id
+      AND eligibility_era.employee_id = e.id
+      AND eligibility_permission.permission_key = 'hiring.view'
   )`;
 
 export function registerHiringRoutes(app: express.Express, { demoAuth, requirePermission }: HiringRouteDependencies) {
@@ -88,6 +88,16 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         SELECT e.id, e.full_name AS "displayName", e.role, e.job_title AS "roleLabel",
           COALESCE(array_remove(array_agg(DISTINCT trp.permission_key), NULL), ARRAY[]::varchar[]) AS permissions
         FROM employees e
+        JOIN employee_role_assignments era
+          ON era.tenant_id = e.tenant_id
+         AND era.employee_id = e.id
+        JOIN tenant_roles tr
+          ON tr.tenant_id = era.tenant_id
+         AND tr.id = era.role_id
+         AND tr.is_active = true
+        JOIN tenant_role_permissions trp
+          ON trp.tenant_id = tr.tenant_id
+         AND trp.role_id = tr.id
         WHERE ${eligibleReviewerWhere}
         GROUP BY e.id ORDER BY e.full_name`, [tenantId])).rows);
       res.json({ success: true, reviewers });

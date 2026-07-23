@@ -60,6 +60,12 @@ const translations = {
     'login.demoCredentialsNote': 'Demo credentials are for portfolio testing only.',
     'login.fillDemoCredentials': 'Fill Demo Credentials',
     'login.demoExploreRoles': 'Explore sample roles',
+    'login.exploreAsHrAdmin': 'Explore as HR Admin',
+    'login.exploreAsManager': 'Explore as Manager',
+    'login.exploreAsEmployee': 'Explore as Employee',
+    'login.demoSessionStarting': 'Opening demo...',
+    'login.demoSessionNote': 'Demo access uses an isolated workspace. No credentials are shared with your browser.',
+    'login.demoAccessUnavailable': 'Portfolio demo access is unavailable right now. Please try again later.',
     'login.demoHrAdminDescription': 'Manage grievances, resignations, and workforce workflows.',
     'login.demoManagerDescription': 'Review requests and team operations.',
     'login.demoEmployeeDescription': 'Explore attendance, leave, and profile tools.',
@@ -1027,6 +1033,12 @@ const translations = {
 export type TranslationKey = keyof typeof translations.en;
 
 const arabicOverrides: Partial<Record<TranslationKey, string>> = {
+  'login.exploreAsHrAdmin': 'استكشاف كمسؤول موارد بشرية',
+  'login.exploreAsManager': 'استكشاف كمدير',
+  'login.exploreAsEmployee': 'استكشاف كموظف',
+  'login.demoSessionStarting': 'جارٍ فتح العرض التجريبي...',
+  'login.demoSessionNote': 'يستخدم العرض التجريبي مساحة عمل معزولة. لا تتم مشاركة أي بيانات اعتماد مع المتصفح.',
+  'login.demoAccessUnavailable': 'الوصول إلى العرض التجريبي غير متاح الآن. يرجى المحاولة لاحقًا.',
   'login.installStanza': 'تثبيت Stanza',
   'login.installDescription': 'استخدم Stanza من شاشتك الرئيسية أو في نافذة تطبيق مستقلة.',
   'login.installNow': 'تثبيت التطبيق',
