@@ -211,13 +211,14 @@ async function seedDemo() {
     await client.query('BEGIN');
 
     const tenantResult = await client.query<{ id: string }>(
-      `INSERT INTO tenants (company_name, slug, default_currency, capacity_tier, allows_company_loans)
-       VALUES ($1, $2, 'USD', '100-500', true)
+      `INSERT INTO tenants (company_name, slug, default_currency, capacity_tier, allows_company_loans, is_demo_tenant)
+       VALUES ($1, $2, 'USD', '100-500', true, true)
        ON CONFLICT (slug) DO UPDATE SET
          company_name = EXCLUDED.company_name,
          default_currency = EXCLUDED.default_currency,
          capacity_tier = EXCLUDED.capacity_tier,
          allows_company_loans = EXCLUDED.allows_company_loans,
+         is_demo_tenant = true,
          updated_at = NOW()
        RETURNING id`,
       [DEMO.companyName, DEMO.slug],

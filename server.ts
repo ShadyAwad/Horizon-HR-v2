@@ -50,13 +50,6 @@ import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-em
 import { registerAuditRoutes } from './src/server/audit/audit-routes';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
-  assertPortfolioDemoSessionStartup,
-  getPortfolioDemoSessionConfig,
-  parsePortfolioDemoRole,
-  type PortfolioDemoRole,
-  type PortfolioDemoSessionConfig,
-} from './src/server/portfolio-demo-session';
-import {
   assertTryCloudflareDevOriginsStartup,
   isAllowedTryCloudflareDevOrigin,
   isTryCloudflareDevOriginsEnabled,
@@ -596,10 +589,6 @@ function allowDevAuthHeaders() {
 
 function isDemoEnvironment() {
   return process.env.STANZA_DEMO_ENV === 'true';
-}
-
-function isDemoEmail(email: string) {
-  return email.endsWith('@stanza-demo.com');
 }
 
 function isSameOriginSessionRequest(req: express.Request) {
@@ -1830,9 +1819,10 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
   return result.rows[0] || null;
 }
 
-async function fetchPortfolioDemoEmployee(
-  config: PortfolioDemoSessionConfig,
-  role: PortfolioDemoRole,
+/* Demo fixture lookup is intentionally not part of runtime authentication. */
+async function fetchPortfolioDemoEmployeeRemoved(
+  config: { accounts: Record<string, string>; tenantSlug: string },
+  role: string,
 ) {
   const result = await getDbPool().query<AuthEmployeeRow>(
     `
@@ -1877,17 +1867,6 @@ async function fetchPortfolioDemoEmployee(
   );
 
   return result.rows[0] || null;
-}
-
-async function validatePortfolioDemoFixtures(config: PortfolioDemoSessionConfig) {
-  try {
-    const accounts = await Promise.all(
-      (['hr_admin', 'manager', 'employee'] as const).map((role) => fetchPortfolioDemoEmployee(config, role)),
-    );
-    return accounts.every(Boolean);
-  } catch {
-    return false;
-  }
 }
 
 async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
@@ -1939,22 +1918,9 @@ async function startServer() {
   if (isProduction() && process.env.DEV_AUTH_HEADERS === 'true') {
     throw new Error('DEV_AUTH_HEADERS must be disabled in production.');
   }
-  if (isProduction() && process.env.VITE_ENABLE_DEMO_LOGIN === 'true') {
-    throw new Error('VITE_ENABLE_DEMO_LOGIN must be false in production.');
-  }
-  assertPortfolioDemoSessionStartup();
   assertTryCloudflareDevOriginsStartup();
-
-  const portfolioDemoConfig = getPortfolioDemoSessionConfig();
-  const portfolioDemoFixturesReady = portfolioDemoConfig
-    ? await validatePortfolioDemoFixtures(portfolioDemoConfig)
-    : false;
   if (!isProduction()) {
-    console.log(`[Stanza] Portfolio demo session: ${portfolioDemoConfig ? 'enabled' : 'disabled'}`);
-    console.log(`[Stanza] Demo environment: ${process.env.STANZA_DEMO_ENV === 'true' ? 'enabled' : 'disabled'}`);
-    if (portfolioDemoConfig) {
-      console.log(`[Stanza] Demo fixtures: ${portfolioDemoFixturesReady ? 'ready' : 'unavailable'}`);
-    }
+    console.log('[Stanza] Demo accounts use standard email/password authentication.');
   }
 
   const app = express();
@@ -1978,7 +1944,6 @@ async function startServer() {
   const passwordResetRequestRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 5);
   const passwordResetConfirmRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 10);
   const passkeyLoginRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 20);
-  const portfolioDemoSessionRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 8);
   const sessionManagementRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 30);
   const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const feedImageRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 30);
@@ -2810,12 +2775,6 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 
   const normalizedEmail = normalizedLoginEmail.value;
 
-  if (isDemoEmail(normalizedEmail) && !isDemoEnvironment()) {
-    return res.status(401).json({
-      success: false,
-      error: 'Demo accounts are disabled in this environment.',
-    });
-  }
   const loginRateLimitKeys = getLoginRateLimitKeys(req, normalizedEmail);
   const rateLimit = checkLoginRateLimits(loginRateLimitKeys);
 
@@ -2995,36 +2954,6 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/auth/demo-session', portfolioDemoSessionRateLimiter, async (req, res) => {
-  const config = getPortfolioDemoSessionConfig();
-  if (!config) {
-    return res.status(404).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
-  }
-
-  if (!isSameOriginSessionRequest(req)) {
-    return res.status(403).json({ success: false, code: 'DEMO_SESSION_ORIGIN_REJECTED', error: 'Demo access must be requested from Stanza.' });
-  }
-
-  const role = parsePortfolioDemoRole(req.body);
-  if (!role) {
-    return res.status(400).json({ success: false, code: 'DEMO_SESSION_INVALID_REQUEST', error: 'Select an available demo role.' });
-  }
-
-  try {
-    // Account email and tenant are selected only from server configuration;
-    // callers can choose one fixed demo experience, never an identity.
-    const employee = await fetchPortfolioDemoEmployee(config, role);
-    if (!employee) {
-      return res.status(503).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
-    }
-
-    await createAuthSession(employee, req, res);
-    return res.json({ success: true, user: formatAuthUser(employee) });
-  } catch (error) {
-    console.error('[Portfolio demo session] Failed:', error);
-    return res.status(503).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
-  }
-});
 
 app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) => {
   const authUser = req.authUser!;

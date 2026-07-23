@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     default_currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     capacity_tier VARCHAR(50) NOT NULL DEFAULT '100-500',
     allows_company_loans BOOLEAN NOT NULL DEFAULT false,
+    is_demo_tenant BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

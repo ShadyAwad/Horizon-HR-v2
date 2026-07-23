@@ -5,11 +5,6 @@ import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  assertPortfolioDemoSessionStartup,
-  getPortfolioDemoSessionConfig,
-  parsePortfolioDemoRole,
-} from '../src/server/portfolio-demo-session';
-import {
   assertTryCloudflareDevOriginsStartup,
   isAllowedTryCloudflareDevOrigin,
   isTryCloudflareDevOriginsEnabled,
@@ -448,28 +443,11 @@ async function run() {
     }
   });
 
-  await check('Portfolio demo session is explicitly gated', async () => {
-    if (getPortfolioDemoSessionConfig({}) !== null) {
-      throw new Error('Portfolio demo session is enabled without explicit configuration.');
+  await check('Demo accounts use only standard login', async () => {
+    const serverSource = await readFile(path.join(rootDir, 'server.ts'), 'utf8');
+    if (serverSource.includes('/api/auth/demo-session') || serverSource.includes('ENABLE_PORTFOLIO_DEMO_SESSION')) {
+      throw new Error('A passwordless demo authentication path remains.');
     }
-    if (getPortfolioDemoSessionConfig({
-      STANZA_DEMO_ENV: 'true',
-      ENABLE_PORTFOLIO_DEMO_SESSION: 'true',
-    }) === null) {
-      throw new Error('Valid isolated demo configuration was rejected.');
-    }
-    if (parsePortfolioDemoRole({ role: 'hr_admin', email: 'attacker@example.test' }) !== null
-      || parsePortfolioDemoRole({ role: 'owner' }) !== null
-      || parsePortfolioDemoRole({ tenantId: 'attacker' }) !== null) {
-      throw new Error('Portfolio demo session accepts caller-controlled identity fields.');
-    }
-    let startupBlocked = false;
-    try {
-      assertPortfolioDemoSessionStartup({ NODE_ENV: 'production', ENABLE_PORTFOLIO_DEMO_SESSION: 'true', STANZA_DEMO_ENV: 'false' });
-    } catch {
-      startupBlocked = true;
-    }
-    if (!startupBlocked) throw new Error('Production startup permits portfolio demo sessions outside demo mode.');
   });
 
   await check('Cloudflare Quick Tunnel origin support is explicit and development-only', async () => {
@@ -656,7 +634,6 @@ async function run() {
       /app\.post\('\/api\/auth\/reset-password',\s*passwordResetConfirmRateLimiter/s,
       /app\.post\('\/api\/auth\/passkeys\/login\/options',\s*passkeyLoginRateLimiter/s,
       /app\.post\('\/api\/auth\/passkeys\/login\/verify',\s*passkeyLoginRateLimiter/s,
-      /app\.post\('\/api\/auth\/demo-session',\s*portfolioDemoSessionRateLimiter/s,
     ];
     if (!requiredBindings.every((pattern) => pattern.test(serverSource))) {
       throw new Error('One or more sensitive auth routes are missing their configured rate limiter.');
@@ -664,7 +641,6 @@ async function run() {
   });
 
   await runOptionalAuthenticatedChecks();
-  await runOptionalPortfolioDemoSessionChecks();
 
   if (failures.length > 0) {
     console.error(`\nSecurity checks failed: ${failures.length}`);

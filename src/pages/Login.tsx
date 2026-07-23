@@ -107,8 +107,8 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const [showPassword, setShowPassword] = useState(false);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
   const [selectedDemoRole, setSelectedDemoRole] = useState<PortfolioDemoRole | null>(null);
-  const [isDemoSessionLoading, setIsDemoSessionLoading] = useState(false);
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const loginFormRef = useRef<HTMLFormElement>(null);
   const { t, lang, setLang, isRtl } = useLanguage();
   const { isDark, toggleTheme } = useTheme();
   const emailValidation = validateEmail(email);
@@ -140,38 +140,23 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
     },
   ], [t]);
 
-  const handleDemoSession = async (role: PortfolioDemoRole) => {
+  const handleDemoSession = (role: PortfolioDemoRole) => {
     if (isOffline) {
       setPulseState('error');
       setErrorMsg(t('login.offlineSignIn'));
       return;
     }
 
-    setIsDemoSessionLoading(true);
     setSelectedDemoRole(role);
     setErrorMsg('');
-    setPulseState('loading');
-
-    try {
-      const response = await fetch(apiUrl('/api/auth/demo-session'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success || !data.user) {
-        throw new Error(data.error || t('login.demoAccessUnavailable'));
-      }
-
-      setPulseState('success');
-      onLoginSuccess(data.user);
-    } catch (error) {
-      setPulseState('error');
-      setErrorMsg(error instanceof Error ? error.message : t('login.demoAccessUnavailable'));
-    } finally {
-      setIsDemoSessionLoading(false);
-    }
+    const account = {
+      hr_admin: 'admin@stanza-demo.com',
+      manager: 'manager@stanza-demo.com',
+      employee: 'employee@stanza-demo.com',
+    }[role];
+    setEmail(account);
+    setPassword('StrongPass!123');
+    setTimeout(() => loginFormRef.current?.requestSubmit(), 0);
   };
 
   useEffect(() => {
@@ -413,7 +398,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
 <p className="text-sm text-emerald-700/70 dark:text-emerald-100/55 mt-1">{t('login.subtitle')}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form ref={loginFormRef} onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
             <input 
@@ -577,7 +562,7 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
                         key={role}
                         type="button"
                         title={action}
-                        disabled={!showDemoAccounts || isDemoSessionLoading || isLoading || isPasskeyLoading}
+                        disabled={!showDemoAccounts || isLoading || isPasskeyLoading}
                         tabIndex={showDemoAccounts ? 0 : -1}
                         aria-pressed={selected}
                         aria-label={`${label}. ${description}. ${action}`}
@@ -592,7 +577,7 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
                           <span className="mt-0.5 block text-[10px] leading-4 text-emerald-100/55">{description}</span>
                         </span>
                         <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-200">
-                          {isDemoSessionLoading && selected ? t('login.demoSessionStarting') : action}
+                          {isLoading && selected ? t('login.authenticating') : action}
                         </span>
                       </button>
                     );
