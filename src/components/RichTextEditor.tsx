@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { $getRoot, $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, FORMAT_TEXT_COMMAND, REDO_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND, type EditorState } from 'lexical';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { $createParagraphNode, $getRoot, $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, FORMAT_TEXT_COMMAND, REDO_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND, type EditorState } from 'lexical';
+import { $isLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { ListItemNode, ListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
@@ -8,12 +9,14 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
-import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import { $patchStyleText } from '@lexical/selection';
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from '@lexical/rich-text';
+import { $getSelectionStyleValueForProperty, $patchStyleText, $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
-import { Bold, Italic, List, ListOrdered, Palette, Pilcrow, Redo2, Smile, Type, Underline, Undo2 } from 'lucide-react';
+import { Bold, Italic, Link, List, ListOrdered, Palette, Pilcrow, Redo2, Smile, Strikethrough, Type, Underline, Undo2, Unlink } from 'lucide-react';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
+import { FEED_FONT_SIZES, FEED_TEXT_COLORS, isSafeFeedLink } from '../lib/feed-editor-contract';
 import { cn } from '../lib/utils';
 
 type RichTextPayload = {
@@ -31,32 +34,24 @@ type RichTextEditorProps = {
 
 const TEXT_COLORS: Array<{ label: string; value: string; swatch: string; translationKey: TranslationKey }> = [
   { label: 'Default', value: '', swatch: 'transparent', translationKey: 'editor.defaultColor' },
-  { label: 'White', value: '#f8fafc', swatch: '#f8fafc', translationKey: 'editor.white' },
-  { label: 'Muted Gray', value: '#a3a3a3', swatch: '#a3a3a3', translationKey: 'editor.mutedGray' },
-  { label: 'Emerald', value: '#34d399', swatch: '#34d399', translationKey: 'editor.emerald' },
-  { label: 'Lime', value: '#a3e635', swatch: '#a3e635', translationKey: 'editor.lime' },
-  { label: 'Teal', value: '#2dd4bf', swatch: '#2dd4bf', translationKey: 'editor.teal' },
-  { label: 'Cyan', value: '#22d3ee', swatch: '#22d3ee', translationKey: 'editor.cyan' },
-  { label: 'Blue', value: '#60a5fa', swatch: '#60a5fa', translationKey: 'editor.blue' },
-  { label: 'Purple', value: '#c084fc', swatch: '#c084fc', translationKey: 'editor.purple' },
-  { label: 'Pink', value: '#f472b6', swatch: '#f472b6', translationKey: 'editor.pink' },
-  { label: 'Red', value: '#f87171', swatch: '#f87171', translationKey: 'editor.red' },
-  { label: 'Orange', value: '#fb923c', swatch: '#fb923c', translationKey: 'editor.orange' },
-  { label: 'Amber', value: '#fbbf24', swatch: '#fbbf24', translationKey: 'editor.amber' },
-  { label: 'Yellow', value: '#fde047', swatch: '#fde047', translationKey: 'editor.yellow' },
+  { label: 'White', value: FEED_TEXT_COLORS[0], swatch: FEED_TEXT_COLORS[0], translationKey: 'editor.white' },
+  { label: 'Muted Gray', value: FEED_TEXT_COLORS[1], swatch: FEED_TEXT_COLORS[1], translationKey: 'editor.mutedGray' },
+  { label: 'Emerald', value: FEED_TEXT_COLORS[2], swatch: FEED_TEXT_COLORS[2], translationKey: 'editor.emerald' },
+  { label: 'Lime', value: FEED_TEXT_COLORS[3], swatch: FEED_TEXT_COLORS[3], translationKey: 'editor.lime' },
+  { label: 'Teal', value: FEED_TEXT_COLORS[4], swatch: FEED_TEXT_COLORS[4], translationKey: 'editor.teal' },
+  { label: 'Cyan', value: FEED_TEXT_COLORS[5], swatch: FEED_TEXT_COLORS[5], translationKey: 'editor.cyan' },
+  { label: 'Blue', value: FEED_TEXT_COLORS[6], swatch: FEED_TEXT_COLORS[6], translationKey: 'editor.blue' },
+  { label: 'Purple', value: FEED_TEXT_COLORS[7], swatch: FEED_TEXT_COLORS[7], translationKey: 'editor.purple' },
+  { label: 'Pink', value: FEED_TEXT_COLORS[8], swatch: FEED_TEXT_COLORS[8], translationKey: 'editor.pink' },
+  { label: 'Red', value: FEED_TEXT_COLORS[9], swatch: FEED_TEXT_COLORS[9], translationKey: 'editor.red' },
+  { label: 'Orange', value: FEED_TEXT_COLORS[10], swatch: FEED_TEXT_COLORS[10], translationKey: 'editor.orange' },
+  { label: 'Amber', value: FEED_TEXT_COLORS[11], swatch: FEED_TEXT_COLORS[11], translationKey: 'editor.amber' },
+  { label: 'Yellow', value: FEED_TEXT_COLORS[12], swatch: FEED_TEXT_COLORS[12], translationKey: 'editor.yellow' },
 ];
 
 const FONT_SIZES = [
   { label: 'Reset', value: '' },
-  { label: '10', value: '10px' },
-  { label: '12', value: '12px' },
-  { label: '14', value: '14px' },
-  { label: '16', value: '16px' },
-  { label: '18', value: '18px' },
-  { label: '20', value: '20px' },
-  { label: '24', value: '24px' },
-  { label: '28', value: '28px' },
-  { label: '32', value: '32px' },
+  ...FEED_FONT_SIZES.map((value) => ({ label: value.replace('px', ''), value })),
 ];
 
 const EMOJI_CATEGORIES: Array<{ label: string; translationKey: TranslationKey; emojis: string[] }> = [
@@ -136,15 +131,21 @@ function ToolbarButton({
 function EditorToolbar() {
   const [editor] = useLexicalComposerContext();
   const { t, isRtl } = useLanguage();
-  const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false });
+  const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false, strike: false });
+  const [blockType, setBlockType] = useState<'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'quote' | 'bullet' | 'number'>('paragraph');
+  const [linkActive, setLinkActive] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkError, setLinkError] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedFontSize, setSelectedFontSize] = useState('');
-  const [openPicker, setOpenPicker] = useState<'color' | 'size' | 'emoji' | null>(null);
+  const [openPicker, setOpenPicker] = useState<'color' | 'size' | 'emoji' | 'link' | null>(null);
+  const linkButtonRef = useRef<HTMLButtonElement>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
 
   const refreshToolbar = useCallback(() => {
     const selection = $getSelection();
     if (!$isRangeSelection(selection)) {
-      setActiveFormats({ bold: false, italic: false, underline: false });
+      setActiveFormats({ bold: false, italic: false, underline: false, strike: false });
       return;
     }
 
@@ -152,7 +153,28 @@ function EditorToolbar() {
       bold: selection.hasFormat('bold'),
       italic: selection.hasFormat('italic'),
       underline: selection.hasFormat('underline'),
+      strike: selection.hasFormat('strikethrough'),
     });
+    setSelectedColor($getSelectionStyleValueForProperty(selection, 'color', ''));
+    setSelectedFontSize($getSelectionStyleValueForProperty(selection, 'font-size', ''));
+
+    const anchorNode = selection.anchor.getNode();
+    const listNode = $getNearestNodeOfType(anchorNode, ListNode);
+    const topLevelNode = anchorNode.getTopLevelElementOrThrow();
+    if (listNode) {
+      setBlockType(listNode.getListType() === 'number' ? 'number' : 'bullet');
+    } else if ($isHeadingNode(topLevelNode)) {
+      const tag = topLevelNode.getTag();
+      setBlockType(['h1', 'h2', 'h3', 'h4'].includes(tag) ? tag as 'h1' | 'h2' | 'h3' | 'h4' : 'paragraph');
+    } else if ($isQuoteNode(topLevelNode)) {
+      setBlockType('quote');
+    } else {
+      setBlockType('paragraph');
+    }
+
+    const linkNode = $getNearestNodeOfType(anchorNode, LinkNode);
+    setLinkActive($isLinkNode(linkNode));
+    if (linkNode) setLinkUrl(linkNode.getURL());
   }, []);
 
   useEffect(() => {
@@ -173,8 +195,9 @@ function EditorToolbar() {
     );
   }, [editor, refreshToolbar]);
 
-  const formatText = (format: 'bold' | 'italic' | 'underline') => {
-    setActiveFormats((current) => ({ ...current, [format]: !current[format] }));
+  const formatText = (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
+    const stateKey = format === 'strikethrough' ? 'strike' : format;
+    setActiveFormats((current) => ({ ...current, [stateKey]: !current[stateKey] }));
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     queueMicrotask(() => {
       editor.getEditorState().read(() => {
@@ -182,6 +205,77 @@ function EditorToolbar() {
       });
     });
   };
+
+  const applyBlockType = (nextType: 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'quote') => {
+    const apply = () => {
+      editor.update(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return;
+        if (nextType === 'paragraph') $setBlocksType(selection, () => $createParagraphNode());
+        else if (nextType === 'quote') $setBlocksType(selection, () => $createQuoteNode());
+        else $setBlocksType(selection, () => $createHeadingNode(nextType));
+      });
+    };
+
+    if (blockType === 'bullet' || blockType === 'number') {
+      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+      queueMicrotask(apply);
+    } else {
+      apply();
+    }
+  };
+
+  const openLinkPicker = () => {
+    setLinkError('');
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+      const linkNode = $getNearestNodeOfType(selection.anchor.getNode(), LinkNode);
+      setLinkUrl(linkNode?.getURL() || '');
+    });
+    setOpenPicker('link');
+    window.setTimeout(() => linkInputRef.current?.focus(), 0);
+  };
+
+  const closeLinkPicker = () => {
+    setOpenPicker(null);
+    setLinkError('');
+    window.setTimeout(() => linkButtonRef.current?.focus(), 0);
+  };
+
+  const applyLink = () => {
+    const normalizedUrl = linkUrl.trim();
+    if (!isSafeFeedLink(normalizedUrl)) {
+      setLinkError(t('editor.invalidLink'));
+      return;
+    }
+
+    editor.update(() => {
+      const isExternal = normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://');
+      $toggleLink(normalizedUrl, {
+        target: isExternal ? '_blank' : null,
+        rel: isExternal ? 'noopener noreferrer' : null,
+      });
+    });
+    closeLinkPicker();
+  };
+
+  const removeLink = () => {
+    editor.update(() => $toggleLink(null));
+    closeLinkPicker();
+  };
+
+  useEffect(() => {
+    if (openPicker !== 'link') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeLinkPicker();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openPicker]);
 
   const applyTextStyle = (style: Record<string, string | null>) => {
     editor.update(() => {
@@ -227,6 +321,21 @@ function EditorToolbar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-emerald-500/15 bg-black/25 p-2">
+      <label className="sr-only" htmlFor="stanza-editor-block-type">{t('editor.blockType')}</label>
+      <select
+        id="stanza-editor-block-type"
+        value={['bullet', 'number'].includes(blockType) ? 'paragraph' : blockType}
+        onChange={(event) => applyBlockType(event.target.value as 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'quote')}
+        className="h-8 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold text-emerald-100 outline-none focus:border-emerald-400/60"
+        aria-label={t('editor.blockType')}
+      >
+        <option value="paragraph">{t('editor.paragraph')}</option>
+        <option value="h1">{t('editor.heading1')}</option>
+        <option value="h2">{t('editor.heading2')}</option>
+        <option value="h3">{t('editor.heading3')}</option>
+        <option value="h4">{t('editor.heading4')}</option>
+        <option value="quote">{t('editor.blockQuote')}</option>
+      </select>
       <ToolbarButton label={t('editor.bold')} active={activeFormats.bold} onClick={() => formatText('bold')}>
         <Bold className="h-4 w-4" />
       </ToolbarButton>
@@ -236,17 +345,85 @@ function EditorToolbar() {
       <ToolbarButton label={t('editor.underline')} active={activeFormats.underline} onClick={() => formatText('underline')}>
         <Underline className="h-4 w-4" />
       </ToolbarButton>
+      <ToolbarButton label={t('editor.strike')} active={activeFormats.strike} onClick={() => formatText('strikethrough')}>
+        <Strikethrough className="h-4 w-4" />
+      </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
-      <ToolbarButton label={t('editor.bulletedList')} onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>
+      <ToolbarButton active={blockType === 'bullet'} label={t('editor.bulletedList')} onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>
         <List className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label={t('editor.numberedList')} onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>
+      <ToolbarButton active={blockType === 'number'} label={t('editor.numberedList')} onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}>
         <ListOrdered className="h-4 w-4" />
       </ToolbarButton>
       <ToolbarButton label={t('editor.removeList')} onClick={removeCurrentList}>
         <Pilcrow className="h-4 w-4" />
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-emerald-500/15" />
+      <div className="relative">
+        <button
+          ref={linkButtonRef}
+          type="button"
+          aria-label={t('editor.link')}
+          title={t('editor.link')}
+          aria-expanded={openPicker === 'link'}
+          aria-haspopup="dialog"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={openLinkPicker}
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded border transition hover:border-emerald-400/50 hover:text-emerald-200',
+            linkActive
+              ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
+              : 'border-emerald-500/15 bg-black/30 text-emerald-100/70',
+          )}
+        >
+          <Link className="h-4 w-4" />
+        </button>
+        {openPicker === 'link' && (
+          <div
+            role="dialog"
+            aria-label={t('editor.link')}
+            className={cn("absolute top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}
+          >
+            <label htmlFor="stanza-editor-link-url" className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-emerald-100/60">
+              {t('editor.linkUrl')}
+            </label>
+            <input
+              ref={linkInputRef}
+              id="stanza-editor-link-url"
+              type="url"
+              value={linkUrl}
+              onChange={(event) => {
+                setLinkUrl(event.target.value);
+                setLinkError('');
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  applyLink();
+                }
+              }}
+              placeholder="https://"
+              aria-invalid={Boolean(linkError)}
+              aria-describedby={linkError ? 'stanza-editor-link-error' : undefined}
+              className="h-10 w-full rounded border border-emerald-500/20 bg-black/50 px-3 text-sm text-emerald-50 outline-none focus:border-emerald-400"
+            />
+            {linkError && <p id="stanza-editor-link-error" className="mt-2 text-xs text-red-300">{linkError}</p>}
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={applyLink} className="min-h-10 flex-1 rounded bg-emerald-500 px-3 text-xs font-bold text-black">
+                {linkActive ? t('editor.updateLink') : t('editor.addLink')}
+              </button>
+              {linkActive && (
+                <button type="button" onClick={removeLink} aria-label={t('editor.removeLink')} title={t('editor.removeLink')} className="flex min-h-10 min-w-10 items-center justify-center rounded border border-emerald-500/20 text-emerald-100">
+                  <Unlink className="h-4 w-4" />
+                </button>
+              )}
+              <button type="button" onClick={closeLinkPicker} className="min-h-10 rounded border border-emerald-500/20 px-3 text-xs font-bold text-emerald-100">
+                {t('dash.close')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="relative">
         <button
           type="button"
@@ -400,7 +577,7 @@ export function RichTextEditor({
     namespace: readOnly ? 'StanzaFeedReader' : 'StanzaFeedComposer',
     editable: !readOnly,
     editorState: getInitialEditorState(valueJson),
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode],
     onError(error: Error) {
       throw error;
     },
@@ -409,8 +586,16 @@ export function RichTextEditor({
       text: {
         bold: 'font-bold text-emerald-50',
         italic: 'italic',
+        strikethrough: 'line-through',
         underline: 'underline decoration-emerald-300/70 underline-offset-2',
       },
+      heading: {
+        h1: 'mb-3 text-3xl font-black leading-tight',
+        h2: 'mb-2 text-2xl font-black leading-tight',
+        h3: 'mb-2 text-xl font-bold leading-snug',
+        h4: 'mb-2 text-lg font-bold leading-snug',
+      },
+      link: 'break-words text-emerald-600 underline decoration-emerald-400/60 underline-offset-2 dark:text-emerald-300',
       list: {
         ul: 'ml-5 list-disc space-y-1',
         ol: 'ml-5 list-decimal space-y-1',
@@ -454,6 +639,10 @@ export function RichTextEditor({
           </>
         )}
         <ListPlugin />
+        <LinkPlugin
+          validateUrl={isSafeFeedLink}
+          attributes={{ target: '_blank', rel: 'noopener noreferrer' }}
+        />
         <EditableStatePlugin readOnly={readOnly} />
       </div>
     </LexicalComposer>

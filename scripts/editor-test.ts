@@ -75,4 +75,63 @@ test('link protocols are restricted', () => {
   assert.equal(isSafeFeedLink('/relative-path'), false);
 });
 
+test('retained inline formats remain valid', () => {
+  for (const format of [1, 2, 8, 1 | 2 | 8]) {
+    assert.equal(validateFeedEditorDocument(paragraph('Formatted', { format }), 'Formatted').ok, true);
+  }
+});
+
+test('headings, quotes, lists, and links round trip', () => {
+  const document = {
+    root: {
+      type: 'root',
+      version: 1,
+      children: [
+        { type: 'heading', tag: 'h2', version: 1, children: [{ type: 'text', text: 'Update', format: 0, style: '', version: 1 }] },
+        { type: 'quote', version: 1, children: [{ type: 'text', text: 'People first', format: 0, style: '', version: 1 }] },
+        {
+          type: 'list',
+          listType: 'bullet',
+          tag: 'ul',
+          version: 1,
+          children: [{
+            type: 'listitem',
+            version: 1,
+            children: [{
+              type: 'link',
+              url: 'https://stanza.example/policy',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              version: 1,
+              children: [{ type: 'text', text: 'Policy', format: 0, style: '', version: 1 }],
+            }],
+          }],
+        },
+      ],
+    },
+  };
+  const result = validateFeedEditorDocument(document, 'Update People first Policy');
+  assert.equal(result.ok, true);
+});
+
+test('unsupported heading levels and unsafe serialized links are rejected', () => {
+  const heading = {
+    root: {
+      type: 'root',
+      children: [{ type: 'heading', tag: 'h5', children: [{ type: 'text', text: 'Too deep' }] }],
+    },
+  };
+  const link = {
+    root: {
+      type: 'root',
+      children: [{
+        type: 'paragraph',
+        children: [{ type: 'link', url: 'file:///etc/passwd', children: [{ type: 'text', text: 'File' }] }],
+      }],
+    },
+  };
+  assert.equal(validateFeedEditorDocument(heading, 'Too deep').ok, false);
+  assert.equal(validateFeedEditorDocument(link, 'File').ok, false);
+});
+
 console.log(`Editor contract checks passed: ${passed}`);
