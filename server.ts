@@ -36,6 +36,11 @@ import {
 } from './src/lib/validation';
 import { sendPasswordResetEmail, sendWelcomeEmail } from './src/lib/email';
 import { profileImageStorage } from './src/lib/profile-image-storage';
+import {
+  FEED_EDITOR_FORMAT,
+  FEED_EDITOR_SCHEMA_VERSION,
+  validateFeedEditorDocument,
+} from './src/lib/feed-editor-contract';
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 import {
   assertPortfolioDemoSessionStartup,
@@ -198,6 +203,8 @@ type CreateFeedPostBody = {
   postType?: FeedPostType;
   contentText?: string;
   contentJson?: unknown;
+  editorFormat?: string;
+  editorSchemaVersion?: number;
   eventStartsAt?: string | null;
   eventEndsAt?: string | null;
   status?: Exclude<FeedPostStatus, 'archived'>;
@@ -7944,6 +7951,8 @@ app.post(
       postType = 'announcement',
       contentText,
       contentJson,
+      editorFormat = FEED_EDITOR_FORMAT,
+      editorSchemaVersion = FEED_EDITOR_SCHEMA_VERSION,
       eventStartsAt,
       eventEndsAt,
       status = 'published',
@@ -7969,6 +7978,23 @@ app.post(
         success: false,
         error: 'title must be 160 characters or fewer and contentText must be 20000 characters or fewer.',
       });
+    }
+
+    if (editorFormat !== FEED_EDITOR_FORMAT || editorSchemaVersion !== FEED_EDITOR_SCHEMA_VERSION) {
+      return res.status(400).json({
+        success: false,
+        error: 'Editor document format is not supported.',
+      });
+    }
+
+    if (contentJson != null) {
+      const validation = validateFeedEditorDocument(contentJson, normalizedContent);
+      if (validation.ok === false) {
+        return res.status(400).json({
+          success: false,
+          error: validation.error,
+        });
+      }
     }
 
     const serializedContentJson = contentJson == null ? null : JSON.stringify(contentJson);
@@ -8050,6 +8076,8 @@ app.post(
               post_type,
               content_text,
               content_json,
+              editor_format,
+              editor_schema_version,
               event_starts_at,
               event_ends_at,
               status,
@@ -8062,10 +8090,12 @@ app.post(
               $4::varchar,
               $5::text,
               $6::jsonb,
-              $7::timestamptz,
-              $8::timestamptz,
-              $9::varchar,
-              CASE WHEN $9::varchar = 'published' THEN NOW() ELSE NOW() END
+              $7::varchar,
+              $8::integer,
+              $9::timestamptz,
+              $10::timestamptz,
+              $11::varchar,
+              CASE WHEN $11::varchar = 'published' THEN NOW() ELSE NOW() END
             )
             RETURNING
               id,
@@ -8075,6 +8105,8 @@ app.post(
               post_type,
               content_text,
               content_json,
+              editor_format,
+              editor_schema_version,
               event_starts_at,
               event_ends_at,
               status,
@@ -8090,6 +8122,8 @@ app.post(
             postType,
             normalizedContent,
             serializedContentJson,
+            editorFormat,
+            editorSchemaVersion,
             normalizedStartsAt,
             normalizedEndsAt,
             status,
@@ -8203,6 +8237,8 @@ app.get(
               company_feed_posts.post_type,
               company_feed_posts.content_text,
               company_feed_posts.content_json,
+              company_feed_posts.editor_format,
+              company_feed_posts.editor_schema_version,
               company_feed_posts.event_starts_at,
               company_feed_posts.event_ends_at,
               company_feed_posts.status,
@@ -8280,6 +8316,8 @@ app.get(
               company_feed_posts.post_type,
               company_feed_posts.content_text,
               company_feed_posts.content_json,
+              company_feed_posts.editor_format,
+              company_feed_posts.editor_schema_version,
               company_feed_posts.event_starts_at,
               company_feed_posts.event_ends_at,
               company_feed_posts.status,

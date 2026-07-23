@@ -1425,6 +1425,8 @@ CREATE TABLE IF NOT EXISTS company_feed_posts (
 
     content_text TEXT NOT NULL,
     content_json JSONB,
+    editor_format VARCHAR(32) NOT NULL DEFAULT 'lexical-v1',
+    editor_schema_version INTEGER NOT NULL DEFAULT 1,
 
     event_starts_at TIMESTAMPTZ,
     event_ends_at TIMESTAMPTZ,
@@ -1447,6 +1449,12 @@ CREATE TABLE IF NOT EXISTS company_feed_posts (
     CONSTRAINT company_feed_posts_content_not_empty_chk
         CHECK (length(btrim(content_text)) > 0),
 
+    CONSTRAINT company_feed_posts_editor_format_chk
+        CHECK (editor_format = 'lexical-v1'),
+
+    CONSTRAINT company_feed_posts_editor_schema_version_chk
+        CHECK (editor_schema_version = 1),
+
     CONSTRAINT company_feed_posts_type_chk
         CHECK (post_type IN ('announcement', 'event', 'policy_update', 'general')),
 
@@ -1460,6 +1468,33 @@ CREATE TABLE IF NOT EXISTS company_feed_posts (
             OR event_ends_at >= event_starts_at
         )
 );
+
+ALTER TABLE company_feed_posts
+ADD COLUMN IF NOT EXISTS editor_format VARCHAR(32) NOT NULL DEFAULT 'lexical-v1';
+
+ALTER TABLE company_feed_posts
+ADD COLUMN IF NOT EXISTS editor_schema_version INTEGER NOT NULL DEFAULT 1;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'company_feed_posts_editor_format_chk'
+    ) THEN
+        ALTER TABLE company_feed_posts
+        ADD CONSTRAINT company_feed_posts_editor_format_chk
+        CHECK (editor_format = 'lexical-v1');
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'company_feed_posts_editor_schema_version_chk'
+    ) THEN
+        ALTER TABLE company_feed_posts
+        ADD CONSTRAINT company_feed_posts_editor_schema_version_chk
+        CHECK (editor_schema_version = 1);
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS company_feed_posts_tenant_status_published_idx
 ON company_feed_posts(tenant_id, status, published_at DESC);

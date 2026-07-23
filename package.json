@@ -17,6 +17,7 @@
     "test:authorization": "tsx scripts/authorization-test.ts",
     "test:hiring": "tsx scripts/hiring-rules-test.ts",
     "test:hiring:integration": "tsx scripts/hiring-integration-test.ts",
+    "test:editor": "tsx scripts/editor-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
     "assets:pwa": "node scripts/generate-pwa-icons.mjs",

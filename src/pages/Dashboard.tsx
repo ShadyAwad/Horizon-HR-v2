@@ -9,6 +9,7 @@ import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiFetch, apiUrl } from '../lib/api';
+import { FEED_EDITOR_FORMAT, FEED_EDITOR_SCHEMA_VERSION } from '../lib/feed-editor-contract';
 
 const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
@@ -350,6 +351,8 @@ type FeedPost = {
   content_text: string;
   content_json?: unknown | null;
   contentJson?: unknown | null;
+  editor_format?: string;
+  editor_schema_version?: number;
   event_starts_at?: string | null;
   event_ends_at?: string | null;
   status: FeedPostStatus;
@@ -3054,6 +3057,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
           postType: feedForm.postType,
           contentText: feedForm.contentText,
           contentJson: feedForm.contentJson,
+          editorFormat: FEED_EDITOR_FORMAT,
+          editorSchemaVersion: FEED_EDITOR_SCHEMA_VERSION,
           status: feedForm.status,
           visibility: getFeedVisibilityPayload(),
         }),
