@@ -211,7 +211,7 @@ export function AuditTrailPanel() {
   const actionLabel = (action: string) => ACTION_TRANSLATIONS[action] ? t(ACTION_TRANSLATIONS[action]) : t('audit.unknownAction');
   const eventSummary = (event: AuditEvent) => ACTION_TRANSLATIONS[event.action]
     ? actionLabel(event.action)
-    : event.summary;
+    : t('audit.unknownAction');
   const moduleLabel = (moduleName: string) => MODULE_TRANSLATIONS[moduleName] ? t(MODULE_TRANSLATIONS[moduleName]) : humanize(moduleName);
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }),
