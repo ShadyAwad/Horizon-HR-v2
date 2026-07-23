@@ -29,6 +29,7 @@ type RichTextPayload = {
 type RichTextEditorProps = {
   valueJson?: unknown | null;
   onChange: (payload: RichTextPayload) => void;
+  onImageUploadPendingChange?: (pending: boolean) => void;
   placeholder?: string;
   readOnly?: boolean;
   className?: string;
@@ -81,6 +82,18 @@ function EditableStatePlugin({ readOnly }: { readOnly: boolean }) {
   useEffect(() => {
     editor.setEditable(!readOnly);
   }, [editor, readOnly]);
+
+  return null;
+}
+
+function EditorDirectionPlugin({ direction }: { direction: 'ltr' | 'rtl' }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => editor.registerRootListener((rootElement) => {
+    if (!rootElement) return;
+    rootElement.dir = direction;
+    rootElement.dataset.feedDirection = direction;
+  }), [direction, editor]);
 
   return null;
 }
@@ -142,9 +155,12 @@ function uploadFeedImage(
   file: File,
   altText: string,
   onProgress: (progress: number) => void,
+  signal: AbortSignal,
 ) {
   return new Promise<UploadedFeedImage>((resolve, reject) => {
     const request = new XMLHttpRequest();
+    const abortRequest = () => request.abort();
+    const cleanup = () => signal.removeEventListener('abort', abortRequest);
     request.open('POST', apiUrl('/api/company-feed/images'));
     request.withCredentials = true;
     request.upload.addEventListener('progress', (event) => {
@@ -161,22 +177,40 @@ function uploadFeedImage(
         else reject(new Error(payload.error || 'Unable to upload image.'));
       } catch {
         reject(new Error('Unable to upload image.'));
+      } finally {
+        cleanup();
       }
     });
-    request.addEventListener('error', () => reject(new Error('Unable to upload image.')));
-    request.addEventListener('abort', () => reject(new Error('Image upload was cancelled.')));
+    request.addEventListener('error', () => {
+      cleanup();
+      reject(new Error('Unable to upload image.'));
+    });
+    request.addEventListener('abort', () => {
+      cleanup();
+      reject(new Error('Image upload was cancelled.'));
+    });
+    signal.addEventListener('abort', abortRequest, { once: true });
     const form = new FormData();
     form.append('image', file);
     form.append('altText', altText);
+    if (signal.aborted) {
+      request.abort();
+      return;
+    }
     request.send(form);
   });
 }
 
-function ImageUploadControl() {
+function ImageUploadControl({
+  onPendingChange,
+}: {
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const [editor] = useLexicalComposerContext();
   const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
   const lastFileRef = useRef<File | null>(null);
+  const uploadControllerRef = useRef<AbortController | null>(null);
   const [uploadState, setUploadState] = useState<{
     status: 'idle' | 'uploading' | 'error';
     progress: number;
@@ -201,13 +235,16 @@ function ImageUploadControl() {
 
   const upload = useCallback(async (file: File) => {
     if (uploadState.status === 'uploading') return;
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
     lastFileRef.current = file;
     setUploadState({ status: 'uploading', progress: 0, error: '' });
+    onPendingChange?.(true);
     const defaultAlt = file.name.replace(/\.[^.]+$/u, '').slice(0, 240);
     try {
       const image = await uploadFeedImage(file, defaultAlt, (progress) => {
         setUploadState({ status: 'uploading', progress, error: '' });
-      });
+      }, controller.signal);
       insertUploadedImage(image);
       setUploadState({ status: 'idle', progress: 100, error: '' });
     } catch (error) {
@@ -216,8 +253,19 @@ function ImageUploadControl() {
         progress: 0,
         error: error instanceof Error ? error.message : t('editor.imageUploadFailed'),
       });
+    } finally {
+      if (uploadControllerRef.current === controller) {
+        uploadControllerRef.current = null;
+        onPendingChange?.(false);
+      }
     }
-  }, [insertUploadedImage, t, uploadState.status]);
+  }, [insertUploadedImage, onPendingChange, t, uploadState.status]);
+
+  useEffect(() => () => {
+    uploadControllerRef.current?.abort();
+    uploadControllerRef.current = null;
+    onPendingChange?.(false);
+  }, [onPendingChange]);
 
   useEffect(() => mergeRegister(
     editor.registerCommand(
@@ -292,7 +340,11 @@ function ImageUploadControl() {
   );
 }
 
-function EditorToolbar() {
+function EditorToolbar({
+  onImageUploadPendingChange,
+}: {
+  onImageUploadPendingChange?: (pending: boolean) => void;
+}) {
   const [editor] = useLexicalComposerContext();
   const { t, isRtl } = useLanguage();
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false, strike: false });
@@ -604,7 +656,7 @@ function EditorToolbar() {
           </div>
         )}
       </div>
-      <ImageUploadControl />
+      <ImageUploadControl onPendingChange={onImageUploadPendingChange} />
       <div className="relative">
         <button
           type="button"
@@ -757,6 +809,7 @@ function EditorToolbar() {
 export function RichTextEditor({
   valueJson,
   onChange,
+  onImageUploadPendingChange,
   placeholder,
   readOnly = false,
   className,
@@ -801,20 +854,23 @@ export function RichTextEditor({
         'max-w-full overflow-visible rounded border border-emerald-500/20 bg-white/90 text-sm text-neutral-800 shadow-inner shadow-neutral-200/40 focus-within:border-emerald-500/60 dark:border-emerald-500/15 dark:bg-black/40 dark:text-emerald-50 dark:shadow-black/20',
         className,
       )}>
-        {!readOnly && <EditorToolbar />}
+        {!readOnly && <EditorToolbar onImageUploadPendingChange={onImageUploadPendingChange} />}
         <div className={cn('relative', readOnly ? 'min-h-0' : 'min-h-[150px]')}>
           <RichTextPlugin
             contentEditable={(
               <ContentEditable
                 dir={isRtl ? 'rtl' : 'ltr'}
                 className={cn(
-                  'min-h-[150px] max-w-full overflow-x-hidden break-words px-3 py-3 text-sm leading-6 text-neutral-800 outline-none [overflow-wrap:anywhere] [unicode-bidi:plaintext] dark:text-emerald-50',
+                  'stanza-feed-editor-surface min-h-[150px] max-w-full overflow-x-hidden break-words px-3 py-3 text-sm leading-6 text-neutral-800 outline-none [overflow-wrap:anywhere] [unicode-bidi:plaintext] dark:text-emerald-50',
                   isRtl ? 'text-right' : 'text-left',
                   readOnly && 'min-h-0 px-0 py-0 text-neutral-700 dark:text-emerald-100/70',
                 )}
                 aria-placeholder={resolvedPlaceholder}
                 placeholder={!readOnly ? (
-                  <div className={cn("pointer-events-none absolute top-3 text-sm text-neutral-400 dark:text-emerald-100/35", isRtl ? "right-3 text-right" : "left-3 text-left")}>
+                  <div
+                    dir={isRtl ? 'rtl' : 'ltr'}
+                    className={cn("pointer-events-none absolute top-3 text-sm text-neutral-400 dark:text-emerald-100/35", isRtl ? "right-3 text-right" : "left-3 text-left")}
+                  >
                     {resolvedPlaceholder}
                   </div>
                 ) : null}
@@ -834,6 +890,7 @@ export function RichTextEditor({
           validateUrl={isSafeFeedLink}
           attributes={{ target: '_blank', rel: 'noopener noreferrer' }}
         />
+        <EditorDirectionPlugin direction={isRtl ? 'rtl' : 'ltr'} />
         <EditableStatePlugin readOnly={readOnly} />
       </div>
     </LexicalComposer>

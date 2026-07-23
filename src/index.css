@@ -101,6 +101,53 @@
 }
 
 @layer components {
+  .stanza-feed-select {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    color-scheme: light;
+  }
+
+  .dark .stanza-feed-select {
+    color-scheme: dark;
+  }
+
+  .stanza-feed-select option,
+  .stanza-feed-select optgroup {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .stanza-feed-select option:checked {
+    background-color: var(--color-horizon-emerald-deep);
+    color: #ecfdf5;
+  }
+
+  .stanza-feed-select option:disabled {
+    color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  }
+
+  .stanza-feed-editor-surface[dir="rtl"],
+  .stanza-feed-readable-content[dir="rtl"] {
+    direction: rtl;
+    text-align: right;
+  }
+
+  .stanza-feed-editor-surface[dir="ltr"],
+  .stanza-feed-readable-content[dir="ltr"] {
+    direction: ltr;
+    text-align: left;
+  }
+
+  .stanza-feed-editor-surface[dir="rtl"] :is(p, h1, h2, h3, h4, ul, ol, li, blockquote, a):not([dir="ltr"]),
+  .stanza-feed-readable-content[dir="rtl"] :is(p, h1, h2, h3, h4, ul, ol, li, blockquote, a):not([dir="ltr"]) {
+    text-align: right;
+  }
+
+  .stanza-feed-editor-surface[dir="ltr"] :is(p, h1, h2, h3, h4, ul, ol, li, blockquote, a):not([dir="rtl"]),
+  .stanza-feed-readable-content[dir="ltr"] :is(p, h1, h2, h3, h4, ul, ol, li, blockquote, a):not([dir="rtl"]) {
+    text-align: left;
+  }
+
   .stanza-preference-surface {
     border-width: var(--stanza-border-width);
     border-radius: var(--stanza-radius-md);

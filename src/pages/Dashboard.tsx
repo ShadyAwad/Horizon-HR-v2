@@ -1,8 +1,8 @@
-import { Component, lazy, Suspense, useState, useEffect, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -10,6 +10,12 @@ import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiFetch, apiUrl } from '../lib/api';
 import { FEED_EDITOR_FORMAT, FEED_EDITOR_SCHEMA_VERSION } from '../lib/feed-editor-contract';
+import {
+  createFeedSubmissionController,
+  executeFeedSubmission,
+  getFeedPublishInteractionState,
+  hasValidFeedSubmissionContent,
+} from '../lib/feed-submission';
 
 const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
@@ -807,6 +813,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [feedLoading, setFeedLoading] = useState(false);
   const [adminFeedLoading, setAdminFeedLoading] = useState(false);
   const [feedSubmitting, setFeedSubmitting] = useState(false);
+  const [feedImageUploadPending, setFeedImageUploadPending] = useState(false);
+  const feedSubmissionController = useMemo(
+    () => createFeedSubmissionController(setFeedSubmitting),
+    [],
+  );
+  useEffect(() => () => feedSubmissionController.dispose(), [feedSubmissionController]);
   const [feedUpdatingId, setFeedUpdatingId] = useState<string | null>(null);
   const [feedMessage, setFeedMessage] = useState('');
   const [feedMessageType, setFeedMessageType] = useState<'success' | 'error'>('success');
@@ -3036,50 +3048,69 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
     return [{ type: 'all' }];
   };
 
+  const feedPublishInteraction = getFeedPublishInteractionState({
+    submitting: feedSubmitting,
+    imageUploadPending: feedImageUploadPending,
+  });
+
   const submitFeedPost = async () => {
     if (isOffline) {
       setFeedMessageType('error');
-      setFeedMessage('You are offline. Some HR actions require connection.');
+      setFeedMessage(t('dash.offlineActionMessage'));
       return;
     }
 
-    if (feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()) return;
+    if (!hasValidFeedSubmissionContent(feedForm.title, feedForm.contentText)) {
+      setFeedMessageType('error');
+      setFeedMessage(t('validation.required'));
+      return;
+    }
 
-    setFeedSubmitting(true);
+    if (feedImageUploadPending) return;
     setFeedMessage('');
 
     try {
-      const res = await fetch(apiUrl('/api/company-feed/posts'), {
-        method: 'POST',
-        headers: payrollHeaders,
-        body: JSON.stringify({
-          title: feedForm.title,
-          postType: feedForm.postType,
-          contentText: feedForm.contentText,
-          contentJson: feedForm.contentJson,
-          editorFormat: FEED_EDITOR_FORMAT,
-          editorSchemaVersion: FEED_EDITOR_SCHEMA_VERSION,
-          status: feedForm.status,
-          visibility: getFeedVisibilityPayload(),
+      const submittedStatus = feedForm.status;
+      const submission = await feedSubmissionController.run((submissionSignal) => executeFeedSubmission<FeedPost>((requestSignal) => fetch(apiUrl('/api/company-feed/posts'), {
+          method: 'POST',
+          headers: payrollHeaders,
+          signal: requestSignal,
+          body: JSON.stringify({
+            title: feedForm.title,
+            postType: feedForm.postType,
+            contentText: feedForm.contentText,
+            contentJson: feedForm.contentJson,
+            editorFormat: FEED_EDITOR_FORMAT,
+            editorSchemaVersion: FEED_EDITOR_SCHEMA_VERSION,
+            status: submittedStatus,
+            visibility: getFeedVisibilityPayload(),
+          }),
+        }), {
+          fallbackError: t('dash.feedSaveError'),
+          timeoutError: t('dash.feedSaveServerError'),
+          signal: submissionSignal,
         }),
-      });
-      const data = await res.json();
+      );
+      if (!submission.started) return;
+      const result = submission.result;
 
-      if (res.ok && data.success) {
+      if (result.ok === true) {
+        const createdPost = result.post;
+        setAdminFeedPosts((current) => [createdPost, ...current.filter((post) => post.id !== createdPost.id)]);
+        if (submittedStatus === 'published') {
+          setFeedPosts((current) => [createdPost, ...current.filter((post) => post.id !== createdPost.id)]);
+        }
         setFeedForm(defaultFeedForm);
         setFeedEditorKey((current) => current + 1);
-        await Promise.all([loadFeed(false), loadAdminFeed()]);
         setFeedMessageType('success');
-        setFeedMessage(feedForm.status === 'published' ? t('dash.postPublished') : t('dash.draftSaved'));
+        setFeedMessage(submittedStatus === 'published' ? t('dash.postPublished') : t('dash.draftSaved'));
       } else {
         setFeedMessageType('error');
-        setFeedMessage(data.error || t('dash.feedSaveError'));
+        setFeedMessage(result.error);
       }
     } catch {
       setFeedMessageType('error');
       setFeedMessage(t('dash.feedSaveServerError'));
-    } finally {
-      setFeedSubmitting(false);
     }
   };
 
@@ -4876,9 +4907,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                               className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
                             />
                             <select
+                              aria-label={t('enum.announcement')}
                               value={feedForm.postType}
                               onChange={(event) => updateFeedForm('postType', event.target.value)}
-                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                              className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20"
                             >
                               <option value="announcement">{t('enum.announcement')}</option>
                               <option value="event">{t('enum.event')}</option>
@@ -4886,17 +4918,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                               <option value="general">{t('enum.general')}</option>
                             </select>
                             <select
+                              aria-label={t('enum.published')}
                               value={feedForm.status}
                               onChange={(event) => updateFeedForm('status', event.target.value)}
-                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
+                              className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20"
                             >
                               <option value="published">{t('enum.published')}</option>
                               <option value="draft">{t('enum.draft')}</option>
                             </select>
                             <select
+                              aria-label={t('dash.everyone')}
                               value={feedForm.visibility}
                               onChange={(event) => updateFeedForm('visibility', event.target.value)}
-                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
+                              className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20 md:col-span-2"
                             >
                               <option value="all">{t('dash.everyone')}</option>
                               <option value="role:employee">{t('dash.roleEmployee')}</option>
@@ -4914,6 +4948,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                                   key={feedEditorKey}
                                   valueJson={feedForm.contentJson}
                                   onChange={updateFeedContent}
+                                  onImageUploadPendingChange={setFeedImageUploadPending}
                                   placeholder={t('dash.writeAnnouncement')}
                                 />
                               </Suspense>
@@ -4921,9 +4956,18 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                             <button
                               type="button"
                               onClick={submitFeedPost}
-                              disabled={isOffline || feedSubmitting || !feedForm.title.trim() || !feedForm.contentText.trim()}
-                              className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
+                              disabled={feedPublishInteraction.disabled}
+                              aria-busy={feedPublishInteraction.showSpinner}
+                              className={cn(
+                                'inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60 md:col-span-4',
+                                feedPublishInteraction.cursor === 'wait'
+                                  ? 'cursor-wait'
+                                  : feedPublishInteraction.cursor === 'progress'
+                                    ? 'cursor-progress'
+                                    : 'cursor-pointer',
+                              )}
                             >
+                              {feedPublishInteraction.showSpinner && <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                               {feedSubmitting ? t('dash.saving') : feedForm.status === 'published' ? t('dash.publishPost') : t('dash.saveDraft')}
                             </button>
                           </div>

@@ -161,7 +161,7 @@ export const RichFeedContent = memo(function RichFeedContent({
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
       className={cn(
-        'mt-3 max-w-full overflow-x-hidden text-sm leading-6 text-neutral-700 [unicode-bidi:plaintext] dark:text-emerald-100/70',
+        'stanza-feed-readable-content mt-3 max-w-full overflow-x-hidden text-sm leading-6 text-neutral-700 [unicode-bidi:plaintext] dark:text-emerald-100/70',
         isRtl ? 'text-right' : 'text-left',
       )}
     >

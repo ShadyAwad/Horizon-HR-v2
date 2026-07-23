@@ -55,7 +55,7 @@ function FeedImageComponent({
   const [selected, setSelected, clearSelected] = useLexicalNodeSelection(nodeKey);
   const [draftAlt, setDraftAlt] = useState(altText);
   const dragRef = useRef<{ pointerId: number; startX: number; width: number; height: number } | null>(null);
-  const { t } = useLanguage();
+  const { t, isRtl } = useLanguage();
 
   useEffect(() => setDraftAlt(altText), [altText]);
 
@@ -130,6 +130,7 @@ function FeedImageComponent({
 
   return (
     <span
+      dir={isRtl ? 'rtl' : 'ltr'}
       role={editable ? 'button' : undefined}
       tabIndex={editable ? 0 : undefined}
       aria-label={editable ? t('editor.selectImage') : undefined}
@@ -147,7 +148,7 @@ function FeedImageComponent({
         }
       }}
       className={cn(
-        'relative my-3 inline-flex max-w-full flex-col align-top outline-none',
+        'relative my-3 inline-flex max-w-full flex-col align-top text-start outline-none',
         selected && editable && 'rounded ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-black',
       )}
     >

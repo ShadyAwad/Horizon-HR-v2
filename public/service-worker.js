@@ -1,13 +1,13 @@
-const STATIC_CACHE = 'stanza-static-v6';
-const RUNTIME_CACHE = 'stanza-runtime-v6';
+const STATIC_CACHE = 'stanza-static-v7';
+const RUNTIME_CACHE = 'stanza-runtime-v7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/offline.html',
-  '/favicon.svg',
-  '/icons/stanza-icon-192.png',
-  '/icons/stanza-icon-512.png',
+  '/icons/stanza-favicon.svg',
+  '/icons/stanza-192.png',
+  '/icons/stanza-512.png',
   '/icons/stanza-maskable-192.png',
   '/icons/stanza-maskable-512.png',
 ];
@@ -59,6 +59,15 @@ function isProfileImageRequest(url) {
   return url.pathname.startsWith('/profile-images/');
 }
 
+function isDevelopmentModuleRequest(url) {
+  return (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@vite/') ||
+    url.pathname.startsWith('/@id/') ||
+    url.pathname.startsWith('/node_modules/')
+  );
+}
+
 function isStaticAssetRequest(request, url) {
   return (
     url.origin === self.location.origin &&
@@ -106,7 +115,7 @@ async function navigationResponse(request) {
 
 async function staticAssetResponse(request) {
   const cache = await caches.open(RUNTIME_CACHE);
-  const cachedResponse = await caches.match(request);
+  const cachedResponse = await cache.match(request);
 
   if (cachedResponse) {
     fetch(request)
@@ -153,6 +162,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin !== self.location.origin || request.method !== 'GET') {
+    return;
+  }
+
+  // A production worker can still control localhost after switching back to Vite.
+  // Never serve cached source modules into that development session.
+  if (isDevelopmentModuleRequest(url)) {
     return;
   }
 

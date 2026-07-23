@@ -138,7 +138,12 @@ test('unsupported heading levels and unsafe serialized links are rejected', () =
 
 test('editor source keeps explicit RTL, logical spacing, and accessible mobile controls', () => {
   const source = readFileSync(new URL('../src/components/RichTextEditor.tsx', import.meta.url), 'utf8');
+  const rendererSource = readFileSync(new URL('../src/components/FeedDocumentRenderer.tsx', import.meta.url), 'utf8');
+  const imageSource = readFileSync(new URL('../src/components/lexical/FeedImageNode.tsx', import.meta.url), 'utf8');
+  const cssSource = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
   assert.match(source, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+  assert.match(source, /EditorDirectionPlugin/);
+  assert.match(source, /rootElement\.dir = direction/);
   assert.match(source, /margin-inline-start/);
   assert.match(source, /padding-inline-start/);
   assert.match(source, /border-inline-start-width/);
@@ -146,6 +151,11 @@ test('editor source keeps explicit RTL, logical spacing, and accessible mobile c
   assert.match(source, /aria-expanded=/);
   assert.match(source, /h-11 w-11/);
   assert.match(source, /max-w-\[calc\(100vw-2rem\)\]/);
+  assert.match(rendererSource, /stanza-feed-readable-content/);
+  assert.match(imageSource, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+  assert.match(cssSource, /\.stanza-feed-editor-surface\[dir="rtl"\]/);
+  assert.match(cssSource, /\.stanza-feed-readable-content\[dir="rtl"\]/);
+  assert.match(cssSource, /\.stanza-feed-select option/);
 });
 
 test('feed image nodes accept only internal UUID URLs and bounded metadata', () => {
