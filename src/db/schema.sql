@@ -339,6 +339,7 @@ VALUES
     ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
     ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
     ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
+    ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
     ('break_requests.create', 'Create break requests', 'Request manager approval for breaks.'),
     ('break_requests.view_own', 'View own break requests', 'View personal break request history.'),
     ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),

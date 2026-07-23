@@ -46,6 +46,7 @@ import {
   validateFeedEditorDocument,
 } from './src/lib/feed-editor-contract';
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
+import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-employees-routes';
 import {
   assertPortfolioDemoSessionStartup,
   getPortfolioDemoSessionConfig,
@@ -1088,6 +1089,7 @@ async function seedTenantRolesAndPermissions(
         ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
         ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
         ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
+        ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
         ('break_requests.create', 'Create break requests', 'Request manager approval for breaks.'),
         ('break_requests.view_own', 'View own break requests', 'View personal break request history.'),
         ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
@@ -1959,6 +1961,7 @@ async function startServer() {
   // === HORIZON HR API ROUTES ===
 
   registerHiringRoutes(app, { demoAuth, requirePermission });
+  registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
 
   app.get('/api/map-tiles/:z/:x/:y.png', async (req, res) => {
     const { z, x, y } = req.params;
