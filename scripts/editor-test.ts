@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   FEED_EDITOR_FORMAT,
   FEED_EDITOR_SCHEMA_VERSION,
@@ -132,6 +133,18 @@ test('unsupported heading levels and unsafe serialized links are rejected', () =
   };
   assert.equal(validateFeedEditorDocument(heading, 'Too deep').ok, false);
   assert.equal(validateFeedEditorDocument(link, 'File').ok, false);
+});
+
+test('editor source keeps explicit RTL, logical spacing, and accessible mobile controls', () => {
+  const source = readFileSync(new URL('../src/components/RichTextEditor.tsx', import.meta.url), 'utf8');
+  assert.match(source, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+  assert.match(source, /margin-inline-start/);
+  assert.match(source, /padding-inline-start/);
+  assert.match(source, /border-inline-start-width/);
+  assert.match(source, /role="toolbar"/);
+  assert.match(source, /aria-expanded=/);
+  assert.match(source, /h-11 w-11/);
+  assert.match(source, /max-w-\[calc\(100vw-2rem\)\]/);
 });
 
 console.log(`Editor contract checks passed: ${passed}`);

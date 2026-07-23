@@ -117,10 +117,10 @@ function ToolbarButton({
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded border text-emerald-100/70 transition hover:border-emerald-400/50 hover:text-emerald-200',
+        'flex h-11 w-11 shrink-0 items-center justify-center rounded border text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-emerald-100/70 dark:hover:border-emerald-400/50 dark:hover:text-emerald-200 sm:h-8 sm:w-8',
         active
-          ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.12)]'
-          : 'border-emerald-500/15 bg-black/30',
+          ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 shadow-[0_0_12px_rgba(16,185,129,0.12)] dark:text-emerald-200'
+          : 'border-emerald-500/20 bg-white/80 dark:border-emerald-500/15 dark:bg-black/30',
       )}
     >
       {children}
@@ -141,6 +141,7 @@ function EditorToolbar() {
   const [openPicker, setOpenPicker] = useState<'color' | 'size' | 'emoji' | 'link' | null>(null);
   const linkButtonRef = useRef<HTMLButtonElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const refreshToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -243,6 +244,19 @@ function EditorToolbar() {
     window.setTimeout(() => linkButtonRef.current?.focus(), 0);
   };
 
+  const togglePicker = (
+    picker: 'color' | 'size' | 'emoji',
+    trigger: HTMLButtonElement,
+  ) => {
+    pickerTriggerRef.current = trigger;
+    setOpenPicker((current) => current === picker ? null : picker);
+  };
+
+  const closeFormattingPicker = () => {
+    setOpenPicker(null);
+    window.setTimeout(() => pickerTriggerRef.current?.focus(), 0);
+  };
+
   const applyLink = () => {
     const normalizedUrl = linkUrl.trim();
     if (!isSafeFeedLink(normalizedUrl)) {
@@ -266,11 +280,12 @@ function EditorToolbar() {
   };
 
   useEffect(() => {
-    if (openPicker !== 'link') return;
+    if (!openPicker) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        closeLinkPicker();
+        if (openPicker === 'link') closeLinkPicker();
+        else closeFormattingPicker();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -320,13 +335,13 @@ function EditorToolbar() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-emerald-500/15 bg-black/25 p-2">
+    <div dir="ltr" role="toolbar" aria-label={t('editor.formattingToolbar')} className="flex max-w-full flex-wrap items-center gap-1.5 overflow-x-clip border-b border-emerald-500/20 bg-neutral-50/90 p-2 dark:border-emerald-500/15 dark:bg-black/25 sm:gap-2">
       <label className="sr-only" htmlFor="stanza-editor-block-type">{t('editor.blockType')}</label>
       <select
         id="stanza-editor-block-type"
         value={['bullet', 'number'].includes(blockType) ? 'paragraph' : blockType}
         onChange={(event) => applyBlockType(event.target.value as 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'quote')}
-        className="h-8 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold text-emerald-100 outline-none focus:border-emerald-400/60"
+        className="h-11 max-w-[9rem] rounded border border-emerald-500/20 bg-white px-2 text-[11px] font-bold text-neutral-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100 sm:h-8"
         aria-label={t('editor.blockType')}
       >
         <option value="paragraph">{t('editor.paragraph')}</option>
@@ -348,7 +363,7 @@ function EditorToolbar() {
       <ToolbarButton label={t('editor.strike')} active={activeFormats.strike} onClick={() => formatText('strikethrough')}>
         <Strikethrough className="h-4 w-4" />
       </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-emerald-500/15" />
+      <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-emerald-500/15 sm:block" />
       <ToolbarButton active={blockType === 'bullet'} label={t('editor.bulletedList')} onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}>
         <List className="h-4 w-4" />
       </ToolbarButton>
@@ -358,7 +373,7 @@ function EditorToolbar() {
       <ToolbarButton label={t('editor.removeList')} onClick={removeCurrentList}>
         <Pilcrow className="h-4 w-4" />
       </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-emerald-500/15" />
+      <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-emerald-500/15 sm:block" />
       <div className="relative">
         <button
           ref={linkButtonRef}
@@ -370,10 +385,10 @@ function EditorToolbar() {
           onMouseDown={(event) => event.preventDefault()}
           onClick={openLinkPicker}
           className={cn(
-            'flex h-8 w-8 items-center justify-center rounded border transition hover:border-emerald-400/50 hover:text-emerald-200',
+            'flex h-11 w-11 items-center justify-center rounded border text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-emerald-100/70 dark:hover:text-emerald-200 sm:h-8 sm:w-8',
             linkActive
-              ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
-              : 'border-emerald-500/15 bg-black/30 text-emerald-100/70',
+              ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200'
+              : 'border-emerald-500/20 bg-white/80 dark:border-emerald-500/15 dark:bg-black/30',
           )}
         >
           <Link className="h-4 w-4" />
@@ -382,7 +397,8 @@ function EditorToolbar() {
           <div
             role="dialog"
             aria-label={t('editor.link')}
-            className={cn("absolute top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}
+            dir={isRtl ? 'rtl' : 'ltr'}
+            className="absolute left-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-emerald-500/20 bg-white p-3 text-neutral-800 shadow-2xl shadow-black/20 dark:bg-neutral-950 dark:text-emerald-50 dark:shadow-black/40"
           >
             <label htmlFor="stanza-editor-link-url" className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-emerald-100/60">
               {t('editor.linkUrl')}
@@ -405,19 +421,19 @@ function EditorToolbar() {
               placeholder="https://"
               aria-invalid={Boolean(linkError)}
               aria-describedby={linkError ? 'stanza-editor-link-error' : undefined}
-              className="h-10 w-full rounded border border-emerald-500/20 bg-black/50 px-3 text-sm text-emerald-50 outline-none focus:border-emerald-400"
+              className="h-11 w-full rounded border border-emerald-500/20 bg-white px-3 text-sm text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:bg-black/50 dark:text-emerald-50"
             />
             {linkError && <p id="stanza-editor-link-error" className="mt-2 text-xs text-red-300">{linkError}</p>}
             <div className="mt-3 flex gap-2">
-              <button type="button" onClick={applyLink} className="min-h-10 flex-1 rounded bg-emerald-500 px-3 text-xs font-bold text-black">
+              <button type="button" onClick={applyLink} className="min-h-11 flex-1 rounded bg-emerald-500 px-3 text-xs font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                 {linkActive ? t('editor.updateLink') : t('editor.addLink')}
               </button>
               {linkActive && (
-                <button type="button" onClick={removeLink} aria-label={t('editor.removeLink')} title={t('editor.removeLink')} className="flex min-h-10 min-w-10 items-center justify-center rounded border border-emerald-500/20 text-emerald-100">
+                <button type="button" onClick={removeLink} aria-label={t('editor.removeLink')} title={t('editor.removeLink')} className="flex min-h-11 min-w-11 items-center justify-center rounded border border-emerald-500/20 text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-emerald-100">
                   <Unlink className="h-4 w-4" />
                 </button>
               )}
-              <button type="button" onClick={closeLinkPicker} className="min-h-10 rounded border border-emerald-500/20 px-3 text-xs font-bold text-emerald-100">
+              <button type="button" onClick={closeLinkPicker} className="min-h-11 rounded border border-emerald-500/20 px-3 text-xs font-bold text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-emerald-100">
                 {t('dash.close')}
               </button>
             </div>
@@ -429,9 +445,11 @@ function EditorToolbar() {
           type="button"
           aria-label={t('editor.textColor')}
           title={t('editor.textColor')}
+          aria-expanded={openPicker === 'color'}
+          aria-haspopup="menu"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => setOpenPicker((current) => current === 'color' ? null : 'color')}
-          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
+          onClick={(event) => togglePicker('color', event.currentTarget)}
+          className="flex h-11 items-center gap-2 rounded border border-emerald-500/20 bg-white/80 px-2 text-[11px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100/75 dark:hover:text-emerald-200 sm:h-8"
         >
           <Palette className="h-4 w-4" />
           <span
@@ -444,13 +462,14 @@ function EditorToolbar() {
           {t('editor.color')}
         </button>
         {openPicker === 'color' && (
-          <div className={cn("absolute top-full z-40 mt-2 w-64 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
+          <div role="menu" aria-label={t('editor.textColor')} className="absolute left-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-emerald-500/20 bg-white p-3 text-neutral-800 shadow-2xl shadow-black/20 dark:bg-neutral-950 dark:text-emerald-50 dark:shadow-black/40">
             <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-emerald-100/45">{t('editor.textColor')}</div>
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
               {TEXT_COLORS.map((color) => (
                 <button
                   key={color.label}
                   type="button"
+                  role="menuitem"
                   aria-label={`${t(color.translationKey)} ${t('editor.textColor')}`}
                   title={t(color.translationKey)}
                   onMouseDown={(event) => event.preventDefault()}
@@ -460,7 +479,7 @@ function EditorToolbar() {
                     setOpenPicker(null);
                   }}
                   className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-full border transition hover:scale-105',
+                    'flex h-11 w-11 items-center justify-center rounded-full border transition motion-reduce:transform-none sm:h-8 sm:w-8',
                     selectedColor === color.value
                       ? 'border-emerald-300 ring-2 ring-emerald-400/30'
                       : 'border-emerald-500/20',
@@ -482,19 +501,22 @@ function EditorToolbar() {
           type="button"
           aria-label={t('editor.fontSize')}
           title={t('editor.fontSize')}
+          aria-expanded={openPicker === 'size'}
+          aria-haspopup="menu"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => setOpenPicker((current) => current === 'size' ? null : 'size')}
-          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
+          onClick={(event) => togglePicker('size', event.currentTarget)}
+          className="flex h-11 items-center gap-2 rounded border border-emerald-500/20 bg-white/80 px-2 text-[11px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100/75 dark:hover:text-emerald-200 sm:h-8"
         >
           <Type className="h-4 w-4" />
           {selectedFontSize ? selectedFontSize.replace('px', '') : t('editor.size')}
         </button>
         {openPicker === 'size' && (
-          <div className={cn("absolute top-full z-40 mt-2 grid w-36 grid-cols-2 gap-1 rounded-lg border border-emerald-500/20 bg-black/95 p-2 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
+          <div role="menu" aria-label={t('editor.fontSize')} className="absolute left-0 top-full z-40 mt-2 grid w-36 max-w-[calc(100vw-2rem)] grid-cols-2 gap-1 rounded-lg border border-emerald-500/20 bg-white p-2 shadow-2xl shadow-black/20 dark:bg-neutral-950 dark:shadow-black/40">
             {FONT_SIZES.map((size) => (
               <button
                 key={size.label}
                 type="button"
+                role="menuitem"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   setSelectedFontSize(size.value);
@@ -502,10 +524,10 @@ function EditorToolbar() {
                   setOpenPicker(null);
                 }}
                 className={cn(
-                  'rounded border px-2 py-1.5 text-center text-[11px] font-bold uppercase tracking-widest transition',
+                  'min-h-11 rounded border px-2 py-1.5 text-center text-[11px] font-bold uppercase tracking-widest transition sm:min-h-8',
                   selectedFontSize === size.value
                     ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-100'
-                    : 'border-emerald-500/15 bg-black/40 text-emerald-100/65 hover:border-emerald-400/50 hover:text-emerald-100',
+                    : 'border-emerald-500/20 bg-white text-neutral-600 hover:border-emerald-500/50 hover:text-emerald-700 dark:border-emerald-500/15 dark:bg-black/40 dark:text-emerald-100/65 dark:hover:text-emerald-100',
                 )}
               >
                 {size.value ? size.label : t('editor.reset')}
@@ -519,15 +541,17 @@ function EditorToolbar() {
           type="button"
           aria-label={t('editor.insertEmoji')}
           title={t('editor.insertEmoji')}
+          aria-expanded={openPicker === 'emoji'}
+          aria-haspopup="menu"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => setOpenPicker((current) => current === 'emoji' ? null : 'emoji')}
-          className="flex h-8 items-center gap-2 rounded border border-emerald-500/15 bg-black/30 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-100/75 transition hover:border-emerald-400/50 hover:text-emerald-200"
+          onClick={(event) => togglePicker('emoji', event.currentTarget)}
+          className="flex h-11 items-center gap-2 rounded border border-emerald-500/20 bg-white/80 px-2 text-[11px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-500/50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100/75 dark:hover:text-emerald-200 sm:h-8"
         >
           <Smile className="h-4 w-4" />
           {t('editor.emoji')}
         </button>
         {openPicker === 'emoji' && (
-          <div className={cn("absolute top-full z-40 mt-2 w-72 rounded-lg border border-emerald-500/20 bg-black/95 p-3 shadow-2xl shadow-black/40", isRtl ? "right-0" : "left-0")}>
+          <div role="menu" aria-label={t('editor.insertEmoji')} className="absolute left-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-emerald-500/20 bg-white p-3 text-neutral-800 shadow-2xl shadow-black/20 dark:bg-neutral-950 dark:text-emerald-50 dark:shadow-black/40">
             <div className="space-y-3">
               {EMOJI_CATEGORIES.map((category) => (
                 <div key={category.label}>
@@ -537,11 +561,12 @@ function EditorToolbar() {
                       <button
                         key={`${category.label}-${emoji}`}
                         type="button"
+                        role="menuitem"
                         aria-label={`${t('editor.insertEmoji')} ${emoji}`}
                         title={`${t('editor.insertEmoji')} ${emoji}`}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => insertEmoji(emoji)}
-                        className="flex h-8 w-8 items-center justify-center rounded border border-emerald-500/10 bg-black/40 text-lg transition hover:border-emerald-400/40 hover:bg-emerald-500/10"
+                        className="flex h-11 w-11 items-center justify-center rounded border border-emerald-500/20 bg-white text-lg transition hover:border-emerald-500/50 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-500/10 dark:bg-black/40 sm:h-8 sm:w-8"
                       >
                         {emoji}
                       </button>
@@ -553,7 +578,7 @@ function EditorToolbar() {
           </div>
         )}
       </div>
-      <span className="mx-1 h-5 w-px bg-emerald-500/15" />
+      <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-emerald-500/15 sm:block" />
       <ToolbarButton label={t('editor.undo')} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
@@ -597,18 +622,18 @@ export function RichTextEditor({
       },
       link: 'break-words text-emerald-600 underline decoration-emerald-400/60 underline-offset-2 dark:text-emerald-300',
       list: {
-        ul: 'ml-5 list-disc space-y-1',
-        ol: 'ml-5 list-decimal space-y-1',
-        listitem: 'pl-1',
+        ul: '[margin-inline-start:1.25rem] list-disc space-y-1',
+        ol: '[margin-inline-start:1.25rem] list-decimal space-y-1',
+        listitem: '[padding-inline-start:0.25rem]',
       },
-      quote: 'border-l-2 border-emerald-500/30 pl-3 text-emerald-100/70',
+      quote: '[border-inline-start-width:2px] [padding-inline-start:0.75rem] border-emerald-500/30 text-neutral-600 dark:text-emerald-100/70',
     },
   }), [readOnly, valueJson]);
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className={cn(
-        'overflow-visible rounded border border-emerald-500/15 bg-black/40 text-sm text-emerald-50 shadow-inner shadow-black/20 focus-within:border-emerald-400/60',
+        'max-w-full overflow-visible rounded border border-emerald-500/20 bg-white/90 text-sm text-neutral-800 shadow-inner shadow-neutral-200/40 focus-within:border-emerald-500/60 dark:border-emerald-500/15 dark:bg-black/40 dark:text-emerald-50 dark:shadow-black/20',
         className,
       )}>
         {!readOnly && <EditorToolbar />}
@@ -616,14 +641,15 @@ export function RichTextEditor({
           <RichTextPlugin
             contentEditable={(
               <ContentEditable
+                dir={isRtl ? 'rtl' : 'ltr'}
                 className={cn(
-                  'min-h-[150px] px-3 py-3 text-sm leading-6 text-emerald-50 outline-none',
+                  'min-h-[150px] max-w-full overflow-x-hidden break-words px-3 py-3 text-sm leading-6 text-neutral-800 outline-none [overflow-wrap:anywhere] [unicode-bidi:plaintext] dark:text-emerald-50',
                   isRtl ? 'text-right' : 'text-left',
-                  readOnly && 'min-h-0 px-0 py-0 text-slate-700 dark:text-emerald-100/70',
+                  readOnly && 'min-h-0 px-0 py-0 text-neutral-700 dark:text-emerald-100/70',
                 )}
                 aria-placeholder={resolvedPlaceholder}
                 placeholder={!readOnly ? (
-                  <div className={cn("pointer-events-none absolute top-3 text-sm text-emerald-100/35", isRtl ? "right-3 text-right" : "left-3 text-left")}>
+                  <div className={cn("pointer-events-none absolute top-3 text-sm text-neutral-400 dark:text-emerald-100/35", isRtl ? "right-3 text-right" : "left-3 text-left")}>
                     {resolvedPlaceholder}
                   </div>
                 ) : null}
