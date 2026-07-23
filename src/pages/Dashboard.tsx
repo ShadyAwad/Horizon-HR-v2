@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type C
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -35,6 +35,7 @@ const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((m
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
 const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCropDialog').then((module) => ({ default: module.ProfilePhotoCropDialog })));
 const HiringPanel = lazy(() => import('../components/hiring/HiringPanel').then((module) => ({ default: module.HiringPanel })));
+const LiveEmployeesPanel = lazy(() => import('../components/live-employees/LiveEmployeesPanel').then((module) => ({ default: module.LiveEmployeesPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -730,7 +731,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1186,6 +1187,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const canManageLoans = hasPermission(user, 'loans.manage');
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
   const canViewHiring = hasPermission(user, 'hiring.view');
+  const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4026,6 +4028,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} className="absolute end-0 top-0" />
              </button>
            )}
+           {canViewLiveEmployees && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('liveEmployees'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'liveEmployees' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={t('liveEmployees.title')}
+               aria-label={t('liveEmployees.title')}
+             >
+               <UsersRound className="w-5 h-5" />
+             </button>
+           )}
                      <button
                         type="button"
                         onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
@@ -4202,6 +4215,16 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                         <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} />
                       </button>
                     )}
+                    {canViewLiveEmployees && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('liveEmployees'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'liveEmployees' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                      >
+                        <UsersRound className="w-4 h-4 hidden sm:block" />
+                        {t('liveEmployees.title')}
+                      </button>
+                    )}
                     <button
                        onClick={() => {
                          setActiveTab('feed');
@@ -4269,6 +4292,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} />
+                  </Suspense>
+                )}
+                {activeTab === 'liveEmployees' && canViewLiveEmployees && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <LiveEmployeesPanel />
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
