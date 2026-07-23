@@ -54,6 +54,12 @@ import {
   type PortfolioDemoRole,
   type PortfolioDemoSessionConfig,
 } from './src/server/portfolio-demo-session';
+import {
+  assertTryCloudflareDevOriginsStartup,
+  isAllowedTryCloudflareDevOrigin,
+  isTryCloudflareDevOriginsEnabled,
+  shouldTrustTryCloudflareDevProxy,
+} from './src/server/trycloudflare-dev';
 
 loadDotenv();
 if (process.env.NODE_ENV !== 'production') {
@@ -431,8 +437,8 @@ function getCookie(req: express.Request, name: string) {
   return null;
 }
 
-function setAuthSessionCookie(res: express.Response, token: string) {
-  const secure = isProduction() ? '; Secure' : '';
+function setAuthSessionCookie(req: express.Request, res: express.Response, token: string) {
+  const secure = isProduction() || req.secure ? '; Secure' : '';
   const sameSite = 'Lax';
   res.setHeader(
     'Set-Cookie',
@@ -440,8 +446,8 @@ function setAuthSessionCookie(res: express.Response, token: string) {
   );
 }
 
-function clearAuthSessionCookie(res: express.Response) {
-  const secure = isProduction() ? '; Secure' : '';
+function clearAuthSessionCookie(req: express.Request, res: express.Response) {
+  const secure = isProduction() || req.secure ? '; Secure' : '';
   const sameSite = 'Lax';
   res.setHeader(
     'Set-Cookie',
@@ -449,7 +455,11 @@ function clearAuthSessionCookie(res: express.Response) {
   );
 }
 
-async function createAuthSession(employee: { id: string; tenant_id: string }, res: express.Response) {
+async function createAuthSession(
+  employee: { id: string; tenant_id: string },
+  req: express.Request,
+  res: express.Response,
+) {
   const token = crypto.randomBytes(32).toString('base64url');
   const pool = getDbPool();
   // Rotate the account's active sessions on every new authentication so an old
@@ -465,7 +475,7 @@ async function createAuthSession(employee: { id: string; tenant_id: string }, re
      VALUES ($1, $2, $3, NOW() + ($4::bigint * INTERVAL '1 millisecond'))`,
     [employee.tenant_id, employee.id, hashSessionToken(token), AUTH_SESSION_TTL_MS],
   );
-  setAuthSessionCookie(res, token);
+  setAuthSessionCookie(req, res, token);
 }
 
 async function revokeAuthSession(req: express.Request, res: express.Response) {
@@ -477,7 +487,7 @@ async function revokeAuthSession(req: express.Request, res: express.Response) {
       [hashSessionToken(token)],
     );
   }
-  clearAuthSessionCookie(res);
+  clearAuthSessionCookie(req, res);
 }
 
 async function getAuthSessionIdentity(req: express.Request) {
@@ -525,9 +535,19 @@ function isSameOriginSessionRequest(req: express.Request) {
   if (fetchSite === 'cross-site') return false;
   if (!origin) return true;
 
-  const expectedOrigin = (process.env.APP_BASE_URL || `${req.protocol}://${req.get('host') || ''}`)
-    .replace(/\/$/, '');
-  return origin === expectedOrigin;
+  const expectedOrigin = process.env.APP_BASE_URL?.replace(/\/$/, '');
+  if (expectedOrigin && origin === expectedOrigin) return true;
+
+  const requestOrigin = `${req.protocol}://${req.get('host') || ''}`.replace(/\/$/, '');
+  if (!expectedOrigin && origin === requestOrigin) return true;
+
+  if (!isAllowedTryCloudflareDevOrigin(origin)) return false;
+  try {
+    const originUrl = new URL(origin);
+    return req.secure && originUrl.hostname === req.hostname.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 function getWebAuthnConfig() {
@@ -1833,6 +1853,7 @@ async function startServer() {
     throw new Error('VITE_ENABLE_DEMO_LOGIN must be false in production.');
   }
   assertPortfolioDemoSessionStartup();
+  assertTryCloudflareDevOriginsStartup();
 
   const portfolioDemoConfig = getPortfolioDemoSessionConfig();
   const portfolioDemoFixturesReady = portfolioDemoConfig
@@ -1897,10 +1918,11 @@ async function startServer() {
   });
 
   const configuredProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
-  app.set(
-    'trust proxy',
-    Number.isInteger(configuredProxyHops) && configuredProxyHops >= 0 ? configuredProxyHops : 0,
-  );
+  app.set('trust proxy', isTryCloudflareDevOriginsEnabled()
+    ? (address: string, hop: number) => shouldTrustTryCloudflareDevProxy(address, hop)
+    : Number.isInteger(configuredProxyHops) && configuredProxyHops >= 0
+      ? configuredProxyHops
+      : 0);
   app.disable('x-powered-by');
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -1930,7 +1952,7 @@ async function startServer() {
     const origin = req.header('origin');
     const allowedOrigins = getAllowedCorsOrigins();
 
-    if (origin && allowedOrigins.has(origin)) {
+    if (origin && (allowedOrigins.has(origin) || isAllowedTryCloudflareDevOrigin(origin))) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -2414,7 +2436,7 @@ async function startServer() {
         }),
       );
 
-      await createAuthSession(employee, res);
+      await createAuthSession(employee, req, res);
 
       res.status(201).json({
         success: true,
@@ -2512,11 +2534,11 @@ async function startServer() {
 app.post('/api/auth/logout', async (req, res) => {
   try {
     if (hasDatabaseConfig()) await revokeAuthSession(req, res);
-    else clearAuthSessionCookie(res);
+    else clearAuthSessionCookie(req, res);
     res.json({ success: true });
   } catch (error) {
     console.error('[Logout] Failed to revoke session:', error);
-    clearAuthSessionCookie(res);
+    clearAuthSessionCookie(req, res);
     res.status(500).json({ success: false, error: 'Unable to log out safely.' });
   }
 });
@@ -2656,7 +2678,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
     }
 
     clearLoginRateLimits(loginRateLimitKeys);
-    await createAuthSession(employee, res);
+    await createAuthSession(employee, req, res);
 
     res.json({
       success: true,
@@ -2707,7 +2729,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
         }
 
           clearLoginRateLimits(loginRateLimitKeys);
-        await createAuthSession(fallbackEmployee, res);
+        await createAuthSession(fallbackEmployee, req, res);
 
         return res.json({
           success: true,
@@ -2761,7 +2783,7 @@ app.post('/api/auth/demo-session', portfolioDemoSessionRateLimiter, async (req, 
       return res.status(503).json({ success: false, code: 'DEMO_ACCESS_UNAVAILABLE', error: 'Portfolio demo access is unavailable.' });
     }
 
-    await createAuthSession(employee, res);
+    await createAuthSession(employee, req, res);
     return res.json({ success: true, user: formatAuthUser(employee) });
   } catch (error) {
     console.error('[Portfolio demo session] Failed:', error);
@@ -3265,7 +3287,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
     });
 
     clearLoginRateLimits(loginRateLimitKeys);
-    await createAuthSession(loginUser, res);
+    await createAuthSession(loginUser, req, res);
     res.json({ success: true, user: formatAuthUser(loginUser) });
   } catch (error) {
     recordLoginFailures(loginRateLimitKeys);

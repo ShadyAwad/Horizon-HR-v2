@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => {
   if (mode === 'production' && env.VITE_ENABLE_DEMO_LOGIN === 'true') {
     throw new Error('VITE_ENABLE_DEMO_LOGIN must be false in production builds.');
   }
+  if (mode === 'production' && env.ALLOW_TRYCLOUDFLARE_DEV_ORIGINS === 'true') {
+    throw new Error('ALLOW_TRYCLOUDFLARE_DEV_ORIGINS must be false in production builds.');
+  }
+  const allowTryCloudflareDevOrigins =
+    mode !== 'production' && env.ALLOW_TRYCLOUDFLARE_DEV_ORIGINS === 'true';
   const plugins = [react(), tailwindcss()];
 
   if (mode === 'analyze') {
@@ -50,9 +55,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      allowedHosts: [
-        'courtesy-reached-reached-powell.trycloudflare.com',
-      ],
+      allowedHosts: allowTryCloudflareDevOrigins ? ['.trycloudflare.com'] : [],
 
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

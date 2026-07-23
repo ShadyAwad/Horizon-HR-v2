@@ -9,6 +9,12 @@ import {
   getPortfolioDemoSessionConfig,
   parsePortfolioDemoRole,
 } from '../src/server/portfolio-demo-session';
+import {
+  assertTryCloudflareDevOriginsStartup,
+  isAllowedTryCloudflareDevOrigin,
+  isTryCloudflareDevOriginsEnabled,
+  shouldTrustTryCloudflareDevProxy,
+} from '../src/server/trycloudflare-dev';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -325,6 +331,12 @@ async function runOptionalPortfolioDemoSessionChecks() {
     if (!/HttpOnly/i.test(cookie) || !/SameSite=Lax/i.test(cookie) || !/stanza_session=/i.test(cookie)) {
       throw new Error(`Portfolio demo ${role} session did not set the hardened cookie.`);
     }
+    if (baseUrl.startsWith('https://') && !/;\s*Secure/i.test(cookie)) {
+      throw new Error(`Portfolio demo ${role} HTTPS session did not set Secure.`);
+    }
+    if (/\bDomain=/i.test(cookie)) {
+      throw new Error(`Portfolio demo ${role} session set an explicit cookie domain.`);
+    }
     if (/password|token|hash/i.test(JSON.stringify(result.body))) {
       throw new Error(`Portfolio demo ${role} response exposed credential material.`);
     }
@@ -458,6 +470,60 @@ async function run() {
       startupBlocked = true;
     }
     if (!startupBlocked) throw new Error('Production startup permits portfolio demo sessions outside demo mode.');
+  });
+
+  await check('Cloudflare Quick Tunnel origin support is explicit and development-only', async () => {
+    const enabledDevelopment = {
+      NODE_ENV: 'development',
+      ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'true',
+    };
+    const allowedOrigin = 'https://stanza-random-quick-tunnel.trycloudflare.com';
+
+    if (isTryCloudflareDevOriginsEnabled({}) || isAllowedTryCloudflareDevOrigin(allowedOrigin, {})) {
+      throw new Error('Quick Tunnel origins are enabled by default.');
+    }
+    if (!isAllowedTryCloudflareDevOrigin(allowedOrigin, enabledDevelopment)) {
+      throw new Error('An explicitly enabled HTTPS Quick Tunnel origin was rejected.');
+    }
+    for (const rejectedOrigin of [
+      'http://stanza-random-quick-tunnel.trycloudflare.com',
+      'https://trycloudflare.com',
+      'https://trycloudflare.com.evil.example',
+      'https://stanza-random-quick-tunnel.trycloudflare.com.evil.example',
+      'https://attacker.example',
+    ]) {
+      if (isAllowedTryCloudflareDevOrigin(rejectedOrigin, enabledDevelopment)) {
+        throw new Error(`Unsafe tunnel origin was accepted: ${rejectedOrigin}`);
+      }
+    }
+    if (!shouldTrustTryCloudflareDevProxy('127.0.0.1', 0, enabledDevelopment)
+      || !shouldTrustTryCloudflareDevProxy('::1', 0, enabledDevelopment)
+      || shouldTrustTryCloudflareDevProxy('203.0.113.10', 0, enabledDevelopment)
+      || shouldTrustTryCloudflareDevProxy('127.0.0.1', 1, enabledDevelopment)) {
+      throw new Error('Quick Tunnel proxy trust is not restricted to one loopback hop.');
+    }
+
+    let productionBlocked = false;
+    try {
+      assertTryCloudflareDevOriginsStartup({
+        NODE_ENV: 'production',
+        ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'true',
+      });
+    } catch {
+      productionBlocked = true;
+    }
+    if (!productionBlocked || isTryCloudflareDevOriginsEnabled({
+      NODE_ENV: 'production',
+      ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'true',
+    })) {
+      throw new Error('Production permits the development Quick Tunnel origin bypass.');
+    }
+
+    const viteConfig = await readFile(path.join(rootDir, 'vite.config.ts'), 'utf8');
+    if (!viteConfig.includes("allowedHosts: allowTryCloudflareDevOrigins ? ['.trycloudflare.com'] : []")
+      || /[a-z]+(?:-[a-z]+){2,}\.trycloudflare\.com/.test(viteConfig)) {
+      throw new Error('Vite does not gate dynamic Quick Tunnel hosts or still hardcodes a random tunnel hostname.');
+    }
   });
 
   await check('Original dashboard lanyard is demo-independent and ships its production asset', async () => {
