@@ -80,7 +80,7 @@ class DashboardLanyardBoundary extends Component<{ children: ReactNode }, { fail
     return this.state.failed ? null : this.props.children;
   }
 }
-const RichFeedContent = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichFeedContent })));
+const RichFeedContent = lazy(() => import('../components/FeedDocumentRenderer').then((module) => ({ default: module.RichFeedContent })));
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;

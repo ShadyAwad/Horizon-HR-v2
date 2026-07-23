@@ -195,4 +195,18 @@ test('image editor registers upload, paste, drop, retry, and alt-text behavior',
   assert.doesNotMatch(nodeSource, /data:image\//);
 });
 
+test('read-only renderer avoids raw HTML and scales across 50 validated posts', () => {
+  const source = readFileSync(new URL('../src/components/FeedDocumentRenderer.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
+  assert.match(source, /validationCache/);
+  assert.match(source, /loading="lazy"/);
+
+  const startedAt = performance.now();
+  for (let index = 0; index < 50; index += 1) {
+    const text = `Company update ${index}`;
+    assert.equal(validateFeedEditorDocument(paragraph(text), text).ok, true);
+  }
+  assert.ok(performance.now() - startedAt < 250, '50 feed documents should validate without editor instances');
+});
+
 console.log(`Editor contract checks passed: ${passed}`);
