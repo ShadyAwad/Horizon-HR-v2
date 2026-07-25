@@ -20,6 +20,7 @@
     "test:live-employees": "tsx scripts/live-employees-test.ts",
     "test:audit": "tsx scripts/audit-test.ts",
     "test:sessions": "tsx scripts/sessions-test.ts",
+    "test:assets": "tsx scripts/assets-test.ts",
     "test:editor": "tsx scripts/editor-test.ts",
     "test:feed-submission": "tsx scripts/feed-submission-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",

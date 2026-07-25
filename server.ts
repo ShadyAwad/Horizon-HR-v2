@@ -3836,10 +3836,18 @@ app.get('/api/resignations', demoAuth, requireResignationPermission('resignation
   try {
     const resignations = await withTenant(tenantId, async (client) => (await client.query(
       `SELECT r.id, r.employee_id, e.full_name, e.email, r.resignation_type, r.requested_last_working_day, r.reason, r.status,
-              r.reviewed_by, reviewer.full_name AS reviewer_name, r.reviewed_at, r.review_note, r.created_at, r.updated_at
+              r.reviewed_by, reviewer.full_name AS reviewer_name, r.reviewed_at, r.review_note, r.created_at, r.updated_at,
+              outstanding_assets.outstanding_asset_count
        FROM resignation_requests r
        INNER JOIN employees e ON e.id = r.employee_id AND e.tenant_id = r.tenant_id
        LEFT JOIN employees reviewer ON reviewer.id = r.reviewed_by AND reviewer.tenant_id = r.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::integer AS outstanding_asset_count
+         FROM asset_assignments asset_assignment
+         WHERE asset_assignment.tenant_id = r.tenant_id
+           AND asset_assignment.employee_id = r.employee_id
+           AND asset_assignment.status = 'active'
+       ) outstanding_assets ON true
        WHERE r.tenant_id = $1 ORDER BY r.created_at DESC LIMIT 100`, [tenantId],
     )).rows);
     res.json({ success: true, resignations });

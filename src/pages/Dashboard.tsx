@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type C
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -39,6 +39,8 @@ const LiveEmployeesPanel = lazy(() => import('../components/live-employees/LiveE
 const AuditTrailPanel = lazy(() => import('../components/audit/AuditTrailPanel').then((module) => ({ default: module.AuditTrailPanel })));
 const SessionManagementPanel = lazy(() => import('../components/sessions/SessionManagementPanel').then((module) => ({ default: module.SessionManagementPanel })));
 const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCenterPanel').then((module) => ({ default: module.SessionCenterPanel })));
+const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((module) => ({ default: module.AssetsPanel })));
+const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -190,6 +192,7 @@ type BreakRequest = {
   reviewer_name?: string | null;
   reviewed_at?: string | null;
   review_note?: string | null;
+  outstanding_asset_count?: number;
   created_at: string;
   updated_at?: string | null;
 };
@@ -734,7 +737,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1193,6 +1196,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
   const canManageSessions = user.role === 'hr_admin' && hasPermission(user, 'sessions.manage');
+  const canViewAssets = hasPermission(user, 'assets.view');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4066,6 +4070,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                <ShieldCheck className="w-5 h-5" />
              </button>
            )}
+           {canViewAssets && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('assets'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'assets' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={t('assets.title')}
+               aria-label={t('assets.title')}
+             >
+               <Box className="w-5 h-5" />
+             </button>
+           )}
                      <button
                         type="button"
                         onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
@@ -4274,6 +4289,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                         {t('sessions.sessionCenter')}
                       </button>
                     )}
+                    {canViewAssets && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('assets'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'assets' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                        aria-label={t('assets.title')}
+                      >
+                        <Box className="w-4 h-4 hidden sm:block" />
+                        {t('assets.title')}
+                      </button>
+                    )}
                     <button
                        onClick={() => {
                          setActiveTab('feed');
@@ -4356,6 +4382,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 {activeTab === 'sessionCenter' && canManageSessions && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <SessionCenterPanel />
+                  </Suspense>
+                )}
+                {activeTab === 'assets' && canViewAssets && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <AssetsPanel />
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
@@ -5845,6 +5876,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                         </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                         <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
+                           <Suspense fallback={<div className="min-h-28 animate-pulse rounded-lg bg-emerald-500/5" />}>
+                             <MyEquipmentPanel />
+                           </Suspense>
+                         </div>
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                              <div className="flex min-w-0 items-center gap-4">
