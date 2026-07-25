@@ -19,6 +19,9 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
+  'asset.created': { canonicalAction: 'asset.created', module: 'assets', summary: 'Asset created', metadataKeys: ['assetTag', 'category'] },
+  'asset.assigned': { canonicalAction: 'asset.assigned', module: 'assets', summary: 'Asset assigned', metadataKeys: ['assetTag', 'targetEmployeeId'] },
+  'asset.returned': { canonicalAction: 'asset.returned', module: 'assets', summary: 'Asset returned', metadataKeys: ['assetTag', 'condition'] },
   tenant_registered: { canonicalAction: 'tenant.registered', module: 'workspace', summary: 'Workspace registered', metadataKeys: ['companyName', 'tenantSlug', 'adminRole', 'customRoles'] },
   tenant_role_created: { canonicalAction: 'employee.role.created', module: 'employees', summary: 'Role created', metadataKeys: ['name'] },
   tenant_role_permissions_updated: { canonicalAction: 'employee.role.permissions_updated', module: 'employees', summary: 'Role permissions updated', metadataKeys: ['roleName'] },
@@ -161,6 +164,9 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
+  'asset.created': ['assetTag', 'category'],
+  'asset.assigned': ['assetTag', 'targetEmployeeId'],
+  'asset.returned': ['assetTag', 'condition'],
   'employee.role.assigned': ['roleName', 'systemKey', 'privileged'],
   'employee.role.privileged_assigned': ['roleName', 'systemKey', 'privileged'],
   'employee.role.removed': ['roleName', 'systemKey', 'privileged'],

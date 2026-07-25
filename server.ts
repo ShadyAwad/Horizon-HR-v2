@@ -48,6 +48,7 @@ import {
 import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-employees-routes';
 import { registerAuditRoutes } from './src/server/audit/audit-routes';
+import { registerAssetRoutes } from './src/server/assets/asset-routes';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
   assertTryCloudflareDevOriginsStartup,
@@ -2041,6 +2042,7 @@ async function startServer() {
   registerHiringRoutes(app, { demoAuth, requirePermission });
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
   registerAuditRoutes(app, { demoAuth, requirePermission });
+  registerAssetRoutes(app, { demoAuth, requirePermission });
 
   app.get('/api/map-tiles/:z/:x/:y.png', async (req, res) => {
     const { z, x, y } = req.params;
