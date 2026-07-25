@@ -8,6 +8,8 @@ const routes = read('src/server/assets/asset-routes.ts');
 const dashboard = read('src/pages/Dashboard.tsx');
 const assetsPanel = read('src/components/assets/AssetsPanel.tsx');
 const equipmentPanel = read('src/components/assets/MyEquipmentPanel.tsx');
+const server = read('server.ts');
+const evidenceStorage = read('src/lib/asset-evidence-storage.ts');
 const checks: Array<[string, boolean]> = [
   ['tenant-scoped asset tables and RLS', /CREATE TABLE IF NOT EXISTS assets/.test(migration) && /ENABLE ROW LEVEL SECURITY/.test(migration)],
   ['single active asset assignment index', /asset_assignments_one_active_asset/.test(migration)],
@@ -19,6 +21,13 @@ const checks: Array<[string, boolean]> = [
   ['lazy dashboard Assets tab', /const AssetsPanel = lazy/.test(dashboard) && /activeTab === 'assets'/.test(dashboard)],
   ['mobile-aware asset and equipment panels', /md:hidden/.test(assetsPanel) && /report-condition/.test(equipmentPanel)],
   ['employee damage report does not expose return action', /report-condition/.test(equipmentPanel) && !/\/return/.test(equipmentPanel)],
+  ['evidence upload uses authenticated tenant-scoped endpoint', /\/api\/assets\/:assetId\/evidence/.test(server) && /tenant_id=\$1 AND asset_id=\$2 AND employee_id=\$3/.test(server)],
+  ['evidence validates decoded image data and re-encodes WebP', /sharp\(file\.buffer/.test(server) && /\['jpeg', 'png', 'webp'\]/.test(server) && /\.webp\(/.test(server)],
+  ['evidence storage is UUID-owned and isolated from Company Feed', /uploads\/assets/.test(evidenceStorage) && !/company-feed/.test(evidenceStorage)],
+  ['evidence retrieval is private and nosniff', /\/api\/assets\/evidence\/:reportId/.test(server) && /X-Content-Type-Options/.test(server)],
+  ['offboarding count is derived from active tenant assignments', /outstanding_asset_count/.test(server) && /asset_assignment\.status = 'active'/.test(server)],
+  ['offboarding warning is visible and opens assets', /assets-warning-/.test(dashboard) && /setActiveTab\('assets'\)/.test(dashboard)],
+  ['offboarding completion audits retained assets safely', /offboarding\.completed_with_assets/.test(server) && /outstandingAssetCount/.test(server)],
 ];
 
 let failed = false;
