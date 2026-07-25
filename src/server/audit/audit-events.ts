@@ -88,6 +88,7 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
   'resignation.rejected': { canonicalAction: 'resignation.rejected', module: 'resignations', summary: 'Resignation rejected', severity: 'warning' },
   'resignation.withdrawn': { canonicalAction: 'resignation.withdrawn', module: 'resignations', summary: 'Resignation withdrawn' },
   'resignation.processed': { canonicalAction: 'resignation.processed', module: 'resignations', summary: 'Resignation processed' },
+  'offboarding.completed_with_assets': { canonicalAction: 'offboarding.completed_with_assets', module: 'resignations', summary: 'Offboarding completed with assigned assets', severity: 'warning', metadataKeys: ['outstandingAssetCount'] },
   company_feed_post_created: { canonicalAction: 'feed.post.created', module: 'feed', summary: 'Company Feed post created', metadataKeys: ['postType', 'status'] },
   company_feed_post_status_updated: { canonicalAction: 'feed.post.status_changed', module: 'feed', summary: 'Company Feed post status changed', metadataKeys: ['previousStatus', 'newStatus'] },
 };
@@ -162,6 +163,7 @@ export function inferAuditModule(action: string, entityType: string) {
     profile: 'employees',
     resignation: 'resignations',
     roster: 'roster',
+    offboarding: 'resignations',
     tenant: 'workspace',
   };
   return direct[prefix] || 'workspace';

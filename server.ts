@@ -3992,6 +3992,10 @@ app.patch('/api/resignations/:id/process', demoAuth, requireResignationPermissio
       const result = await client.query(`UPDATE resignation_requests SET status = 'processed', updated_at = NOW() WHERE tenant_id = $1 AND id = $2 AND status = 'approved' RETURNING id, employee_id, status, updated_at`, [tenantId, id]);
       if (!result.rowCount) throw Object.assign(new Error('Approved resignation request not found.'), { statusCode: 404 });
       await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'resignation.processed', 'resignation_request', $3, '{}'::jsonb)`, [tenantId, employeeId, id]);
+      const outstandingAssets = await client.query<{ count: number }>(`SELECT COUNT(*)::integer AS count FROM asset_assignments WHERE tenant_id=$1 AND employee_id=$2 AND status='active'`, [tenantId, result.rows[0].employee_id]);
+      if (outstandingAssets.rows[0].count > 0) {
+        await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'offboarding.completed_with_assets', 'resignation_request', $3, $4::jsonb)`, [tenantId, employeeId, id, JSON.stringify({ outstandingAssetCount: outstandingAssets.rows[0].count })]);
+      }
       await client.query(`INSERT INTO outbox_events (tenant_id, event_type, payload) VALUES ($1, 'resignation.processed', $2::jsonb)`, [tenantId, JSON.stringify({ resignationId: id, employeeId: result.rows[0].employee_id, notificationKey: 'system_alerts', title: 'Resignation request processed' })]);
       return result.rows[0];
     });
