@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type C
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -41,6 +41,7 @@ const SessionManagementPanel = lazy(() => import('../components/sessions/Session
 const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCenterPanel').then((module) => ({ default: module.SessionCenterPanel })));
 const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((module) => ({ default: module.AssetsPanel })));
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
+const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -738,7 +739,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1198,6 +1199,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const canViewAudit = hasPermission(user, 'audit.view');
   const canManageSessions = user.role === 'hr_admin' && hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
+  const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4038,6 +4040,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} className="absolute end-0 top-0" />
              </button>
            )}
+           {canViewPerformance && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('performance'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'performance' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={t('performance.title')}
+               aria-label={t('performance.title')}
+             >
+               <BarChart3 className="w-5 h-5" />
+             </button>
+           )}
            {canViewLiveEmployees && (
              <button
                type="button"
@@ -4258,6 +4271,16 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                         <AttentionBadge count={attentionCounts.hiring} ariaLabel={attentionAriaLabel(t('hiring.title'), attentionCounts.hiring)} />
                       </button>
                     )}
+                    {canViewPerformance && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('performance'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'performance' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                      >
+                        <BarChart3 className="w-4 h-4 hidden sm:block" />
+                        {t('performance.title')}
+                      </button>
+                    )}
                     {canViewLiveEmployees && (
                       <button
                         type="button"
@@ -4368,6 +4391,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} />
+                  </Suspense>
+                )}
+                {activeTab === 'performance' && canViewPerformance && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <PerformancePanel user={user} />
                   </Suspense>
                 )}
                 {activeTab === 'liveEmployees' && canViewLiveEmployees && (
