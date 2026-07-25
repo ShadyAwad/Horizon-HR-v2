@@ -50,6 +50,8 @@ import { registerHiringRoutes } from './src/server/hiring/hiring-routes';
 import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-employees-routes';
 import { registerAuditRoutes } from './src/server/audit/audit-routes';
 import { registerAssetRoutes } from './src/server/assets/asset-routes';
+import { registerPerformanceRoutes } from './src/server/performance/performance-routes';
+import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
   assertTryCloudflareDevOriginsStartup,
@@ -514,6 +516,17 @@ async function createAuthSession(
     ],
   );
   setAuthSessionCookie(req, res, token);
+}
+
+async function claimRecognitionAfterSuccessfulAuth(tenantId: string, employeeId: string) {
+  try {
+    return await claimPendingRecognitionDelivery(tenantId, employeeId, 'login');
+  } catch (error) {
+    // Recognition is supplementary: schema rollout or delivery failure must
+    // never prevent a valid employee from receiving a standard session.
+    console.error('[Recognition] Login delivery lookup failed:', error);
+    return null;
+  }
 }
 
 async function revokeAuthSession(req: express.Request, res: express.Response) {
@@ -2057,6 +2070,10 @@ async function startServer() {
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
   registerAuditRoutes(app, { demoAuth, requirePermission });
   registerAssetRoutes(app, { demoAuth, requirePermission });
+  // `demoAuth` is the legacy name of the standard session-auth middleware.
+  // Performance routes receive it explicitly as standardAuth and have no
+  // demo-only authentication or authorization path.
+  registerPerformanceRoutes(app, { standardAuth: demoAuth, requirePermission });
 
   app.post('/api/assets/:assetId/evidence', assetEvidenceRateLimiter, demoAuth, async (req, res) => {
     const { assetId } = req.params;
@@ -2952,10 +2969,12 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 
     clearLoginRateLimits(loginRateLimitKeys);
     await createAuthSession(employee, req, res);
+    const recognition = await claimRecognitionAfterSuccessfulAuth(employee.tenant_id, employee.id);
 
     res.json({
       success: true,
       user: formatAuthUser(employee),
+      recognition,
     });
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
@@ -3003,9 +3022,11 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 
           clearLoginRateLimits(loginRateLimitKeys);
         await createAuthSession(fallbackEmployee, req, res);
+        const recognition = await claimRecognitionAfterSuccessfulAuth(fallbackEmployee.tenant_id, fallbackEmployee.id);
 
         return res.json({
           success: true,
+          recognition,
           user: {
             id: fallbackEmployee.id,
             email: fallbackEmployee.email,
@@ -3531,7 +3552,8 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
 
     clearLoginRateLimits(loginRateLimitKeys);
     await createAuthSession(loginUser, req, res);
-    res.json({ success: true, user: formatAuthUser(loginUser) });
+    const recognition = await claimRecognitionAfterSuccessfulAuth(loginUser.tenant_id, loginUser.id);
+    res.json({ success: true, user: formatAuthUser(loginUser), recognition });
   } catch (error) {
     recordLoginFailures(loginRateLimitKeys);
     console.error('[Passkeys] Failed to verify login:', error);
@@ -5048,6 +5070,14 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
           ),
         ]);
 
+        let recognition = null;
+        try {
+          recognition = await claimPendingRecognitionDelivery(tenantId, employeeId, 'clock_in');
+        } catch (error) {
+          // A recognition delivery failure must not roll back a durable clock-in.
+          console.error('[Recognition] Clock-in delivery lookup failed:', error);
+        }
+
         return res.json({
           success: true,
           timeLogId: timeLog.id,
@@ -5055,6 +5085,7 @@ app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
           locationValid: isWithinGeofence,
           isValidGeofence: isWithinGeofence,
           matchedLocation,
+          recognition,
           message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.',
         });
       } catch (error) {
