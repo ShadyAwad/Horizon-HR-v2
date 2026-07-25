@@ -23,6 +23,7 @@ import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import type { AuthUser } from '../App';
 import { UserAvatar } from '../components/UserAvatar';
 import { AttentionBadge } from '../components/AttentionBadge';
+import { RecognitionCelebration, type RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
 import { useDashboardAttentionCounts } from '../hooks/useDashboardAttentionCounts';
 import {
   INTERFACE_SCALE_STEP,
@@ -738,7 +739,7 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void }) {
+export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
@@ -747,6 +748,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [activeTimeLogId, setActiveTimeLogId] = useState<string | null>(null);
   const [lastClockEvent, setLastClockEvent] = useState<string>('No active shift recorded.');
+  const [recognition, setRecognition] = useState<RecognitionCelebrationPayload | null>(initialRecognition || null);
   const [breakRequests, setBreakRequests] = useState<BreakRequest[]>([]);
   const [pendingBreakRequests, setPendingBreakRequests] = useState<BreakRequest[]>([]);
   const [breakRequestsLoading, setBreakRequestsLoading] = useState(false);
@@ -892,6 +894,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
   } = useStanzaPreferences();
 
   const geo = useGeolocation();
+
+  useEffect(() => {
+    if (initialRecognition) setRecognition(initialRecognition);
+  }, [initialRecognition]);
 
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1670,6 +1676,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
         if (res.ok && data.success) {
             setClockInState('success');
             setIsClockedIn(true);
+            if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
             setActiveTimeLogId(data.timeLogId || null);
             setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
             setClockMessage(t('dash.clockInSuccess'));
@@ -1980,6 +1987,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
       if (res.ok && data.success) {
         const nextIsClockedIn = Boolean(data.isClockedIn);
         setIsClockedIn(nextIsClockedIn);
+        if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
         setActiveTimeLogId(data.timeLogId || null);
         if (data.clockedIn) {
           setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
@@ -6169,6 +6177,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate }: { 
           />
         </Suspense>
       )}
+      {recognition && <RecognitionCelebration recognition={recognition} onClose={() => { setRecognition(null); onRecognitionDisplayed?.(); }} />}
     </div>
   );
 }

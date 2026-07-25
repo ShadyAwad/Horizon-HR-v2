@@ -6,6 +6,7 @@ import { DemoNoticeModal } from './components/DemoNoticeModal';
 import { AuthShell, type AuthVisualState } from './components/AuthShell';
 import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
 import { apiFetch, apiUrl } from './lib/api';
+import type { RecognitionCelebrationPayload } from './components/performance/RecognitionCelebration';
 
 const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
 const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
@@ -61,6 +62,7 @@ function getStoredUser() {
 export default function App() {
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
+  const [pendingRecognition, setPendingRecognition] = useState<RecognitionCelebrationPayload | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthVisualState>('idle');
   const [authTransition, setAuthTransition] = useState<AuthTransition | null>(null);
@@ -187,13 +189,14 @@ export default function App() {
     return () => window.clearTimeout(preloadTimer);
   }, [authState, isPasswordResetRoute]);
 
-  const beginLogin = (user?: AuthUser) => {
+  const beginLogin = (user?: AuthUser, recognition?: RecognitionCelebrationPayload | null) => {
     const nextUser = user || fallbackUser;
     setAuthBackgroundPulse('success');
     const pulseComplete = waitForAuthPulse();
     startAuthTransition('logging-in', async () => {
       await Promise.all([loadDashboard(), pulseComplete]);
       setAuthUser(nextUser);
+      setPendingRecognition(recognition || null);
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
       setAuthState('authenticated');
     });
@@ -257,6 +260,8 @@ export default function App() {
                  onLogout={beginLogout}
                  onShowDemoNotice={() => setShowDemoNotice(true)}
                  onUserUpdate={updateAuthUser}
+                 initialRecognition={pendingRecognition}
+                 onRecognitionDisplayed={() => setPendingRecognition(null)}
                />
              </Suspense>
              {authTransition === 'logging-out' && <AuthTransitionLoader transition="logging-out" overlay />}

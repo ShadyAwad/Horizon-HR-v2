@@ -13,11 +13,12 @@ import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
 import type { AuthUser } from '../App';
 import type { AuthVisualState } from '../components/AuthShell';
 import { validateEmail } from '../lib/validation';
+import type { RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
 
 type PortfolioDemoRole = 'hr_admin' | 'manager' | 'employee';
 
 interface LoginProps {
-  onLoginSuccess: (user?: AuthUser) => void;
+  onLoginSuccess: (user?: AuthUser, recognition?: RecognitionCelebrationPayload | null) => void;
   onNavigateSignup: () => void;
   onPulseStateChange?: (pulseState: AuthVisualState) => void;
   focusEmailOnMount?: boolean;
@@ -214,7 +215,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
       
       if (data.success) {
         setPulseState('success');
-        onLoginSuccess(data.user);
+        onLoginSuccess(data.user, data.recognition || null);
       } else {
         setPulseState('error');
         setErrorMsg(data.code === 'RATE_LIMITED'
@@ -336,7 +337,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
       }
 
       setPulseState('success');
-      onLoginSuccess(verifyData.user);
+      onLoginSuccess(verifyData.user, verifyData.recognition || null);
     } catch (error) {
       setPulseState('error');
       setPasskeyMessage(error instanceof Error ? error.message : 'Unable to sign in with passkey.');

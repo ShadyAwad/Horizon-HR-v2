@@ -423,3 +423,25 @@
 .stanza-attention-badge {
   animation: stanzaAttentionBadgeIn 180ms ease-out both;
 }
+
+@keyframes performanceConfettiFall {
+  from { transform: translate3d(0, -20px, 0) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.92; }
+  to { transform: translate3d(calc((var(--piece) - 9) * 9px), 360px, 0) rotate(280deg); opacity: 0; }
+}
+
+.performance-confetti i {
+  position: absolute;
+  inset-block-start: -12px;
+  inset-inline-start: calc((var(--piece) * 5.2%) + 2%);
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  background: hsl(calc(120deg + var(--piece) * 7deg) 68% 58%);
+  animation: performanceConfettiFall 2.8s cubic-bezier(.18,.7,.34,1) both;
+  animation-delay: calc(var(--piece) * 55ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .performance-confetti { display: none; }
+}
