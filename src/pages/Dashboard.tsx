@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
@@ -25,6 +25,7 @@ import { UserAvatar } from '../components/UserAvatar';
 import { AttentionBadge } from '../components/AttentionBadge';
 import { RecognitionCelebration, type RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
 import { useDashboardAttentionCounts } from '../hooks/useDashboardAttentionCounts';
+import { useCompanyFeedDraft } from '../hooks/useCompanyFeedDraft';
 import {
   INTERFACE_SCALE_STEP,
   MAX_INTERFACE_SCALE,
@@ -1191,6 +1192,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewOwnBreakRequests = hasPermission(user, 'break_requests.view_own');
   const canReviewBreakRequests = hasPermission(user, 'break_requests.review') || hasPermission(user, 'break_requests.view_all');
   const canPublishFeed = hasPermission(user, 'feed.publish');
+  const restoreFeedDraft = useCallback((draft: { title: string; contentText: string; contentJson: unknown | null }) => {
+    setFeedForm((current) => ({ ...current, ...draft }));
+    setFeedEditorKey((current) => current + 1);
+  }, []);
+  const feedDraft = useCompanyFeedDraft({
+    tenantId: user.tenantId,
+    employeeId: user.id,
+    enabled: activeTab === 'feed' && canPublishFeed,
+    content: {
+      title: feedForm.title,
+      contentText: feedForm.contentText,
+      contentJson: feedForm.contentJson,
+    },
+    publishing: feedSubmitting,
+    onRestore: restoreFeedDraft,
+  });
   const canViewAllPayroll = hasPermission(user, 'payroll.view_all');
   const canViewOwnPayroll = hasPermission(user, 'payroll.view_self');
   const canRunPayroll = hasPermission(user, 'payroll.run');
@@ -3093,6 +3110,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     try {
       const submittedStatus = feedForm.status;
+      const savedDraft = await feedDraft.saveNow();
+      if (!savedDraft) {
+        setFeedMessageType('error');
+        setFeedMessage(t('dash.feedDraftSaveBeforePublish'));
+        return;
+      }
       const submission = await feedSubmissionController.run((submissionSignal) => executeFeedSubmission<FeedPost>((requestSignal) => fetch(apiUrl('/api/company-feed/posts'), {
           method: 'POST',
           headers: payrollHeaders,
@@ -3106,6 +3129,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             editorSchemaVersion: FEED_EDITOR_SCHEMA_VERSION,
             status: submittedStatus,
             visibility: getFeedVisibilityPayload(),
+            draftId: savedDraft.id,
+            draftVersion: savedDraft.version,
           }),
         }), {
           fallbackError: t('dash.feedSaveError'),
@@ -3124,6 +3149,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         }
         setFeedForm(defaultFeedForm);
         setFeedEditorKey((current) => current + 1);
+        if (submittedStatus === 'published') feedDraft.markPublished();
         setFeedMessageType('success');
         setFeedMessage(submittedStatus === 'published' ? t('dash.postPublished') : t('dash.draftSaved'));
       } else {
@@ -5107,6 +5133,42 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                   placeholder={t('dash.writeAnnouncement')}
                                 />
                               </Suspense>
+                            </div>
+                            <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50 md:col-span-4">
+                              <span role="status" aria-live="polite">
+                                {feedDraft.status === 'saving'
+                                  ? t('dash.feedDraftSaving')
+                                  : feedDraft.status === 'saved'
+                                    ? t('dash.feedDraftSaved')
+                                    : feedDraft.status === 'saved_local'
+                                      ? t('dash.feedDraftSavedLocal')
+                                      : feedDraft.status === 'offline'
+                                        ? t('dash.feedDraftOffline')
+                                        : feedDraft.status === 'restored'
+                                          ? t('dash.feedDraftRestored')
+                                          : feedDraft.status === 'error'
+                                            ? t('dash.feedDraftCouldNotSave')
+                                            : feedDraft.lastSavedAt
+                                              ? t('dash.feedDraftSaved')
+                                              : ''}
+                              </span>
+                              <span className="flex items-center gap-2">
+                                {feedDraft.hasDraft && (
+                                  <button type="button" onClick={() => void feedDraft.restore()} className="rounded border border-emerald-500/20 px-2 py-1 text-emerald-700 transition hover:border-emerald-500/50 dark:text-emerald-200">
+                                    {t('dash.feedDraftContinue')}
+                                  </button>
+                                )}
+                                {feedDraft.status === 'error' && (
+                                  <button type="button" onClick={() => void feedDraft.retry()} className="rounded border border-amber-500/30 px-2 py-1 text-amber-700 transition hover:border-amber-500/60 dark:text-amber-300">
+                                    {t('dash.feedDraftRetry')}
+                                  </button>
+                                )}
+                                {feedDraft.hasDraft && (
+                                  <button type="button" onClick={() => { if (window.confirm(t('dash.feedDraftDiscardConfirm'))) void feedDraft.discard(); }} className="rounded border border-red-400/25 px-2 py-1 text-red-700 transition hover:border-red-400/60 dark:text-red-300">
+                                    {t('dash.feedDraftDiscard')}
+                                  </button>
+                                )}
+                              </span>
                             </div>
                             <button
                               type="button"
