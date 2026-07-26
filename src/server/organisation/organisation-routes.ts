@@ -1,0 +1,124 @@
+import type express from 'express';
+import type { PoolClient } from 'pg';
+import { withTenant } from '../../lib/hr-background';
+import { recordAuditEvent } from '../audit/audit-events';
+import { hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
+
+type Middleware = express.RequestHandler;
+type Dependencies = { standardAuth: Middleware; mutationGuard: Middleware; rateLimiter: Middleware };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
+const text = (value: unknown, max = 500) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+const fail = (statusCode: number, message: string) => Object.assign(new Error(message), { statusCode });
+const sendError = (res: express.Response, error: unknown, fallback: string) => {
+  const typed = error as { statusCode?: number; message?: string };
+  if (!typed.statusCode || typed.statusCode >= 500) console.error('[Organisation]', error);
+  res.status(typed.statusCode || 500).json({ success: false, error: typed.statusCode ? typed.message : fallback });
+};
+
+const PERMISSION_REGISTRY = new Set([
+  'organisation.view', 'organisation.manage', 'departments.manage', 'teams.manage', 'job_titles.manage', 'roles.view', 'roles.manage', 'permissions.manage', 'hierarchy.manage', 'delegations.manage', 'roster.propose_changes', 'roster.manage_scoped', 'roster.approve_changes',
+]);
+
+async function assertCompanyPermission(client: PoolClient, req: express.Request, permission: string) {
+  const user = req.authUser!;
+  const authority = await hasCompanyPermission(client, user.tenantId, user.employeeId, permission);
+  if (!authority.allowed) throw fail(403, 'You do not have permission to perform this action.');
+  return authority;
+}
+
+async function assertActiveEmployee(client: PoolClient, tenantId: string, employeeId: string) {
+  const employee = (await client.query(`SELECT id,full_name FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active=true AND employment_status='active'`, [tenantId, employeeId])).rows[0];
+  if (!employee) throw fail(400, 'Employee must be active.');
+  return employee;
+}
+
+async function assertNoDepartmentCycle(client: PoolClient, tenantId: string, departmentId: string | null, parentId: string | null) {
+  if (!parentId) return;
+  if (departmentId === parentId) throw fail(400, 'A department cannot be its own parent.');
+  if (!departmentId) return;
+  const cycle = await client.query(
+    `WITH RECURSIVE ancestors AS (
+       SELECT id,parent_department_id FROM organisation_departments WHERE tenant_id=$1 AND id=$2
+       UNION ALL
+       SELECT department.id,department.parent_department_id FROM organisation_departments department
+       JOIN ancestors ON department.id=ancestors.parent_department_id AND department.tenant_id=$1
+     ) SELECT 1 FROM ancestors WHERE id=$3 LIMIT 1`,
+    [tenantId, parentId, departmentId],
+  );
+  if (cycle.rows[0]) throw fail(409, 'This parent department would create a cycle.');
+}
+
+async function assertNoReportingCycle(client: PoolClient, tenantId: string, employeeId: string, managerId: string | null) {
+  if (!managerId) return;
+  if (managerId === employeeId) throw fail(400, 'An employee cannot manage themselves.');
+  await assertActiveEmployee(client, tenantId, managerId);
+  const cycle = await client.query(
+    `WITH RECURSIVE chain AS (
+       SELECT id,manager_id FROM employees WHERE tenant_id=$1 AND id=$2
+       UNION ALL
+       SELECT employee.id,employee.manager_id FROM employees employee
+       JOIN chain ON employee.id=chain.manager_id AND employee.tenant_id=$1
+     ) SELECT 1 FROM chain WHERE id=$3 LIMIT 1`,
+    [tenantId, managerId, employeeId],
+  );
+  if (cycle.rows[0]) throw fail(409, 'This reporting line would create a cycle.');
+}
+
+async function audit(client: PoolClient, req: express.Request, action: string, entityType: string, entityId: string, metadata: Record<string, unknown> = {}) {
+  const user = req.authUser!;
+  await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action, targetType: entityType, targetId: entityId, metadata });
+}
+
+export function registerOrganisationRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter }: Dependencies) {
+  app.get('/api/hr/organisation/overview', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      const overview = await withTenant(user.tenantId, async client => {
+        await assertCompanyPermission(client, req, 'organisation.view');
+        const counts = (await client.query(`SELECT
+          (SELECT count(*)::int FROM employees WHERE tenant_id=$1 AND is_active AND employment_status='active') AS "employeeCount",
+          (SELECT count(*)::int FROM organisation_departments WHERE tenant_id=$1 AND is_active) AS departments,
+          (SELECT count(*)::int FROM organisation_teams WHERE tenant_id=$1 AND is_active) AS teams,
+          (SELECT count(*)::int FROM employees WHERE tenant_id=$1 AND is_active AND employment_status='active' AND manager_id IS NOT NULL) AS "managedEmployees",
+          (SELECT count(*)::int FROM employees WHERE tenant_id=$1 AND is_active AND employment_status='active' AND department_id IS NULL) AS "unassignedEmployees",
+          (SELECT count(*)::int FROM permission_delegations WHERE tenant_id=$1 AND status='active' AND revoked_at IS NULL AND starts_at<=NOW() AND expires_at>NOW()) AS "activeDelegations"`, [user.tenantId])).rows[0];
+        return counts;
+      });
+      res.json({ success: true, overview });
+    } catch (error) { sendError(res, error, 'Unable to load organisation overview.'); }
+  });
+
+  app.get('/api/me/organisation', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      const organisation = await withTenant(user.tenantId, async client => {
+        const employee = (await client.query(`SELECT employee.id,employee.job_title AS "legacyJobTitle",title.name AS "jobTitle",department.name AS department,team.name AS team,manager.full_name AS "managerName",lead.full_name AS "teamLeadName",location.name AS "locationName" FROM employees employee LEFT JOIN organisation_job_titles title ON title.tenant_id=employee.tenant_id AND title.id=employee.job_title_id LEFT JOIN organisation_departments department ON department.tenant_id=employee.tenant_id AND department.id=employee.department_id LEFT JOIN organisation_teams team ON team.tenant_id=employee.tenant_id AND team.id=employee.team_id LEFT JOIN employees manager ON manager.tenant_id=employee.tenant_id AND manager.id=employee.manager_id LEFT JOIN employees lead ON lead.tenant_id=team.tenant_id AND lead.id=team.team_lead_id LEFT JOIN organisation_teams team_location ON team_location.id=team.id LEFT JOIN company_locations location ON location.tenant_id=team_location.tenant_id AND location.id=team_location.location_id WHERE employee.tenant_id=$1 AND employee.id=$2`, [user.tenantId, user.employeeId])).rows[0];
+        const delegations = (await client.query(`SELECT permission_key AS "permissionKey",scope_type AS "scopeType",scope_id AS "scopeId",expires_at AS "expiresAt" FROM permission_delegations WHERE tenant_id=$1 AND granted_to_employee_id=$2 AND status='active' AND revoked_at IS NULL AND starts_at<=NOW() AND expires_at>NOW() ORDER BY expires_at`, [user.tenantId, user.employeeId])).rows;
+        return { employee, delegations };
+      });
+      res.json({ success: true, organisation });
+    } catch (error) { sendError(res, error, 'Unable to load your organisation.'); }
+  });
+
+  app.get('/api/hr/organisation/departments', standardAuth, async (req, res) => {
+    try { const user=req.authUser!; const departments=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'organisation.view');return (await client.query(`SELECT department.id,department.name,department.code,department.description,department.parent_department_id AS "parentDepartmentId",department.is_active AS "isActive",head.full_name AS "departmentHeadName" FROM organisation_departments department LEFT JOIN employees head ON head.tenant_id=department.tenant_id AND head.id=department.department_head_id WHERE department.tenant_id=$1 ORDER BY department.name`,[user.tenantId])).rows;});res.json({success:true,departments}); } catch(error){sendError(res,error,'Unable to load departments.');} });
+  app.post('/api/hr/organisation/departments', rateLimiter, standardAuth, mutationGuard, async (req,res)=>{try{const user=req.authUser!,body=req.body||{};const department=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'departments.manage');const name=text(body.name,160);if(!name)throw fail(400,'Department name is required.');const parentId=uuid(body.parentDepartmentId)?body.parentDepartmentId:null;if(body.parentDepartmentId&&!parentId)throw fail(400,'Parent department is invalid.');await assertNoDepartmentCycle(client,user.tenantId,null,parentId);if(uuid(body.departmentHeadId))await assertActiveEmployee(client,user.tenantId,body.departmentHeadId);const row=(await client.query(`INSERT INTO organisation_departments(tenant_id,name,code,description,department_head_id,parent_department_id)VALUES($1,$2,$3,$4,$5,$6) RETURNING id,name,code`,[user.tenantId,name,text(body.code,60)||null,text(body.description,2000)||null,uuid(body.departmentHeadId)?body.departmentHeadId:null,parentId])).rows[0];await audit(client,req,'organisation.department.created','organisation_department',row.id,{name});return row;});res.status(201).json({success:true,department});}catch(error){sendError(res,error,'Unable to create department.');}});
+  app.patch('/api/hr/organisation/departments/:departmentId', rateLimiter, standardAuth, mutationGuard, async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.departmentId))throw fail(404,'Department not found.');const department=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'departments.manage');const body=req.body||{},parentId=body.parentDepartmentId===undefined?undefined:(uuid(body.parentDepartmentId)?body.parentDepartmentId:null);if(body.parentDepartmentId!==undefined&&body.parentDepartmentId!==null&&!uuid(body.parentDepartmentId))throw fail(400,'Parent department is invalid.');if(parentId!==undefined)await assertNoDepartmentCycle(client,user.tenantId,req.params.departmentId,parentId);if(uuid(body.departmentHeadId))await assertActiveEmployee(client,user.tenantId,body.departmentHeadId);const row=(await client.query(`UPDATE organisation_departments SET name=COALESCE($3,name),code=COALESCE($4,code),description=COALESCE($5,description),department_head_id=CASE WHEN $6::boolean THEN $7 ELSE department_head_id END,parent_department_id=CASE WHEN $8::boolean THEN $9 ELSE parent_department_id END,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id,name`,[user.tenantId,req.params.departmentId,text(body.name,160)||null,body.code===undefined?null:text(body.code,60)||null,body.description===undefined?null:text(body.description,2000)||null,body.departmentHeadId!==undefined,uuid(body.departmentHeadId)?body.departmentHeadId:null,body.parentDepartmentId!==undefined,parentId])).rows[0];if(!row)throw fail(404,'Department not found.');await audit(client,req,'organisation.department.updated','organisation_department',row.id,{});return row;});res.json({success:true,department});}catch(error){sendError(res,error,'Unable to update department.');}});
+  app.post('/api/hr/organisation/departments/:departmentId/archive',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.departmentId))throw fail(404,'Department not found.');const department=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'departments.manage');const row=(await client.query(`UPDATE organisation_departments SET is_active=false,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 AND is_active=true RETURNING id`,[user.tenantId,req.params.departmentId])).rows[0];if(!row)throw fail(404,'Active department not found.');await audit(client,req,'organisation.department.archived','organisation_department',row.id,{});return row;});res.json({success:true,department});}catch(error){sendError(res,error,'Unable to archive department.');}});
+
+  app.get('/api/hr/organisation/teams',standardAuth,async(req,res)=>{try{const user=req.authUser!;const teams=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'organisation.view');return (await client.query(`SELECT team.id,team.name,team.description,team.department_id AS "departmentId",department.name AS "departmentName",team.team_lead_id AS "teamLeadId",lead.full_name AS "teamLeadName",team.location_id AS "locationId",team.is_active AS "isActive",COUNT(membership.id)::int AS "memberCount" FROM organisation_teams team LEFT JOIN organisation_departments department ON department.tenant_id=team.tenant_id AND department.id=team.department_id LEFT JOIN employees lead ON lead.tenant_id=team.tenant_id AND lead.id=team.team_lead_id LEFT JOIN organisation_team_memberships membership ON membership.tenant_id=team.tenant_id AND membership.team_id=team.id AND (membership.ends_at IS NULL OR membership.ends_at>=CURRENT_DATE) WHERE team.tenant_id=$1 GROUP BY team.id,department.name,lead.full_name ORDER BY team.name`,[user.tenantId])).rows;});res.json({success:true,teams});}catch(error){sendError(res,error,'Unable to load teams.');}});
+  app.post('/api/hr/organisation/teams',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,body=req.body||{};const team=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'teams.manage');const name=text(body.name,160);if(!name)throw fail(400,'Team name is required.');for(const id of [body.departmentId,body.teamLeadId,body.locationId])if(id!==undefined&&id!==null&&!uuid(id))throw fail(400,'Team reference is invalid.');if(uuid(body.teamLeadId))await assertActiveEmployee(client,user.tenantId,body.teamLeadId);const row=(await client.query(`INSERT INTO organisation_teams(tenant_id,name,description,department_id,team_lead_id,location_id)VALUES($1,$2,$3,$4,$5,$6) RETURNING id,name`,[user.tenantId,name,text(body.description,2000)||null,uuid(body.departmentId)?body.departmentId:null,uuid(body.teamLeadId)?body.teamLeadId:null,uuid(body.locationId)?body.locationId:null])).rows[0];await audit(client,req,'organisation.team.created','organisation_team',row.id,{name});return row;});res.status(201).json({success:true,team});}catch(error){sendError(res,error,'Unable to create team.');}});
+  app.post('/api/hr/organisation/teams/:teamId/members',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,employeeId=req.body?.employeeId;if(!uuid(req.params.teamId)||!uuid(employeeId))throw fail(400,'Team and employee are required.');const membership=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'teams.manage');await assertActiveEmployee(client,user.tenantId,employeeId);const exists=(await client.query(`SELECT id FROM organisation_teams WHERE tenant_id=$1 AND id=$2 AND is_active=true`,[user.tenantId,req.params.teamId])).rows[0];if(!exists)throw fail(404,'Team not found.');const row=(await client.query(`INSERT INTO organisation_team_memberships(tenant_id,team_id,employee_id,membership_type,starts_at)VALUES($1,$2,$3,$4,CURRENT_DATE) RETURNING id`,[user.tenantId,req.params.teamId,employeeId,req.body?.membershipType==='lead'?'lead':'member'])).rows[0];await audit(client,req,'organisation.team.member_added','organisation_team',req.params.teamId,{employeeId});return row;});res.status(201).json({success:true,membership});}catch(error){sendError(res,error,'Unable to add team member.');}});
+  app.delete('/api/hr/organisation/teams/:teamId/members/:employeeId',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.teamId)||!uuid(req.params.employeeId))throw fail(404,'Team membership not found.');const membership=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'teams.manage');const row=(await client.query(`UPDATE organisation_team_memberships SET ends_at=CURRENT_DATE WHERE tenant_id=$1 AND team_id=$2 AND employee_id=$3 AND (ends_at IS NULL OR ends_at>=CURRENT_DATE) RETURNING id`,[user.tenantId,req.params.teamId,req.params.employeeId])).rows[0];if(!row)throw fail(404,'Team membership not found.');await audit(client,req,'organisation.team.member_removed','organisation_team',req.params.teamId,{employeeId:req.params.employeeId});return row;});res.json({success:true,membership});}catch(error){sendError(res,error,'Unable to remove team member.');}});
+
+  app.get('/api/hr/organisation/job-titles',standardAuth,async(req,res)=>{try{const user=req.authUser!;const jobTitles=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'organisation.view');return (await client.query(`SELECT id,name,description,level,is_active AS "isActive" FROM organisation_job_titles WHERE tenant_id=$1 ORDER BY level NULLS LAST,name`,[user.tenantId])).rows;});res.json({success:true,jobTitles});}catch(error){sendError(res,error,'Unable to load job titles.');}});
+  app.post('/api/hr/organisation/job-titles',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,body=req.body||{};const jobTitle=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'job_titles.manage');const name=text(body.name,160);if(!name)throw fail(400,'Job title name is required.');const level=body.level===undefined||body.level===null?null:Number(body.level);if(level!==null&&(!Number.isInteger(level)||level<0||level>100))throw fail(400,'Job title level is invalid.');const row=(await client.query(`INSERT INTO organisation_job_titles(tenant_id,name,description,level)VALUES($1,$2,$3,$4)RETURNING id,name,level`,[user.tenantId,name,text(body.description,2000)||null,level])).rows[0];await audit(client,req,'organisation.job_title.created','organisation_job_title',row.id,{name});return row;});res.status(201).json({success:true,jobTitle});}catch(error){sendError(res,error,'Unable to create job title.');}});
+
+  app.patch('/api/hr/organisation/employees/:employeeId/reporting-line',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,managerId=req.body?.managerId;if(!uuid(req.params.employeeId)||!(managerId===null||managerId===undefined||uuid(managerId)))throw fail(400,'Manager is invalid.');const employee=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'hierarchy.manage');await assertNoReportingCycle(client,user.tenantId,req.params.employeeId,uuid(managerId)?managerId:null);const row=(await client.query(`UPDATE employees SET manager_id=$3,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id,manager_id AS "managerId"`,[user.tenantId,req.params.employeeId,uuid(managerId)?managerId:null])).rows[0];if(!row)throw fail(404,'Employee not found.');await audit(client,req,'organisation.reporting_line.updated','employee',row.id,{managerId:row.managerId});return row;});res.json({success:true,employee});}catch(error){sendError(res,error,'Unable to update reporting line.');}});
+  app.patch('/api/hr/organisation/employees/:employeeId/placement',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,body=req.body||{};if(!uuid(req.params.employeeId))throw fail(404,'Employee not found.');for(const value of [body.jobTitleId,body.departmentId,body.teamId])if(value!==undefined&&value!==null&&!uuid(value))throw fail(400,'Placement reference is invalid.');const employee=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'hierarchy.manage');const row=(await client.query(`UPDATE employees SET job_title_id=CASE WHEN $3::boolean THEN $4 ELSE job_title_id END,department_id=CASE WHEN $5::boolean THEN $6 ELSE department_id END,team_id=CASE WHEN $7::boolean THEN $8 ELSE team_id END,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id,job_title_id AS "jobTitleId",department_id AS "departmentId",team_id AS "teamId"`,[user.tenantId,req.params.employeeId,body.jobTitleId!==undefined,uuid(body.jobTitleId)?body.jobTitleId:null,body.departmentId!==undefined,uuid(body.departmentId)?body.departmentId:null,body.teamId!==undefined,uuid(body.teamId)?body.teamId:null])).rows[0];if(!row)throw fail(404,'Employee not found.');await audit(client,req,'organisation.employee_placement.updated','employee',row.id,{});return row;});res.json({success:true,employee});}catch(error){sendError(res,error,'Unable to update employee placement.');}});
+
+  app.get('/api/hr/organisation/delegations',standardAuth,async(req,res)=>{try{const user=req.authUser!;const delegations=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'delegations.manage');return (await client.query(`SELECT delegation.id,delegation.permission_key AS "permissionKey",delegation.scope_type AS "scopeType",delegation.scope_id AS "scopeId",delegation.reason,delegation.starts_at AS "startsAt",delegation.expires_at AS "expiresAt",delegation.status,grantor.full_name AS "grantedByName",grantee.full_name AS "grantedToName" FROM permission_delegations delegation JOIN employees grantor ON grantor.tenant_id=delegation.tenant_id AND grantor.id=delegation.granted_by_employee_id JOIN employees grantee ON grantee.tenant_id=delegation.tenant_id AND grantee.id=delegation.granted_to_employee_id WHERE delegation.tenant_id=$1 ORDER BY delegation.expires_at DESC`,[user.tenantId])).rows;});res.json({success:true,delegations});}catch(error){sendError(res,error,'Unable to load delegations.');}});
+  app.post('/api/hr/organisation/delegations',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!,body=req.body||{};if(!uuid(body.grantedToEmployeeId)||!PERMISSION_REGISTRY.has(body.permissionKey)||!isOrganisationScope(body.scopeType))throw fail(400,'Delegation is invalid.');const scopeId=uuid(body.scopeId)?body.scopeId:null;if(['location','department','team'].includes(body.scopeType)&&!scopeId)throw fail(400,'Delegation scope target is required.');const startsAt=body.startsAt?new Date(body.startsAt):new Date(),expiresAt=new Date(body.expiresAt);if(Number.isNaN(startsAt.getTime())||Number.isNaN(expiresAt.getTime())||expiresAt<=startsAt)throw fail(400,'Delegation expiry is required and must be later than its start.');const delegation=await withTenant(user.tenantId,async client=>{const authority=await resolveScopedPermission(client,{tenantId:user.tenantId,actorEmployeeId:user.employeeId,permissionKey:body.permissionKey,targetEmployeeId:body.grantedToEmployeeId});if(!authority.allowed)throw fail(403,'You cannot delegate a permission you do not possess over this employee.');await assertActiveEmployee(client,user.tenantId,body.grantedToEmployeeId);const row=(await client.query(`INSERT INTO permission_delegations(tenant_id,granted_by_employee_id,granted_to_employee_id,permission_key,scope_type,scope_id,reason,starts_at,expires_at)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)RETURNING id`,[user.tenantId,user.employeeId,body.grantedToEmployeeId,body.permissionKey,body.scopeType,scopeId,text(body.reason,1000)||null,startsAt.toISOString(),expiresAt.toISOString()])).rows[0];await audit(client,req,'organisation.delegation.created','permission_delegation',row.id,{permissionKey:body.permissionKey,scopeType:body.scopeType,scopeId});return row;});res.status(201).json({success:true,delegation});}catch(error){sendError(res,error,'Unable to create delegation.');}});
+  app.post('/api/hr/organisation/delegations/:delegationId/revoke',rateLimiter,standardAuth,mutationGuard,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.delegationId))throw fail(404,'Delegation not found.');const delegation=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'delegations.manage');const row=(await client.query(`UPDATE permission_delegations SET status='revoked',revoked_at=NOW(),revoked_by=$3,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 AND status='active' AND revoked_at IS NULL RETURNING id`,[user.tenantId,req.params.delegationId,user.employeeId])).rows[0];if(!row)throw fail(404,'Active delegation not found.');await audit(client,req,'organisation.delegation.revoked','permission_delegation',row.id,{});return row;});res.json({success:true,delegation});}catch(error){sendError(res,error,'Unable to revoke delegation.');}});
+}

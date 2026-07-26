@@ -51,6 +51,7 @@ import { registerLiveEmployeesRoutes } from './src/server/live-employees/live-em
 import { registerAuditRoutes } from './src/server/audit/audit-routes';
 import { registerAssetRoutes } from './src/server/assets/asset-routes';
 import { registerPerformanceRoutes } from './src/server/performance/performance-routes';
+import { registerOrganisationRoutes } from './src/server/organisation/organisation-routes';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
@@ -1445,6 +1446,8 @@ async function demoAuth(
         LEFT JOIN employee_role_assignments
           ON employee_role_assignments.tenant_id = employees.tenant_id
          AND employee_role_assignments.employee_id = employees.id
+         AND employee_role_assignments.revoked_at IS NULL
+         AND (employee_role_assignments.expires_at IS NULL OR employee_role_assignments.expires_at > NOW())
         LEFT JOIN tenant_roles assigned_role
           ON assigned_role.tenant_id = employees.tenant_id
          AND assigned_role.id = employee_role_assignments.role_id
@@ -2001,6 +2004,7 @@ async function startServer() {
   const feedImageRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 30);
   const feedDraftRateLimiter = createAuthRateLimiter(60 * 1000, 40);
   const assetEvidenceRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
+  const organisationMutationRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 60);
   const avatarUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: PROFILE_IMAGE_MAX_BYTES, files: 1 },
@@ -2108,6 +2112,11 @@ async function startServer() {
   // Performance routes receive it explicitly as standardAuth and have no
   // demo-only authentication or authorization path.
   registerPerformanceRoutes(app, { standardAuth: demoAuth, requirePermission });
+  registerOrganisationRoutes(app, {
+    standardAuth: demoAuth,
+    mutationGuard: isSameOriginSessionMutation,
+    rateLimiter: organisationMutationRateLimiter,
+  });
 
   app.post('/api/assets/:assetId/evidence', assetEvidenceRateLimiter, demoAuth, async (req, res) => {
     const { assetId } = req.params;
@@ -4323,6 +4332,8 @@ app.get(
             LEFT JOIN employee_role_assignments
               ON employee_role_assignments.tenant_id = employees.tenant_id
              AND employee_role_assignments.employee_id = employees.id
+             AND employee_role_assignments.revoked_at IS NULL
+             AND (employee_role_assignments.expires_at IS NULL OR employee_role_assignments.expires_at > NOW())
             LEFT JOIN tenant_roles
               ON tenant_roles.tenant_id = employees.tenant_id
              AND tenant_roles.id = employee_role_assignments.role_id
@@ -4414,18 +4425,36 @@ app.post(
           throw Object.assign(new Error('Privileged role assignment requires roles.assign_privileged.'), { statusCode: 403 });
         }
 
-        const insertResult = await client.query(
+        // Existing role assignments are company-scoped. The organisation migration
+        // uses a partial active-assignment uniqueness index so historical revoked
+        // assignments do not block a later re-assignment.
+        await client.query(
           `
-            INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id, assigned_by)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (tenant_id, employee_id, role_id)
-            DO UPDATE SET
-              assigned_by = EXCLUDED.assigned_by,
-              assigned_at = NOW()
-            RETURNING id, employee_id, role_id, assigned_at
+            UPDATE employee_role_assignments
+            SET revoked_at = COALESCE(revoked_at, expires_at),
+                revoked_by = COALESCE(revoked_by, $4)
+            WHERE tenant_id = $1 AND employee_id = $2 AND role_id = $3
+              AND revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at <= NOW()
           `,
           [tenantId, employeeId, roleId, actorEmployeeId],
         );
+
+        const insertResult = await client.query(
+          `INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id, assigned_by, scope_type)
+           VALUES ($1, $2, $3, $4, 'company')
+           ON CONFLICT DO NOTHING
+           RETURNING id, employee_id, role_id, assigned_at`,
+          [tenantId, employeeId, roleId, actorEmployeeId],
+        );
+
+        const assignment = insertResult.rows[0] || (await client.query(
+          `SELECT id, employee_id, role_id, assigned_at
+           FROM employee_role_assignments
+           WHERE tenant_id=$1 AND employee_id=$2 AND role_id=$3
+             AND scope_type='company' AND scope_id IS NULL AND revoked_at IS NULL
+           LIMIT 1`,
+          [tenantId, employeeId, roleId],
+        )).rows[0];
 
         await recordAuditEvent(client, {
           tenantId,
@@ -4446,7 +4475,7 @@ app.post(
           [tenantId, employeeId],
         );
 
-        return insertResult.rows[0];
+        return assignment;
       });
 
       if (!assignment) {
@@ -4526,13 +4555,15 @@ app.delete(
 
         const deleteResult = await client.query<{ id: string }>(
           `
-            DELETE FROM employee_role_assignments
+            UPDATE employee_role_assignments
+            SET revoked_at = NOW(), revoked_by = $4
             WHERE tenant_id = $1
               AND employee_id = $2
               AND role_id = $3
+              AND revoked_at IS NULL
             RETURNING id
           `,
-          [tenantId, employeeId, roleId],
+          [tenantId, employeeId, roleId, actorEmployeeId],
         );
 
         if (!deleteResult.rows[0]) return null;

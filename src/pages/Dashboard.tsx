@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, u
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -44,6 +44,7 @@ const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCent
 const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((module) => ({ default: module.AssetsPanel })));
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
+const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -762,7 +763,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1244,6 +1245,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canManageSessions = user.role === 'hr_admin' && hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
+  const canViewOrganisation = hasPermission(user, 'organisation.view');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4106,6 +4108,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                <BarChart3 className="w-5 h-5" />
              </button>
            )}
+           {canViewOrganisation && (
+             <button
+               type="button"
+               onClick={() => { setActiveTab('organisation'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+               className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'organisation' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+               title={t('organisation.title')}
+               aria-label={t('organisation.title')}
+             >
+               <Network className="w-5 h-5" />
+             </button>
+           )}
            {canViewLiveEmployees && (
              <button
                type="button"
@@ -4336,6 +4349,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         {t('performance.title')}
                       </button>
                     )}
+                    {canViewOrganisation && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('organisation'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'organisation' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                        aria-label={t('organisation.title')}
+                      >
+                        <Network className="w-4 h-4 hidden sm:block" />
+                        {t('organisation.title')}
+                      </button>
+                    )}
                     {canViewLiveEmployees && (
                       <button
                         type="button"
@@ -4451,6 +4475,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'performance' && canViewPerformance && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <PerformancePanel user={user} />
+                  </Suspense>
+                )}
+                {activeTab === 'organisation' && canViewOrganisation && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <OrganisationPanel />
                   </Suspense>
                 )}
                 {activeTab === 'liveEmployees' && canViewLiveEmployees && (
