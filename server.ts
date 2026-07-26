@@ -1048,6 +1048,28 @@ function normalizeFeedVisibility(visibility: FeedVisibilityInput[] | undefined) 
   };
 }
 
+function presentCompanyFeedDraft(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  const contentJson = row.content_json ?? row.contentJson ?? null;
+  const validation = validateFeedEditorDocument(contentJson);
+  if (validation.ok === false) return null;
+  const attachmentReferences = row.attachment_references && typeof row.attachment_references === 'object'
+    ? row.attachment_references
+    : { imageIds: collectFeedImageIds(validation.document) };
+
+  return {
+    id: typeof row.id === 'string' ? row.id : '',
+    title: typeof row.title === 'string' ? row.title : '',
+    contentText: validation.extractedText,
+    contentFormat: typeof row.content_format === 'string' ? row.content_format : FEED_EDITOR_FORMAT,
+    contentJson: validation.document,
+    attachmentReferences,
+    version: Number(row.version),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function formatPdfDate(value: string | Date | null | undefined) {
   if (!value) return 'Not set';
   const parsed = new Date(value);
@@ -8449,16 +8471,7 @@ app.get(
 
       return res.json({
         success: true,
-        draft: draft && {
-          id: draft.id,
-          title: draft.title || '',
-          contentFormat: draft.content_format,
-          contentJson: draft.content_json,
-          attachmentReferences: draft.attachment_references || { imageIds: [] },
-          version: Number(draft.version),
-          createdAt: draft.created_at,
-          updatedAt: draft.updated_at,
-        },
+        draft: presentCompanyFeedDraft(draft),
       });
     } catch (error) {
       console.error('[Company Feed] Failed to load private draft:', error);
@@ -8578,16 +8591,7 @@ app.put(
           success: false,
           code: 'DRAFT_VERSION_CONFLICT',
           error: 'This draft changed in another session. Continue with the newest saved draft.',
-          draft: draft && {
-            id: draft.id,
-            title: draft.title || '',
-            contentFormat: draft.content_format,
-            contentJson: draft.content_json,
-            attachmentReferences: draft.attachment_references || { imageIds: [] },
-            version: Number(draft.version),
-            createdAt: draft.created_at,
-            updatedAt: draft.updated_at,
-          },
+          draft: presentCompanyFeedDraft(draft),
         });
       }
       if ('empty' in outcome && outcome.empty) return res.status(204).end();
@@ -8595,16 +8599,7 @@ app.put(
       const draft = outcome.draft;
       return res.status(200).json({
         success: true,
-        draft: {
-          id: draft.id,
-          title: draft.title || '',
-          contentFormat: draft.content_format,
-          contentJson: draft.content_json,
-          attachmentReferences: draft.attachment_references || { imageIds: [] },
-          version: Number(draft.version),
-          createdAt: draft.created_at,
-          updatedAt: draft.updated_at,
-        },
+        draft: presentCompanyFeedDraft(draft),
       });
     } catch (error) {
       const statusCode = Number((error as { statusCode?: number }).statusCode) || 500;

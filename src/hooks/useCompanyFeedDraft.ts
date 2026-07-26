@@ -1,27 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { collectFeedImageIds, FEED_EDITOR_FORMAT, validateFeedEditorDocument } from '../lib/feed-editor-contract';
+import { collectFeedImageIds, FEED_EDITOR_FORMAT } from '../lib/feed-editor-contract';
 import { apiFetch, apiUrl } from '../lib/api';
+import {
+  hasMeaningfulContent,
+  normaliseCompanyFeedDraft,
+  normaliseCompanyFeedDraftContent,
+  type CompanyFeedDraftContent,
+  type CompanyFeedDraftRecord,
+} from '../lib/company-feed-draft-normalization';
+
+export { hasMeaningfulContent, normaliseCompanyFeedDraft, normaliseText } from '../lib/company-feed-draft-normalization';
+export type { CompanyFeedDraftContent, CompanyFeedDraftRecord } from '../lib/company-feed-draft-normalization';
 
 const DRAFT_KEY_PREFIX = 'stanza.company-feed.recovery.v1';
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DRAFT_MAX_BYTES = 60_000;
 const AUTOSAVE_DELAY_MS = 1_000;
 const MAX_RETRIES = 2;
-
-export type CompanyFeedDraftContent = {
-  title: string;
-  contentText: string;
-  contentJson: unknown | null;
-};
-
-export type CompanyFeedDraftRecord = CompanyFeedDraftContent & {
-  id: string;
-  contentFormat: string;
-  attachmentReferences: { imageIds: string[] };
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type LocalDraft = CompanyFeedDraftContent & {
   storageVersion: 1;
@@ -40,7 +35,7 @@ export type CompanyFeedDraftStatus =
   | 'error'
   | 'restored';
 
-type DraftResponse = { success?: boolean; draft?: CompanyFeedDraftRecord | null; error?: string; code?: string };
+type DraftResponse = { success?: boolean; draft?: unknown; error?: string; code?: string };
 
 function safeStorage() {
   try {
@@ -57,31 +52,30 @@ function getStorageKey(tenantId: string, employeeId: string) {
 function validLocalDraft(value: unknown): value is LocalDraft {
   if (!value || typeof value !== 'object') return false;
   const draft = value as Partial<LocalDraft>;
-  if (draft.storageVersion !== 1 || typeof draft.updatedAt !== 'string' || typeof draft.title !== 'string' || typeof draft.contentText !== 'string') return false;
+  if (draft.storageVersion !== 1 || typeof draft.updatedAt !== 'string') return false;
   const updatedAt = new Date(draft.updatedAt).getTime();
   if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > DRAFT_TTL_MS) return false;
-  if (!draft.contentJson || !draft.attachmentReferences || !Array.isArray(draft.attachmentReferences.imageIds)) return false;
+  if (!draft.contentJson) return false;
   if (typeof draft.serverVersion !== 'number' && draft.serverVersion !== null) return false;
-  const validation = validateFeedEditorDocument(draft.contentJson, draft.contentText);
-  return validation.ok;
-}
-
-function hasMeaningfulContent(content: CompanyFeedDraftContent) {
-  return Boolean(content.title.trim() || content.contentText.trim() || collectFeedImageIds(content.contentJson).length);
+  return normaliseCompanyFeedDraft({
+    ...draft,
+    id: 'local-recovery',
+    version: 1,
+    createdAt: draft.updatedAt,
+  }) !== null;
 }
 
 function toLocalDraft(content: CompanyFeedDraftContent, serverVersion: number | null): LocalDraft | null {
-  if (!content.contentJson || !hasMeaningfulContent(content)) return null;
-  const validation = validateFeedEditorDocument(content.contentJson, content.contentText);
-  if (!validation.ok) return null;
+  const normalised = normaliseCompanyFeedDraftContent(content);
+  if (!normalised || !hasMeaningfulContent(normalised.title, normalised.contentJson)) return null;
   const draft: LocalDraft = {
     storageVersion: 1,
     updatedAt: new Date().toISOString(),
     serverVersion,
-    title: content.title.slice(0, 160),
-    contentText: content.contentText.slice(0, 20_000),
-    contentJson: validation.document,
-    attachmentReferences: { imageIds: collectFeedImageIds(content.contentJson) },
+    title: normalised.title,
+    contentText: normalised.contentText.slice(0, 20_000),
+    contentJson: normalised.contentJson,
+    attachmentReferences: { imageIds: collectFeedImageIds(normalised.contentJson) },
   };
   return JSON.stringify(draft).length <= DRAFT_MAX_BYTES ? draft : null;
 }
@@ -136,11 +130,13 @@ export function useCompanyFeedDraft({
       const raw = storage?.getItem(key);
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
-      if (!validLocalDraft(parsed)) {
-        storage?.removeItem(key);
-        return null;
-      }
-      return parsed;
+      if (!validLocalDraft(parsed)) return null;
+      return normaliseCompanyFeedDraft({
+        ...(parsed as LocalDraft),
+        id: 'local-recovery',
+        version: 1,
+        createdAt: (parsed as LocalDraft).updatedAt,
+      });
     } catch {
       return null;
     }
@@ -164,7 +160,7 @@ export function useCompanyFeedDraft({
     try {
       const response = await apiFetch(apiUrl('/api/me/company-feed/draft'));
       const body = await response.json().catch(() => ({})) as DraftResponse;
-      if (response.ok && body.success) serverDraft = body.draft || null;
+      if (response.ok && body.success) serverDraft = normaliseCompanyFeedDraft(body.draft);
     } catch {
       // The local buffer is deliberately a recovery fallback when the network is unavailable.
     }
@@ -188,8 +184,12 @@ export function useCompanyFeedDraft({
 
   const saveNow = useCallback(async (allowRetry = true): Promise<CompanyFeedDraftRecord | null> => {
     if (!enabled || publishing || !tenantId || !employeeId) return recordRef.current;
-    const snapshot = contentRef.current;
-    if (!hasMeaningfulContent(snapshot)) return null;
+    const snapshot = normaliseCompanyFeedDraftContent(contentRef.current);
+    if (!snapshot || !hasMeaningfulContent(snapshot.title, snapshot.contentJson)) {
+      setStatus('error');
+      setMessage('invalid_draft');
+      return null;
+    }
     const localSaved = writeLocal(snapshot);
     if (!navigator.onLine) {
       setStatus(localSaved ? 'offline' : 'error');
@@ -226,16 +226,18 @@ export function useCompanyFeedDraft({
           return null;
         }
         const body = await response.json().catch(() => ({})) as DraftResponse;
-        if (response.ok && body.success && body.draft) {
-          if (sequence !== sequenceRef.current) return body.draft;
-          applyRecord(body.draft);
+        const savedRecord = normaliseCompanyFeedDraft(body.draft);
+        if (response.ok && body.success && savedRecord) {
+          if (sequence !== sequenceRef.current) return savedRecord;
+          applyRecord(savedRecord);
           clearLocal();
           setStatus('saved');
           setMessage('');
-          return body.draft;
+          return savedRecord;
         }
         if (response.status === 409) {
-          if (body.draft) applyRecord(body.draft);
+          const currentRecord = normaliseCompanyFeedDraft(body.draft);
+          if (currentRecord) applyRecord(currentRecord);
           setStatus('error');
           setMessage('conflict');
           return null;
@@ -279,7 +281,7 @@ export function useCompanyFeedDraft({
   }, [applyRecord, clearLocal]);
 
   useEffect(() => {
-    if (!enabled || publishing || !hasMeaningfulContent(content)) return;
+    if (!enabled || publishing || !hasMeaningfulContent(content.title, content.contentJson)) return;
     writeLocal(content);
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => { void saveNow(); }, AUTOSAVE_DELAY_MS);

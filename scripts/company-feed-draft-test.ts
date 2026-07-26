@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { validateFeedEditorDocument } from '../src/lib/feed-editor-contract';
+import { hasMeaningfulContent, normaliseCompanyFeedDraft, normaliseText } from '../src/lib/company-feed-draft-normalization';
 
 let passed = 0;
 
@@ -58,6 +59,24 @@ test('drafts preserve the lexical-v1 contract and reject unsafe documents', () =
   assert.match(server, /validateFeedEditorDocument\(body\.contentJson, contentText\)/);
 });
 
+test('restoration normalises undefined and null text fields without calling trim on them', () => {
+  const document = root('Recovered content');
+  assert.equal(normaliseText(undefined), '');
+  assert.equal(normaliseText(null), '');
+  const missingTitle = normaliseCompanyFeedDraft({ id: 'draft-1', version: 1, updatedAt: new Date().toISOString(), contentJson: document });
+  const nullTitle = normaliseCompanyFeedDraft({ id: 'draft-2', version: 1, updatedAt: new Date().toISOString(), title: null, contentJson: document });
+  assert.equal(missingTitle?.title, '');
+  assert.equal(nullTitle?.title, '');
+  assert.equal(missingTitle?.contentText, 'Recovered content');
+});
+
+test('missing or malformed restored documents are ignored while valid titleless drafts remain usable', () => {
+  assert.equal(normaliseCompanyFeedDraft({ id: 'draft-3', version: 1, updatedAt: new Date().toISOString(), title: 'Only title' }), null);
+  assert.equal(normaliseCompanyFeedDraft({ id: 'draft-4', version: 1, updatedAt: new Date().toISOString(), contentJson: { root: { type: 'script', children: [] } } }), null);
+  assert.equal(hasMeaningfulContent(undefined, root('Titleless document')), true);
+  assert.equal(hasMeaningfulContent(null, null), false);
+});
+
 test('attachments stay as internal UUID references and are checked against the author', () => {
   assert.match(server, /const imageIds = collectFeedImageIds\(body\.contentJson\)/);
   assert.match(server, /uploaded_by = \$2 AND status = 'pending' AND post_id IS NULL/);
@@ -86,6 +105,18 @@ test('dashboard exposes stable accessible draft status and recovery controls', (
   assert.match(dashboard, /feedDraftDiscard/);
   assert.match(dashboard, /feedDraftRetry/);
   assert.match(dashboard, /min-h-10 flex-wrap/);
+  assert.match(dashboard, /class CompanyFeedBoundary/);
+  assert.match(dashboard, /Company Feed could not be loaded\./);
+  assert.match(dashboard, /Discard local recovery data/);
+  assert.match(dashboard, /<CompanyFeedBoundary onDiscardLocal=\{feedDraft\.clearLocal\}>/);
+});
+
+test('server returns one restored-draft shape with derived lexical text', () => {
+  assert.match(server, /function presentCompanyFeedDraft/);
+  assert.match(server, /contentText: validation\.extractedText/);
+  assert.match(server, /draft: presentCompanyFeedDraft\(draft\)/);
+  assert.match(hook, /normaliseCompanyFeedDraft\(body\.draft\)/);
+  assert.doesNotMatch(hook, /storage\?\.removeItem\(key\)/);
 });
 
 console.log(`Company Feed draft checks passed: ${passed}`);

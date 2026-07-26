@@ -95,6 +95,27 @@ class DashboardLanyardBoundary extends Component<{ children: ReactNode }, { fail
     return this.state.failed ? null : this.props.children;
   }
 }
+
+class CompanyFeedBoundary extends Component<{ children: ReactNode; onDiscardLocal: () => void }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <section role="alert" className="rounded-2xl border border-red-400/25 bg-white p-5 text-neutral-800 shadow-xl dark:bg-black/40 dark:text-emerald-50">
+        <p className="text-sm font-bold">Company Feed could not be loaded.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={() => this.setState({ failed: false })} className="rounded border border-emerald-500/25 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-200">Retry</button>
+          <button type="button" onClick={() => { this.props.onDiscardLocal(); this.setState({ failed: false }); }} className="rounded border border-red-400/30 px-3 py-2 text-xs font-bold text-red-700 dark:text-red-300">Discard local recovery data</button>
+        </div>
+      </section>
+    );
+  }
+}
 const RichFeedContent = lazy(() => import('../components/FeedDocumentRenderer').then((module) => ({ default: module.RichFeedContent })));
 
 type BeforeInstallPromptEvent = Event & {
@@ -5049,6 +5070,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
 
                 {activeTab === 'feed' && (
+                  <CompanyFeedBoundary onDiscardLocal={feedDraft.clearLocal}>
                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -5281,6 +5303,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         </div>
                       )}
                    </motion.div>
+                  </CompanyFeedBoundary>
                 )}
 
                 {(activeTab === 'profile' || activeTab === 'resignations') && (
