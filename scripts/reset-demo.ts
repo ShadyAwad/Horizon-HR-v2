@@ -31,6 +31,7 @@ async function resetDemo() {
     // Delete leaf rows first so this remains safe even if future schema changes reduce CASCADE coverage.
     const dependentTables = [
       'company_feed_visibility',
+      'company_feed_drafts',
       'employee_loan_payments',
       'attendance_daily_summaries',
       'user_notification_settings',

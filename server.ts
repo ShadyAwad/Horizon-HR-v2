@@ -219,6 +219,16 @@ type CreateFeedPostBody = {
   eventEndsAt?: string | null;
   status?: Exclude<FeedPostStatus, 'archived'>;
   visibility?: FeedVisibilityInput[];
+  draftId?: string;
+  draftVersion?: number;
+};
+
+type UpsertCompanyFeedDraftBody = {
+  title?: string;
+  contentText?: string;
+  contentJson?: unknown;
+  contentFormat?: string;
+  expectedVersion?: number | null;
 };
 
 type UpdateFeedPostStatusBody = {
@@ -338,6 +348,7 @@ const FEED_IMAGE_MAX_INPUT_PIXELS = 40_000_000;
 const FEED_IMAGE_MAX_INPUT_DIMENSION = 12_000;
 const FEED_IMAGE_MAX_STORED_DIMENSION = 2_400;
 const FEED_IMAGE_PENDING_TTL_HOURS = 24;
+const FEED_DRAFT_ABANDONMENT_DAYS = 30;
 const ASSET_EVIDENCE_MAX_BYTES = 6 * 1024 * 1024;
 const ASSET_EVIDENCE_MAX_INPUT_PIXELS = 24_000_000;
 const ASSET_EVIDENCE_MAX_INPUT_DIMENSION = 8_000;
@@ -1966,6 +1977,7 @@ async function startServer() {
   const sessionManagementRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 30);
   const avatarRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const feedImageRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 30);
+  const feedDraftRateLimiter = createAuthRateLimiter(60 * 1000, 40);
   const assetEvidenceRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const avatarUpload = multer({
     storage: multer.memoryStorage(),
@@ -8268,14 +8280,32 @@ app.post(
 
       storageKey = await companyFeedImageStorage.write(tenantId, imageId, processed.data);
       const staleStorageKeys = await withTenant(tenantId, async (client) => {
+        // A saved private draft keeps only image UUIDs. After 30 inactive days,
+        // mark it abandoned so the existing pending-image cleanup can reclaim storage.
+        await client.query(
+          `UPDATE company_feed_drafts
+           SET status = 'discarded', discarded_at = NOW(), updated_at = NOW(), version = version + 1
+           WHERE tenant_id = $1 AND status = 'active'
+             AND updated_at < NOW() - ($2::integer * INTERVAL '1 day')`,
+          [tenantId, FEED_DRAFT_ABANDONMENT_DAYS],
+        );
         const stale = await client.query<{ storage_key: string }>(
           `DELETE FROM company_feed_images
            WHERE id IN (
              SELECT id
              FROM company_feed_images
-             WHERE tenant_id = $1
-               AND post_id IS NULL
-               AND created_at < NOW() - ($2::integer * INTERVAL '1 hour')
+             WHERE company_feed_images.tenant_id = $1
+               AND company_feed_images.post_id IS NULL
+               AND company_feed_images.created_at < NOW() - ($2::integer * INTERVAL '1 hour')
+               AND NOT EXISTS (
+                 SELECT 1 FROM company_feed_drafts
+                 WHERE company_feed_drafts.tenant_id = company_feed_images.tenant_id
+                   AND company_feed_drafts.author_employee_id = company_feed_images.uploaded_by
+                   AND company_feed_drafts.status = 'active'
+                   AND company_feed_drafts.attachment_references @> jsonb_build_object(
+                     'imageIds', jsonb_build_array(company_feed_images.id::text)
+                   )
+               )
              ORDER BY created_at
              LIMIT 25
            )
@@ -8391,6 +8421,236 @@ app.get(
   },
 );
 
+app.get(
+  '/api/me/company-feed/draft',
+  feedDraftRateLimiter,
+  demoAuth,
+  requirePermission('feed.publish'),
+  async (req, res) => {
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed drafts.' });
+    }
+
+    const authUser = req.authUser!;
+    try {
+      const draft = await withTenant(authUser.tenantId, async (client) => {
+        const result = await client.query(
+          `SELECT id, title, content_format, content_json, attachment_references, version, created_at, updated_at
+           FROM company_feed_drafts
+           WHERE tenant_id = $1
+             AND author_employee_id = $2
+             AND draft_key = 'company_feed_main'
+             AND status = 'active'
+           LIMIT 1`,
+          [authUser.tenantId, authUser.employeeId],
+        );
+        return result.rows[0] || null;
+      });
+
+      return res.json({
+        success: true,
+        draft: draft && {
+          id: draft.id,
+          title: draft.title || '',
+          contentFormat: draft.content_format,
+          contentJson: draft.content_json,
+          attachmentReferences: draft.attachment_references || { imageIds: [] },
+          version: Number(draft.version),
+          createdAt: draft.created_at,
+          updatedAt: draft.updated_at,
+        },
+      });
+    } catch (error) {
+      console.error('[Company Feed] Failed to load private draft:', error);
+      return res.status(500).json({ success: false, error: 'Unable to load company feed draft.' });
+    }
+  },
+);
+
+app.put(
+  '/api/me/company-feed/draft',
+  feedDraftRateLimiter,
+  demoAuth,
+  requirePermission('feed.publish'),
+  isSameOriginSessionMutation,
+  async (req, res) => {
+    if (!hasDatabaseConfig()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed drafts.' });
+    }
+
+    const authUser = req.authUser!;
+    const body = req.body as UpsertCompanyFeedDraftBody;
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const contentText = typeof body.contentText === 'string' ? body.contentText.trim() : '';
+    const contentFormat = body.contentFormat || FEED_EDITOR_FORMAT;
+    const expectedVersion = body.expectedVersion == null ? null : Number(body.expectedVersion);
+    const serializedContentJson = body.contentJson == null ? '' : JSON.stringify(body.contentJson);
+
+    if (contentFormat !== FEED_EDITOR_FORMAT || !Number.isInteger(expectedVersion ?? 0) && expectedVersion !== null) {
+      return res.status(400).json({ success: false, error: 'Draft version or editor format is not supported.' });
+    }
+    if (title.length > 160 || contentText.length > 20000 || serializedContentJson.length > 50000) {
+      return res.status(400).json({ success: false, error: 'Draft content exceeds the allowed size.' });
+    }
+    const validation = validateFeedEditorDocument(body.contentJson, contentText);
+    if (validation.ok === false) {
+      return res.status(400).json({ success: false, error: validation.error });
+    }
+    const imageIds = collectFeedImageIds(body.contentJson);
+    const hasMeaningfulContent = Boolean(title || contentText || imageIds.length > 0);
+
+    try {
+      const outcome = await withTenant(authUser.tenantId, async (client) => {
+        // Serialise one author's standard composer without granting anyone else access.
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+          `${authUser.tenantId}:${authUser.employeeId}:company_feed_main`,
+        ]);
+        const currentResult = await client.query(
+          `SELECT id, title, content_format, content_json, attachment_references, version, created_at, updated_at
+           FROM company_feed_drafts
+           WHERE tenant_id = $1 AND author_employee_id = $2
+             AND draft_key = 'company_feed_main' AND status = 'active'
+           LIMIT 1 FOR UPDATE`,
+          [authUser.tenantId, authUser.employeeId],
+        );
+        const current = currentResult.rows[0] || null;
+
+        if (!hasMeaningfulContent) {
+          if (current) {
+            await client.query(
+              `UPDATE company_feed_drafts
+               SET status = 'discarded', discarded_at = NOW(), updated_at = NOW(), version = version + 1
+               WHERE tenant_id = $1 AND id = $2 AND author_employee_id = $3`,
+              [authUser.tenantId, current.id, authUser.employeeId],
+            );
+          }
+          return { empty: true as const, draft: null };
+        }
+
+        if (current && expectedVersion !== null && Number(current.version) !== expectedVersion) {
+          return { conflict: true as const, draft: current };
+        }
+        if (!current && expectedVersion !== null && expectedVersion !== 0) {
+          return { conflict: true as const, draft: null };
+        }
+
+        if (imageIds.length > 0) {
+          const images = await client.query<{ id: string }>(
+            `SELECT id FROM company_feed_images
+             WHERE tenant_id = $1 AND uploaded_by = $2 AND status = 'pending' AND post_id IS NULL
+               AND id = ANY($3::uuid[]) FOR UPDATE`,
+            [authUser.tenantId, authUser.employeeId, imageIds],
+          );
+          if (images.rowCount !== imageIds.length) {
+            throw Object.assign(new Error('One or more draft image references are unavailable.'), { statusCode: 400 });
+          }
+        }
+
+        const values = [
+          title || null,
+          serializedContentJson,
+          JSON.stringify({ imageIds }),
+          authUser.tenantId,
+          authUser.employeeId,
+        ];
+        const result = current
+          ? await client.query(
+            `UPDATE company_feed_drafts
+             SET title = $1::varchar, content_json = $2::jsonb, attachment_references = $3::jsonb,
+                 version = version + 1, updated_at = NOW()
+             WHERE tenant_id = $4 AND author_employee_id = $5 AND id = $6
+             RETURNING id, title, content_format, content_json, attachment_references, version, created_at, updated_at`,
+            [...values, current.id],
+          )
+          : await client.query(
+            `INSERT INTO company_feed_drafts (
+               tenant_id, author_employee_id, title, content_format, content_json, attachment_references
+             ) VALUES ($4::uuid, $5::uuid, $1::varchar, $6::varchar, $2::jsonb, $3::jsonb)
+             RETURNING id, title, content_format, content_json, attachment_references, version, created_at, updated_at`,
+            [...values, FEED_EDITOR_FORMAT],
+          );
+        return { conflict: false as const, draft: result.rows[0] };
+      });
+
+      if ('conflict' in outcome && outcome.conflict) {
+        const draft = outcome.draft;
+        return res.status(409).json({
+          success: false,
+          code: 'DRAFT_VERSION_CONFLICT',
+          error: 'This draft changed in another session. Continue with the newest saved draft.',
+          draft: draft && {
+            id: draft.id,
+            title: draft.title || '',
+            contentFormat: draft.content_format,
+            contentJson: draft.content_json,
+            attachmentReferences: draft.attachment_references || { imageIds: [] },
+            version: Number(draft.version),
+            createdAt: draft.created_at,
+            updatedAt: draft.updated_at,
+          },
+        });
+      }
+      if ('empty' in outcome && outcome.empty) return res.status(204).end();
+
+      const draft = outcome.draft;
+      return res.status(200).json({
+        success: true,
+        draft: {
+          id: draft.id,
+          title: draft.title || '',
+          contentFormat: draft.content_format,
+          contentJson: draft.content_json,
+          attachmentReferences: draft.attachment_references || { imageIds: [] },
+          version: Number(draft.version),
+          createdAt: draft.created_at,
+          updatedAt: draft.updated_at,
+        },
+      });
+    } catch (error) {
+      const statusCode = Number((error as { statusCode?: number }).statusCode) || 500;
+      if (statusCode !== 500) return res.status(statusCode).json({ success: false, error: (error as Error).message });
+      console.error('[Company Feed] Failed to save private draft:', error);
+      return res.status(500).json({ success: false, error: 'Unable to save company feed draft.' });
+    }
+  },
+);
+
+app.delete(
+  '/api/me/company-feed/draft',
+  feedDraftRateLimiter,
+  demoAuth,
+  requirePermission('feed.publish'),
+  isSameOriginSessionMutation,
+  async (req, res) => {
+    if (!hasDatabaseConfig()) return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company feed drafts.' });
+    const authUser = req.authUser!;
+    try {
+      const discarded = await withTenant(authUser.tenantId, async (client) => {
+        const result = await client.query<{ id: string }>(
+          `UPDATE company_feed_drafts
+           SET status = 'discarded', discarded_at = NOW(), updated_at = NOW(), version = version + 1
+           WHERE tenant_id = $1 AND author_employee_id = $2
+             AND draft_key = 'company_feed_main' AND status = 'active'
+           RETURNING id`,
+          [authUser.tenantId, authUser.employeeId],
+        );
+        if (result.rowCount) {
+          await client.query(
+            `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+             VALUES ($1, $2, 'company_feed.draft.discarded', 'company_feed_draft', $3, '{}'::jsonb)`,
+            [authUser.tenantId, authUser.employeeId, result.rows[0].id],
+          );
+        }
+        return Boolean(result.rowCount);
+      });
+      return res.json({ success: true, discarded });
+    } catch (error) {
+      console.error('[Company Feed] Failed to discard private draft:', error);
+      return res.status(500).json({ success: false, error: 'Unable to discard company feed draft.' });
+    }
+  },
+);
+
 app.post(
   '/api/company-feed/posts',
   demoAuth,
@@ -8407,6 +8667,8 @@ app.post(
       eventEndsAt,
       status = 'published',
       visibility,
+      draftId,
+      draftVersion,
     } = req.body as CreateFeedPostBody;
 
     const tenantId = req.authUser!.tenantId;
@@ -8471,6 +8733,10 @@ app.post(
       });
     }
 
+    if (draftId != null && (!isUuid(draftId) || !Number.isInteger(draftVersion) || Number(draftVersion) < 1)) {
+      return res.status(400).json({ success: false, error: 'Draft publication reference is invalid.' });
+    }
+
     if (normalizedStartsAt === undefined || normalizedEndsAt === undefined) {
       return res.status(400).json({
         success: false,
@@ -8499,6 +8765,49 @@ app.post(
 
     try {
       const post = await withTenant(tenantId, async (client) => {
+        let activeDraftId: string | null = null;
+        if (draftId) {
+          const draftResult = await client.query<{
+            id: string;
+            status: 'active' | 'published' | 'discarded';
+            version: number;
+            published_post_id: string | null;
+          }>(
+            `SELECT id, status, version, published_post_id
+             FROM company_feed_drafts
+             WHERE tenant_id = $1 AND author_employee_id = $2 AND id = $3
+             LIMIT 1 FOR UPDATE`,
+            [tenantId, actorEmployeeId, draftId],
+          );
+          const draft = draftResult.rows[0];
+          if (!draft) {
+            throw Object.assign(new Error('The private draft is no longer available.'), { statusCode: 409 });
+          }
+          if (draft.status === 'published' && draft.published_post_id) {
+            const existingPost = await client.query(
+              `SELECT id, tenant_id, author_employee_id, title, post_type, content_text, content_json,
+                      editor_format, editor_schema_version, event_starts_at, event_ends_at, status,
+                      created_at, updated_at, published_at, archived_at
+               FROM company_feed_posts
+               WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+              [tenantId, draft.published_post_id],
+            );
+            if (existingPost.rows[0]) {
+              const existing = existingPost.rows[0];
+              return {
+                ...existing,
+                contentText: existing.content_text,
+                contentJson: existing.content_json,
+                visibility: normalizedVisibility.visibility,
+              };
+            }
+          }
+          if (draft.status !== 'active' || Number(draft.version) !== Number(draftVersion)) {
+            throw Object.assign(new Error('This draft changed before it could be published. Reload the draft and try again.'), { statusCode: 409 });
+          }
+          activeDraftId = draft.id;
+        }
+
         const locationIds = normalizedVisibility.visibility
           .filter((rule) => rule.type === 'location')
           .map((rule) => rule.locationId!);
@@ -8659,6 +8968,20 @@ app.post(
           ],
         );
 
+        if (activeDraftId && status === 'published') {
+          await client.query(
+            `UPDATE company_feed_drafts
+             SET status = 'published', published_post_id = $4, published_at = NOW(), updated_at = NOW(), version = version + 1
+             WHERE tenant_id = $1 AND author_employee_id = $2 AND id = $3 AND status = 'active'`,
+            [tenantId, actorEmployeeId, activeDraftId, createdPost.id],
+          );
+          await client.query(
+            `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
+             VALUES ($1, $2, 'company_feed.draft.published', 'company_feed_draft', $3, $4::jsonb)`,
+            [tenantId, actorEmployeeId, activeDraftId, JSON.stringify({ postId: createdPost.id })],
+          );
+        }
+
         return {
           ...createdPost,
           contentText: createdPost.content_text,
@@ -8675,8 +8998,8 @@ app.post(
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
 
-      if (statusCode === 400) {
-        return res.status(400).json({
+      if (statusCode === 400 || statusCode === 409) {
+        return res.status(statusCode).json({
           success: false,
           error: (error as Error).message,
         });
