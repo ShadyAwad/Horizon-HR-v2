@@ -19,6 +19,7 @@ const delegationRoutes = await readFile('src/server/organisation/delegation-rout
 const approvalChain = await readFile('src/server/organisation/approval-chain.ts', 'utf8');
 const delegationsPanel = await readFile('src/components/organisation/DelegationsPanel.tsx', 'utf8');
 const hierarchyPanel = await readFile('src/components/organisation/HierarchyPanel.tsx', 'utf8');
+const selectStyles = await readFile('src/index.css', 'utf8');
 
 const permissionDefinitions = listPermissionDefinitions();
 assert.ok(getPermissionDefinition('roles.view'));
@@ -232,4 +233,9 @@ assert.match(hierarchyPanel, /ArrowLeft/);
 assert.match(hierarchyPanel, /includeUnassigned=true/);
 assert.match(hierarchyPanel, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.doesNotMatch(hierarchyPanel, /react-flow|d3|canvas/i);
-console.log('Organisation foundation checks passed: 192');
+assert.match(organisationPanel, /<select name="departmentId"/);
+assert.match(selectStyles, /\.stanza-dashboard select/);
+assert.match(selectStyles, /\[dir="rtl"\] select/);
+assert.match(selectStyles, /\[role="listbox"\]/);
+assert.match(selectStyles, /\[aria-disabled="true"\]/);
+console.log('Organisation foundation checks passed: 197');

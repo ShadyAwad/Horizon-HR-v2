@@ -557,7 +557,7 @@ function EditorToolbar({
         id="stanza-editor-block-type"
         value={['bullet', 'number'].includes(blockType) ? 'paragraph' : blockType}
         onChange={(event) => applyBlockType(event.target.value as 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'quote')}
-        className="h-11 max-w-[9rem] rounded border border-emerald-500/20 bg-white px-2 text-[11px] font-bold text-neutral-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100 sm:h-8"
+        className="stanza-select h-11 max-w-[9rem] rounded border border-emerald-500/20 bg-white px-2 text-[11px] font-bold text-neutral-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/15 dark:bg-black/30 dark:text-emerald-100 sm:h-8"
         aria-label={t('editor.blockType')}
       >
         <option value="paragraph">{t('editor.paragraph')}</option>

@@ -140,6 +140,7 @@ test('editor source keeps explicit RTL, logical spacing, and accessible mobile c
   const source = readFileSync(new URL('../src/components/RichTextEditor.tsx', import.meta.url), 'utf8');
   const rendererSource = readFileSync(new URL('../src/components/FeedDocumentRenderer.tsx', import.meta.url), 'utf8');
   const imageSource = readFileSync(new URL('../src/components/lexical/FeedImageNode.tsx', import.meta.url), 'utf8');
+  const dashboardSource = readFileSync(new URL('../src/pages/Dashboard.tsx', import.meta.url), 'utf8');
   const cssSource = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
   assert.match(source, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
   assert.match(source, /EditorDirectionPlugin/);
@@ -155,7 +156,15 @@ test('editor source keeps explicit RTL, logical spacing, and accessible mobile c
   assert.match(imageSource, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
   assert.match(cssSource, /\.stanza-feed-editor-surface\[dir="rtl"\]/);
   assert.match(cssSource, /\.stanza-feed-readable-content\[dir="rtl"\]/);
-  assert.match(cssSource, /\.stanza-feed-select option/);
+  assert.match(source, /stanza-select h-11 max-w-\[9rem\]/);
+  assert.match(cssSource, /--stanza-select-bg/);
+  assert.match(cssSource, /--stanza-select-option-selected-bg/);
+  assert.match(cssSource, /\.stanza-select, \.stanza-feed-select\) option/);
+  assert.match(cssSource, /\[role="menu"\]/);
+  assert.match(cssSource, /:focus-visible/);
+  assert.match(dashboardSource, /t\('dash\.rosterEmployee'\)/);
+  assert.match(dashboardSource, /stanza-feed-select/);
+  assert.match(dashboardSource, /value=\{feedForm\.visibility\}/);
 });
 
 test('feed image nodes accept only internal UUID URLs and bounded metadata', () => {

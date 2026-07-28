@@ -5,6 +5,8 @@ const migration = await readFile('src/db/migrations/20260728_add_company_locatio
 const routes = await readFile('src/server/locations/location-routes.ts', 'utf8');
 const panel = await readFile('src/components/locations/LocationsPanel.tsx', 'utf8');
 const registry = await readFile('src/server/organisation/permission-registry.ts', 'utf8');
+const dashboard = await readFile('src/pages/Dashboard.tsx', 'utf8');
+const css = await readFile('src/index.css', 'utf8');
 
 assert.match(migration, /ADD COLUMN IF NOT EXISTS code/);
 assert.match(migration, /archived_at/);
@@ -29,4 +31,8 @@ assert.match(registry, /geofences\.manage/);
 assert.match(panel, /MapPreview/);
 assert.match(panel, /Latitude/);
 assert.match(panel, /dir=\{isRtl/);
-console.log('Location management contracts passed: 23');
+assert.match(dashboard, /stanza-dashboard h-screen/);
+assert.match(css, /\.stanza-dashboard select/);
+assert.match(css, /--stanza-menu-bg/);
+assert.match(css, /padding-inline-end/);
+console.log('Location management contracts passed: 27');

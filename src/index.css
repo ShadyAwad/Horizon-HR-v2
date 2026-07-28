@@ -25,6 +25,16 @@
     --bg-primary: #020604;
     --text-primary: #e6fff5;
     --panel-border: rgb(16 185 129 / 0.15);
+    --stanza-select-bg: #061811;
+    --stanza-select-text: #e6fff5;
+    --stanza-select-border: rgb(52 211 153 / 0.34);
+    --stanza-select-focus: #34d399;
+    --stanza-select-option-bg: #061811;
+    --stanza-select-option-text: #e6fff5;
+    --stanza-select-option-selected-bg: #065f46;
+    --stanza-select-muted: #9bd8bd;
+    --stanza-menu-bg: #061811;
+    --stanza-menu-text: #e6fff5;
     accent-color: #10b981;
     color-scheme: dark;
   }
@@ -33,6 +43,16 @@
     --bg-primary: #f7fbf8;
     --text-primary: #171717;
     --panel-border: #d6e7dc;
+    --stanza-select-bg: #ffffff;
+    --stanza-select-text: #173326;
+    --stanza-select-border: #8fb8a2;
+    --stanza-select-focus: #047857;
+    --stanza-select-option-bg: #ffffff;
+    --stanza-select-option-text: #173326;
+    --stanza-select-option-selected-bg: #c9f3dc;
+    --stanza-select-muted: #486657;
+    --stanza-menu-bg: #ffffff;
+    --stanza-menu-text: #173326;
     color-scheme: light;
   }
   
@@ -40,6 +60,16 @@
     --bg-primary: #020604;
     --text-primary: #e6fff5;
     --panel-border: rgb(16 185 129 / 0.15);
+    --stanza-select-bg: #061811;
+    --stanza-select-text: #e6fff5;
+    --stanza-select-border: rgb(52 211 153 / 0.34);
+    --stanza-select-focus: #34d399;
+    --stanza-select-option-bg: #061811;
+    --stanza-select-option-text: #e6fff5;
+    --stanza-select-option-selected-bg: #065f46;
+    --stanza-select-muted: #9bd8bd;
+    --stanza-menu-bg: #061811;
+    --stanza-menu-text: #e6fff5;
   }
 
   html,
@@ -101,29 +131,73 @@
 }
 
 @layer components {
-  .stanza-feed-select {
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    color-scheme: light;
+  /* Shared dashboard select primitive. Native option styling remains browser
+     controlled on a few platforms, so the theme's color-scheme is retained as
+     the safe fallback for system pickers. */
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select) {
+    background-color: var(--stanza-select-bg) !important;
+    color: var(--stanza-select-text) !important;
+    border-color: var(--stanza-select-border) !important;
+    color-scheme: inherit;
+    padding-inline-end: max(2.25rem, 2.5ch);
   }
 
-  .dark .stanza-feed-select {
-    color-scheme: dark;
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select):focus-visible {
+    border-color: var(--stanza-select-focus) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--stanza-select-focus) 28%, transparent) !important;
+    outline: none !important;
   }
 
-  .stanza-feed-select option,
-  .stanza-feed-select optgroup {
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select):disabled {
+    color: color-mix(in srgb, var(--stanza-select-text) 50%, transparent);
+    cursor: not-allowed;
+    opacity: 0.72;
   }
 
-  .stanza-feed-select option:checked {
-    background-color: var(--color-horizon-emerald-deep);
-    color: #ecfdf5;
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select)[aria-invalid="true"],
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select).border-red-500 {
+    border-color: #ef4444 !important;
   }
 
-  .stanza-feed-select option:disabled {
-    color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select) option,
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select) optgroup {
+    background-color: var(--stanza-select-option-bg) !important;
+    color: var(--stanza-select-option-text) !important;
+  }
+
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select) option:checked {
+    background-color: var(--stanza-select-option-selected-bg) !important;
+    color: var(--stanza-select-option-text) !important;
+  }
+
+  :is(.stanza-dashboard select, .stanza-select, .stanza-feed-select) option:disabled {
+    color: var(--stanza-select-muted);
+  }
+
+  .stanza-dashboard :is([role="listbox"], [role="menu"]) {
+    z-index: 60;
+    max-block-size: min(20rem, calc(100dvh - 2rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background-color: var(--stanza-menu-bg) !important;
+    color: var(--stanza-menu-text) !important;
+    border-color: var(--stanza-select-border) !important;
+    box-shadow: 0 18px 38px rgb(0 0 0 / 0.28);
+  }
+
+  .stanza-dashboard :is([role="option"], [role="menuitem"]) {
+    color: inherit;
+  }
+
+  .stanza-dashboard :is([role="option"], [role="menuitem"]):is(:hover, :focus-visible, [aria-selected="true"], [aria-current="true"]) {
+    background-color: color-mix(in srgb, var(--stanza-select-focus) 16%, transparent);
+    color: var(--stanza-menu-text);
+    outline: none;
+  }
+
+  .stanza-dashboard :is([role="option"], [role="menuitem"])[aria-disabled="true"] {
+    color: var(--stanza-select-muted);
+    cursor: not-allowed;
   }
 
   .stanza-feed-editor-surface[dir="rtl"],

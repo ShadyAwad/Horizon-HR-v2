@@ -3897,7 +3897,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   ref={dashboardRootRef}
   dir={isRtl ? 'rtl' : 'ltr'}
   className={cn(
-    "h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
+    "stanza-dashboard h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
     isRtl ? "text-right" : "text-left"
   )}
 >
