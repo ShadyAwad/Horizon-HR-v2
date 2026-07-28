@@ -52,6 +52,7 @@ import { registerAuditRoutes } from './src/server/audit/audit-routes';
 import { registerAssetRoutes } from './src/server/assets/asset-routes';
 import { registerPerformanceRoutes } from './src/server/performance/performance-routes';
 import { registerOrganisationRoutes } from './src/server/organisation/organisation-routes';
+import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
@@ -4375,6 +4376,7 @@ app.post(
 
     try {
       const assignment = await withTenant(tenantId, async (client) => {
+        await lockFinalHrAdminAuthority(client, tenantId);
         const employeeResult = await client.query<{ id: string }>(
           `
             SELECT id
@@ -4423,6 +4425,9 @@ app.post(
         }
         if (privilegedTarget && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
           throw Object.assign(new Error('Privileged role assignment requires roles.assign_privileged.'), { statusCode: 403 });
+        }
+        if (tenantRole.system_key === HR_ADMIN_SYSTEM_KEY) {
+          await assertHrAdminAssignmentTimingIsSafe(client, tenantId, new Date(), null);
         }
 
         // Existing role assignments are company-scoped. The organisation migration
@@ -4485,7 +4490,7 @@ app.post(
       res.json({ success: true, assignment });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 400 || statusCode === 403) {
+      if (statusCode === 400 || statusCode === 403 || statusCode === 409) {
         return res.status(statusCode).json({ success: false, error: (error as Error).message });
       }
 
@@ -4510,6 +4515,7 @@ app.delete(
 
     try {
       const removed = await withTenant(tenantId, async (client) => {
+        await lockFinalHrAdminAuthority(client, tenantId);
         const countResult = await client.query<{ assignment_count: string; fallback_role: EmployeeRole | null }>(
           `
             SELECT
@@ -4546,11 +4552,28 @@ app.delete(
         );
         const tenantRole = roleResult.rows[0];
         const privilegedRemoval = Boolean(tenantRole && isPrivilegedRole(tenantRole.system_key, tenantRole.permissions));
-        if (privilegedRemoval && employeeId === actorEmployeeId) {
+        // HR Admin self-demotion is governed by the shared final-admin guard
+        // below. Other privileged roles retain the existing stricter rule.
+        if (privilegedRemoval && tenantRole?.system_key !== HR_ADMIN_SYSTEM_KEY && employeeId === actorEmployeeId) {
           throw Object.assign(new Error('You cannot remove your own privileged role.'), { statusCode: 403 });
         }
         if (privilegedRemoval && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
           throw Object.assign(new Error('Privileged role removal requires roles.assign_privileged.'), { statusCode: 403 });
+        }
+        if (tenantRole?.system_key === HR_ADMIN_SYSTEM_KEY) {
+          const activeAssignments = (await client.query<{ id: string }>(
+            `SELECT assignment.id
+             FROM employee_role_assignments assignment
+             WHERE assignment.tenant_id=$1
+               AND assignment.employee_id=$2
+               AND assignment.role_id=$3
+               AND assignment.revoked_at IS NULL
+               AND assignment.assigned_at<=NOW()
+               AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW())
+             FOR UPDATE`,
+            [tenantId, employeeId, roleId],
+          )).rows.map((assignment) => assignment.id);
+          await assertHrAdminAssignmentsMayBeRevoked(client, tenantId, employeeId, activeAssignments);
         }
 
         const deleteResult = await client.query<{ id: string }>(
@@ -4597,7 +4620,7 @@ app.delete(
       res.json({ success: true, removed });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 400 || statusCode === 403) {
+      if (statusCode === 400 || statusCode === 403 || statusCode === 409) {
         return res.status(statusCode).json({ success: false, error: (error as Error).message });
       }
 

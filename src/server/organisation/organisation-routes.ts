@@ -4,6 +4,7 @@ import { withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
 import { canDelegatePermissionAtScope, hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
 import { PERMISSION_REGISTRY as PERMISSION_METADATA, getPermissionMetadata, getPermissionDefinition, validatePermissionKeys } from './permission-registry';
+import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './final-hr-admin';
 
 type Middleware = express.RequestHandler;
 type Dependencies = { standardAuth: Middleware; mutationGuard: Middleware; rateLimiter: Middleware };
@@ -255,15 +256,19 @@ export function registerOrganisationRoutes(app: express.Express, { standardAuth,
       const assignment = await withTenant(user.tenantId, async (client) => {
         await client.query('BEGIN');
         try {
+          await lockFinalHrAdminAuthority(client, user.tenantId);
           await assertActiveEmployee(client, user.tenantId, req.params.employeeId);
           const scopeId = uuid(body.scopeId) ? body.scopeId : null;
           await assertScopeTarget(client, user.tenantId, scopeType, scopeId);
-          const role = (await client.query(`SELECT id,is_system,is_active FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [user.tenantId, body.roleId])).rows[0];
+          const role = (await client.query(`SELECT id,is_system,is_active,system_key FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [user.tenantId, body.roleId])).rows[0];
           if (!role) throw fail(404, 'Role not found.');
           if (!role.is_active) throw fail(409, 'Archived role cannot be assigned.');
           const permissionKeys = (await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`, [user.tenantId, role.id])).rows.map((row) => row.permission_key as string);
           if (permissionKeys.length === 0) throw fail(409, 'Role must have at least one permission.');
           await assertAssignmentAuthority(client, req, role, permissionKeys, scopeType, scopeId, req.params.employeeId);
+          if (role.system_key === HR_ADMIN_SYSTEM_KEY) {
+            await assertHrAdminAssignmentTimingIsSafe(client, user.tenantId, startsAt, expiresAt);
+          }
           await client.query(`UPDATE employee_role_assignments SET revoked_at=NOW(),revoked_by=$4 WHERE tenant_id=$1 AND employee_id=$2 AND role_id=$3 AND scope_type=$5 AND scope_target_key=COALESCE($6::uuid,'00000000-0000-0000-0000-000000000000'::uuid) AND revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at<=NOW()`, [user.tenantId, req.params.employeeId, role.id, user.employeeId, scopeType, scopeId]);
           const row = (await client.query(`INSERT INTO employee_role_assignments(tenant_id,employee_id,role_id,assigned_by,assigned_at,scope_type,scope_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id AS "assignmentId",assigned_at AS "startsAt",expires_at AS "expiresAt"`, [user.tenantId, req.params.employeeId, role.id, user.employeeId, startsAt.toISOString(), scopeType, scopeId, expiresAt?.toISOString() ?? null])).rows[0];
           await audit(client, req, 'organisation.role.assigned', 'employee_role_assignment', row.assignmentId, { assignmentId: row.assignmentId, employeeId: req.params.employeeId, roleId: role.id, scopeType, scopeId, hasExpiry: Boolean(expiresAt) });
@@ -283,11 +288,15 @@ export function registerOrganisationRoutes(app: express.Express, { standardAuth,
       const assignment = await withTenant(user.tenantId, async (client) => {
         await client.query('BEGIN');
         try {
-          const current = (await client.query(`SELECT assignment.id,assignment.employee_id,assignment.role_id,assignment.scope_type,assignment.scope_id,assignment.expires_at,assignment.revoked_at,role.is_system FROM employee_role_assignments assignment JOIN tenant_roles role ON role.tenant_id=assignment.tenant_id AND role.id=assignment.role_id WHERE assignment.tenant_id=$1 AND assignment.id=$2 FOR UPDATE`, [user.tenantId, req.params.assignmentId])).rows[0];
+          await lockFinalHrAdminAuthority(client, user.tenantId);
+          const current = (await client.query(`SELECT assignment.id,assignment.employee_id,assignment.role_id,assignment.scope_type,assignment.scope_id,assignment.expires_at,assignment.revoked_at,role.is_system,role.system_key FROM employee_role_assignments assignment JOIN tenant_roles role ON role.tenant_id=assignment.tenant_id AND role.id=assignment.role_id WHERE assignment.tenant_id=$1 AND assignment.id=$2 FOR UPDATE`, [user.tenantId, req.params.assignmentId])).rows[0];
           if (!current) throw fail(404, 'Role assignment not found.');
           if (current.revoked_at) throw fail(409, 'Role assignment is already revoked.');
           const permissionKeys = (await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`, [user.tenantId, current.role_id])).rows.map((row) => row.permission_key as string);
           await assertAssignmentAuthority(client, req, current, permissionKeys, current.scope_type, current.scope_id, current.employee_id);
+          if (current.system_key === HR_ADMIN_SYSTEM_KEY) {
+            await assertHrAdminAssignmentsMayBeRevoked(client, user.tenantId, current.employee_id, [current.id]);
+          }
           const revoked = (await client.query(`UPDATE employee_role_assignments SET revoked_at=NOW(),revoked_by=$3 WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL RETURNING id AS "assignmentId",revoked_at AS "revokedAt"`, [user.tenantId, current.id, user.employeeId])).rows[0];
           await client.query(`UPDATE auth_sessions SET revoked_at=NOW() WHERE tenant_id=$1 AND employee_id=$2 AND revoked_at IS NULL AND expires_at>NOW()`, [user.tenantId, current.employee_id]);
           await audit(client, req, 'organisation.role.revoked', 'employee_role_assignment', current.id, { assignmentId: current.id, employeeId: current.employee_id, roleId: current.role_id, scopeType: current.scope_type, scopeId: current.scope_id, hasExpiry: Boolean(current.expires_at) });
