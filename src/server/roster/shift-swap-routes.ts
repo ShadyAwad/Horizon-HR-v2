@@ -28,7 +28,7 @@ async function active(client: any, tenantId: string, employeeId: string) {
 async function validateShifts(client: any, tenantId: string, request: any) {
   const rows = (await client.query(
     `SELECT id, employee_id, start_time, end_time, status
-       FROM roster_shifts WHERE tenant_id=$1 AND id=ANY($2::uuid[]) FOR UPDATE`,
+       FROM roster_shifts WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE`,
     [tenantId, [request.requesterShiftId, request.targetShiftId]],
   )).rows;
   if (rows.length !== 2) throw fail(404, 'Roster shift not found.');
@@ -46,6 +46,16 @@ async function validateShifts(client: any, tenantId: string, request: any) {
   );
   if (overlap.rows[0]) throw fail(409, 'The resulting schedules would overlap.');
   return { requesterShift, targetShift };
+}
+
+async function ensureNoActiveAttendance(client: any, tenantId: string, employeeIds: string[]) {
+  const activeLog = (await client.query(
+    `SELECT 1 FROM time_logs
+     WHERE tenant_id=$1 AND employee_id=ANY($2::uuid[]) AND clock_out_time IS NULL
+     LIMIT 1 FOR UPDATE`,
+    [tenantId, employeeIds],
+  )).rows[0];
+  if (activeLog) throw fail(409, 'A shift-swap participant has an active attendance shift.');
 }
 
 async function canActOnSwap(client: any, tenantId: string, actorId: string, swap: any) {
@@ -227,19 +237,37 @@ export function registerShiftSwapRoutes(app: express.Express, deps: { standardAu
           if (!current) throw fail(404, 'Shift swap not found.');
           if (current.status !== 'pending_approval' || current.version !== body.expectedVersion) throw fail(409, 'Shift-swap approval is no longer current.');
           if (!await canActOnSwap(client, user.tenantId, user.employeeId, current)) throw fail(403, 'You are not authorised to decide this shift swap.');
-          try { await validateShifts(client, user.tenantId, { requesterEmployeeId: current.requester_employee_id, targetEmployeeId: current.target_employee_id, requesterShiftId: current.requester_shift_id, targetShiftId: current.target_shift_id }); }
+          let lockedShifts: { requesterShift: any; targetShift: any };
+          try {
+            lockedShifts = await validateShifts(client, user.tenantId, { requesterEmployeeId: current.requester_employee_id, targetEmployeeId: current.target_employee_id, requesterShiftId: current.requester_shift_id, targetShiftId: current.target_shift_id });
+            if (decision === 'approve') await ensureNoActiveAttendance(client, user.tenantId, [current.requester_employee_id, current.target_employee_id]);
+          }
           catch (error) {
             await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: 'roster.shift_swap.approval_conflict', targetType: 'shift_swap_request', targetId: current.id, metadata: { swapId: current.id, requesterEmployeeId: current.requester_employee_id, targetEmployeeId: current.target_employee_id, approverEmployeeId: user.employeeId, status: current.status } });
             throw error;
           }
-          const nextStatus = decision === 'approve' ? 'approved' : 'rejected';
+          const nextStatus = decision === 'approve' ? 'applied' : 'rejected';
+          if (decision === 'approve') {
+            await client.query(
+              `UPDATE roster_shifts
+               SET employee_id=CASE id WHEN $2 THEN $3 WHEN $4 THEN $5 END,
+                   updated_by=$6,updated_at=NOW()
+               WHERE tenant_id=$1 AND id=ANY($7::uuid[])`,
+              [user.tenantId, lockedShifts!.requesterShift.id, current.target_employee_id, lockedShifts!.targetShift.id, current.requester_employee_id, user.employeeId, [lockedShifts!.requesterShift.id, lockedShifts!.targetShift.id]],
+            );
+            await client.query(
+              `INSERT INTO roster_shift_assignment_history(tenant_id,roster_shift_id,previous_employee_id,new_employee_id,shift_swap_request_id,applied_by_employee_id)
+               VALUES($1,$2,$3,$4,$5,$6),($1,$7,$4,$3,$5,$6)`,
+              [user.tenantId, lockedShifts!.requesterShift.id, current.requester_employee_id, current.target_employee_id, current.id, user.employeeId, lockedShifts!.targetShift.id],
+            );
+          }
           const row = (await client.query(
-            `UPDATE shift_swap_requests SET status=$3,approver_employee_id=$4,approval_decided_at=NOW(),approval_note=$5,approved_at=CASE WHEN $3='approved' THEN NOW() ELSE NULL END,rejected_at=CASE WHEN $3='rejected' THEN NOW() ELSE NULL END,version=version+1,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id AS "swapId",status,version`,
+            `UPDATE shift_swap_requests SET status=$3,approver_employee_id=$4,approval_decided_at=NOW(),approval_note=$5,approved_at=CASE WHEN $3='applied' THEN NOW() ELSE NULL END,applied_at=CASE WHEN $3='applied' THEN NOW() ELSE NULL END,rejected_at=CASE WHEN $3='rejected' THEN NOW() ELSE NULL END,version=version+1,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id AS "swapId",status,version`,
             [user.tenantId, current.id, nextStatus, user.employeeId, note(body.note)],
           )).rows[0];
-          await writeHistory(client, { tenantId: user.tenantId, swap: current, actorId: user.employeeId, action: decision === 'approve' ? 'approved' : 'rejected', previousStatus: 'pending_approval', nextStatus });
-          await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: decision === 'approve' ? 'roster.shift_swap.approved' : 'roster.shift_swap.rejected', targetType: 'shift_swap_request', targetId: current.id, metadata: { swapId: current.id, requesterEmployeeId: current.requester_employee_id, targetEmployeeId: current.target_employee_id, approverEmployeeId: user.employeeId, approvalSource: current.approval_source, scopeType: current.approval_scope_type, status: nextStatus } });
-          const notificationType = decision === 'approve' ? 'notification.shift_swap_approved' : 'notification.shift_swap_rejected';
+          await writeHistory(client, { tenantId: user.tenantId, swap: current, actorId: user.employeeId, action: decision === 'approve' ? 'applied' : 'rejected', previousStatus: 'pending_approval', nextStatus });
+          await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: decision === 'approve' ? 'roster.shift_swap.applied' : 'roster.shift_swap.rejected', targetType: 'shift_swap_request', targetId: current.id, metadata: { swapId: current.id, requesterEmployeeId: current.requester_employee_id, targetEmployeeId: current.target_employee_id, approverEmployeeId: user.employeeId, approvalSource: current.approval_source, scopeType: current.approval_scope_type, status: nextStatus } });
+          const notificationType = decision === 'approve' ? 'notification.shift_swap_applied' : 'notification.shift_swap_rejected';
           await notify(client, user.tenantId, notificationType, current.requester_employee_id, current.id);
           await notify(client, user.tenantId, notificationType, current.target_employee_id, current.id);
           await client.query('COMMIT');
