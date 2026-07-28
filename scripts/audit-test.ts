@@ -73,6 +73,16 @@ async function run() {
   assert(unknownProjection.summary === 'Audit event recorded' && Object.keys(unknownProjection.metadata).length === 0, 'Unknown actions do not fail closed.');
   pass('Legacy mapping, unknown fallback, and sensitive metadata redaction');
 
+  const roleProjection = presentAuditEvent('organisation.role.duplicated', 'tenant_role', {
+    sourceRoleId: '00000000-0000-4000-8000-000000000004',
+    isSystem: false,
+    permissionCount: 3,
+    description: 'Must not be exposed',
+  });
+  assert(roleProjection.module === 'organisation' && roleProjection.metadata.permissionCount === 3, 'Organisation role audit metadata was not projected.');
+  assert(!('description' in roleProjection.metadata), 'Role description escaped audit projection.');
+  pass('Organisation role lifecycle audit events expose safe metadata only');
+
   const capturedWrites: Array<{ query: string; values: unknown[] }> = [];
   const auditClient = {
     query: async (query: string, values: unknown[]) => {
@@ -103,6 +113,15 @@ async function run() {
     rejectedSensitiveWrite = true;
   }
   assert(rejectedSensitiveWrite && capturedWrites.length === 1, 'Forbidden audit metadata reached SQL.');
+  await recordAuditEvent(auditClient, {
+    tenantId: '00000000-0000-4000-8000-000000000001',
+    actorId: '00000000-0000-4000-8000-000000000002',
+    action: 'organisation.role.archived',
+    targetType: 'tenant_role',
+    targetId: '00000000-0000-4000-8000-000000000003',
+    metadata: { isSystem: false, activeAssignmentCount: 0 },
+  });
+  assert(capturedWrites.at(-1)?.values.includes('organisation.role.archived'), 'Safe organisation role audit metadata was not written.');
   pass('Audit writer allowlist rejects sensitive metadata before persistence');
 
   const [dashboardSource, panelSource, translationsSource] = await Promise.all([

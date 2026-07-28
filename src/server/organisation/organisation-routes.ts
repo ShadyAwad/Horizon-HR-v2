@@ -71,6 +71,25 @@ async function audit(client: PoolClient, req: express.Request, action: string, e
   await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action, targetType: entityType, targetId: entityId, metadata });
 }
 
+function assertAllowedFields(value: unknown, allowedFields: readonly string[]) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail(400, 'Role payload is invalid.');
+  const unknown = Object.keys(value).find((field) => !allowedFields.includes(field));
+  if (unknown) throw fail(400, `Role field is not allowed: ${unknown}.`);
+}
+
+async function assertRoleNameAvailable(client: PoolClient, tenantId: string, name: string, excludeRoleId?: string) {
+  const existing = (await client.query(
+    `SELECT id FROM tenant_roles WHERE tenant_id=$1 AND lower(name)=lower($2) AND ($3::uuid IS NULL OR id<>$3) LIMIT 1`,
+    [tenantId, name, excludeRoleId ?? null],
+  )).rows[0];
+  if (existing) throw fail(409, 'A role with this name already exists.');
+}
+
+function generatedDuplicateRoleName(name: string, roleId: string) {
+  const suffix = ` copy ${roleId.slice(0, 8)}`;
+  return `${name.slice(0, 160 - suffix.length)}${suffix}`;
+}
+
 export function registerOrganisationRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter }: Dependencies) {
   app.get('/api/hr/organisation/overview', standardAuth, async (req, res) => {
     try {
@@ -94,6 +113,142 @@ export function registerOrganisationRoutes(app: express.Express, { standardAuth,
   app.get('/api/hr/organisation/roles',standardAuth,async(req,res)=>{try{const user=req.authUser!,page=Math.max(1,Number(req.query.page)||1),pageSize=Math.min(100,Math.max(1,Number(req.query.pageSize)||25)),search=text(req.query.search,120)||null,kind=req.query.kind==='system'||req.query.kind==='custom'?req.query.kind:null,activity=req.query.activity==='archived'?'archived':'active';const result=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const where=`role.tenant_id=$1 AND ($2::text IS NULL OR role.name ILIKE '%'||$2||'%' OR COALESCE(role.description,'') ILIKE '%'||$2||'%') AND ($3::text IS NULL OR ($3='system' AND role.is_system) OR ($3='custom' AND NOT role.is_system)) AND (($4='active' AND role.is_active) OR ($4='archived' AND NOT role.is_active))`;const rows=(await client.query(`SELECT role.id,role.name,role.description,role.system_key AS "systemKey",role.is_system AS "isSystem",role.is_active AS "isActive",role.created_at AS "createdAt",role.updated_at AS "updatedAt",COUNT(DISTINCT permission.permission_key)::int AS "permissionCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NULL AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW()))::int AS "activeAssignmentCount" FROM tenant_roles role LEFT JOIN tenant_role_permissions permission ON permission.tenant_id=role.tenant_id AND permission.role_id=role.id LEFT JOIN employee_role_assignments assignment ON assignment.tenant_id=role.tenant_id AND assignment.role_id=role.id WHERE ${where} GROUP BY role.id ORDER BY role.is_system DESC,role.name LIMIT $5 OFFSET $6`,[user.tenantId,search,kind,activity,pageSize,(page-1)*pageSize])).rows;const total=(await client.query(`SELECT count(*)::int AS count FROM tenant_roles role WHERE ${where}`,[user.tenantId,search,kind,activity])).rows[0].count;return {roles:rows.map(role=>({id:role.id,name:role.name,description:role.description,systemKey:role.systemKey,isSystem:role.isSystem,isActive:role.isActive,privilegeLevel:role.systemKey==='hr_admin'?3:role.systemKey==='manager'?2:1,permissionCount:role.permissionCount,activeAssignmentCount:role.activeAssignmentCount,createdAt:role.createdAt,updatedAt:role.updatedAt})),total,page,pageSize};});res.json({success:true,...result});}catch(error){sendError(res,error,'Unable to load roles.');}});
   app.get('/api/hr/organisation/roles/:roleId',standardAuth,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.roleId))throw fail(404,'Role not found.');const role=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const row=(await client.query(`SELECT role.id,role.name,role.description,role.system_key AS "systemKey",role.is_system AS "isSystem",role.is_active AS "isActive",role.created_at AS "createdAt",role.updated_at AS "updatedAt",COUNT(DISTINCT permission.permission_key)::int AS "permissionCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NULL AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW()))::int AS "activeAssignmentCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NOT NULL OR assignment.expires_at<=NOW())::int AS "historicalAssignmentCount",COALESCE(array_remove(array_agg(DISTINCT permission.permission_key),NULL),ARRAY[]::varchar[]) AS keys FROM tenant_roles role LEFT JOIN tenant_role_permissions permission ON permission.tenant_id=role.tenant_id AND permission.role_id=role.id LEFT JOIN employee_role_assignments assignment ON assignment.tenant_id=role.tenant_id AND assignment.role_id=role.id WHERE role.tenant_id=$1 AND role.id=$2 GROUP BY role.id`,[user.tenantId,req.params.roleId])).rows[0];if(!row)throw fail(404,'Role not found.');const permissions=row.keys.map(getPermissionMetadata).filter(Boolean);return {id:row.id,name:row.name,description:row.description,systemKey:row.systemKey,isSystem:row.isSystem,isActive:row.isActive,privilegeLevel:row.systemKey==='hr_admin'?3:row.systemKey==='manager'?2:1,permissionCount:row.permissionCount,activeAssignmentCount:row.activeAssignmentCount,historicalAssignmentCount:row.historicalAssignmentCount,createdAt:row.createdAt,updatedAt:row.updatedAt,permissions};});res.json({success:true,role});}catch(error){sendError(res,error,'Unable to load role.');}});
   app.get('/api/hr/organisation/roles/:roleId/permissions',standardAuth,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.roleId))throw fail(404,'Role not found.');const permissions=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const exists=(await client.query(`SELECT 1 FROM tenant_roles WHERE tenant_id=$1 AND id=$2`,[user.tenantId,req.params.roleId])).rows[0];if(!exists)throw fail(404,'Role not found.');const selected=new Set((await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`,[user.tenantId,req.params.roleId])).rows.map(row=>row.permission_key));return PERMISSION_METADATA.map(permission=>({...permission,selected:selected.has(permission.key)}));});res.json({success:true,permissions});}catch(error){sendError(res,error,'Unable to load role permissions.');}});
+
+  app.post('/api/hr/organisation/roles', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      assertAllowedFields(req.body, ['name', 'description']);
+      const name = text(req.body.name, 160);
+      if (!name) throw fail(400, 'Role name is required.');
+      if (req.body.description !== undefined && typeof req.body.description !== 'string') throw fail(400, 'Role description is invalid.');
+      const role = await withTenant(user.tenantId, async (client) => {
+        await assertCompanyPermission(client, req, 'roles.manage');
+        await assertRoleNameAvailable(client, user.tenantId, name);
+        const row = (await client.query(
+          `INSERT INTO tenant_roles(tenant_id,name,description,system_key,is_system,is_active)
+           VALUES($1,$2,$3,NULL,false,true)
+           RETURNING id,name,description,is_system AS "isSystem",is_active AS "isActive",created_at AS "createdAt",updated_at AS "updatedAt"`,
+          [user.tenantId, name, text(req.body.description, 2000) || null],
+        )).rows[0];
+        await audit(client, req, 'organisation.role.created', 'tenant_role', row.id, { isSystem: false, permissionCount: 0 });
+        return row;
+      });
+      res.status(201).json({ success: true, role });
+    } catch (error) { sendError(res, error, 'Unable to create role.'); }
+  });
+
+  app.patch('/api/hr/organisation/roles/:roleId', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.roleId)) throw fail(404, 'Role not found.');
+      assertAllowedFields(req.body, ['name', 'description']);
+      if (req.body.name === undefined && req.body.description === undefined) throw fail(400, 'Provide a role name or description.');
+      if (req.body.name !== undefined && (typeof req.body.name !== 'string' || !text(req.body.name, 160))) throw fail(400, 'Role name is required.');
+      if (req.body.description !== undefined && typeof req.body.description !== 'string') throw fail(400, 'Role description is invalid.');
+      const role = await withTenant(user.tenantId, async (client) => {
+        await assertCompanyPermission(client, req, 'roles.manage');
+        const current = (await client.query(
+          `SELECT id,name,is_system,is_active FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+          [user.tenantId, req.params.roleId],
+        )).rows[0];
+        if (!current) throw fail(404, 'Role not found.');
+        if (current.is_system) throw fail(403, 'System roles cannot be edited.');
+        if (!current.is_active) throw fail(409, 'Archived roles cannot be edited.');
+        const nextName = req.body.name === undefined ? current.name : text(req.body.name, 160);
+        await assertRoleNameAvailable(client, user.tenantId, nextName, current.id);
+        const row = (await client.query(
+          `UPDATE tenant_roles SET name=$3,description=CASE WHEN $4::boolean THEN $5 ELSE description END,updated_at=NOW()
+           WHERE tenant_id=$1 AND id=$2
+           RETURNING id,name,description,is_system AS "isSystem",is_active AS "isActive",created_at AS "createdAt",updated_at AS "updatedAt"`,
+          [user.tenantId, current.id, nextName, req.body.description !== undefined, req.body.description === undefined ? null : text(req.body.description, 2000) || null],
+        )).rows[0];
+        await audit(client, req, 'organisation.role.updated', 'tenant_role', row.id, { isSystem: false });
+        return row;
+      });
+      res.json({ success: true, role });
+    } catch (error) { sendError(res, error, 'Unable to update role.'); }
+  });
+
+  app.post('/api/hr/organisation/roles/:roleId/duplicate', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.roleId)) throw fail(404, 'Role not found.');
+      assertAllowedFields(req.body ?? {}, ['name']);
+      if (req.body?.name !== undefined && (typeof req.body.name !== 'string' || !text(req.body.name, 160))) throw fail(400, 'Role name is required.');
+      const role = await withTenant(user.tenantId, async (client) => {
+        await assertCompanyPermission(client, req, 'roles.manage');
+        await client.query('BEGIN');
+        try {
+          const source = (await client.query(
+            `SELECT id,name,description,is_system FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+            [user.tenantId, req.params.roleId],
+          )).rows[0];
+          if (!source) throw fail(404, 'Role not found.');
+          if (source.is_system) throw fail(403, 'System roles cannot be duplicated.');
+          const name = req.body?.name === undefined ? generatedDuplicateRoleName(source.name, source.id) : text(req.body.name, 160);
+          await assertRoleNameAvailable(client, user.tenantId, name);
+          const copy = (await client.query(
+            `INSERT INTO tenant_roles(tenant_id,name,description,system_key,is_system,is_active)
+             VALUES($1,$2,$3,NULL,false,true)
+             RETURNING id,name,description,is_system AS "isSystem",is_active AS "isActive",created_at AS "createdAt",updated_at AS "updatedAt"`,
+            [user.tenantId, name, source.description],
+          )).rows[0];
+          const permissionCount = (await client.query(
+            `INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_key)
+             SELECT tenant_id,$3,permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2
+             ON CONFLICT(tenant_id,role_id,permission_key) DO NOTHING
+             RETURNING permission_key`,
+            [user.tenantId, source.id, copy.id],
+          )).rowCount ?? 0;
+          await audit(client, req, 'organisation.role.duplicated', 'tenant_role', copy.id, { sourceRoleId: source.id, isSystem: false, permissionCount });
+          await client.query('COMMIT');
+          return { ...copy, permissionCount };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+      res.status(201).json({ success: true, role });
+    } catch (error) { sendError(res, error, 'Unable to duplicate role.'); }
+  });
+
+  app.post('/api/hr/organisation/roles/:roleId/archive', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.roleId)) throw fail(404, 'Role not found.');
+      assertAllowedFields(req.body ?? {}, []);
+      const role = await withTenant(user.tenantId, async (client) => {
+        await assertCompanyPermission(client, req, 'roles.manage');
+        await client.query('BEGIN');
+        try {
+          const current = (await client.query(
+            `SELECT id,is_system,is_active FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+            [user.tenantId, req.params.roleId],
+          )).rows[0];
+          if (!current) throw fail(404, 'Role not found.');
+          if (current.is_system) throw fail(403, 'System roles cannot be archived.');
+          if (!current.is_active) throw fail(409, 'Role is already archived.');
+          const activeAssignmentCount = Number((await client.query(
+            `SELECT count(*)::int AS count FROM employee_role_assignments
+             WHERE tenant_id=$1 AND role_id=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>NOW())`,
+            [user.tenantId, current.id],
+          )).rows[0]?.count ?? 0);
+          if (activeAssignmentCount > 0) throw fail(409, 'Revoke or migrate active role assignments before archiving this role.');
+          const archived = (await client.query(
+            `UPDATE tenant_roles SET is_active=false,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING id,is_active AS "isActive",updated_at AS "updatedAt"`,
+            [user.tenantId, current.id],
+          )).rows[0];
+          await audit(client, req, 'organisation.role.archived', 'tenant_role', archived.id, { isSystem: false, activeAssignmentCount: 0 });
+          await client.query('COMMIT');
+          return archived;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+      res.json({ success: true, role });
+    } catch (error) { sendError(res, error, 'Unable to archive role.'); }
+  });
 
   app.get('/api/me/organisation', standardAuth, async (req, res) => {
     try {
