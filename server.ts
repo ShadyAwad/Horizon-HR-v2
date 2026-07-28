@@ -54,6 +54,7 @@ import { registerPerformanceRoutes } from './src/server/performance/performance-
 import { registerOrganisationRoutes } from './src/server/organisation/organisation-routes';
 import { registerShiftSwapRoutes } from './src/server/roster/shift-swap-routes';
 import { registerLocationRoutes } from './src/server/locations/location-routes';
+import { registerLeaveRoutes } from './src/server/leave/leave-routes';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
@@ -1237,6 +1238,9 @@ async function seedTenantRolesAndPermissions(
         ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
         ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
         ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
+        ('leave.request.self', 'Request personal leave', 'Create personal leave requests.'),
+        ('leave.view.self', 'View personal leave', 'View personal leave request history.'),
+        ('leave.cancel.self', 'Cancel personal leave', 'Cancel pending personal leave requests.'),
         ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
         ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
         ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
@@ -1291,6 +1295,9 @@ async function seedTenantRolesAndPermissions(
           ('employee', 'break_requests.create'),
           ('employee', 'break_requests.view_own'),
           ('employee', 'leave.create'),
+          ('employee', 'leave.request.self'),
+          ('employee', 'leave.view.self'),
+          ('employee', 'leave.cancel.self'),
           ('employee', 'payroll.view_self'),
           ('employee', 'payroll.export_pdf'),
           ('employee', 'loans.view_self'),
@@ -1305,6 +1312,9 @@ async function seedTenantRolesAndPermissions(
           ('manager', 'break_requests.review'),
           ('manager', 'break_requests.view_all'),
           ('manager', 'leave.review'),
+          ('manager', 'leave.request.self'),
+          ('manager', 'leave.view.self'),
+          ('manager', 'leave.cancel.self'),
           ('manager', 'roster.view_all'),
           ('manager', 'roster.manage'),
           ('manager', 'payroll.view_self'),
@@ -2123,6 +2133,7 @@ async function startServer() {
   });
   registerShiftSwapRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerLocationRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
+  registerLeaveRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
 
   app.post('/api/assets/:assetId/evidence', assetEvidenceRateLimiter, demoAuth, async (req, res) => {
     const { assetId } = req.params;

@@ -354,6 +354,9 @@ VALUES
     ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
     ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
     ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
+    ('leave.request.self', 'Request personal leave', 'Create personal leave requests.'),
+    ('leave.view.self', 'View personal leave', 'View personal leave request history.'),
+    ('leave.cancel.self', 'Cancel personal leave', 'Cancel pending personal leave requests.'),
     ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
     ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
     ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
@@ -413,6 +416,9 @@ JOIN (
         ('employee', 'break_requests.create'),
         ('employee', 'break_requests.view_own'),
         ('employee', 'leave.create'),
+        ('employee', 'leave.request.self'),
+        ('employee', 'leave.view.self'),
+        ('employee', 'leave.cancel.self'),
         ('employee', 'payroll.view_self'),
         ('employee', 'payroll.export_pdf'),
         ('employee', 'loans.view_self'),
@@ -427,6 +433,9 @@ JOIN (
         ('manager', 'break_requests.review'),
         ('manager', 'break_requests.view_all'),
         ('manager', 'leave.review'),
+        ('manager', 'leave.request.self'),
+        ('manager', 'leave.view.self'),
+        ('manager', 'leave.cancel.self'),
         ('manager', 'roster.view_all'),
         ('manager', 'roster.manage'),
         ('manager', 'payroll.view_self'),
@@ -780,6 +789,10 @@ CREATE TABLE IF NOT EXISTS leave_requests (
     end_date DATE NOT NULL,
     reason TEXT NOT NULL,
 
+    version INTEGER NOT NULL DEFAULT 1,
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    cancelled_at TIMESTAMPTZ,
+
     status VARCHAR(50) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
 
@@ -794,7 +807,9 @@ CREATE TABLE IF NOT EXISTS leave_requests (
         ON DELETE CASCADE,
 
     CONSTRAINT leave_requests_date_order_chk
-        CHECK (end_date >= start_date)
+        CHECK (end_date >= start_date),
+
+    CONSTRAINT leave_requests_id_tenant_unique UNIQUE (id, tenant_id)
 );
 
 CREATE INDEX IF NOT EXISTS leave_requests_tenant_status_idx
@@ -808,8 +823,37 @@ ON leave_requests(tenant_id, employee_id, start_date DESC);
 ALTER TABLE leave_requests
 ADD COLUMN IF NOT EXISTS leave_type VARCHAR(50) NOT NULL DEFAULT 'annual';
 
+ALTER TABLE leave_requests
+ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE leave_requests
+ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE leave_requests
+ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+ALTER TABLE leave_requests
+ALTER COLUMN reason DROP NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'leave_requests_id_tenant_unique'
+    ) THEN
+        ALTER TABLE leave_requests
+        ADD CONSTRAINT leave_requests_id_tenant_unique UNIQUE (id, tenant_id);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS leave_requests_roster_conflict_idx
 ON leave_requests(tenant_id, employee_id, status, leave_type, start_date, end_date);
+
+CREATE INDEX IF NOT EXISTS leave_requests_self_service_list_idx
+ON leave_requests(tenant_id, employee_id, submitted_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS leave_requests_self_service_overlap_idx
+ON leave_requests(tenant_id, employee_id, start_date, end_date)
+WHERE status IN ('pending', 'approved');
 
 ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
 
@@ -817,6 +861,43 @@ DROP POLICY IF EXISTS leave_requests_tenant_isolation ON leave_requests;
 
 CREATE POLICY leave_requests_tenant_isolation
 ON leave_requests
+USING (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+)
+WITH CHECK (
+    tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
+);
+
+CREATE TABLE IF NOT EXISTS leave_request_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    leave_request_id UUID NOT NULL,
+    actor_employee_id UUID,
+    action VARCHAR(60) NOT NULL,
+    previous_status VARCHAR(50),
+    new_status VARCHAR(50),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT leave_request_history_request_tenant_fk
+        FOREIGN KEY (leave_request_id, tenant_id)
+        REFERENCES leave_requests(id, tenant_id)
+        ON DELETE CASCADE,
+    CONSTRAINT leave_request_history_actor_tenant_fk
+        FOREIGN KEY (actor_employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS leave_request_history_request_idx
+ON leave_request_history(tenant_id, leave_request_id, created_at ASC);
+
+ALTER TABLE leave_request_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS leave_request_history_tenant_isolation ON leave_request_history;
+
+CREATE POLICY leave_request_history_tenant_isolation
+ON leave_request_history
 USING (
     tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::UUID
 )
