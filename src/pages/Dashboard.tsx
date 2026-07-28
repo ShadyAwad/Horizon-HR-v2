@@ -46,6 +46,7 @@ const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPane
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
 const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
 const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
+const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwapApprovalsPanel').then((module) => ({ default: module.ShiftSwapApprovalsPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -764,7 +765,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'shiftSwaps'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1192,6 +1193,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   };
 
   const canManageRoster = hasPermission(user, 'roster.manage');
+  const canApproveShiftSwaps = hasPermission(user, 'roster.swap.approve') || hasPermission(user, 'roster.swap.manage');
   const canViewAllRosters = hasPermission(user, 'roster.view_all') || canManageRoster;
   const rosterEndDate = rosterRangeWeeks === 'custom'
     ? rosterCustomEndDate
@@ -4337,6 +4339,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        <RefreshCw className="w-4 h-4 hidden sm:block" />
                        {lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
                     </button>
+                    {canApproveShiftSwaps && <button type="button" onClick={() => setActiveTab('shiftSwapApprovals')} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'shiftSwapApprovals' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}>{lang === 'ar' ? 'موافقات التبديل' : 'Swap Approvals'}</button>}
                     {canViewHiring && (
                       <button
                         type="button"
@@ -4496,6 +4499,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <ShiftSwapsPanel employeeId={user.id} />
                   </Suspense>
+                )}
+                {activeTab === 'shiftSwapApprovals' && canApproveShiftSwaps && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}><ShiftSwapApprovalsPanel /></Suspense>
                 )}
                 {activeTab === 'liveEmployees' && canViewLiveEmployees && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
