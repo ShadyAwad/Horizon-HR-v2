@@ -94,6 +94,12 @@ async function run() {
   assert(permissionProjection.metadata.addedCount === 2 && !('permissionKeys' in permissionProjection.metadata), 'Role permission audit must contain counts only.');
   pass('Role permission audit keeps only aggregate counts');
 
+  const assignmentProjection = presentAuditEvent('organisation.role.assigned', 'employee_role_assignment', {
+    assignmentId: '00000000-0000-4000-8000-000000000005', employeeId: '00000000-0000-4000-8000-000000000006', roleId: '00000000-0000-4000-8000-000000000007', scopeType: 'team', scopeId: '00000000-0000-4000-8000-000000000008', hasExpiry: true, reason: 'must-not-appear',
+  });
+  assert(assignmentProjection.metadata.scopeType === 'team' && !('reason' in assignmentProjection.metadata), 'Role assignment audit exposed unsafe metadata.');
+  pass('Role assignment audit keeps safe scope metadata only');
+
   const capturedWrites: Array<{ query: string; values: unknown[] }> = [];
   const auditClient = {
     query: async (query: string, values: unknown[]) => {
@@ -142,6 +148,10 @@ async function run() {
     metadata: { roleId: '00000000-0000-4000-8000-000000000003', previousPermissionCount: 1, newPermissionCount: 2, addedCount: 1, removedCount: 0 },
   });
   assert(capturedWrites.at(-1)?.values.includes('organisation.role.permissions_updated'), 'Safe role permission audit metadata was not written.');
+  await recordAuditEvent(auditClient, {
+    tenantId: '00000000-0000-4000-8000-000000000001', actorId: '00000000-0000-4000-8000-000000000002', action: 'organisation.role.revoked', targetType: 'employee_role_assignment', targetId: '00000000-0000-4000-8000-000000000003', metadata: { assignmentId: '00000000-0000-4000-8000-000000000003', employeeId: '00000000-0000-4000-8000-000000000004', roleId: '00000000-0000-4000-8000-000000000005', scopeType: 'company', scopeId: null, hasExpiry: false },
+  });
+  assert(capturedWrites.at(-1)?.values.includes('organisation.role.revoked'), 'Safe role assignment revocation audit metadata was not written.');
   pass('Audit writer allowlist rejects sensitive metadata before persistence');
 
   const [dashboardSource, panelSource, translationsSource] = await Promise.all([

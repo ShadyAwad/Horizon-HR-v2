@@ -2,7 +2,7 @@ import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
-import { hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
+import { canDelegatePermissionAtScope, hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
 import { PERMISSION_REGISTRY as PERMISSION_METADATA, getPermissionMetadata, getPermissionDefinition, validatePermissionKeys } from './permission-registry';
 
 type Middleware = express.RequestHandler;
@@ -104,6 +104,32 @@ async function assertPermissionMutationAuthority(client: PoolClient, req: expres
   }
 }
 
+async function assertScopeTarget(client: PoolClient, tenantId: string, scopeType: OrganisationScopeType, scopeId: string | null) {
+  const targetScope = ['location', 'department', 'team'].includes(scopeType);
+  if (!targetScope && scopeId) throw fail(400, 'This scope cannot have a scope ID.');
+  if (targetScope && !scopeId) throw fail(400, 'This scope requires a scope ID.');
+  if (!scopeId) return;
+  const table = scopeType === 'location' ? 'company_locations' : scopeType === 'department' ? 'organisation_departments' : 'organisation_teams';
+  const active = (await client.query(`SELECT 1 FROM ${table} WHERE tenant_id=$1 AND id=$2 AND is_active=true`, [tenantId, scopeId])).rows[0];
+  if (!active) throw fail(400, 'Scope target must be active and belong to this tenant.');
+}
+
+async function assertAssignmentAuthority(client: PoolClient, req: express.Request, role: { is_system: boolean }, permissionKeys: string[], scopeType: OrganisationScopeType, scopeId: string | null, employeeId: string) {
+  const user = req.authUser!;
+  await assertCompanyPermission(client, req, 'roles.manage');
+  if (role.is_system) await assertCompanyPermission(client, req, 'roles.assign_privileged');
+  for (const permissionKey of permissionKeys) {
+    const definition = getPermissionDefinition(permissionKey);
+    if (!definition) throw fail(400, 'Role contains an unknown permission.');
+    if (!definition.allowedScopeTypes.includes(scopeType)) throw fail(403, `Permission cannot be assigned at this scope: ${permissionKey}.`);
+    if (!role.is_system && (definition.protected || !definition.delegatable)) throw fail(403, `Permission cannot be delegated: ${permissionKey}.`);
+    const allowed = role.is_system
+      ? (await hasCompanyPermission(client, user.tenantId, user.employeeId, permissionKey)).allowed
+      : await canDelegatePermissionAtScope(client, { tenantId: user.tenantId, actorEmployeeId: user.employeeId, permissionKey, requestedScope: { type: scopeType, id: scopeId }, targetEmployeeId: employeeId });
+    if (!allowed) throw fail(403, `You cannot assign permission: ${permissionKey}.`);
+  }
+}
+
 export function registerOrganisationRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter }: Dependencies) {
   app.get('/api/hr/organisation/overview', standardAuth, async (req, res) => {
     try {
@@ -190,6 +216,87 @@ export function registerOrganisationRoutes(app: express.Express, { standardAuth,
       });
       res.json({ success: true, ...result });
     } catch (error) { sendError(res, error, 'Unable to update role permissions.'); }
+  });
+
+  app.get('/api/hr/organisation/role-assignments', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
+      const search = text(req.query.search, 120) || null;
+      const employeeId = uuid(req.query.employeeId) ? req.query.employeeId : null;
+      const roleId = uuid(req.query.roleId) ? req.query.roleId : null;
+      const scopeType = isOrganisationScope(req.query.scopeType) ? req.query.scopeType : null;
+      const status = ['active', 'upcoming', 'expired', 'revoked'].includes(String(req.query.status)) ? String(req.query.status) : null;
+      const result = await withTenant(user.tenantId, async (client) => {
+        await assertCompanyPermission(client, req, 'roles.manage');
+        const where = `assignment.tenant_id=$1 AND ($2::uuid IS NULL OR assignment.employee_id=$2) AND ($3::uuid IS NULL OR assignment.role_id=$3) AND ($4::text IS NULL OR assignment.scope_type=$4) AND ($5::text IS NULL OR employee.full_name ILIKE '%'||$5||'%' OR role.name ILIKE '%'||$5||'%') AND ($6::text IS NULL OR ($6='expired' AND assignment.expires_at IS NOT NULL AND assignment.expires_at<=NOW()) OR ($6='revoked' AND assignment.revoked_at IS NOT NULL AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW())) OR ($6='upcoming' AND assignment.revoked_at IS NULL AND assignment.assigned_at>NOW()) OR ($6='active' AND assignment.revoked_at IS NULL AND assignment.assigned_at<=NOW() AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW())))`;
+        const rows = (await client.query(`SELECT assignment.id AS "assignmentId",employee.id AS "employeeId",employee.full_name AS "employeeName",role.id AS "roleId",role.name AS "roleName",CASE WHEN role.is_system THEN 'system' ELSE 'custom' END AS "roleType",assignment.scope_type AS "scopeType",assignment.scope_id AS "scopeId",COALESCE(location.name,department.name,team.name,assignment.scope_type) AS "scopeLabel",assigner.id AS "assignedById",assigner.full_name AS "assignedByName",assignment.assigned_at AS "assignedAt",assignment.assigned_at AS "startsAt",assignment.expires_at AS "expiresAt",assignment.revoked_at AS "revokedAt",CASE WHEN assignment.expires_at IS NOT NULL AND assignment.expires_at<=NOW() THEN 'expired' WHEN assignment.revoked_at IS NOT NULL THEN 'revoked' WHEN assignment.assigned_at>NOW() THEN 'upcoming' ELSE 'active' END AS status FROM employee_role_assignments assignment JOIN employees employee ON employee.tenant_id=assignment.tenant_id AND employee.id=assignment.employee_id JOIN tenant_roles role ON role.tenant_id=assignment.tenant_id AND role.id=assignment.role_id LEFT JOIN employees assigner ON assigner.tenant_id=assignment.tenant_id AND assigner.id=assignment.assigned_by LEFT JOIN company_locations location ON location.tenant_id=assignment.tenant_id AND location.id=assignment.scope_id AND assignment.scope_type='location' LEFT JOIN organisation_departments department ON department.tenant_id=assignment.tenant_id AND department.id=assignment.scope_id AND assignment.scope_type='department' LEFT JOIN organisation_teams team ON team.tenant_id=assignment.tenant_id AND team.id=assignment.scope_id AND assignment.scope_type='team' WHERE ${where} ORDER BY assignment.assigned_at DESC,assignment.id DESC LIMIT $7 OFFSET $8`, [user.tenantId, employeeId, roleId, scopeType, search, status, pageSize, (page - 1) * pageSize])).rows;
+        const total = (await client.query(`SELECT count(*)::int AS count FROM employee_role_assignments assignment JOIN employees employee ON employee.tenant_id=assignment.tenant_id AND employee.id=assignment.employee_id JOIN tenant_roles role ON role.tenant_id=assignment.tenant_id AND role.id=assignment.role_id WHERE ${where}`, [user.tenantId, employeeId, roleId, scopeType, search, status])).rows[0].count;
+        return { assignments: rows, total, page, pageSize };
+      });
+      res.json({ success: true, ...result });
+    } catch (error) { sendError(res, error, 'Unable to load role assignments.'); }
+  });
+
+  app.post('/api/hr/organisation/employees/:employeeId/roles', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.employeeId)) throw fail(404, 'Employee not found.');
+      assertAllowedFields(req.body, ['roleId', 'scopeType', 'scopeId', 'startsAt', 'expiresAt', 'reason']);
+      const body = req.body as Record<string, unknown>;
+      const scopeType = body.scopeType;
+      if (!uuid(body.roleId) || !isOrganisationScope(scopeType)) throw fail(400, 'Role and scope type are required.');
+      if (!(body.scopeId === null || body.scopeId === undefined || uuid(body.scopeId))) throw fail(400, 'Scope ID is invalid.');
+      if (body.reason !== undefined && (typeof body.reason !== 'string' || body.reason.length > 1000)) throw fail(400, 'Reason is invalid.');
+      const startsAt = body.startsAt === undefined ? new Date() : new Date(String(body.startsAt));
+      const expiresAt = body.expiresAt === undefined || body.expiresAt === null ? null : new Date(String(body.expiresAt));
+      if (Number.isNaN(startsAt.getTime()) || (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt <= startsAt))) throw fail(400, 'Assignment dates are invalid.');
+      const assignment = await withTenant(user.tenantId, async (client) => {
+        await client.query('BEGIN');
+        try {
+          await assertActiveEmployee(client, user.tenantId, req.params.employeeId);
+          const scopeId = uuid(body.scopeId) ? body.scopeId : null;
+          await assertScopeTarget(client, user.tenantId, scopeType, scopeId);
+          const role = (await client.query(`SELECT id,is_system,is_active FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [user.tenantId, body.roleId])).rows[0];
+          if (!role) throw fail(404, 'Role not found.');
+          if (!role.is_active) throw fail(409, 'Archived role cannot be assigned.');
+          const permissionKeys = (await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`, [user.tenantId, role.id])).rows.map((row) => row.permission_key as string);
+          if (permissionKeys.length === 0) throw fail(409, 'Role must have at least one permission.');
+          await assertAssignmentAuthority(client, req, role, permissionKeys, scopeType, scopeId, req.params.employeeId);
+          await client.query(`UPDATE employee_role_assignments SET revoked_at=NOW(),revoked_by=$4 WHERE tenant_id=$1 AND employee_id=$2 AND role_id=$3 AND scope_type=$5 AND scope_target_key=COALESCE($6::uuid,'00000000-0000-0000-0000-000000000000'::uuid) AND revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at<=NOW()`, [user.tenantId, req.params.employeeId, role.id, user.employeeId, scopeType, scopeId]);
+          const row = (await client.query(`INSERT INTO employee_role_assignments(tenant_id,employee_id,role_id,assigned_by,assigned_at,scope_type,scope_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id AS "assignmentId",assigned_at AS "startsAt",expires_at AS "expiresAt"`, [user.tenantId, req.params.employeeId, role.id, user.employeeId, startsAt.toISOString(), scopeType, scopeId, expiresAt?.toISOString() ?? null])).rows[0];
+          await audit(client, req, 'organisation.role.assigned', 'employee_role_assignment', row.assignmentId, { assignmentId: row.assignmentId, employeeId: req.params.employeeId, roleId: role.id, scopeType, scopeId, hasExpiry: Boolean(expiresAt) });
+          await client.query('COMMIT');
+          return row;
+        } catch (error) { await client.query('ROLLBACK'); throw error; }
+      });
+      res.status(201).json({ success: true, assignment });
+    } catch (error) { sendError(res, error, 'Unable to assign role.'); }
+  });
+
+  app.post('/api/hr/organisation/role-assignments/:assignmentId/revoke', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.assignmentId)) throw fail(404, 'Role assignment not found.');
+      assertAllowedFields(req.body ?? {}, []);
+      const assignment = await withTenant(user.tenantId, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const current = (await client.query(`SELECT assignment.id,assignment.employee_id,assignment.role_id,assignment.scope_type,assignment.scope_id,assignment.expires_at,assignment.revoked_at,role.is_system FROM employee_role_assignments assignment JOIN tenant_roles role ON role.tenant_id=assignment.tenant_id AND role.id=assignment.role_id WHERE assignment.tenant_id=$1 AND assignment.id=$2 FOR UPDATE`, [user.tenantId, req.params.assignmentId])).rows[0];
+          if (!current) throw fail(404, 'Role assignment not found.');
+          if (current.revoked_at) throw fail(409, 'Role assignment is already revoked.');
+          const permissionKeys = (await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`, [user.tenantId, current.role_id])).rows.map((row) => row.permission_key as string);
+          await assertAssignmentAuthority(client, req, current, permissionKeys, current.scope_type, current.scope_id, current.employee_id);
+          const revoked = (await client.query(`UPDATE employee_role_assignments SET revoked_at=NOW(),revoked_by=$3 WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL RETURNING id AS "assignmentId",revoked_at AS "revokedAt"`, [user.tenantId, current.id, user.employeeId])).rows[0];
+          await client.query(`UPDATE auth_sessions SET revoked_at=NOW() WHERE tenant_id=$1 AND employee_id=$2 AND revoked_at IS NULL AND expires_at>NOW()`, [user.tenantId, current.employee_id]);
+          await audit(client, req, 'organisation.role.revoked', 'employee_role_assignment', current.id, { assignmentId: current.id, employeeId: current.employee_id, roleId: current.role_id, scopeType: current.scope_type, scopeId: current.scope_id, hasExpiry: Boolean(current.expires_at) });
+          await client.query('COMMIT');
+          return revoked;
+        } catch (error) { await client.query('ROLLBACK'); throw error; }
+      });
+      res.json({ success: true, assignment });
+    } catch (error) { sendError(res, error, 'Unable to revoke role assignment.'); }
   });
 
   app.post('/api/hr/organisation/roles', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
