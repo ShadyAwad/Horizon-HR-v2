@@ -1,3 +1,5 @@
+BEGIN;
+
 ALTER TABLE shift_swap_requests ADD COLUMN IF NOT EXISTS approver_employee_id UUID;
 ALTER TABLE shift_swap_requests ADD COLUMN IF NOT EXISTS approval_source VARCHAR(40);
 ALTER TABLE shift_swap_requests ADD COLUMN IF NOT EXISTS approval_scope_type VARCHAR(30);
@@ -14,10 +16,16 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS shift_swap_requests_approver_actionable_idx ON shift_swap_requests(tenant_id, approver_employee_id, status) WHERE status='pending_approval';
-INSERT INTO tenant_permissions(permission_key, description) VALUES ('roster.swap.view_scoped','View authorised shift swaps.'),('roster.swap.approve','Approve authorised shift swaps.'),('roster.swap.manage','Manage shift swaps tenant-wide.') ON CONFLICT (permission_key) DO NOTHING;
+INSERT INTO tenant_permissions(permission_key, label, description) VALUES
+  ('roster.swap.view_scoped', 'View shift swaps', 'View authorised shift swaps.'),
+  ('roster.swap.approve', 'Approve shift swaps', 'Approve authorised shift swaps.'),
+  ('roster.swap.manage', 'Manage shift swaps', 'Manage shift swaps tenant-wide.')
+ON CONFLICT (permission_key) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description;
 INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_key)
 SELECT role.tenant_id,role.id,permission.permission_key
 FROM tenant_roles role
 JOIN tenant_permissions permission ON permission.permission_key IN ('roster.swap.view_scoped','roster.swap.approve','roster.swap.manage')
 WHERE role.system_key='hr_admin'
 ON CONFLICT DO NOTHING;
+
+COMMIT;

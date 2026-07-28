@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS shift_swap_requests (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -40,4 +42,9 @@ DROP POLICY IF EXISTS shift_swap_requests_tenant_isolation ON shift_swap_request
 CREATE POLICY shift_swap_requests_tenant_isolation ON shift_swap_requests USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
 DROP POLICY IF EXISTS shift_swap_history_tenant_isolation ON shift_swap_history;
 CREATE POLICY shift_swap_history_tenant_isolation ON shift_swap_history USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);
-INSERT INTO tenant_permissions(permission_key, description) VALUES ('roster.swap.request','Request shift swaps.'),('roster.swap.respond','Respond to shift swaps.') ON CONFLICT (permission_key) DO NOTHING;
+INSERT INTO tenant_permissions(permission_key, label, description) VALUES
+  ('roster.swap.request', 'Request shift swaps', 'Request shift swaps.'),
+  ('roster.swap.respond', 'Respond to shift swaps', 'Respond to shift swaps.')
+ON CONFLICT (permission_key) DO UPDATE SET label=EXCLUDED.label, description=EXCLUDED.description;
+
+COMMIT;
