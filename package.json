@@ -27,6 +27,7 @@
     "test:company-feed": "tsx scripts/company-feed-draft-test.ts",
     "test:organisation": "tsx scripts/organisation-test.ts",
     "test:shift-swaps": "tsx scripts/shift-swaps-test.ts",
+    "test:locations": "tsx scripts/locations-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const migration = await readFile('src/db/migrations/20260728_add_company_location_management.sql', 'utf8');
+const routes = await readFile('src/server/locations/location-routes.ts', 'utf8');
+const panel = await readFile('src/components/locations/LocationsPanel.tsx', 'utf8');
+const registry = await readFile('src/server/organisation/permission-registry.ts', 'utf8');
+
+assert.match(migration, /ADD COLUMN IF NOT EXISTS code/);
+assert.match(migration, /archived_at/);
+assert.match(migration, /company_locations_created_by_tenant_fk/);
+assert.match(migration, /company_locations_active_name_unique/);
+assert.match(migration, /company_locations_active_code_unique/);
+assert.match(migration, /'locations\.view'/);
+assert.match(migration, /'geofences\.manage'/);
+assert.match(routes, /\/api\/hr\/locations/);
+assert.match(routes, /locations\.manage/);
+assert.match(routes, /geofences\.manage/);
+assert.match(routes, /ST_SetSRID\(ST_MakePoint\(\$7,\$6\),4326\)/);
+assert.match(routes, /Latitude must be between -90 and 90/);
+assert.match(routes, /Longitude must be between -180 and 180/);
+assert.match(routes, /Radius must be between 25 and 5000/);
+assert.match(routes, /FOR UPDATE/);
+assert.match(routes, /Location is still in active use/);
+assert.match(routes, /tenant_id=\$1/);
+assert.match(routes, /location\.archived/);
+assert.match(routes, /location\.restored/);
+assert.match(registry, /geofences\.manage/);
+assert.match(panel, /MapPreview/);
+assert.match(panel, /Latitude/);
+assert.match(panel, /dir=\{isRtl/);
+console.log('Location management contracts passed: 23');

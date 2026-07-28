@@ -47,6 +47,7 @@ const PerformancePanel = lazy(() => import('../components/performance/Performanc
 const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
 const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
 const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwapApprovalsPanel').then((module) => ({ default: module.ShiftSwapApprovalsPanel })));
+const LocationsPanel = lazy(() => import('../components/locations/LocationsPanel').then((module) => ({ default: module.LocationsPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -765,7 +766,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1249,6 +1250,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
   const canViewOrganisation = hasPermission(user, 'organisation.view');
+  const canViewLocations = hasPermission(user, 'locations.view');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
   const canUsePayrollPanel = canViewAllPayroll || canViewOwnPayroll || canRunPayroll || canManageCompensation || canManageLoans || canViewOwnLoans || canExportPayrollPdf;
   const payrollTableColSpan = canShowPayrollActions ? 9 : 8;
@@ -4373,6 +4375,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         {t('organisation.title')}
                       </button>
                     )}
+                    {canViewLocations && (
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('locations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'locations' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                        aria-label={lang === 'ar' ? 'المواقع' : 'Locations'}
+                      >
+                        <MapPin className="w-4 h-4 hidden sm:block" />
+                        {lang === 'ar' ? 'المواقع' : 'Locations'}
+                      </button>
+                    )}
                     {canViewLiveEmployees && (
                       <button
                         type="button"
@@ -4493,6 +4506,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'organisation' && canViewOrganisation && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <OrganisationPanel />
+                  </Suspense>
+                )}
+                {activeTab === 'locations' && canViewLocations && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <LocationsPanel />
                   </Suspense>
                 )}
                 {activeTab === 'shiftSwaps' && (
