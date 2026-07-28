@@ -83,6 +83,17 @@ async function run() {
   assert(!('description' in roleProjection.metadata), 'Role description escaped audit projection.');
   pass('Organisation role lifecycle audit events expose safe metadata only');
 
+  const permissionProjection = presentAuditEvent('organisation.role.permissions_updated', 'tenant_role', {
+    roleId: '00000000-0000-4000-8000-000000000004',
+    previousPermissionCount: 2,
+    newPermissionCount: 3,
+    addedCount: 2,
+    removedCount: 1,
+    permissionKeys: ['must-not-appear'],
+  });
+  assert(permissionProjection.metadata.addedCount === 2 && !('permissionKeys' in permissionProjection.metadata), 'Role permission audit must contain counts only.');
+  pass('Role permission audit keeps only aggregate counts');
+
   const capturedWrites: Array<{ query: string; values: unknown[] }> = [];
   const auditClient = {
     query: async (query: string, values: unknown[]) => {
@@ -122,6 +133,15 @@ async function run() {
     metadata: { isSystem: false, activeAssignmentCount: 0 },
   });
   assert(capturedWrites.at(-1)?.values.includes('organisation.role.archived'), 'Safe organisation role audit metadata was not written.');
+  await recordAuditEvent(auditClient, {
+    tenantId: '00000000-0000-4000-8000-000000000001',
+    actorId: '00000000-0000-4000-8000-000000000002',
+    action: 'organisation.role.permissions_updated',
+    targetType: 'tenant_role',
+    targetId: '00000000-0000-4000-8000-000000000003',
+    metadata: { roleId: '00000000-0000-4000-8000-000000000003', previousPermissionCount: 1, newPermissionCount: 2, addedCount: 1, removedCount: 0 },
+  });
+  assert(capturedWrites.at(-1)?.values.includes('organisation.role.permissions_updated'), 'Safe role permission audit metadata was not written.');
   pass('Audit writer allowlist rejects sensitive metadata before persistence');
 
   const [dashboardSource, panelSource, translationsSource] = await Promise.all([

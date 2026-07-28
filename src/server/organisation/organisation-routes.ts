@@ -3,7 +3,7 @@ import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
 import { hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
-import { PERMISSION_REGISTRY as PERMISSION_METADATA, getPermissionMetadata } from './permission-registry';
+import { PERMISSION_REGISTRY as PERMISSION_METADATA, getPermissionMetadata, getPermissionDefinition, validatePermissionKeys } from './permission-registry';
 
 type Middleware = express.RequestHandler;
 type Dependencies = { standardAuth: Middleware; mutationGuard: Middleware; rateLimiter: Middleware };
@@ -90,6 +90,20 @@ function generatedDuplicateRoleName(name: string, roleId: string) {
   return `${name.slice(0, 160 - suffix.length)}${suffix}`;
 }
 
+async function assertPermissionMutationAuthority(client: PoolClient, req: express.Request, permissionKeys: string[]) {
+  const user = req.authUser!;
+  await assertCompanyPermission(client, req, 'roles.manage');
+  await assertCompanyPermission(client, req, 'permissions.manage');
+  for (const permissionKey of permissionKeys) {
+    const definition = getPermissionDefinition(permissionKey);
+    if (!definition || definition.protected || !definition.delegatable) {
+      throw fail(403, `Permission cannot be assigned to a custom role: ${permissionKey}.`);
+    }
+    const authority = await hasCompanyPermission(client, user.tenantId, user.employeeId, permissionKey);
+    if (!authority.allowed) throw fail(403, `You cannot grant permission: ${permissionKey}.`);
+  }
+}
+
 export function registerOrganisationRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter }: Dependencies) {
   app.get('/api/hr/organisation/overview', standardAuth, async (req, res) => {
     try {
@@ -113,6 +127,70 @@ export function registerOrganisationRoutes(app: express.Express, { standardAuth,
   app.get('/api/hr/organisation/roles',standardAuth,async(req,res)=>{try{const user=req.authUser!,page=Math.max(1,Number(req.query.page)||1),pageSize=Math.min(100,Math.max(1,Number(req.query.pageSize)||25)),search=text(req.query.search,120)||null,kind=req.query.kind==='system'||req.query.kind==='custom'?req.query.kind:null,activity=req.query.activity==='archived'?'archived':'active';const result=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const where=`role.tenant_id=$1 AND ($2::text IS NULL OR role.name ILIKE '%'||$2||'%' OR COALESCE(role.description,'') ILIKE '%'||$2||'%') AND ($3::text IS NULL OR ($3='system' AND role.is_system) OR ($3='custom' AND NOT role.is_system)) AND (($4='active' AND role.is_active) OR ($4='archived' AND NOT role.is_active))`;const rows=(await client.query(`SELECT role.id,role.name,role.description,role.system_key AS "systemKey",role.is_system AS "isSystem",role.is_active AS "isActive",role.created_at AS "createdAt",role.updated_at AS "updatedAt",COUNT(DISTINCT permission.permission_key)::int AS "permissionCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NULL AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW()))::int AS "activeAssignmentCount" FROM tenant_roles role LEFT JOIN tenant_role_permissions permission ON permission.tenant_id=role.tenant_id AND permission.role_id=role.id LEFT JOIN employee_role_assignments assignment ON assignment.tenant_id=role.tenant_id AND assignment.role_id=role.id WHERE ${where} GROUP BY role.id ORDER BY role.is_system DESC,role.name LIMIT $5 OFFSET $6`,[user.tenantId,search,kind,activity,pageSize,(page-1)*pageSize])).rows;const total=(await client.query(`SELECT count(*)::int AS count FROM tenant_roles role WHERE ${where}`,[user.tenantId,search,kind,activity])).rows[0].count;return {roles:rows.map(role=>({id:role.id,name:role.name,description:role.description,systemKey:role.systemKey,isSystem:role.isSystem,isActive:role.isActive,privilegeLevel:role.systemKey==='hr_admin'?3:role.systemKey==='manager'?2:1,permissionCount:role.permissionCount,activeAssignmentCount:role.activeAssignmentCount,createdAt:role.createdAt,updatedAt:role.updatedAt})),total,page,pageSize};});res.json({success:true,...result});}catch(error){sendError(res,error,'Unable to load roles.');}});
   app.get('/api/hr/organisation/roles/:roleId',standardAuth,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.roleId))throw fail(404,'Role not found.');const role=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const row=(await client.query(`SELECT role.id,role.name,role.description,role.system_key AS "systemKey",role.is_system AS "isSystem",role.is_active AS "isActive",role.created_at AS "createdAt",role.updated_at AS "updatedAt",COUNT(DISTINCT permission.permission_key)::int AS "permissionCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NULL AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW()))::int AS "activeAssignmentCount",COUNT(DISTINCT assignment.id) FILTER(WHERE assignment.revoked_at IS NOT NULL OR assignment.expires_at<=NOW())::int AS "historicalAssignmentCount",COALESCE(array_remove(array_agg(DISTINCT permission.permission_key),NULL),ARRAY[]::varchar[]) AS keys FROM tenant_roles role LEFT JOIN tenant_role_permissions permission ON permission.tenant_id=role.tenant_id AND permission.role_id=role.id LEFT JOIN employee_role_assignments assignment ON assignment.tenant_id=role.tenant_id AND assignment.role_id=role.id WHERE role.tenant_id=$1 AND role.id=$2 GROUP BY role.id`,[user.tenantId,req.params.roleId])).rows[0];if(!row)throw fail(404,'Role not found.');const permissions=row.keys.map(getPermissionMetadata).filter(Boolean);return {id:row.id,name:row.name,description:row.description,systemKey:row.systemKey,isSystem:row.isSystem,isActive:row.isActive,privilegeLevel:row.systemKey==='hr_admin'?3:row.systemKey==='manager'?2:1,permissionCount:row.permissionCount,activeAssignmentCount:row.activeAssignmentCount,historicalAssignmentCount:row.historicalAssignmentCount,createdAt:row.createdAt,updatedAt:row.updatedAt,permissions};});res.json({success:true,role});}catch(error){sendError(res,error,'Unable to load role.');}});
   app.get('/api/hr/organisation/roles/:roleId/permissions',standardAuth,async(req,res)=>{try{const user=req.authUser!;if(!uuid(req.params.roleId))throw fail(404,'Role not found.');const permissions=await withTenant(user.tenantId,async client=>{await assertCompanyPermission(client,req,'roles.view');const exists=(await client.query(`SELECT 1 FROM tenant_roles WHERE tenant_id=$1 AND id=$2`,[user.tenantId,req.params.roleId])).rows[0];if(!exists)throw fail(404,'Role not found.');const selected=new Set((await client.query(`SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`,[user.tenantId,req.params.roleId])).rows.map(row=>row.permission_key));return PERMISSION_METADATA.map(permission=>({...permission,selected:selected.has(permission.key)}));});res.json({success:true,permissions});}catch(error){sendError(res,error,'Unable to load role permissions.');}});
+
+  app.put('/api/hr/organisation/roles/:roleId/permissions', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.roleId)) throw fail(404, 'Role not found.');
+      assertAllowedFields(req.body, ['permissionKeys']);
+      const permissionKeys = validatePermissionKeys(req.body.permissionKeys);
+      if (!permissionKeys) throw fail(400, 'Permission keys must be recognised registry keys.');
+      const result = await withTenant(user.tenantId, async (client) => {
+        await assertPermissionMutationAuthority(client, req, permissionKeys);
+        const registered = new Set((await client.query(
+          `SELECT permission_key FROM tenant_permissions WHERE permission_key = ANY($1::varchar[])`,
+          [permissionKeys],
+        )).rows.map((row) => row.permission_key));
+        if (registered.size !== permissionKeys.length) throw fail(400, 'One or more permission keys are unavailable for this tenant.');
+
+        await client.query('BEGIN');
+        try {
+          const role = (await client.query(
+            `SELECT id,is_system,is_active FROM tenant_roles WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+            [user.tenantId, req.params.roleId],
+          )).rows[0];
+          if (!role) throw fail(404, 'Role not found.');
+          // Essential system-role baselines are not modelled yet, so system mutation stays closed.
+          if (role.is_system) throw fail(403, 'System role permissions cannot be changed.');
+          if (!role.is_active) throw fail(409, 'Archived role permissions cannot be changed.');
+
+          const previousKeys = (await client.query(
+            `SELECT permission_key FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`,
+            [user.tenantId, role.id],
+          )).rows.map((row) => row.permission_key as string);
+          const previousSet = new Set(previousKeys);
+          const nextSet = new Set(permissionKeys);
+          const addedCount = permissionKeys.filter((key) => !previousSet.has(key)).length;
+          const removedCount = previousKeys.filter((key) => !nextSet.has(key)).length;
+
+          await client.query(`DELETE FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2`, [user.tenantId, role.id]);
+          if (permissionKeys.length > 0) {
+            await client.query(
+              `INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_key)
+               SELECT $1,$2,requested.permission_key FROM unnest($3::varchar[]) AS requested(permission_key)`,
+              [user.tenantId, role.id, permissionKeys],
+            );
+          }
+          await audit(client, req, 'organisation.role.permissions_updated', 'tenant_role', role.id, {
+            roleId: role.id,
+            previousPermissionCount: previousKeys.length,
+            newPermissionCount: permissionKeys.length,
+            addedCount,
+            removedCount,
+          });
+          await client.query('COMMIT');
+          return {
+            roleId: role.id,
+            permissions: PERMISSION_METADATA.map((permission) => ({ ...permission, selected: nextSet.has(permission.key) })),
+          };
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      });
+      res.json({ success: true, ...result });
+    } catch (error) { sendError(res, error, 'Unable to update role permissions.'); }
+  });
 
   app.post('/api/hr/organisation/roles', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
     try {
