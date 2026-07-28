@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [migration, approvalMigration, conflictMigration, routes, resolver, scopedPermissions, registry, audit, server, packageJson] = await Promise.all([
+const [migration, approvalMigration, conflictMigration, routes, resolver, scopedPermissions, registry, audit, server, leaveWorkspace, dashboard, packageJson] = await Promise.all([
   readFile('src/db/migrations/20260729_add_leave_self_service.sql', 'utf8'),
   readFile('src/db/migrations/20260729_add_leave_approval_context.sql', 'utf8'),
   readFile('src/db/migrations/20260729_add_leave_roster_conflicts.sql', 'utf8'),
@@ -11,6 +11,8 @@ const [migration, approvalMigration, conflictMigration, routes, resolver, scoped
   readFile('src/server/organisation/permission-registry.ts', 'utf8'),
   readFile('src/server/audit/audit-events.ts', 'utf8'),
   readFile('server.ts', 'utf8'),
+  readFile('src/components/roster/LeaveWorkspace.tsx', 'utf8'),
+  readFile('src/pages/Dashboard.tsx', 'utf8'),
   readFile('package.json', 'utf8'),
 ]);
 
@@ -176,4 +178,98 @@ assert.doesNotMatch(audit.match(/'leave\.schedule_conflict_detected': \[[^\]]*\]
 assert.doesNotMatch(audit.match(/'leave\.approved': \[[^\]]*\]/)?.[0] || '', /reason|note/);
 assert.match(packageJson, /"test:leave"/);
 
-console.log('Leave self-service, scoped approval, and roster conflict contracts passed: 127');
+assert.match(leaveWorkspace, /data-leave-workspace/);
+assert.match(leaveWorkspace, /myRequests: 'My Requests'/);
+assert.match(leaveWorkspace, /upcoming: 'Upcoming Leave'/);
+assert.match(leaveWorkspace, /history: 'History'/);
+assert.match(leaveWorkspace, /approvals: 'Approvals'/);
+assert.match(leaveWorkspace, /myRequests: 'طلباتي'/);
+assert.match(leaveWorkspace, /approvals: 'الموافقات'/);
+assert.match(leaveWorkspace, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+assert.match(leaveWorkspace, /role="tablist"/);
+assert.match(leaveWorkspace, /role="tab"/);
+assert.match(leaveWorkspace, /aria-selected=\{view === value\}/);
+assert.match(leaveWorkspace, /ArrowLeft.*ArrowRight.*Home.*End/);
+assert.match(leaveWorkspace, /overflow-x-auto/);
+assert.match(leaveWorkspace, /max-h-\[calc\(100dvh-1rem\)\]/);
+assert.match(leaveWorkspace, /sm:max-h-\[calc\(100dvh-2rem\)\]/);
+assert.match(leaveWorkspace, /role="dialog"/);
+assert.match(leaveWorkspace, /aria-modal="true"/);
+assert.match(leaveWorkspace, /focusableSelector/);
+assert.match(leaveWorkspace, /event\.key === 'Escape'/);
+assert.match(leaveWorkspace, /restoreFocusRef\.current\?\.focus\(\)/);
+
+assert.match(leaveWorkspace, /apiFetch\('\/api\/me\/leave-requests'/);
+assert.match(leaveWorkspace, /apiFetch\(`\/api\/me\/leave-requests\/\$\{requestId\}`\)/);
+assert.match(leaveWorkspace, /apiFetch\(`\/api\/me\/leave-requests\/\$\{detail\.request\.requestId\}\/cancel`/);
+assert.match(leaveWorkspace, /leaveType: requestForm\.leaveType/);
+assert.match(leaveWorkspace, /startDate: requestForm\.startDate/);
+assert.match(leaveWorkspace, /endDate: requestForm\.endDate/);
+assert.match(leaveWorkspace, /reason: requestForm\.reason\.trim\(\) \|\| null/);
+assert.match(leaveWorkspace, /submittingRef\.current/);
+assert.match(leaveWorkspace, /response\.status === 409 \? copy\.conflictError/);
+assert.match(leaveWorkspace, /setRequestStep\('review'\)/);
+assert.match(leaveWorkspace, /setRequestStep\('success'\)/);
+assert.match(leaveWorkspace, /approvalConfigured \? copy\.approvalPending : copy\.noApprover/);
+assert.match(leaveWorkspace, /expectedVersion: detail\.request\.version/);
+assert.match(leaveWorkspace, /response\.status === 409 \? copy\.staleRequest/);
+assert.match(leaveWorkspace, /conflictingShifts/);
+assert.match(leaveWorkspace, /onOpenSchedule/);
+assert.match(leaveWorkspace, /loadRequests\(\)/);
+assert.match(leaveWorkspace, /role="status"/);
+assert.match(leaveWorkspace, /role="alert"/);
+assert.match(leaveWorkspace, /copy\.retry/);
+assert.match(leaveWorkspace, /pageCount/);
+assert.match(leaveWorkspace, /approvalPageCount/);
+
+assert.match(leaveWorkspace, /apiFetch\(`\/api\/hr\/leave-requests\?\$\{query\.toString\(\)\}`\)/);
+assert.match(leaveWorkspace, /loadApprovals\(true\)/);
+assert.match(leaveWorkspace, /hasApproverAuthorityHint/);
+assert.match(leaveWorkspace, /approvalVisible/);
+assert.doesNotMatch(leaveWorkspace, /role === ['"](?:hr_admin|manager|team_leader)['"]/);
+assert.match(leaveWorkspace, /approvalSourceLabel/);
+assert.match(leaveWorkspace, /scopeLabel/);
+assert.match(leaveWorkspace, /approvalDetail\.request\.canDecide/);
+assert.match(leaveWorkspace, /\/\$\{decision\}`/);
+assert.match(leaveWorkspace, /expectedVersion: approvalDetail\.request\.version/);
+assert.match(leaveWorkspace, /Promise\.all\(\[loadApprovals\(\), loadApprovalDetail\(requestId\), loadRequests\(\)\]\)/);
+assert.match(leaveWorkspace, /apiFetch\('\/api\/hr\/organisation\/departments'\)/);
+assert.match(leaveWorkspace, /apiFetch\('\/api\/hr\/organisation\/teams'\)/);
+assert.match(leaveWorkspace, /apiFetch\('\/api\/company-locations'\)/);
+assert.match(leaveWorkspace, /query\.set\('departmentId', approvalDepartmentId\)/);
+assert.match(leaveWorkspace, /query\.set\('teamId', approvalTeamId\)/);
+assert.match(leaveWorkspace, /query\.set\('locationId', approvalLocationId\)/);
+assert.match(leaveWorkspace, /Promise\.allSettled/);
+assert.match(leaveWorkspace, /Scoped approval remains usable when optional filter metadata is unavailable/);
+assert.match(leaveWorkspace, /item\.isActive !== false/);
+assert.match(leaveWorkspace, /item\.is_active !== false/);
+
+assert.match(dashboard, /const LeaveWorkspace = lazy/);
+assert.match(dashboard, /rosterSubview === 'leave'/);
+assert.match(dashboard, /<LeaveWorkspace/);
+assert.match(dashboard, /hasApproverAuthorityHint=\{hasLeaveApproverAuthority\}/);
+assert.match(dashboard, /onOpenSchedule=\{\(\) => setRosterSubview\('schedule'\)\}/);
+assert.match(dashboard, /void refreshAttentionCounts\(\)/);
+assert.match(dashboard, /void loadRosterShifts\(\)/);
+assert.match(dashboard, /setActiveTab\('roster'\);\s*setRosterSubview\('leave'\)/);
+assert.match(dashboard, /stanza:notification-deep-link/);
+assert.match(dashboard, /notification\.leave_approval_required/);
+assert.match(dashboard, /leaveView/);
+assert.match(dashboard, /requestId/);
+assert.match(dashboard, /isUuidString\(navigation\.requestId\)/);
+assert.match(dashboard, /approved_leave\?: boolean/);
+assert.match(dashboard, /has_roster_conflict\?: boolean/);
+assert.match(dashboard, /approvedLeave: Boolean\(shift\.approved_leave\)/);
+assert.match(dashboard, /hasRosterConflict: Boolean\(shift\.has_roster_conflict\)/);
+assert.match(dashboard, /s\.approvedLeave && s\.leaveRequestId/);
+assert.match(dashboard, /setLeaveDeepLink\(\{ view: 'requests', requestId: s\.leaveRequestId \|\| null \}\)/);
+assert.doesNotMatch(
+  dashboard.match(/const openLeaveRequestFlow[\s\S]*?\n\s*\};/)?.[0] || '',
+  /grievance|leave_request/,
+);
+
+assert.doesNotMatch(leaveWorkspace, /\/api\/leave-requests(?:[?'`/])/);
+assert.doesNotMatch(leaveWorkspace, /category:\s*['"]leave_request['"]/);
+assert.doesNotMatch(leaveWorkspace, /salary|password|tokenHash|approval_scope_id|role_assignment/);
+
+console.log('Leave self-service, scoped approval, roster conflict, and UI contracts passed');
