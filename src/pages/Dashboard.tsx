@@ -767,6 +767,7 @@ function useGeolocation() {
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
+  const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -4332,16 +4333,18 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        {t('dash.roster')}
                        <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
+                    <span className="hidden" aria-hidden="true">
                     <button
                        type="button"
-                       onClick={() => { setActiveTab('shiftSwaps'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
-                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'shiftSwaps' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                       onClick={() => { setActiveTab('roster'); setRosterSubview('swaps'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                       className="hidden"
                        aria-label={lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
                     >
                        <RefreshCw className="w-4 h-4 hidden sm:block" />
                        {lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
                     </button>
                     {canApproveShiftSwaps && <button type="button" onClick={() => setActiveTab('shiftSwapApprovals')} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'shiftSwapApprovals' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}>{lang === 'ar' ? 'موافقات التبديل' : 'Swap Approvals'}</button>}
+                    </span>
                     {canViewHiring && (
                       <button
                         type="button"
@@ -4513,12 +4516,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     <LocationsPanel />
                   </Suspense>
                 )}
-                {activeTab === 'shiftSwaps' && (
+                {false && activeTab === 'roster' && rosterSubview === 'swaps' && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <ShiftSwapsPanel employeeId={user.id} />
                   </Suspense>
                 )}
-                {activeTab === 'shiftSwapApprovals' && canApproveShiftSwaps && (
+                {false && activeTab === 'roster' && rosterSubview === 'approvals' && canApproveShiftSwaps && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}><ShiftSwapApprovalsPanel /></Suspense>
                 )}
                 {activeTab === 'liveEmployees' && canViewLiveEmployees && (
@@ -4954,6 +4957,40 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}                
 
                 {activeTab === 'roster' && (
+                  <section className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/80 shadow-xl backdrop-blur-sm dark:bg-[#0a1a17]/55" dir={isRtl ? 'rtl' : 'ltr'}>
+                    <div className="flex flex-col gap-3 border-b border-emerald-500/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-emerald-50"><Calendar className="h-5 w-5 text-emerald-500" />{t('dash.rosterHub')}</h2>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55" dir="ltr">{rosterStartDate} - {rosterEndDate}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{t('dash.autoSaved')}</span>}
+                        {rosterSubview === 'leave' && <button type="button" onClick={openLeaveRequestFlow} className="rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
+                      </div>
+                    </div>
+                    <div role="tablist" aria-label={t('dash.rosterHub')} className="flex max-w-full gap-1 overflow-x-auto p-2" onKeyDown={(event) => {
+                      const views = canApproveShiftSwaps ? ['schedule', 'swaps', 'approvals', 'leave'] as const : ['schedule', 'swaps', 'leave'] as const;
+                      const current = views.indexOf(rosterSubview as never);
+                      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+                      event.preventDefault();
+                      const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
+                      setRosterSubview(views[next] as typeof rosterSubview);
+                      (event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next])?.focus();
+                    }}>
+                      {([
+                        ['schedule', t('dash.weekView')],
+                        ['swaps', lang === 'ar' ? 'تبديل المناوبات' : 'My Swaps'],
+                        ...(canApproveShiftSwaps ? [['approvals', lang === 'ar' ? 'الموافقات' : 'Approvals']] : []),
+                        ['leave', t('dash.applyLeave')],
+                      ] as Array<[typeof rosterSubview, string]>).map(([view, label]) => <button key={view} type="button" role="tab" aria-selected={rosterSubview === view} tabIndex={rosterSubview === view ? 0 : -1} onClick={() => setRosterSubview(view)} className={cn('min-h-10 shrink-0 rounded px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterSubview === view ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/60 dark:hover:text-emerald-100')}>{label}</button>)}
+                    </div>
+                    {rosterSubview === 'leave' && <div role="tabpanel" className="border-t border-emerald-500/10 p-4"><p className="text-sm text-slate-600 dark:text-emerald-100/70">{lang === 'ar' ? 'ابدأ طلب إجازة جديداً. ستظل بيانات الإجازة محمية في سير العمل الحالي.' : 'Start a leave request using the existing protected leave workflow.'}</p></div>}
+                    {rosterSubview === 'swaps' && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapsPanel employeeId={user.id} /></Suspense></div>}
+                    {rosterSubview === 'approvals' && canApproveShiftSwaps && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapApprovalsPanel /></Suspense></div>}
+                  </section>
+                )}
+
+                {activeTab === 'roster' && rosterSubview === 'schedule' && (
                     <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
                        <div className="border-b border-emerald-500/15 p-4 dark:border-emerald-500/10">
                          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
