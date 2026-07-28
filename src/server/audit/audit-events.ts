@@ -111,6 +111,14 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
   'performance.recognition.replaced': { canonicalAction: 'performance.recognition.replaced', module: 'performance', summary: 'Employee recognition replaced', metadataKeys: ['recognitionMonth'] },
   'performance.recognition.revoked': { canonicalAction: 'performance.recognition.revoked', module: 'performance', summary: 'Employee recognition revoked', metadataKeys: ['recognitionMonth'] },
   'performance.recognition.delivered': { canonicalAction: 'performance.recognition.delivered', module: 'performance', summary: 'Employee recognition delivered', metadataKeys: ['deliveredVia'] },
+  'roster.shift_swap.requested': { canonicalAction: 'roster.shift_swap.requested', module: 'roster', summary: 'Shift swap requested', metadataKeys: ['status'] },
+  'roster.shift_swap.target_accepted': { canonicalAction: 'roster.shift_swap.target_accepted', module: 'roster', summary: 'Shift swap accepted by target', metadataKeys: ['status'] },
+  'roster.shift_swap.target_declined': { canonicalAction: 'roster.shift_swap.target_declined', module: 'roster', summary: 'Shift swap declined by target', metadataKeys: ['status'] },
+  'roster.shift_swap.cancelled': { canonicalAction: 'roster.shift_swap.cancelled', module: 'roster', summary: 'Shift swap cancelled', metadataKeys: ['status'] },
+  'roster.shift_swap.approver_resolved': { canonicalAction: 'roster.shift_swap.approver_resolved', module: 'roster', summary: 'Shift swap approver resolved', metadataKeys: ['approvalSource', 'scopeType', 'status'] },
+  'roster.shift_swap.approved': { canonicalAction: 'roster.shift_swap.approved', module: 'roster', summary: 'Shift swap approved', metadataKeys: ['approvalSource', 'scopeType', 'status'] },
+  'roster.shift_swap.rejected': { canonicalAction: 'roster.shift_swap.rejected', module: 'roster', summary: 'Shift swap rejected', metadataKeys: ['approvalSource', 'scopeType', 'status'] },
+  'roster.shift_swap.approval_conflict': { canonicalAction: 'roster.shift_swap.approval_conflict', module: 'roster', summary: 'Shift swap approval conflict', severity: 'warning', metadataKeys: ['status'] },
   company_feed_post_created: { canonicalAction: 'feed.post.created', module: 'feed', summary: 'Company Feed post created', metadataKeys: ['postType', 'status'] },
   company_feed_post_status_updated: { canonicalAction: 'feed.post.status_changed', module: 'feed', summary: 'Company Feed post status changed', metadataKeys: ['previousStatus', 'newStatus'] },
 };
@@ -250,6 +258,14 @@ const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
   'performance.recognition.replaced': ['recognitionMonth'],
   'performance.recognition.revoked': ['recognitionMonth'],
   'performance.recognition.delivered': ['deliveredVia'],
+  'roster.shift_swap.requested': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'status'],
+  'roster.shift_swap.target_accepted': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'status'],
+  'roster.shift_swap.target_declined': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'status'],
+  'roster.shift_swap.cancelled': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'status'],
+  'roster.shift_swap.approver_resolved': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'approverEmployeeId', 'approvalSource', 'scopeType', 'status'],
+  'roster.shift_swap.approved': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'approverEmployeeId', 'approvalSource', 'scopeType', 'status'],
+  'roster.shift_swap.rejected': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'approverEmployeeId', 'approvalSource', 'scopeType', 'status'],
+  'roster.shift_swap.approval_conflict': ['swapId', 'requesterEmployeeId', 'targetEmployeeId', 'approverEmployeeId', 'status'],
 };
 
 export async function recordAuditEvent(
