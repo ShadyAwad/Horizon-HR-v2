@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [migration, approvalMigration, routes, resolver, scopedPermissions, registry, audit, server, packageJson] = await Promise.all([
+const [migration, approvalMigration, conflictMigration, routes, resolver, scopedPermissions, registry, audit, server, packageJson] = await Promise.all([
   readFile('src/db/migrations/20260729_add_leave_self_service.sql', 'utf8'),
   readFile('src/db/migrations/20260729_add_leave_approval_context.sql', 'utf8'),
+  readFile('src/db/migrations/20260729_add_leave_roster_conflicts.sql', 'utf8'),
   readFile('src/server/leave/leave-routes.ts', 'utf8'),
   readFile('src/server/organisation/approval-chain.ts', 'utf8'),
   readFile('src/server/organisation/scoped-permissions.ts', 'utf8'),
@@ -43,6 +44,24 @@ assert.match(approvalMigration, /leave_requests_pending_actionable_idx/);
 assert.match(approvalMigration, /leave\.view\.scoped/);
 assert.match(approvalMigration, /leave\.approve/);
 assert.match(approvalMigration, /leave\.manage/);
+
+assert.match(conflictMigration, /BEGIN;/);
+assert.match(conflictMigration, /COMMIT;/);
+assert.match(conflictMigration, /CREATE TABLE IF NOT EXISTS leave_roster_conflicts/);
+assert.match(conflictMigration, /UNIQUE \(id, tenant_id\)/);
+assert.match(conflictMigration, /UNIQUE \(tenant_id, leave_request_id, roster_shift_id\)/);
+assert.match(conflictMigration, /REFERENCES leave_requests\(id, tenant_id\)/);
+assert.match(conflictMigration, /REFERENCES roster_shifts\(id, tenant_id\)/);
+assert.match(conflictMigration, /REFERENCES employees\(id, tenant_id\)/);
+assert.match(conflictMigration, /status IN \('open','acknowledged','resolved','obsolete'\)/);
+assert.match(conflictMigration, /ENABLE ROW LEVEL SECURITY/);
+assert.match(conflictMigration, /leave_roster_conflicts_tenant_isolation/);
+assert.match(conflictMigration, /leave_roster_conflicts_open_request_idx/);
+assert.match(conflictMigration, /leave_roster_conflicts_open_shift_idx/);
+assert.match(conflictMigration, /obsolete_leave_roster_conflicts_for_shift/);
+assert.match(conflictMigration, /NEW\.status <> 'scheduled'/);
+assert.match(conflictMigration, /NEW\.employee_id <> request\.employee_id/);
+assert.match(conflictMigration, /NEW\.start_time >= \(\(request\.end_date \+ 1\)::timestamp AT TIME ZONE 'UTC'\)/);
 
 assert.match(registry, /definePermission\('leave\.request\.self'/);
 assert.match(registry, /definePermission\('leave\.view\.self'/);
@@ -114,13 +133,47 @@ assert.match(routes, /leave-rejected/);
 assert.match(routes, /payload->>'idempotencyKey'/);
 assert.match(routes, /deepLink: \{ section: 'roster', view: 'leave'/);
 assert.doesNotMatch(routes, /UPDATE roster_shifts/);
+assert.match(routes, /detectApprovedLeaveConflicts/);
+assert.match(routes, /status='scheduled' AND end_time>NOW\(\)/);
+assert.match(routes, /start_time < \(\(\$4::date \+ 1\)::timestamp AT TIME ZONE 'UTC'\)/);
+assert.match(routes, /end_time > \(\$3::date::timestamp AT TIME ZONE 'UTC'\)/);
+assert.match(routes, /ORDER BY id FOR UPDATE/);
+assert.match(routes, /INSERT INTO leave_roster_conflicts/);
+assert.match(routes, /ON CONFLICT \(tenant_id,leave_request_id,roster_shift_id\)/);
+assert.match(routes, /notification\.leave_roster_conflict/);
+assert.match(routes, /leave-roster-conflict:\$\{input\.requestId\}:\$\{shift\.id\}/);
+assert.match(routes, /leave\.schedule_conflict_detected/);
+assert.match(routes, /conflictCount: rosterConflicts\.length/);
+assert.match(routes, /schedulerAttentionRequired/);
+assert.match(routes, /conflictingShifts/);
+assert.match(routes, /shift\.start_time,shift\.end_time,shift\.status AS shift_status/);
+assert.doesNotMatch(routes.match(/function conflictSummary[\s\S]*?\n\}/)?.[0] || '', /reason|approval_note|salary|email/);
+assert.match(server, /resolveScopedPermission/);
+assert.match(server, /async function rosterScopeAccess/);
+assert.match(server, /targetEmployeeId/);
+assert.match(server, /permissionKeys = requireManage \? \['roster\.manage'\] : \['roster\.manage', 'roster\.view_all'\]/);
+assert.match(server, /approved_leave\.leave_request_id/);
+assert.match(server, /request\.status='approved'/);
+assert.match(server, /AS approved_leave/);
+assert.match(server, /AS has_roster_conflict/);
+assert.match(server, /leave_start_date/);
+assert.match(server, /leave_end_date/);
+assert.match(server, /recordApprovedLeaveConflictsForShift/);
+assert.match(server, /notification\.leave_roster_conflict/);
+assert.match(server, /ON CONFLICT \(tenant_id,leave_request_id,roster_shift_id\)/);
+assert.doesNotMatch(
+  server.match(/LEFT JOIN LATERAL \(\s*SELECT request\.id AS leave_request_id[\s\S]*?\) approved_leave ON true/)?.[0] || '',
+  /reason|approval_note/,
+);
 assert.match(audit, /'leave\.requested'/);
 assert.match(audit, /'leave\.cancelled'/);
 assert.match(audit, /'leave\.approver_resolved'/);
 assert.match(audit, /'leave\.approver_unconfigured'/);
 assert.match(audit, /'leave\.approved'/);
 assert.match(audit, /'leave\.rejected'/);
+assert.match(audit, /'leave\.schedule_conflict_detected'/);
+assert.doesNotMatch(audit.match(/'leave\.schedule_conflict_detected': \[[^\]]*\]/)?.[0] || '', /reason|note|shiftPayload/);
 assert.doesNotMatch(audit.match(/'leave\.approved': \[[^\]]*\]/)?.[0] || '', /reason|note/);
 assert.match(packageJson, /"test:leave"/);
 
-console.log('Leave self-service and scoped approval contracts passed: 83');
+console.log('Leave self-service, scoped approval, and roster conflict contracts passed: 127');

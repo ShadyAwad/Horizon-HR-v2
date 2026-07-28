@@ -47,6 +47,7 @@ function page(value: unknown, fallback: number, maximum: number) {
 }
 
 function safeLeave(row: any) {
+  const conflictCount = Number(row.conflict_count || 0);
   return {
     requestId: row.request_id || row.id,
     leaveType: row.leave_type,
@@ -61,6 +62,9 @@ function safeLeave(row: any) {
     decisionAt: row.approval_decided_at || null,
     approvedAt: row.approved_at || null,
     rejectedAt: row.rejected_at || null,
+    hasRosterConflict: conflictCount > 0,
+    conflictCount,
+    schedulerAttentionRequired: conflictCount > 0,
     version: row.version,
   };
 }
@@ -81,7 +85,10 @@ function approvalSelect(includeReason = false) {
     request.approval_scope_type,request.approval_scope_id,request.approval_resolved_at,request.approval_decided_at,
     request.approved_at,request.rejected_at,employee.full_name AS employee_name,employee.department_id,employee.team_id,
     department.name AS department_name,team.name AS team_name,team.location_id,location.name AS location_name,
-    approver.full_name AS approver_name`;
+    approver.full_name AS approver_name,
+    (SELECT count(*)::int FROM leave_roster_conflicts conflict
+      WHERE conflict.tenant_id=request.tenant_id AND conflict.leave_request_id=request.id
+        AND conflict.status IN ('open','acknowledged')) AS conflict_count`;
 }
 
 const approvalJoins = `FROM leave_requests request
@@ -102,6 +109,7 @@ function scopeLabel(row: any) {
 }
 
 function safeApproval(row: any, includeReason = false) {
+  const conflictCount = Number(row.conflict_count || 0);
   return {
     requestId: row.request_id,
     employee: { employeeId: row.employee_id, displayName: row.employee_name },
@@ -116,7 +124,102 @@ function safeApproval(row: any, includeReason = false) {
     approvalSourceLabel: row.approval_source ? sourceLabels[row.approval_source] || 'Configured authority' : 'Awaiting configuration',
     scopeLabel: scopeLabel(row),
     decisionAt: row.approval_decided_at || null,
+    hasRosterConflict: conflictCount > 0,
+    conflictCount,
+    schedulerAttentionRequired: conflictCount > 0,
   };
+}
+
+function conflictSummary(row: any) {
+  return {
+    conflictId: row.conflict_id,
+    shiftId: row.roster_shift_id,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    shiftStatus: row.shift_status,
+    conflictStatus: row.conflict_status,
+  };
+}
+
+async function loadConflictSummaries(client: PoolClient, tenantId: string, requestId: string) {
+  return (await client.query(
+    `SELECT conflict.id AS conflict_id,conflict.roster_shift_id,conflict.status AS conflict_status,
+       shift.start_time,shift.end_time,shift.status AS shift_status
+     FROM leave_roster_conflicts conflict
+     JOIN roster_shifts shift ON shift.tenant_id=conflict.tenant_id AND shift.id=conflict.roster_shift_id
+     WHERE conflict.tenant_id=$1 AND conflict.leave_request_id=$2
+       AND conflict.status IN ('open','acknowledged')
+     ORDER BY shift.start_time ASC,shift.id ASC`,
+    [tenantId, requestId],
+  )).rows.map(conflictSummary);
+}
+
+async function detectApprovedLeaveConflicts(client: PoolClient, input: {
+  tenantId: string;
+  requestId: string;
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  actorId: string;
+}) {
+  const shifts = (await client.query(
+    `SELECT id,start_time,end_time,status
+     FROM roster_shifts
+     WHERE tenant_id=$1 AND employee_id=$2 AND status='scheduled' AND end_time>NOW()
+       AND start_time < (($4::date + 1)::timestamp AT TIME ZONE 'UTC')
+       AND end_time > ($3::date::timestamp AT TIME ZONE 'UTC')
+     ORDER BY id FOR UPDATE`,
+    [input.tenantId, input.employeeId, input.startDate, input.endDate],
+  )).rows;
+  if (shifts.length === 0) return [];
+  for (const shift of shifts) {
+    await client.query(
+      `INSERT INTO leave_roster_conflicts(tenant_id,leave_request_id,roster_shift_id,status,detected_at)
+       VALUES($1,$2,$3,'open',NOW())
+       ON CONFLICT (tenant_id,leave_request_id,roster_shift_id)
+       DO UPDATE SET status='open',resolved_at=NULL,resolved_by_employee_id=NULL,resolution_note=NULL,updated_at=NOW()`,
+      [input.tenantId, input.requestId, shift.id],
+    );
+  }
+  const actorRosterAuthority = await resolveScopedPermission(client, {
+    tenantId: input.tenantId,
+    actorEmployeeId: input.actorId,
+    permissionKey: 'roster.manage',
+    targetEmployeeId: input.employeeId,
+  });
+  let schedulerEmployeeId = actorRosterAuthority.allowed ? input.actorId : null;
+  if (!schedulerEmployeeId) {
+    const placement = (await client.query(
+      `SELECT employee.team_id,employee.department_id,team.location_id
+       FROM employees employee
+       LEFT JOIN organisation_teams team ON team.tenant_id=employee.tenant_id AND team.id=employee.team_id
+       WHERE employee.tenant_id=$1 AND employee.id=$2`,
+      [input.tenantId, input.employeeId],
+    )).rows[0];
+    const scheduler = await resolveApprovalChain(client, {
+      tenantId: input.tenantId,
+      requestingEmployeeId: input.employeeId,
+      requiredPermissionKey: 'roster.manage',
+      targetTeamId: placement?.team_id,
+      targetDepartmentId: placement?.department_id,
+      targetLocationId: placement?.location_id,
+      excludedEmployeeIds: [input.employeeId],
+    });
+    schedulerEmployeeId = scheduler.approverEmployeeId;
+  }
+  if (schedulerEmployeeId && schedulerEmployeeId !== input.employeeId) {
+    for (const shift of shifts) {
+      await notify(client, {
+        tenantId: input.tenantId,
+        eventType: 'notification.leave_roster_conflict',
+        requestId: input.requestId,
+        employeeId: schedulerEmployeeId,
+        idempotencyKey: `leave-roster-conflict:${input.requestId}:${shift.id}`,
+        extra: { shiftId: shift.id, affectedEmployeeId: input.employeeId, shiftStartTime: shift.start_time, shiftEndTime: shift.end_time, conflictStatus: 'open' },
+      });
+    }
+  }
+  return shifts;
 }
 
 async function requireActiveActor(client: PoolClient, tenantId: string, employeeId: string) {
@@ -144,13 +247,14 @@ async function approvalAccess(client: PoolClient, tenantId: string, actorId: str
   return { canView: view.allowed, canDecide: false, authority: view.allowed ? view : null };
 }
 
-async function notify(client: PoolClient, input: { tenantId: string; eventType: string; requestId: string; employeeId: string; idempotencyKey: string }) {
+async function notify(client: PoolClient, input: { tenantId: string; eventType: string; requestId: string; employeeId: string; idempotencyKey: string; extra?: Record<string, unknown> }) {
   const payload = {
     idempotencyKey: input.idempotencyKey,
     requestId: input.requestId,
     employeeId: input.employeeId,
     notificationKey: 'leave_updates',
     deepLink: { section: 'roster', view: 'leave', requestId: input.requestId },
+    ...(input.extra || {}),
   };
   await client.query(
     `INSERT INTO outbox_events(tenant_id,event_type,payload)
@@ -222,7 +326,10 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
         const where = `tenant_id=$1 AND employee_id=$2 AND ($3::text IS NULL OR status=$3) AND ($4::date IS NULL OR end_date >= $4) AND ($5::date IS NULL OR start_date <= $5)`;
         const requests = (await client.query(
           `SELECT id AS request_id,leave_type,start_date,end_date,reason,status,submitted_at,cancelled_at,approver_employee_id,
-             approval_decided_at,approved_at,rejected_at,version
+             approval_decided_at,approved_at,rejected_at,version,
+             (SELECT count(*)::int FROM leave_roster_conflicts conflict
+               WHERE conflict.tenant_id=leave_requests.tenant_id AND conflict.leave_request_id=leave_requests.id
+                 AND conflict.status IN ('open','acknowledged')) AS conflict_count
            FROM leave_requests WHERE ${where} ORDER BY submitted_at DESC,id DESC LIMIT $6 OFFSET $7`,
           [user.tenantId, user.employeeId, status, fromDate, toDate, pageSize, (currentPage - 1) * pageSize],
         )).rows.map(safeLeave);
@@ -309,7 +416,10 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
         await requireActiveSelfPermission(client, req, 'leave.view.self');
         const request = (await client.query(
           `SELECT id AS request_id,leave_type,start_date,end_date,reason,status,submitted_at,cancelled_at,approver_employee_id,
-             approval_decided_at,approved_at,rejected_at,version
+             approval_decided_at,approved_at,rejected_at,version,
+             (SELECT count(*)::int FROM leave_roster_conflicts conflict
+               WHERE conflict.tenant_id=leave_requests.tenant_id AND conflict.leave_request_id=leave_requests.id
+                 AND conflict.status IN ('open','acknowledged')) AS conflict_count
            FROM leave_requests WHERE tenant_id=$1 AND employee_id=$2 AND id=$3`,
           [user.tenantId, user.employeeId, req.params.requestId],
         )).rows[0];
@@ -319,7 +429,8 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
            FROM leave_request_history WHERE tenant_id=$1 AND leave_request_id=$2 ORDER BY created_at ASC,id ASC`,
           [user.tenantId, req.params.requestId],
         )).rows;
-        return { request: safeLeave(request), history: historyRows };
+        const conflicts = await loadConflictSummaries(client, user.tenantId, req.params.requestId);
+        return { request: { ...safeLeave(request), conflictingShifts: conflicts }, history: historyRows };
       });
       res.json({ success: true, ...result });
     } catch (error) { send(res, error, 'Unable to load leave request.'); }
@@ -429,7 +540,8 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
            FROM leave_request_history WHERE tenant_id=$1 AND leave_request_id=$2 ORDER BY created_at ASC,id ASC`,
           [user.tenantId, req.params.requestId],
         )).rows;
-        return { request: { ...safeApproval(row, true), canDecide: row.status === 'pending' && access.canDecide }, history: historyRows };
+        const conflicts = await loadConflictSummaries(client, user.tenantId, req.params.requestId);
+        return { request: { ...safeApproval(row, true), canDecide: row.status === 'pending' && access.canDecide, conflictingShifts: conflicts }, history: historyRows };
       });
       res.json({ success: true, ...result });
     } catch (error) { send(res, error, 'Unable to load leave request.'); }
@@ -481,11 +593,25 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
             [user.tenantId, current.request_id, user.employeeId, current.version, decision, decisionSource, decisionScopeType, decisionScopeId, note],
           )).rows[0];
           if (!row) throw fail(409, 'Leave request changed. Refresh and try again.');
+          const rosterConflicts = decision === 'approved'
+            ? await detectApprovedLeaveConflicts(client, {
+              tenantId: user.tenantId,
+              requestId: current.request_id,
+              employeeId: current.employee_id,
+              startDate: current.start_date,
+              endDate: current.end_date,
+              actorId: user.employeeId,
+            })
+            : [];
           await history(client, { tenantId: user.tenantId, requestId: current.request_id, actorId: user.employeeId, action: decision, previousStatus: 'pending', nextStatus: decision, metadata: { leaveType: current.leave_type, startDate: current.start_date, endDate: current.end_date, approvalSource: decisionSource, scopeType: decisionScopeType } });
           await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: decision === 'approved' ? 'leave.approved' : 'leave.rejected', targetType: 'leave_request', targetId: current.request_id, metadata: { requestId: current.request_id, employeeId: current.employee_id, approverEmployeeId: user.employeeId, leaveType: current.leave_type, startDate: current.start_date, endDate: current.end_date, approvalSource: decisionSource, scopeType: decisionScopeType, status: decision } });
+          if (rosterConflicts.length > 0) {
+            await history(client, { tenantId: user.tenantId, requestId: current.request_id, actorId: user.employeeId, action: 'schedule_conflict_detected', previousStatus: 'approved', nextStatus: 'approved', metadata: { conflictCount: rosterConflicts.length, status: 'open' } });
+            await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: 'leave.schedule_conflict_detected', targetType: 'leave_request', targetId: current.request_id, metadata: { leaveRequestId: current.request_id, employeeId: current.employee_id, conflictCount: rosterConflicts.length, status: 'open' } });
+          }
           await notify(client, { tenantId: user.tenantId, eventType: decision === 'approved' ? 'notification.leave_approved' : 'notification.leave_rejected', requestId: current.request_id, employeeId: current.employee_id, idempotencyKey: `${decision === 'approved' ? 'leave-approved' : 'leave-rejected'}:${current.request_id}` });
           await client.query('COMMIT');
-          return safeLeave(row);
+          return safeLeave({ ...row, conflict_count: rosterConflicts.length });
         } catch (error) { await client.query('ROLLBACK'); throw error; }
       });
       res.json({ success: true, request });
