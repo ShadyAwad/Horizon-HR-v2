@@ -17,6 +17,7 @@ const rolesPanel = await readFile('src/components/organisation/RolesPermissionsP
 const languageContext = await readFile('src/lib/LanguageContext.tsx', 'utf8');
 const delegationRoutes = await readFile('src/server/organisation/delegation-routes.ts', 'utf8');
 const approvalChain = await readFile('src/server/organisation/approval-chain.ts', 'utf8');
+const delegationsPanel = await readFile('src/components/organisation/DelegationsPanel.tsx', 'utf8');
 
 const permissionDefinitions = listPermissionDefinitions();
 assert.ok(getPermissionDefinition('roles.view'));
@@ -202,4 +203,12 @@ assert.match(approvalChain, /reporting_chain/);
 assert.match(approvalChain, /No eligible approver configured/);
 assert.match(approvalChain, /is_active=true AND employment_status='active'/);
 assert.match(approvalChain, /excludedEmployeeIds/);
-console.log('Organisation foundation checks passed: 164');
+assert.match(organisationPanel, /DelegationsPanel/);
+assert.match(delegationsPanel, /\/api\/hr\/organisation\/delegations/);
+assert.match(delegationsPanel, /delegatable && !permission\.protected/);
+assert.match(delegationsPanel, /90 \* 86400000/);
+assert.match(delegationsPanel, /scopeType/);
+assert.match(delegationsPanel, /aria-modal="true"/);
+assert.match(delegationsPanel, /event\.key === 'Escape'/);
+assert.match(delegationsPanel, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+console.log('Organisation foundation checks passed: 172');
