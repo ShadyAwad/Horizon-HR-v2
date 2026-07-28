@@ -47,6 +47,7 @@ const PerformancePanel = lazy(() => import('../components/performance/Performanc
 const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
 const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
 const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwapApprovalsPanel').then((module) => ({ default: module.ShiftSwapApprovalsPanel })));
+const LeaveWorkspace = lazy(() => import('../components/roster/LeaveWorkspace').then((module) => ({ default: module.LeaveWorkspace })));
 const LocationsPanel = lazy(() => import('../components/locations/LocationsPanel').then((module) => ({ default: module.LocationsPanel })));
 
 type DashboardNetworkInformation = {
@@ -4984,7 +4985,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         ['leave', t('dash.applyLeave')],
                       ] as Array<[typeof rosterSubview, string]>).map(([view, label]) => <button key={view} type="button" role="tab" aria-selected={rosterSubview === view} tabIndex={rosterSubview === view ? 0 : -1} onClick={() => setRosterSubview(view)} className={cn('min-h-10 shrink-0 rounded px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterSubview === view ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/60 dark:hover:text-emerald-100')}>{label}</button>)}
                     </div>
-                    {rosterSubview === 'leave' && <div role="tabpanel" className="border-t border-emerald-500/10 p-4"><p className="text-sm text-slate-600 dark:text-emerald-100/70">{lang === 'ar' ? 'ابدأ طلب إجازة جديداً. ستظل بيانات الإجازة محمية في سير العمل الحالي.' : 'Start a leave request using the existing protected leave workflow.'}</p></div>}
+                    {rosterSubview === 'leave' && (
+                      <div role="tabpanel">
+                        <Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}>
+                          <LeaveWorkspace
+                            onOpenSchedule={() => setRosterSubview('schedule')}
+                            onDataChanged={() => {
+                              void refreshAttentionCounts();
+                              void loadRosterShifts();
+                            }}
+                          />
+                        </Suspense>
+                      </div>
+                    )}
                     {rosterSubview === 'swaps' && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapsPanel employeeId={user.id} /></Suspense></div>}
                     {rosterSubview === 'approvals' && canApproveShiftSwaps && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapApprovalsPanel /></Suspense></div>}
                   </section>
