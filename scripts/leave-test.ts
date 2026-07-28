@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [migration, routes, registry, audit, server, packageJson] = await Promise.all([
+const [migration, approvalMigration, routes, resolver, scopedPermissions, registry, audit, server, packageJson] = await Promise.all([
   readFile('src/db/migrations/20260729_add_leave_self_service.sql', 'utf8'),
+  readFile('src/db/migrations/20260729_add_leave_approval_context.sql', 'utf8'),
   readFile('src/server/leave/leave-routes.ts', 'utf8'),
+  readFile('src/server/organisation/approval-chain.ts', 'utf8'),
+  readFile('src/server/organisation/scoped-permissions.ts', 'utf8'),
   readFile('src/server/organisation/permission-registry.ts', 'utf8'),
   readFile('src/server/audit/audit-events.ts', 'utf8'),
   readFile('server.ts', 'utf8'),
@@ -24,9 +27,29 @@ assert.match(migration, /leave\.request\.self/);
 assert.match(migration, /leave\.view\.self/);
 assert.match(migration, /leave\.cancel\.self/);
 
+assert.match(approvalMigration, /BEGIN;/);
+assert.match(approvalMigration, /COMMIT;/);
+assert.match(approvalMigration, /approver_employee_id UUID/);
+assert.match(approvalMigration, /approval_source VARCHAR\(40\)/);
+assert.match(approvalMigration, /approval_scope_type VARCHAR\(30\)/);
+assert.match(approvalMigration, /approval_scope_id UUID/);
+assert.match(approvalMigration, /approval_resolved_at TIMESTAMPTZ/);
+assert.match(approvalMigration, /approval_decided_at TIMESTAMPTZ/);
+assert.match(approvalMigration, /approved_at TIMESTAMPTZ/);
+assert.match(approvalMigration, /rejected_at TIMESTAMPTZ/);
+assert.match(approvalMigration, /REFERENCES employees\(id, tenant_id\)/);
+assert.match(approvalMigration, /leave_requests_approver_pending_idx/);
+assert.match(approvalMigration, /leave_requests_pending_actionable_idx/);
+assert.match(approvalMigration, /leave\.view\.scoped/);
+assert.match(approvalMigration, /leave\.approve/);
+assert.match(approvalMigration, /leave\.manage/);
+
 assert.match(registry, /definePermission\('leave\.request\.self'/);
 assert.match(registry, /definePermission\('leave\.view\.self'/);
 assert.match(registry, /definePermission\('leave\.cancel\.self'/);
+assert.match(registry, /definePermission\('leave\.view\.scoped'/);
+assert.match(registry, /definePermission\('leave\.approve'/);
+assert.match(registry, /definePermission\('leave\.manage'.*companyScope, false/);
 assert.match(server, /registerLeaveRoutes\(app, \{ standardAuth: demoAuth/);
 assert.match(routes, /\/api\/me\/leave-requests/);
 assert.match(routes, /\/api\/me\/leave-requests\/:requestId/);
@@ -44,8 +67,60 @@ assert.match(routes, /Only pending leave requests may be cancelled/);
 assert.match(routes, /leave_request_history/);
 assert.match(routes, /recordAuditEvent/);
 assert.doesNotMatch(routes, /grievance/);
+assert.match(routes, /resolveApprovalChain/);
+assert.match(routes, /requiredPermissionKey: 'leave\.approve'/);
+assert.match(routes, /excludedEmployeeIds: \[user\.employeeId\]/);
+assert.match(resolver, /direct_manager/);
+assert.match(resolver, /team_leader/);
+assert.match(resolver, /department_head/);
+assert.match(resolver, /reporting_chain/);
+assert.match(resolver, /scoped_role/);
+assert.match(resolver, /authority\.source === 'delegation'/);
+assert.match(resolver, /is_active=true AND employment_status='active'/);
+assert.match(resolver, /candidateId === input\.requestingEmployeeId/);
+assert.match(scopedPermissions, /delegation\.status='active'/);
+assert.match(scopedPermissions, /delegation\.revoked_at IS NULL/);
+assert.match(scopedPermissions, /delegation\.starts_at<=NOW\(\)/);
+assert.match(scopedPermissions, /delegation\.expires_at>NOW\(\)/);
+assert.match(routes, /notification\.leave_approval_required/);
+assert.match(routes, /notification\.leave_approver_unconfigured/);
+assert.match(routes, /leave-approval-required:\$\{row\.request_id\}/);
+assert.match(routes, /leave-approver-unconfigured:\$\{requestId\}/);
+assert.match(routes, /\/api\/hr\/leave-requests'/);
+assert.match(routes, /\/api\/hr\/leave-requests\/:requestId'/);
+assert.match(routes, /\/api\/hr\/leave-requests\/:requestId\/approve/);
+assert.match(routes, /\/api\/hr\/leave-requests\/:requestId\/reject/);
+assert.match(routes, /leave\.view\.scoped/);
+assert.match(routes, /leave\.manage/);
+assert.match(routes, /targetEmployeeId: request\.employee_id/);
+assert.match(routes, /request\.employee_id === actorId/);
+assert.match(routes, /throw fail\(404, 'Leave request not found\.'\)/);
+assert.match(routes, /actionableOnly/);
+assert.match(routes, /departmentId/);
+assert.match(routes, /teamId/);
+assert.match(routes, /locationId/);
+assert.match(routes, /search/);
+assert.match(routes, /visible\.slice\(offset, offset \+ pageSize\)/);
+assert.match(routes, /FOR UPDATE OF request/);
+assert.match(routes, /current\.status !== 'pending'/);
+assert.match(routes, /current\.version !== req\.body\.expectedVersion/);
+assert.match(routes, /status='pending' AND version=\$4/);
+assert.match(routes, /version=version\+1/);
+assert.match(routes, /status='approved'/);
+assert.match(routes, /notification\.leave_approved/);
+assert.match(routes, /notification\.leave_rejected/);
+assert.match(routes, /leave-approved/);
+assert.match(routes, /leave-rejected/);
+assert.match(routes, /payload->>'idempotencyKey'/);
+assert.match(routes, /deepLink: \{ section: 'roster', view: 'leave'/);
+assert.doesNotMatch(routes, /UPDATE roster_shifts/);
 assert.match(audit, /'leave\.requested'/);
 assert.match(audit, /'leave\.cancelled'/);
+assert.match(audit, /'leave\.approver_resolved'/);
+assert.match(audit, /'leave\.approver_unconfigured'/);
+assert.match(audit, /'leave\.approved'/);
+assert.match(audit, /'leave\.rejected'/);
+assert.doesNotMatch(audit.match(/'leave\.approved': \[[^\]]*\]/)?.[0] || '', /reason|note/);
 assert.match(packageJson, /"test:leave"/);
 
-console.log('Leave self-service contracts passed: 30');
+console.log('Leave self-service and scoped approval contracts passed: 83');

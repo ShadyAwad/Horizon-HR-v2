@@ -357,6 +357,9 @@ VALUES
     ('leave.request.self', 'Request personal leave', 'Create personal leave requests.'),
     ('leave.view.self', 'View personal leave', 'View personal leave request history.'),
     ('leave.cancel.self', 'Cancel personal leave', 'Cancel pending personal leave requests.'),
+    ('leave.view.scoped', 'View scoped leave requests', 'View leave requests within an authorised employee scope.'),
+    ('leave.approve', 'Approve scoped leave requests', 'Approve or reject leave requests within an authorised employee scope.'),
+    ('leave.manage', 'Manage tenant leave', 'Manage leave requests across an explicitly authorised company scope.'),
     ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
     ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
     ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
@@ -792,6 +795,15 @@ CREATE TABLE IF NOT EXISTS leave_requests (
     version INTEGER NOT NULL DEFAULT 1,
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     cancelled_at TIMESTAMPTZ,
+    approver_employee_id UUID,
+    approval_source VARCHAR(40),
+    approval_scope_type VARCHAR(30),
+    approval_scope_id UUID,
+    approval_resolved_at TIMESTAMPTZ,
+    approval_decided_at TIMESTAMPTZ,
+    approval_note TEXT,
+    approved_at TIMESTAMPTZ,
+    rejected_at TIMESTAMPTZ,
 
     status VARCHAR(50) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
@@ -805,6 +817,11 @@ CREATE TABLE IF NOT EXISTS leave_requests (
         FOREIGN KEY (employee_id, tenant_id)
         REFERENCES employees(id, tenant_id)
         ON DELETE CASCADE,
+
+    CONSTRAINT leave_requests_approver_tenant_fk
+        FOREIGN KEY (approver_employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE SET NULL (approver_employee_id),
 
     CONSTRAINT leave_requests_date_order_chk
         CHECK (end_date >= start_date),
@@ -832,6 +849,16 @@ ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE leave_requests
 ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approver_employee_id UUID;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_source VARCHAR(40);
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_scope_type VARCHAR(30);
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_scope_id UUID;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_resolved_at TIMESTAMPTZ;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_decided_at TIMESTAMPTZ;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approval_note TEXT;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+
 ALTER TABLE leave_requests
 ALTER COLUMN reason DROP NOT NULL;
 
@@ -845,6 +872,29 @@ BEGIN
     END IF;
 END $$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leave_requests_approver_tenant_fk') THEN
+        ALTER TABLE leave_requests ADD CONSTRAINT leave_requests_approver_tenant_fk
+        FOREIGN KEY (approver_employee_id, tenant_id)
+        REFERENCES employees(id, tenant_id) ON DELETE SET NULL (approver_employee_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leave_requests_approval_source_chk') THEN
+        ALTER TABLE leave_requests ADD CONSTRAINT leave_requests_approval_source_chk CHECK (
+            approval_source IS NULL OR approval_source IN ('direct_manager','team_leader','department_head','reporting_chain','scoped_role','delegation','hr_admin')
+        );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leave_requests_approval_scope_chk') THEN
+        ALTER TABLE leave_requests ADD CONSTRAINT leave_requests_approval_scope_chk CHECK (
+            approval_scope_type IS NULL OR approval_scope_type IN ('company','location','department','team','direct_reports','self')
+        );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'leave_requests_approval_note_length_chk') THEN
+        ALTER TABLE leave_requests ADD CONSTRAINT leave_requests_approval_note_length_chk
+        CHECK (approval_note IS NULL OR length(approval_note) <= 1000);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS leave_requests_roster_conflict_idx
 ON leave_requests(tenant_id, employee_id, status, leave_type, start_date, end_date);
 
@@ -854,6 +904,20 @@ ON leave_requests(tenant_id, employee_id, submitted_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS leave_requests_self_service_overlap_idx
 ON leave_requests(tenant_id, employee_id, start_date, end_date)
 WHERE status IN ('pending', 'approved');
+
+CREATE INDEX IF NOT EXISTS leave_requests_approver_pending_idx
+ON leave_requests(tenant_id, approver_employee_id, submitted_at DESC)
+WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS leave_requests_pending_actionable_idx
+ON leave_requests(tenant_id, submitted_at DESC, id DESC)
+WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS leave_requests_status_submitted_idx
+ON leave_requests(tenant_id, status, submitted_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS leave_requests_tenant_dates_idx
+ON leave_requests(tenant_id, start_date, end_date);
 
 ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
 
