@@ -221,6 +221,12 @@ const EN: Copy = {
   delegatedAuthority: 'Delegated authority',
   scopedRole: 'Scoped role',
   hrAuthority: 'HR authority',
+  department: 'Department',
+  team: 'Team',
+  location: 'Location',
+  allDepartments: 'All available departments',
+  allTeams: 'All available teams',
+  allLocations: 'All available locations',
 };
 
 const AR: Copy = {
@@ -336,6 +342,12 @@ const AR: Copy = {
   delegatedAuthority: 'صلاحية مفوضة',
   scopedRole: 'دور محدد النطاق',
   hrAuthority: 'صلاحية الموارد البشرية',
+  department: 'القسم',
+  team: 'الفريق',
+  location: 'الموقع',
+  allDepartments: 'كل الأقسام المتاحة',
+  allTeams: 'كل الفرق المتاحة',
+  allLocations: 'كل المواقع المتاحة',
 };
 
 const LEAVE_TYPES = ['annual', 'sick', 'unpaid', 'personal'] as const;
@@ -488,6 +500,12 @@ export function LeaveWorkspace({
   const [approvalSearch, setApprovalSearch] = useState('');
   const [approvalFromDate, setApprovalFromDate] = useState('');
   const [approvalToDate, setApprovalToDate] = useState('');
+  const [approvalDepartmentId, setApprovalDepartmentId] = useState('');
+  const [approvalTeamId, setApprovalTeamId] = useState('');
+  const [approvalLocationId, setApprovalLocationId] = useState('');
+  const [approvalDepartments, setApprovalDepartments] = useState<Array<{ id: string; name: string }>>([]);
+  const [approvalTeams, setApprovalTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [approvalLocations, setApprovalLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [actionableOnly, setActionableOnly] = useState(true);
   const [approvalDetail, setApprovalDetail] = useState<ApprovalDetail | null>(null);
   const [approvalDetailLoading, setApprovalDetailLoading] = useState(false);
@@ -596,8 +614,11 @@ export function LeaveWorkspace({
     if (approvalSearch.trim()) query.set('search', approvalSearch.trim());
     if (approvalFromDate) query.set('fromDate', approvalFromDate);
     if (approvalToDate) query.set('toDate', approvalToDate);
+    if (approvalDepartmentId) query.set('departmentId', approvalDepartmentId);
+    if (approvalTeamId) query.set('teamId', approvalTeamId);
+    if (approvalLocationId) query.set('locationId', approvalLocationId);
     return query;
-  }, [actionableOnly, approvalFromDate, approvalLeaveType, approvalPage, approvalSearch, approvalStatus, approvalToDate]);
+  }, [actionableOnly, approvalDepartmentId, approvalFromDate, approvalLeaveType, approvalLocationId, approvalPage, approvalSearch, approvalStatus, approvalTeamId, approvalToDate]);
 
   const loadApprovals = useCallback(async (probe = false) => {
     if (!probe) setApprovalLoading(true);
@@ -634,6 +655,37 @@ export function LeaveWorkspace({
   useEffect(() => {
     void loadApprovals(true);
   }, [loadApprovals]);
+
+  useEffect(() => {
+    if (!approvalVisible) return;
+    let cancelled = false;
+    const loadFilterOptions = async () => {
+      try {
+        const results = await Promise.allSettled([
+          apiFetch('/api/hr/organisation/departments'),
+          apiFetch('/api/hr/organisation/teams'),
+          apiFetch('/api/company-locations'),
+        ]);
+        if (cancelled) return;
+        for (const [index, result] of results.entries()) {
+          if (result.status !== 'fulfilled' || !result.value.ok) continue;
+          const data = await result.value.json();
+          if (cancelled) return;
+          if (index === 0) {
+            setApprovalDepartments((data.departments || []).filter((item: { isActive?: boolean }) => item.isActive !== false).map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })));
+          } else if (index === 1) {
+            setApprovalTeams((data.teams || []).filter((item: { isActive?: boolean }) => item.isActive !== false).map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })));
+          } else {
+            setApprovalLocations((data.locations || []).filter((item: { is_active?: boolean }) => item.is_active !== false).map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })));
+          }
+        }
+      } catch {
+        // Scoped approval remains usable when optional filter metadata is unavailable.
+      }
+    };
+    void loadFilterOptions();
+    return () => { cancelled = true; };
+  }, [approvalVisible]);
 
   useEffect(() => {
     if (view === 'approvals' && approvalVisible) void loadApprovals();
@@ -954,8 +1006,35 @@ export function LeaveWorkspace({
               {copy.toDate}
               <input type="date" value={approvalToDate} onChange={(event) => setApprovalToDate(event.target.value)} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
             </label>
+            {approvalDepartments.length > 0 && (
+              <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+                {copy.department}
+                <select value={approvalDepartmentId} onChange={(event) => { setApprovalDepartmentId(event.target.value); setApprovalPage(1); }} className="stanza-select mt-1 w-full">
+                  <option value="">{copy.allDepartments}</option>
+                  {approvalDepartments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            )}
+            {approvalTeams.length > 0 && (
+              <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+                {copy.team}
+                <select value={approvalTeamId} onChange={(event) => { setApprovalTeamId(event.target.value); setApprovalPage(1); }} className="stanza-select mt-1 w-full">
+                  <option value="">{copy.allTeams}</option>
+                  {approvalTeams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            )}
+            {approvalLocations.length > 0 && (
+              <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+                {copy.location}
+                <select value={approvalLocationId} onChange={(event) => { setApprovalLocationId(event.target.value); setApprovalPage(1); }} className="stanza-select mt-1 w-full">
+                  <option value="">{copy.allLocations}</option>
+                  {approvalLocations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            )}
             <button type="button" onClick={() => { setApprovalPage(1); void loadApprovals(); }} className="min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white">{copy.applyFilters}</button>
-            <button type="button" onClick={() => { setApprovalSearch(''); setApprovalStatus('pending'); setApprovalLeaveType(''); setApprovalFromDate(''); setApprovalToDate(''); setActionableOnly(true); setApprovalPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.clearFilters}</button>
+            <button type="button" onClick={() => { setApprovalSearch(''); setApprovalStatus('pending'); setApprovalLeaveType(''); setApprovalFromDate(''); setApprovalToDate(''); setApprovalDepartmentId(''); setApprovalTeamId(''); setApprovalLocationId(''); setActionableOnly(true); setApprovalPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.clearFilters}</button>
           </div>
           {approvalError && (
             <div role="alert" className="mt-4 flex flex-col gap-3 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
