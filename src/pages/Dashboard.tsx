@@ -148,6 +148,18 @@ type ShiftRow = {
   breakStart: string;
   breakEnd: string;
   type: string;
+  approvedLeave?: boolean;
+  leaveRequestId?: string | null;
+  leaveType?: string | null;
+  leaveStartDate?: string | null;
+  leaveEndDate?: string | null;
+  conflictCount?: number;
+  hasRosterConflict?: boolean;
+};
+
+type LeaveDeepLink = {
+  view: 'requests' | 'approvals';
+  requestId: string | null;
 };
 
 type RosterEmployee = {
@@ -769,6 +781,8 @@ function useGeolocation() {
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
+  const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
+  const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1289,6 +1303,52 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   );
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
+  useEffect(() => {
+    type NotificationNavigation = {
+      section?: string;
+      view?: string;
+      leaveView?: string;
+      requestId?: string;
+      eventType?: string;
+    };
+    const openLeaveNotification = (navigation: NotificationNavigation) => {
+      if (navigation.section !== 'roster') return;
+      if (navigation.view === 'schedule') {
+        setActiveTab('roster');
+        setRosterSubview('schedule');
+        setLeaveDeepLink(null);
+        return;
+      }
+      if (navigation.view !== 'leave') return;
+      const requestId = isUuidString(navigation.requestId) ? navigation.requestId! : null;
+      const approvalEvent = navigation.eventType === 'notification.leave_approval_required';
+      const requestedView = navigation.leaveView === 'approvals' || approvalEvent ? 'approvals' : 'requests';
+      setActiveTab('roster');
+      setRosterSubview('leave');
+      setLeaveDeepLink({ view: requestedView, requestId });
+    };
+    const openFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      openLeaveNotification({
+        section: params.get('section') || undefined,
+        view: params.get('view') || undefined,
+        leaveView: params.get('leaveView') || undefined,
+        requestId: params.get('requestId') || undefined,
+        eventType: params.get('eventType') || undefined,
+      });
+    };
+    const onNotificationNavigation = (event: Event) => {
+      openLeaveNotification((event as CustomEvent<NotificationNavigation>).detail || {});
+    };
+    openFromUrl();
+    window.addEventListener('popstate', openFromUrl);
+    window.addEventListener('stanza:notification-deep-link', onNotificationNavigation);
+    return () => {
+      window.removeEventListener('popstate', openFromUrl);
+      window.removeEventListener('stanza:notification-deep-link', onNotificationNavigation);
+    };
+  }, []);
+
   const displayRole = (role: AuthUser['role']) => {
     if (role === 'hr_admin') return t('enum.hrAdmin');
     if (role === 'manager') return t('enum.manager');
@@ -1624,7 +1684,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       const response = await fetch(apiUrl(`/api/roster/shifts?${query.toString()}`), { headers: rosterHeaders() });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load roster shifts.');
-      const shifts = (data.shifts as Array<{ id: string; employee_id: string; start_time: string; end_time: string; notes?: string | null }>).map((shift) => {
+      const shifts = (data.shifts as Array<{
+        id: string;
+        employee_id: string;
+        start_time: string;
+        end_time: string;
+        notes?: string | null;
+        approved_leave?: boolean;
+        leave_request_id?: string | null;
+        leave_type?: string | null;
+        leave_start_date?: string | null;
+        leave_end_date?: string | null;
+        conflict_count?: number;
+        has_roster_conflict?: boolean;
+      }>).map((shift) => {
         const start = new Date(shift.start_time);
         const end = new Date(shift.end_time);
         return {
@@ -1637,6 +1710,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           breakStart: '',
           breakEnd: '',
           type: shift.notes || 'Scheduled',
+          approvedLeave: Boolean(shift.approved_leave),
+          leaveRequestId: shift.leave_request_id || null,
+          leaveType: shift.leave_type || null,
+          leaveStartDate: shift.leave_start_date || null,
+          leaveEndDate: shift.leave_end_date || null,
+          conflictCount: Number(shift.conflict_count || 0),
+          hasRosterConflict: Boolean(shift.has_roster_conflict),
         };
       });
       setSchedule(shifts);
@@ -2962,18 +3042,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   };
 
   const openLeaveRequestFlow = () => {
-    setActiveTab('profile');
+    setActiveTab('roster');
+    setRosterSubview('leave');
     setShowPayrollPanel(false);
-    setShowGrievancesPanel(true);
+    setShowGrievancesPanel(false);
     setShowResignationsPanel(false);
-    setGrievanceMessageType('success');
-    setGrievanceMessage(t('dash.leaveRequestOpened'));
-    setGrievanceForm({
-      title: t('enum.leaveRequest'),
-      category: 'leave_request',
-      priority: 'normal',
-      description: '',
-    });
+    setLeaveDeepLink(null);
+    setLeaveRequestSignal((current) => current + 1);
   };
 
   const submitGrievance = async () => {
@@ -4992,6 +5067,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       <div role="tabpanel">
                         <Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}>
                           <LeaveWorkspace
+                            openRequestSignal={leaveRequestSignal}
+                            initialLeaveView={leaveDeepLink?.view}
+                            initialRequestId={leaveDeepLink?.requestId}
                             hasApproverAuthorityHint={hasLeaveApproverAuthority}
                             onOpenSchedule={() => setRosterSubview('schedule')}
                             onDataChanged={() => {
@@ -5099,7 +5177,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </thead>
                            <tbody className="text-sm">
                              {visibleSchedule.map((s) => (
-                               <tr key={s.date} className="border-b border-emerald-500/10 dark:border-emerald-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors group">
+                               <tr
+                                 key={s.date}
+                                 className={cn(
+                                   'group border-b border-emerald-500/10 transition-colors hover:bg-emerald-50 dark:border-emerald-500/10 dark:hover:bg-emerald-950/20',
+                                   s.approvedLeave && 'bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]',
+                                   s.hasRosterConflict && 'bg-amber-500/[0.08] dark:bg-amber-500/[0.08]',
+                                 )}
+                               >
                                  <td className="p-3">
                                    <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></div>
                                  </td>
@@ -5150,13 +5235,42 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                        className="w-36 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                      />
                                    ) : (
-                                     <span className="opacity-80">{displayShiftType(s.type)}</span>
+                                     <div>
+                                       <span className="opacity-80">{displayShiftType(s.type)}</span>
+                                       {s.approvedLeave && (
+                                         <p className="mt-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-200">
+                                           {lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave'}
+                                           {s.leaveType ? ` · ${displayEnum(s.leaveType)}` : ''}
+                                         </p>
+                                       )}
+                                     </div>
                                    )}
                                  </td>
                                  <td className={cn("p-3", isRtl ? "text-left" : "text-right")}>
-                                   <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", !s.shiftStart || !s.shiftEnd ? "bg-neutral-100 dark:bg-black/45 text-neutral-500 dark:text-emerald-100/45" : "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30")}>
-                                     {!s.shiftStart || !s.shiftEnd ? t('dash.abstained') : t('dash.scheduled')}
-                                   </span>
+                                   <div className={cn('flex flex-wrap gap-1', isRtl ? 'justify-start' : 'justify-end')}>
+                                     <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", !s.shiftStart || !s.shiftEnd ? "bg-neutral-100 dark:bg-black/45 text-neutral-500 dark:text-emerald-100/45" : "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30")}>
+                                       {!s.shiftStart || !s.shiftEnd ? t('dash.abstained') : t('dash.scheduled')}
+                                     </span>
+                                     {s.approvedLeave && (
+                                       <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold', s.hasRosterConflict ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200' : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200')}>
+                                         {s.hasRosterConflict
+                                           ? (lang === 'ar' ? 'تعارض إجازة' : 'Leave conflict')
+                                           : (lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave')}
+                                       </span>
+                                     )}
+                                   </div>
+                                   {s.approvedLeave && s.leaveRequestId && selectedRosterEmployeeId === user.id && (
+                                     <button
+                                       type="button"
+                                       onClick={() => {
+                                         setLeaveDeepLink({ view: 'requests', requestId: s.leaveRequestId || null });
+                                         setRosterSubview('leave');
+                                       }}
+                                       className="mt-2 min-h-8 rounded px-2 text-[10px] font-bold text-emerald-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-200"
+                                     >
+                                       {lang === 'ar' ? 'تفاصيل الإجازة' : 'Leave details'}
+                                     </button>
+                                   )}
                                  </td>
                                </tr>
                              ))}
