@@ -53,6 +53,7 @@ import { registerAssetRoutes } from './src/server/assets/asset-routes';
 import { registerPerformanceRoutes } from './src/server/performance/performance-routes';
 import { registerOrganisationRoutes } from './src/server/organisation/organisation-routes';
 import { registerShiftSwapRoutes } from './src/server/roster/shift-swap-routes';
+import { registerLocationRoutes } from './src/server/locations/location-routes';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
@@ -1227,6 +1228,7 @@ async function seedTenantRolesAndPermissions(
       VALUES
         ('locations.read', 'Read locations', 'View company locations.'),
         ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
+        ('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.'),
         ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
         ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
         ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
@@ -2120,6 +2122,7 @@ async function startServer() {
     rateLimiter: organisationMutationRateLimiter,
   });
   registerShiftSwapRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
+  registerLocationRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
 
   app.post('/api/assets/:assetId/evidence', assetEvidenceRateLimiter, demoAuth, async (req, res) => {
     const { assetId } = req.params;

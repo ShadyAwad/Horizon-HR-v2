@@ -345,6 +345,7 @@ INSERT INTO tenant_permissions (permission_key, label, description)
 VALUES
     ('locations.read', 'Read locations', 'View company locations.'),
     ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
+    ('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.'),
     ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
     ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
     ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
@@ -615,6 +616,7 @@ CREATE TABLE IF NOT EXISTS company_locations (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
     name VARCHAR(255) NOT NULL,
+    code VARCHAR(60),
     location_type VARCHAR(50) NOT NULL DEFAULT 'branch',
 
     address TEXT,
@@ -627,6 +629,8 @@ CREATE TABLE IF NOT EXISTS company_locations (
 
     is_primary BOOLEAN NOT NULL DEFAULT false,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    created_by UUID,
+    archived_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -638,7 +642,12 @@ CREATE TABLE IF NOT EXISTS company_locations (
         CHECK (radius_meters BETWEEN 25 AND 5000),
 
     CONSTRAINT company_locations_type_chk
-        CHECK (location_type IN ('headquarters', 'branch', 'warehouse', 'remote_site', 'other'))
+        CHECK (location_type IN ('headquarters', 'branch', 'warehouse', 'remote_site', 'other')),
+
+    CONSTRAINT company_locations_created_by_tenant_fk
+        FOREIGN KEY (created_by, tenant_id)
+        REFERENCES employees(id, tenant_id)
+        ON DELETE SET NULL (created_by)
 );
 
 CREATE INDEX IF NOT EXISTS company_locations_tenant_active_idx
@@ -650,6 +659,12 @@ ON company_locations(tenant_id, is_primary);
 CREATE INDEX IF NOT EXISTS company_locations_boundary_gix
 ON company_locations
 USING GIST (boundary);
+
+CREATE UNIQUE INDEX IF NOT EXISTS company_locations_active_name_unique
+ON company_locations(tenant_id, lower(name)) WHERE is_active;
+
+CREATE UNIQUE INDEX IF NOT EXISTS company_locations_active_code_unique
+ON company_locations(tenant_id, lower(code)) WHERE is_active AND code IS NOT NULL;
 
 ALTER TABLE company_locations ENABLE ROW LEVEL SECURITY;
 
