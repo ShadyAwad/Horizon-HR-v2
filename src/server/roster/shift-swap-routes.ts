@@ -278,6 +278,50 @@ export function registerShiftSwapRoutes(app: express.Express, deps: { standardAu
     } catch (error) { send(res, error, `Unable to ${decision} shift swap.`); }
   });
 
+  app.get('/api/me/shift-swaps/eligible-shifts', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      const shifts = await withTenant(user.tenantId, async (client) => (await client.query(
+        `SELECT shift.id,shift.start_time AS "startTime",shift.end_time AS "endTime",team.name AS "teamName",location.name AS "locationName"
+         FROM roster_shifts shift
+         LEFT JOIN organisation_teams team ON team.tenant_id=shift.tenant_id AND team.id=(SELECT team_id FROM employees WHERE tenant_id=shift.tenant_id AND id=shift.employee_id)
+         LEFT JOIN company_locations location ON location.tenant_id=team.tenant_id AND location.id=team.location_id
+         WHERE shift.tenant_id=$1 AND shift.employee_id=$2 AND shift.status='scheduled' AND shift.start_time>NOW()
+           AND NOT EXISTS (SELECT 1 FROM shift_swap_requests request WHERE request.tenant_id=shift.tenant_id AND (request.requester_shift_id=shift.id OR request.target_shift_id=shift.id) AND request.status IN ('pending_target','pending_approval'))
+         ORDER BY shift.start_time LIMIT 100`, [user.tenantId, user.employeeId])).rows);
+      res.json({ success: true, shifts });
+    } catch (error) { send(res, error, 'Unable to load eligible shifts.'); }
+  });
+
+  app.get('/api/me/shift-swaps/:shiftId/eligible-employees', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      if (!uuid(req.params.shiftId)) throw fail(400, 'Shift is invalid.');
+      const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
+      const employees = await withTenant(user.tenantId, async (client) => {
+        const own = (await client.query(`SELECT 1 FROM roster_shifts WHERE tenant_id=$1 AND id=$2 AND employee_id=$3 AND status='scheduled' AND start_time>NOW()`, [user.tenantId, req.params.shiftId, user.employeeId])).rows[0];
+        if (!own) throw fail(404, 'Eligible shift not found.');
+        return (await client.query(`SELECT employee.id,employee.full_name AS "fullName",team.name AS "teamName" FROM employees employee LEFT JOIN organisation_teams team ON team.tenant_id=employee.tenant_id AND team.id=employee.team_id WHERE employee.tenant_id=$1 AND employee.id<>$2 AND employee.is_active=true AND employee.employment_status='active' AND ($3='' OR employee.full_name ILIKE '%' || $3 || '%') AND EXISTS (SELECT 1 FROM roster_shifts shift WHERE shift.tenant_id=employee.tenant_id AND shift.employee_id=employee.id AND shift.status='scheduled' AND shift.start_time>NOW() AND NOT EXISTS (SELECT 1 FROM shift_swap_requests request WHERE request.tenant_id=shift.tenant_id AND (request.requester_shift_id=shift.id OR request.target_shift_id=shift.id) AND request.status IN ('pending_target','pending_approval'))) ORDER BY employee.full_name LIMIT 50`, [user.tenantId, user.employeeId, search])).rows;
+      });
+      res.json({ success: true, employees });
+    } catch (error) { send(res, error, 'Unable to load eligible employees.'); }
+  });
+
+  app.get('/api/me/shift-swaps/eligible-target-shifts', standardAuth, async (req, res) => {
+    try {
+      const user = req.authUser!;
+      const employeeId = req.query.employeeId;
+      const requesterShiftId = req.query.requesterShiftId;
+      if (!uuid(employeeId) || !uuid(requesterShiftId) || employeeId === user.employeeId) throw fail(400, 'Target shift selection is invalid.');
+      const shifts = await withTenant(user.tenantId, async (client) => {
+        const own = (await client.query(`SELECT 1 FROM roster_shifts WHERE tenant_id=$1 AND id=$2 AND employee_id=$3 AND status='scheduled' AND start_time>NOW()`, [user.tenantId, requesterShiftId, user.employeeId])).rows[0];
+        if (!own) throw fail(404, 'Eligible shift not found.');
+        return (await client.query(`SELECT id,start_time AS "startTime",end_time AS "endTime" FROM roster_shifts shift WHERE tenant_id=$1 AND employee_id=$2 AND status='scheduled' AND start_time>NOW() AND NOT EXISTS (SELECT 1 FROM shift_swap_requests request WHERE request.tenant_id=shift.tenant_id AND (request.requester_shift_id=shift.id OR request.target_shift_id=shift.id) AND request.status IN ('pending_target','pending_approval')) ORDER BY start_time LIMIT 100`, [user.tenantId, employeeId])).rows;
+      });
+      res.json({ success: true, shifts });
+    } catch (error) { send(res, error, 'Unable to load eligible target shifts.'); }
+  });
+
   app.get('/api/me/shift-swaps/:swapId', standardAuth, async (req, res) => {
     try {
       const user = req.authUser!;

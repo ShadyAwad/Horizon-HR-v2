@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, u
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -45,6 +45,7 @@ const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
 const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
+const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -763,7 +764,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'shiftSwaps'>('geofence');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -4327,6 +4328,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        {t('dash.roster')}
                        <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
+                    <button
+                       type="button"
+                       onClick={() => { setActiveTab('shiftSwaps'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
+                       className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'shiftSwaps' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                       aria-label={lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
+                    >
+                       <RefreshCw className="w-4 h-4 hidden sm:block" />
+                       {lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
+                    </button>
                     {canViewHiring && (
                       <button
                         type="button"
@@ -4480,6 +4490,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'organisation' && canViewOrganisation && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <OrganisationPanel />
+                  </Suspense>
+                )}
+                {activeTab === 'shiftSwaps' && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <ShiftSwapsPanel employeeId={user.id} />
                   </Suspense>
                 )}
                 {activeTab === 'liveEmployees' && canViewLiveEmployees && (
