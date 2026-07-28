@@ -1198,6 +1198,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canManageRoster = hasPermission(user, 'roster.manage');
   const canApproveShiftSwaps = hasPermission(user, 'roster.swap.approve') || hasPermission(user, 'roster.swap.manage');
   const canViewAllRosters = hasPermission(user, 'roster.view_all') || canManageRoster;
+  const hasLeaveApproverAuthority = Boolean(user.permissions?.some((permission) => (
+    permission === 'leave.approve' || permission === 'leave.manage' || permission === 'leave.view.scoped'
+  )));
   const rosterEndDate = rosterRangeWeeks === 'custom'
     ? rosterCustomEndDate
     : toRosterDateKey(addRosterDays(fromRosterDateKey(rosterStartDate) || getWeekStart(new Date()), rosterRangeWeeks * 7 - 1));
@@ -4989,6 +4992,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       <div role="tabpanel">
                         <Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}>
                           <LeaveWorkspace
+                            hasApproverAuthorityHint={hasLeaveApproverAuthority}
                             onOpenSchedule={() => setRosterSubview('schedule')}
                             onDataChanged={() => {
                               void refreshAttentionCounts();

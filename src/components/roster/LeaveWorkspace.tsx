@@ -24,8 +24,9 @@ import { useLanguage } from '../../lib/LanguageContext';
 import { cn } from '../../lib/utils';
 
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
-type SelfView = 'requests' | 'upcoming' | 'history';
+type LeaveView = 'requests' | 'upcoming' | 'history' | 'approvals';
 type RequestStep = 'details' | 'review' | 'success';
+type ApprovalDecision = 'approve' | 'reject';
 
 type LeaveConflict = {
   shiftId: string;
@@ -65,6 +66,32 @@ type LeaveHistoryEntry = {
 
 type LeaveDetail = {
   request: LeaveRequest;
+  history: LeaveHistoryEntry[];
+};
+
+type ApprovalRequest = {
+  requestId: string;
+  employee: { employeeId: string; displayName: string };
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  reason?: string | null;
+  status: LeaveStatus;
+  submittedAt: string;
+  version: number;
+  approverDisplayName?: string | null;
+  approvalSourceLabel: string;
+  scopeLabel?: string | null;
+  decisionAt?: string | null;
+  hasRosterConflict: boolean;
+  conflictCount: number;
+  schedulerAttentionRequired: boolean;
+  canDecide?: boolean;
+  conflictingShifts?: LeaveConflict[];
+};
+
+type ApprovalDetail = {
+  request: ApprovalRequest;
   history: LeaveHistoryEntry[];
 };
 
@@ -159,6 +186,41 @@ const EN: Copy = {
   schedulerAttention: 'Scheduler attention required',
   dateRange: 'Date range',
   notAvailable: 'Not available',
+  approvals: 'Approvals',
+  approvalsSubtitle: 'Actionable leave requests in your authorised scope.',
+  awaitingApproval: 'Awaiting my approval',
+  approvedRecently: 'Approved recently',
+  rejectedRecently: 'Rejected recently',
+  scopedConflicts: 'Open roster conflicts in scope',
+  actionableOnly: 'Actionable only',
+  employeeSearch: 'Employee search',
+  searchPlaceholder: 'Search employee name',
+  leaveTypeFilter: 'Leave type',
+  allTypes: 'All leave types',
+  emptyApprovals: 'No leave requests are awaiting your action.',
+  emptyApprovalsHelp: 'Only requests inside your current authority scope appear here.',
+  review: 'Review',
+  employee: 'Employee',
+  authority: 'Authority',
+  scope: 'Scope',
+  approve: 'Approve',
+  reject: 'Reject',
+  approveHeading: 'Approve leave request?',
+  rejectHeading: 'Reject leave request?',
+  approveConsequence: 'Approval confirms the leave dates. Existing roster conflicts remain assigned until a scheduler resolves them.',
+  rejectConsequence: 'Rejection closes this request without changing any roster shifts.',
+  decisionNote: 'Decision note (optional)',
+  savingDecision: 'Saving decision...',
+  decisionSaved: 'Leave decision saved.',
+  conflictBeforeApproval: 'Scheduled shifts overlap this request. Approval is still valid, but scheduler follow-up will be required.',
+  configuredAuthority: 'Configured authority',
+  directManager: 'Direct manager',
+  teamLeader: 'Team leader',
+  departmentHead: 'Department head',
+  reportingChain: 'Reporting manager',
+  delegatedAuthority: 'Delegated authority',
+  scopedRole: 'Scoped role',
+  hrAuthority: 'HR authority',
 };
 
 const AR: Copy = {
@@ -239,6 +301,41 @@ const AR: Copy = {
   schedulerAttention: 'يتطلب متابعة مسؤول الجدول',
   dateRange: 'الفترة',
   notAvailable: 'غير متاح',
+  approvals: 'الموافقات',
+  approvalsSubtitle: 'طلبات الإجازة القابلة للإجراء ضمن نطاق صلاحيتك.',
+  awaitingApproval: 'بانتظار موافقتي',
+  approvedRecently: 'معتمد مؤخراً',
+  rejectedRecently: 'مرفوض مؤخراً',
+  scopedConflicts: 'تعارضات جدول مفتوحة ضمن النطاق',
+  actionableOnly: 'القابلة للإجراء فقط',
+  employeeSearch: 'بحث الموظفين',
+  searchPlaceholder: 'ابحث باسم الموظف',
+  leaveTypeFilter: 'نوع الإجازة',
+  allTypes: 'كل أنواع الإجازات',
+  emptyApprovals: 'لا توجد طلبات إجازة بانتظار إجراء منك.',
+  emptyApprovalsHelp: 'تظهر هنا فقط الطلبات الواقعة ضمن نطاق صلاحيتك الحالية.',
+  review: 'مراجعة',
+  employee: 'الموظف',
+  authority: 'الصلاحية',
+  scope: 'النطاق',
+  approve: 'موافقة',
+  reject: 'رفض',
+  approveHeading: 'الموافقة على طلب الإجازة؟',
+  rejectHeading: 'رفض طلب الإجازة؟',
+  approveConsequence: 'تؤكد الموافقة تواريخ الإجازة. تبقى تعارضات الجدول قائمة حتى يعالجها مسؤول الجدول.',
+  rejectConsequence: 'يغلق الرفض هذا الطلب من دون تغيير أي مناوبة.',
+  decisionNote: 'ملاحظة القرار (اختيارية)',
+  savingDecision: 'جارٍ حفظ القرار...',
+  decisionSaved: 'تم حفظ قرار الإجازة.',
+  conflictBeforeApproval: 'تتداخل مناوبات مجدولة مع هذا الطلب. تظل الموافقة صالحة، ولكنها تتطلب متابعة مسؤول الجدول.',
+  configuredAuthority: 'صلاحية مهيأة',
+  directManager: 'المدير المباشر',
+  teamLeader: 'قائد الفريق',
+  departmentHead: 'رئيس القسم',
+  reportingChain: 'مدير التسلسل الإداري',
+  delegatedAuthority: 'صلاحية مفوضة',
+  scopedRole: 'دور محدد النطاق',
+  hrAuthority: 'صلاحية الموارد البشرية',
 };
 
 const LEAVE_TYPES = ['annual', 'sick', 'unpaid', 'personal'] as const;
@@ -344,18 +441,22 @@ function isTerminal(status: LeaveStatus) {
 export function LeaveWorkspace({
   openRequestSignal = 0,
   initialRequestId,
+  initialLeaveView,
+  hasApproverAuthorityHint = false,
   onOpenSchedule,
   onDataChanged,
 }: {
   openRequestSignal?: number;
   initialRequestId?: string | null;
+  initialLeaveView?: LeaveView | null;
+  hasApproverAuthorityHint?: boolean;
   onOpenSchedule?: () => void;
   onDataChanged?: () => void;
 }) {
   const { lang, isRtl } = useLanguage();
   const copy = lang === 'ar' ? AR : EN;
   const locale = lang === 'ar' ? 'ar-EG' : 'en-US';
-  const [view, setView] = useState<SelfView>('requests');
+  const [view, setView] = useState<LeaveView>(initialLeaveView || 'requests');
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -375,8 +476,28 @@ export function LeaveWorkspace({
   const [detailError, setDetailError] = useState('');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [approvalVisible, setApprovalVisible] = useState(hasApproverAuthorityHint);
+  const [approvalProbed, setApprovalProbed] = useState(false);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [approvalTotal, setApprovalTotal] = useState(0);
+  const [approvalPage, setApprovalPage] = useState(1);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalError, setApprovalError] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('pending');
+  const [approvalLeaveType, setApprovalLeaveType] = useState('');
+  const [approvalSearch, setApprovalSearch] = useState('');
+  const [approvalFromDate, setApprovalFromDate] = useState('');
+  const [approvalToDate, setApprovalToDate] = useState('');
+  const [actionableOnly, setActionableOnly] = useState(true);
+  const [approvalDetail, setApprovalDetail] = useState<ApprovalDetail | null>(null);
+  const [approvalDetailLoading, setApprovalDetailLoading] = useState(false);
+  const [approvalDetailError, setApprovalDetailError] = useState('');
+  const [decision, setDecision] = useState<ApprovalDecision | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [decisionBusy, setDecisionBusy] = useState(false);
   const lastOpenSignal = useRef(openRequestSignal);
   const submittingRef = useRef(false);
+  const decisionRef = useRef(false);
 
   const labelStatus = useCallback((value: LeaveStatus) => copy[value] || value, [copy]);
   const labelType = useCallback((value: string) => copy[value] || value.replaceAll('_', ' '), [copy]);
@@ -386,6 +507,17 @@ export function LeaveWorkspace({
   const formatDateTime = useCallback((value?: string | null) => (
     value ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : copy.notAvailable
   ), [copy.notAvailable, locale]);
+  const authorityLabel = useCallback((value?: string | null) => {
+    const normalized = (value || '').toLowerCase();
+    if (normalized.includes('direct manager')) return copy.directManager;
+    if (normalized.includes('team leader')) return copy.teamLeader;
+    if (normalized.includes('department head')) return copy.departmentHead;
+    if (normalized.includes('reporting')) return copy.reportingChain;
+    if (normalized.includes('delegat')) return copy.delegatedAuthority;
+    if (normalized.includes('scoped')) return copy.scopedRole;
+    if (normalized.includes('company') || normalized.includes('hr')) return copy.hrAuthority;
+    return value || copy.configuredAuthority;
+  }, [copy]);
 
   const effectiveQuery = useMemo(() => {
     const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
@@ -446,8 +578,124 @@ export function LeaveWorkspace({
   }, [copy.loadError]);
 
   useEffect(() => {
-    if (initialRequestId) void loadDetail(initialRequestId);
-  }, [initialRequestId, loadDetail]);
+    if (initialRequestId && initialLeaveView !== 'approvals') void loadDetail(initialRequestId);
+  }, [initialLeaveView, initialRequestId, loadDetail]);
+
+  useEffect(() => {
+    if (initialLeaveView) setView(initialLeaveView);
+  }, [initialLeaveView]);
+
+  const approvalQuery = useMemo(() => {
+    const query = new URLSearchParams({
+      page: String(approvalPage),
+      pageSize: String(PAGE_SIZE),
+      actionableOnly: String(actionableOnly),
+    });
+    if (approvalStatus) query.set('status', approvalStatus);
+    if (approvalLeaveType) query.set('leaveType', approvalLeaveType);
+    if (approvalSearch.trim()) query.set('search', approvalSearch.trim());
+    if (approvalFromDate) query.set('fromDate', approvalFromDate);
+    if (approvalToDate) query.set('toDate', approvalToDate);
+    return query;
+  }, [actionableOnly, approvalFromDate, approvalLeaveType, approvalPage, approvalSearch, approvalStatus, approvalToDate]);
+
+  const loadApprovals = useCallback(async (probe = false) => {
+    if (!probe) setApprovalLoading(true);
+    setApprovalError('');
+    try {
+      const query = probe
+        ? new URLSearchParams({ page: '1', pageSize: '1', actionableOnly: 'true', status: 'pending' })
+        : approvalQuery;
+      const response = await apiFetch(`/api/hr/leave-requests?${query.toString()}`);
+      const data = await response.json() as { success?: boolean; requests?: ApprovalRequest[]; total?: number; error?: string };
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          if (!hasApproverAuthorityHint) setApprovalVisible(false);
+          return;
+        }
+        throw new Error(data.error || copy.loadError);
+      }
+      const nextRequests = data.requests || [];
+      if (probe) {
+        if (hasApproverAuthorityHint || nextRequests.length > 0) setApprovalVisible(true);
+        return;
+      }
+      setApprovals(nextRequests);
+      setApprovalTotal(Number(data.total || 0));
+      if (hasApproverAuthorityHint || nextRequests.length > 0 || Number(data.total || 0) > 0) setApprovalVisible(true);
+    } catch (loadError) {
+      if (!probe) setApprovalError(loadError instanceof Error ? loadError.message : copy.loadError);
+    } finally {
+      if (probe) setApprovalProbed(true);
+      if (!probe) setApprovalLoading(false);
+    }
+  }, [approvalQuery, copy.loadError, hasApproverAuthorityHint]);
+
+  useEffect(() => {
+    void loadApprovals(true);
+  }, [loadApprovals]);
+
+  useEffect(() => {
+    if (view === 'approvals' && approvalVisible) void loadApprovals();
+  }, [approvalVisible, loadApprovals, view]);
+
+  useEffect(() => {
+    if (approvalProbed && view === 'approvals' && !approvalVisible) setView('requests');
+  }, [approvalProbed, approvalVisible, view]);
+
+  const loadApprovalDetail = useCallback(async (requestId: string) => {
+    setApprovalDetailLoading(true);
+    setApprovalDetailError('');
+    setApprovalDetail(null);
+    try {
+      const response = await apiFetch(`/api/hr/leave-requests/${requestId}`);
+      const data = await response.json() as ApprovalDetail & { success?: boolean; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error || copy.loadError);
+      setApprovalDetail({ request: data.request, history: data.history || [] });
+    } catch (loadError) {
+      setApprovalDetailError(loadError instanceof Error ? loadError.message : copy.loadError);
+    } finally {
+      setApprovalDetailLoading(false);
+    }
+  }, [copy.loadError]);
+
+  useEffect(() => {
+    if (initialRequestId && initialLeaveView === 'approvals') {
+      setDetail(null);
+      void loadApprovalDetail(initialRequestId);
+    }
+  }, [initialLeaveView, initialRequestId, loadApprovalDetail]);
+
+  const submitDecision = async () => {
+    if (!approvalDetail?.request || !decision || decisionRef.current) return;
+    decisionRef.current = true;
+    setDecisionBusy(true);
+    setApprovalDetailError('');
+    try {
+      const response = await apiFetch(`/api/hr/leave-requests/${approvalDetail.request.requestId}/${decision}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedVersion: approvalDetail.request.version,
+          note: decisionNote.trim() || null,
+        }),
+      });
+      const data = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) throw new Error(response.status === 409 ? copy.staleRequest : data.error || copy.loadError);
+      const requestId = approvalDetail.request.requestId;
+      setDecision(null);
+      setDecisionNote('');
+      setMessage(copy.decisionSaved);
+      await Promise.all([loadApprovals(), loadApprovalDetail(requestId), loadRequests()]);
+      onDataChanged?.();
+    } catch (saveError) {
+      setDecision(null);
+      setApprovalDetailError(saveError instanceof Error ? saveError.message : copy.loadError);
+    } finally {
+      decisionRef.current = false;
+      setDecisionBusy(false);
+    }
+  };
 
   const openRequestDialog = () => {
     setRequestStep('details');
@@ -543,7 +791,7 @@ export function LeaveWorkspace({
   const tabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const tabs: SelfView[] = ['requests', 'upcoming', 'history'];
+    const tabs: LeaveView[] = approvalVisible ? ['requests', 'upcoming', 'history', 'approvals'] : ['requests', 'upcoming', 'history'];
     const current = tabs.indexOf(view);
     const next = event.key === 'Home'
       ? 0
@@ -569,6 +817,7 @@ export function LeaveWorkspace({
   ];
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const approvalPageCount = Math.max(1, Math.ceil(approvalTotal / PAGE_SIZE));
   const emptyText = view === 'upcoming' ? copy.emptyUpcoming : view === 'history' ? copy.emptyHistory : copy.emptyRequests;
 
   return (
@@ -608,7 +857,8 @@ export function LeaveWorkspace({
           ['requests', copy.myRequests],
           ['upcoming', copy.upcoming],
           ['history', copy.history],
-        ] as Array<[SelfView, string]>).map(([value, label]) => (
+          ...(approvalVisible ? [['approvals', copy.approvals]] : []),
+        ] as Array<[LeaveView, string]>).map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -651,14 +901,109 @@ export function LeaveWorkspace({
         </div>
       )}
 
-      {error && (
+      {view !== 'approvals' && error && (
         <div role="alert" className="mt-4 flex flex-col gap-3 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           <button type="button" onClick={() => void loadRequests()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-current px-3 font-bold"><RefreshCw className="h-4 w-4" />{copy.retry}</button>
         </div>
       )}
 
-      {loading ? (
+      {view === 'approvals' ? (
+        <section className="mt-4" aria-label={copy.approvals}>
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {[
+              { label: copy.awaitingApproval, count: approvalStatus === 'pending' ? approvalTotal : approvals.filter((request) => request.status === 'pending').length },
+              { label: copy.approvedRecently, count: approvals.filter((request) => request.status === 'approved').length },
+              { label: copy.rejectedRecently, count: approvals.filter((request) => request.status === 'rejected').length },
+              { label: copy.scopedConflicts, count: approvals.reduce((count, request) => count + request.conflictCount, 0) },
+            ].map((card) => (
+              <article key={card.label} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/25">
+                <p className="text-xl font-bold text-slate-900 dark:text-emerald-50">{card.count}</p>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-emerald-100/50">{card.label}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-2 rounded-lg border border-emerald-500/10 bg-black/[0.02] p-3 dark:bg-black/20 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+              {copy.employeeSearch}
+              <input value={approvalSearch} onChange={(event) => setApprovalSearch(event.target.value)} placeholder={copy.searchPlaceholder} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+              {copy.status}
+              <select value={approvalStatus} onChange={(event) => { setApprovalStatus(event.target.value); setApprovalPage(1); }} className="stanza-select mt-1 w-full">
+                <option value="">{copy.allStatuses}</option>
+                {(['pending', 'approved', 'rejected', 'cancelled'] as LeaveStatus[]).map((value) => <option key={value} value={value}>{labelStatus(value)}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+              {copy.leaveTypeFilter}
+              <select value={approvalLeaveType} onChange={(event) => { setApprovalLeaveType(event.target.value); setApprovalPage(1); }} className="stanza-select mt-1 w-full">
+                <option value="">{copy.allTypes}</option>
+                {LEAVE_TYPES.map((value) => <option key={value} value={value}>{labelType(value)}</option>)}
+              </select>
+            </label>
+            <label className="flex min-h-10 items-center gap-2 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">
+              <input type="checkbox" checked={actionableOnly} onChange={(event) => { setActionableOnly(event.target.checked); setApprovalPage(1); }} className="h-4 w-4 accent-emerald-500" />
+              {copy.actionableOnly}
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+              {copy.fromDate}
+              <input type="date" value={approvalFromDate} onChange={(event) => setApprovalFromDate(event.target.value)} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
+              {copy.toDate}
+              <input type="date" value={approvalToDate} onChange={(event) => setApprovalToDate(event.target.value)} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
+            </label>
+            <button type="button" onClick={() => { setApprovalPage(1); void loadApprovals(); }} className="min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white">{copy.applyFilters}</button>
+            <button type="button" onClick={() => { setApprovalSearch(''); setApprovalStatus('pending'); setApprovalLeaveType(''); setApprovalFromDate(''); setApprovalToDate(''); setActionableOnly(true); setApprovalPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.clearFilters}</button>
+          </div>
+          {approvalError && (
+            <div role="alert" className="mt-4 flex flex-col gap-3 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
+              <span>{approvalError}</span>
+              <button type="button" onClick={() => void loadApprovals()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-current px-3 font-bold"><RefreshCw className="h-4 w-4" />{copy.retry}</button>
+            </div>
+          )}
+          {approvalLoading ? (
+            <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50"><LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />{copy.loading}</div>
+          ) : approvals.length === 0 ? (
+            <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
+              <CheckCircle2 className="h-8 w-8 text-emerald-500/70" />
+              <p className="mt-3 text-sm font-bold text-slate-800 dark:text-emerald-50">{copy.emptyApprovals}</p>
+              <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/50">{copy.emptyApprovalsHelp}</p>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {approvals.map((request) => (
+                <article key={request.requestId} className="rounded-lg border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-black/25">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900 dark:text-emerald-50">{request.employee.displayName}</p>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/65">{labelType(request.leaveType)}</p>
+                    </div>
+                    <span className={cn('shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold', statusClass(request.status))}>{labelStatus(request.status)}</span>
+                  </div>
+                  <p className="mt-3 text-xs font-medium text-slate-600 dark:text-emerald-100/65" dir="ltr">{formatDate(request.startDate)} – {formatDate(request.endDate)}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
+                    <span className="rounded-full border border-emerald-500/20 px-2 py-1 text-emerald-700 dark:text-emerald-200">{authorityLabel(request.approvalSourceLabel)}</span>
+                    {request.scopeLabel && <span className="rounded-full border border-slate-400/20 px-2 py-1 text-slate-500 dark:text-slate-300">{request.scopeLabel}</span>}
+                  </div>
+                  {request.hasRosterConflict && <p className="mt-3 flex items-center gap-2 text-[11px] font-bold text-amber-700 dark:text-amber-200"><AlertTriangle className="h-4 w-4" />{request.conflictCount === 1 ? copy.oneConflict : `${request.conflictCount} ${copy.manyConflicts}`}</p>}
+                  <button type="button" onClick={() => void loadApprovalDetail(request.requestId)} className="mt-4 min-h-10 rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.review}</button>
+                </article>
+              ))}
+            </div>
+          )}
+          {!approvalLoading && approvalTotal > PAGE_SIZE && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-emerald-100/55">
+              <span>{copy.page} {approvalPage} {copy.of} {approvalPageCount}</span>
+              <div className="flex gap-2">
+                <button type="button" disabled={approvalPage <= 1} onClick={() => setApprovalPage((current) => Math.max(1, current - 1))} className="min-h-10 rounded border border-emerald-500/20 px-3 disabled:opacity-40">{copy.previous}</button>
+                <button type="button" disabled={approvalPage >= approvalPageCount} onClick={() => setApprovalPage((current) => Math.min(approvalPageCount, current + 1))} className="min-h-10 rounded border border-emerald-500/20 px-3 disabled:opacity-40">{copy.next}</button>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : loading ? (
         <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50">
           <LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />
           {copy.loading}
@@ -692,7 +1037,7 @@ export function LeaveWorkspace({
         </div>
       )}
 
-      {!loading && total > PAGE_SIZE && (
+      {view !== 'approvals' && !loading && total > PAGE_SIZE && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-emerald-100/55">
           <span>{copy.page} {page} {copy.of} {pageCount}</span>
           <div className="flex gap-2">
@@ -826,6 +1171,107 @@ export function LeaveWorkspace({
             )}
           </div>
         )}
+      </LeaveDialog>
+
+      <LeaveDialog
+        open={!decision && (approvalDetailLoading || Boolean(approvalDetail) || Boolean(approvalDetailError))}
+        title={copy.approvals}
+        onClose={() => {
+          setApprovalDetail(null);
+          setApprovalDetailError('');
+        }}
+      >
+        {approvalDetailLoading ? (
+          <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-emerald-500" /></div>
+        ) : approvalDetailError ? (
+          <div role="alert" className="mt-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200">
+            <p>{approvalDetailError}</p>
+            {approvalDetail?.request.requestId && <button type="button" onClick={() => void loadApprovalDetail(approvalDetail.request.requestId)} className="mt-3 rounded border border-current px-3 py-2 font-bold">{copy.retry}</button>}
+          </div>
+        ) : approvalDetail && (
+          <div className="mt-5 space-y-5">
+            <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-bold text-slate-900 dark:text-emerald-50">{approvalDetail.request.employee.displayName}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/65">{labelType(approvalDetail.request.leaveType)}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/65" dir="ltr">{formatDate(approvalDetail.request.startDate)} – {formatDate(approvalDetail.request.endDate)}</p>
+                </div>
+                <span className={cn('rounded-full border px-2 py-1 text-[10px] font-bold', statusClass(approvalDetail.request.status))}>{labelStatus(approvalDetail.request.status)}</span>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-emerald-100/55">
+                <dt>{copy.submitted}</dt><dd className="text-end">{formatDateTime(approvalDetail.request.submittedAt)}</dd>
+                <dt>{copy.authority}</dt><dd className="text-end font-bold text-emerald-700 dark:text-emerald-200">{authorityLabel(approvalDetail.request.approvalSourceLabel)}</dd>
+                <dt>{copy.scope}</dt><dd className="text-end">{approvalDetail.request.scopeLabel || copy.configuredAuthority}</dd>
+              </dl>
+              {approvalDetail.request.reason && (
+                <div className="mt-4 border-t border-emerald-500/10 pt-3">
+                  <p className="text-[11px] font-bold uppercase text-slate-500 dark:text-emerald-100/50">{copy.reason}</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-emerald-100/75">{approvalDetail.request.reason}</p>
+                </div>
+              )}
+            </div>
+
+            {approvalDetail.request.hasRosterConflict ? (
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4">
+                <p className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-100"><AlertTriangle className="h-4 w-4" />{copy.conflictBeforeApproval}</p>
+                <p className="mt-2 text-xs leading-5 text-amber-800/80 dark:text-amber-100/75">{copy.conflictExplanation}</p>
+                <div className="mt-3 grid gap-2">
+                  {(approvalDetail.request.conflictingShifts || []).map((conflict) => (
+                    <div key={conflict.shiftId} className="rounded border border-amber-500/20 bg-white/55 p-3 text-xs dark:bg-black/20">
+                      <p className="font-bold text-slate-800 dark:text-emerald-50">{formatDateTime(conflict.startTime)}</p>
+                      <p className="mt-1 text-slate-500 dark:text-emerald-100/55" dir="ltr">{formatDateTime(conflict.startTime)} – {formatDateTime(conflict.endTime)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-emerald-500/15 p-3 text-xs text-slate-500 dark:text-emerald-100/50">{copy.noConflicts}</p>
+            )}
+
+            <section>
+              <h4 className="text-xs font-bold uppercase text-slate-600 dark:text-emerald-100/60">{copy.safeTimeline}</h4>
+              <ol className="mt-3 space-y-3 border-s border-emerald-500/20 ps-4">
+                {approvalDetail.history.map((entry, index) => (
+                  <li key={`${entry.createdAt}-${index}`} className="relative text-xs text-slate-600 dark:text-emerald-100/60">
+                    <span className="absolute -start-[1.28rem] top-1 h-2 w-2 rounded-full bg-emerald-500" />
+                    <p className="font-bold capitalize text-slate-800 dark:text-emerald-50">{entry.action.replaceAll('_', ' ')}</p>
+                    <p className="mt-1">{formatDateTime(entry.createdAt)}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            {approvalDetail.request.canDecide && approvalDetail.request.status === 'pending' && (
+              <div className="flex flex-col gap-2 border-t border-emerald-500/10 pt-4 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => setDecision('reject')} className="min-h-11 rounded-lg border border-red-500/30 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-500/10 dark:text-red-200">{copy.reject}</button>
+                <button type="button" onClick={() => setDecision('approve')} className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black">{copy.approve}</button>
+              </div>
+            )}
+          </div>
+        )}
+      </LeaveDialog>
+
+      <LeaveDialog
+        open={Boolean(decision)}
+        title={decision === 'approve' ? copy.approveHeading : copy.rejectHeading}
+        onClose={() => {
+          if (!decisionBusy) setDecision(null);
+        }}
+      >
+        <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-emerald-100/65">{decision === 'approve' ? copy.approveConsequence : copy.rejectConsequence}</p>
+        {decision === 'approve' && approvalDetail?.request.hasRosterConflict && <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-100">{copy.conflictBeforeApproval}</p>}
+        <label className="mt-4 block text-xs font-bold text-slate-700 dark:text-emerald-100/70">
+          {copy.decisionNote}
+          <textarea value={decisionNote} maxLength={1000} rows={4} onChange={(event) => setDecisionNote(event.target.value)} className="mt-1 w-full resize-y rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
+        </label>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" disabled={decisionBusy} onClick={() => setDecision(null)} className="min-h-11 rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.close}</button>
+          <button type="button" disabled={decisionBusy} onClick={() => void submitDecision()} className={cn('inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-55', decision === 'approve' ? 'bg-emerald-500 text-black' : 'bg-red-600 text-white')}>
+            {decisionBusy && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            {decisionBusy ? copy.savingDecision : decision === 'approve' ? copy.approve : copy.reject}
+          </button>
+        </div>
       </LeaveDialog>
 
       <LeaveDialog open={cancelOpen} title={copy.cancelHeading} onClose={() => { if (!cancelling) setCancelOpen(false); }}>
