@@ -5,6 +5,7 @@ import { recordAuditEvent } from '../audit/audit-events';
 import { canDelegatePermissionAtScope, hasCompanyPermission, isOrganisationScope, resolveScopedPermission, type OrganisationScopeType } from './scoped-permissions';
 import { PERMISSION_REGISTRY as PERMISSION_METADATA, getPermissionMetadata, getPermissionDefinition, validatePermissionKeys } from './permission-registry';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './final-hr-admin';
+import { registerDelegationRoutes } from './delegation-routes';
 
 type Middleware = express.RequestHandler;
 type Dependencies = { standardAuth: Middleware; mutationGuard: Middleware; rateLimiter: Middleware };
@@ -132,6 +133,7 @@ async function assertAssignmentAuthority(client: PoolClient, req: express.Reques
 }
 
 export function registerOrganisationRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter }: Dependencies) {
+  registerDelegationRoutes(app, { standardAuth, mutationGuard, rateLimiter });
   app.get('/api/hr/organisation/overview', standardAuth, async (req, res) => {
     try {
       const user = req.authUser!;
