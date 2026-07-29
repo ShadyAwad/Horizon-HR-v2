@@ -74,6 +74,7 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
   const [extractionProcessing, setExtractionProcessing] = useState(false);
   const [saveCompleted, setSaveCompleted] = useState(false);
   const [error, setError] = useState('');
+  const [serialAvailability, setSerialAvailability] = useState<'idle' | 'checking' | 'available' | 'conflict' | 'error'>('idle');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
   const savingRef = useRef(false);
@@ -87,6 +88,37 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    const serialNumber = form.serialNumber.trim();
+    if (!serialNumber) {
+      setSerialAvailability('idle');
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSerialAvailability('checking');
+      const query = new URLSearchParams({ serialNumber });
+      if (asset) query.set('assetId', asset.id);
+      try {
+        const response = await apiFetch(apiUrl(`/api/hr/assets/serial-availability?${query.toString()}`), {
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({})) as { available?: boolean };
+        if (!response.ok || typeof payload.available !== 'boolean') {
+          setSerialAvailability('error');
+          return;
+        }
+        setSerialAvailability(payload.available ? 'available' : 'conflict');
+      } catch (caught) {
+        if (!(caught instanceof DOMException && caught.name === 'AbortError')) setSerialAvailability('error');
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [asset, form.serialNumber]);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
@@ -134,6 +166,10 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
     event.preventDefault();
     if (!form.assetTag.trim() || !form.name.trim()) {
       setError(t('assets.requiredFields'));
+      return;
+    }
+    if (serialAvailability === 'conflict') {
+      setError(t('assets.serialExists'));
       return;
     }
     setSaving(true);
@@ -192,12 +228,12 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.condition')}<select value={form.condition} onChange={(event) => update('condition', event.target.value)} className={`${inputClass} stanza-select`}>{conditions.map((item) => <option key={item} value={item}>{t(`assets.condition.${item}` as never)}</option>)}</select></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.manufacturer')}<input value={form.manufacturer} maxLength={120} onChange={(event) => updateIdentifier('manufacturer', event.target.value)} data-field-origin={fieldOrigins.manufacturer} className={inputClass} /></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.modelNumber')}<input value={form.model} maxLength={120} onChange={(event) => updateIdentifier('model', event.target.value)} data-field-origin={fieldOrigins.model} className={inputClass} /></label>
-            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.serialNumber')}<input value={form.serialNumber} maxLength={160} onChange={(event) => updateIdentifier('serialNumber', event.target.value)} data-field-origin={fieldOrigins.serialNumber} className={inputClass} /></label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.serialNumber')}<input value={form.serialNumber} maxLength={160} onChange={(event) => updateIdentifier('serialNumber', event.target.value)} data-field-origin={fieldOrigins.serialNumber} aria-invalid={serialAvailability === 'conflict'} aria-describedby="asset-serial-status" className={inputClass} /><span id="asset-serial-status" aria-live="polite" className={`mt-1 block text-xs ${serialAvailability === 'conflict' ? 'text-red-700 dark:text-red-200' : 'text-slate-500 dark:text-emerald-100/55'}`}>{serialAvailability === 'checking' ? t('assets.serialChecking') : serialAvailability === 'available' ? t('assets.serialAvailable') : serialAvailability === 'conflict' ? t('assets.serialExists') : serialAvailability === 'error' ? t('assets.serialCheckError') : ''}</span></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.notes')}<textarea value={form.notes} maxLength={4000} onChange={(event) => update('notes', event.target.value)} className={`${inputClass} min-h-24 resize-y`} /></label>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" disabled={saving} onClick={onClose} className="min-h-11 rounded-lg border border-emerald-500/20 px-4 py-2 text-sm font-bold disabled:opacity-50">{t('assets.cancel')}</button>
-            <button type="submit" disabled={saving || extractionProcessing} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : t('assets.save')}</button>
+            <button type="submit" disabled={saving || extractionProcessing || serialAvailability === 'conflict'} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : t('assets.save')}</button>
           </div>
         </form>
       </section>

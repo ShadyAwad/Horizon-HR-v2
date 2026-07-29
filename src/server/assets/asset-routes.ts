@@ -23,7 +23,11 @@ function optionalDate(value: unknown) {
 function page(query: express.Request['query']) { const value = Math.max(1, Math.min(10_000, Number(query.page) || 1)); const size = Math.max(1, Math.min(100, Number(query.pageSize) || 25)); return { value, size, offset: (value - 1) * size }; }
 function sendError(res: express.Response, error: unknown, fallback: string) {
   if (error instanceof RouteError) return res.status(error.status).json({ success: false, error: error.message });
-  if ((error as { code?: string })?.code === '23505') return res.status(409).json({ success: false, error: 'That record already exists.' });
+  const databaseError = error as { code?: string; constraint?: string };
+  if (databaseError.code === '23505' && databaseError.constraint === 'assets_tenant_serial_unique') {
+    return res.status(409).json({ success: false, code: 'ASSET_SERIAL_EXISTS', error: 'Serial number already exists.' });
+  }
+  if (databaseError.code === '23505') return res.status(409).json({ success: false, error: 'That record already exists.' });
   return res.status(500).json({ success: false, error: fallback });
 }
 const assetFields = `a.id,a.asset_tag AS "assetTag",a.name,a.category,a.manufacturer,a.model,a.serial_number AS "serialNumber",a.status,a.condition,a.purchase_date AS "purchaseDate",a.purchase_cost AS "purchaseCost",a.warranty_expires_at AS "warrantyExpiresAt",a.notes,a.created_at AS "createdAt",a.updated_at AS "updatedAt",assignment.id AS "activeAssignmentId",assignment.assigned_at AS "assignedAt",assignment.expected_return_at AS "expectedReturnAt",employee.id AS "assignedEmployeeId",employee.full_name AS "assignedEmployee"`;
@@ -34,14 +38,30 @@ async function lockedAsset(client: PoolClient, tenantId: string, assetId: string
 }
 function assetInput(body: Record<string, unknown>, partial = false) {
   const values: Record<string, unknown> = {};
-  const fields: Array<[string, string, number]> = [['assetTag', 'asset_tag', 100], ['name', 'name', 180], ['manufacturer', 'manufacturer', 120], ['model', 'model', 120], ['serialNumber', 'serial_number', 160], ['notes', 'notes', 4000]];
+  const fields: Array<[string, string, number]> = [['assetTag', 'asset_tag', 100], ['name', 'name', 180], ['manufacturer', 'manufacturer', 120], ['model', 'model', 120], ['notes', 'notes', 4000]];
   fields.forEach(([input, column, max]) => { if (!partial || Object.hasOwn(body, input)) values[column] = optionalText(body[input], max); });
+  if (!partial || Object.hasOwn(body, 'serialNumber')) values.serial_number = normalizeAssetSerial(body.serialNumber);
   if (!partial || Object.hasOwn(body, 'category')) { if (!categories.has(body.category as string)) throw new RouteError('Invalid asset category.', 400); values.category = body.category; }
   if (!partial || Object.hasOwn(body, 'condition')) { const condition = body.condition ?? 'good'; if (!conditions.has(condition as string)) throw new RouteError('Invalid asset condition.', 400); values.condition = condition; }
   [['purchaseDate', 'purchase_date'], ['warrantyExpiresAt', 'warranty_expires_at']].forEach(([input, column]) => { if (!partial || Object.hasOwn(body, input)) values[column] = optionalDate(body[input]); });
   if (!partial || Object.hasOwn(body, 'purchaseCost')) { const cost = body.purchaseCost; if (cost === '' || cost === null || cost === undefined) values.purchase_cost = null; else if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) throw new RouteError('Invalid purchase cost.', 400); else values.purchase_cost = cost; }
   if (!partial && (!values.asset_tag || !values.name)) throw new RouteError('Asset tag and name are required.', 400);
   return values;
+}
+
+export function normalizeAssetSerial(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new RouteError('Serial number must be text.', 400);
+  const normalized = value
+    .trim()
+    .replace(/^(?:s\/n|sn|serial(?:\s+number)?)\s*[:#-]?\s*/i, '')
+    .trim();
+  if (!normalized) return null;
+  if (normalized.length > 160) throw new RouteError('Serial number is too long.', 400);
+  if (/[\u0000-\u001f\u007f]/u.test(normalized) || !/^[\p{L}\p{N} ._:/#()+-]+$/u.test(normalized)) {
+    throw new RouteError('Serial number contains unsupported characters.', 400);
+  }
+  return normalized;
 }
 
 export function registerAssetRoutes(app: express.Express, { demoAuth, requirePermission }: Dependencies) {
@@ -61,6 +81,39 @@ export function registerAssetRoutes(app: express.Express, { demoAuth, requirePer
       });
       res.json({ success: true, page: value, pageSize: size, ...result });
     } catch (error) { sendError(res, error, 'Unable to load assets.'); }
+  });
+
+  app.get('/api/hr/assets/serial-availability', demoAuth, requirePermission('assets.manage'), async (req, res) => {
+    const user = req.authUser!;
+    if (Object.keys(req.query).some((key) => !['serialNumber', 'assetId'].includes(key))) {
+      return res.status(400).json({ success: false, error: 'Unknown query field.' });
+    }
+    if (req.query.assetId !== undefined && !uuid(req.query.assetId)) {
+      return res.status(400).json({ success: false, error: 'Invalid asset id.' });
+    }
+    try {
+      const serialNumber = normalizeAssetSerial(req.query.serialNumber);
+      if (!serialNumber) return res.status(400).json({ success: false, error: 'Serial number is required.' });
+      const conflict = await withTenant(user.tenantId, async (client) => {
+        const result = await client.query(
+          `SELECT 1
+             FROM assets
+            WHERE tenant_id=$1
+              AND serial_number=$2
+              AND ($3::uuid IS NULL OR id<>$3)
+            LIMIT 1`,
+          [user.tenantId, serialNumber, req.query.assetId || null],
+        );
+        return Boolean(result.rows[0]);
+      });
+      return res.json({
+        success: true,
+        available: !conflict,
+        conflictType: conflict ? 'existing_asset' : null,
+      });
+    } catch (error) {
+      return sendError(res, error, 'Unable to check serial number.');
+    }
   });
 
   app.post('/api/hr/assets', demoAuth, requirePermission('assets.manage'), async (req, res) => {
