@@ -3,7 +3,14 @@ import { createPortal } from 'react-dom';
 import { LoaderCircle, X } from 'lucide-react';
 import { apiFetch, apiUrl } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
-import { AssetLabelExtraction, type AssetSuggestionKey } from './AssetLabelExtraction';
+import { AssetLabelExtraction } from './AssetLabelExtraction';
+import {
+  applyUntouchedAssetSuggestions,
+  createAssetFieldOrigins,
+  originAfterManualChange,
+  type AssetFieldOrigins,
+  type AssetIdentifierField,
+} from './asset-prefill-state';
 
 export type AssetFormRecord = {
   id: string;
@@ -62,44 +69,64 @@ function safeMessage(payload: unknown, fallback: string) {
 export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) {
   const { t, isRtl } = useLanguage();
   const [form, setForm] = useState(() => initialForm(asset));
+  const [fieldOrigins, setFieldOrigins] = useState<AssetFieldOrigins>(() => createAssetFieldOrigins(Boolean(asset)));
   const [saving, setSaving] = useState(false);
   const [extractionProcessing, setExtractionProcessing] = useState(false);
   const [saveCompleted, setSaveCompleted] = useState(false);
   const [error, setError] = useState('');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
+  const savingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const fieldOriginsRef = useRef(fieldOrigins);
+
+  useEffect(() => {
+    savingRef.current = saving;
+  }, [saving]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) onClose();
+      if (event.key === 'Escape' && !savingRef.current) onCloseRef.current();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       restoreFocusRef.current?.focus();
     };
-  }, [onClose, saving]);
+  }, []);
 
   const update = (field: keyof AssetForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  const applySuggestion = (field: Exclude<AssetSuggestionKey, 'barcodeText'>, value: string) => {
+  const updateIdentifier = (field: AssetIdentifierField, value: string) => {
+    update(field, value);
+    const nextOrigins = { ...fieldOriginsRef.current, [field]: originAfterManualChange(value) };
+    fieldOriginsRef.current = nextOrigins;
+    setFieldOrigins(nextOrigins);
+  };
+
+  const applySuggestion = (field: AssetIdentifierField, value: string) => {
     if (field === 'serialNumber' && asset?.serialNumber && asset.serialNumber !== value) {
       if (!window.confirm(t('assets.confirmSerialChange'))) return;
     }
     update(field, value);
+    const nextOrigins: AssetFieldOrigins = { ...fieldOriginsRef.current, [field]: 'extraction-prefilled' };
+    fieldOriginsRef.current = nextOrigins;
+    setFieldOrigins(nextOrigins);
   };
 
-  const applyInitialSuggestions = (suggestions: Partial<Record<Exclude<AssetSuggestionKey, 'barcodeText'>, string>>) => {
-    if (asset) return;
+  const applyInitialSuggestions = (suggestions: Partial<Record<AssetIdentifierField, string>>) => {
     setForm((current) => {
-      const next = { ...current };
-      for (const [field, value] of Object.entries(suggestions) as Array<[Exclude<AssetSuggestionKey, 'barcodeText'>, string]>) {
-        if (!next[field]) next[field] = value;
-      }
-      return next;
+      const applied = applyUntouchedAssetSuggestions(current, fieldOriginsRef.current, suggestions);
+      fieldOriginsRef.current = applied.origins;
+      setFieldOrigins(applied.origins);
+      return applied.values;
     });
   };
 
@@ -163,9 +190,9 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.itemName')}<input required value={form.name} maxLength={180} onChange={(event) => update('name', event.target.value)} className={inputClass} /></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.category')}<select value={form.category} onChange={(event) => update('category', event.target.value)} className={`${inputClass} stanza-select`}>{categories.map((item) => <option key={item} value={item}>{t(`assets.category.${item}` as never)}</option>)}</select></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.condition')}<select value={form.condition} onChange={(event) => update('condition', event.target.value)} className={`${inputClass} stanza-select`}>{conditions.map((item) => <option key={item} value={item}>{t(`assets.condition.${item}` as never)}</option>)}</select></label>
-            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.manufacturer')}<input value={form.manufacturer} maxLength={120} onChange={(event) => update('manufacturer', event.target.value)} className={inputClass} /></label>
-            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.modelNumber')}<input value={form.model} maxLength={120} onChange={(event) => update('model', event.target.value)} className={inputClass} /></label>
-            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.serialNumber')}<input value={form.serialNumber} maxLength={160} onChange={(event) => update('serialNumber', event.target.value)} className={inputClass} /></label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.manufacturer')}<input value={form.manufacturer} maxLength={120} onChange={(event) => updateIdentifier('manufacturer', event.target.value)} data-field-origin={fieldOrigins.manufacturer} className={inputClass} /></label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100">{t('assets.modelNumber')}<input value={form.model} maxLength={120} onChange={(event) => updateIdentifier('model', event.target.value)} data-field-origin={fieldOrigins.model} className={inputClass} /></label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.serialNumber')}<input value={form.serialNumber} maxLength={160} onChange={(event) => updateIdentifier('serialNumber', event.target.value)} data-field-origin={fieldOrigins.serialNumber} className={inputClass} /></label>
             <label className="text-xs font-semibold text-slate-700 dark:text-emerald-100 sm:col-span-2">{t('assets.notes')}<textarea value={form.notes} maxLength={4000} onChange={(event) => update('notes', event.target.value)} className={`${inputClass} min-h-24 resize-y`} /></label>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

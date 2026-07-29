@@ -4,6 +4,7 @@ import type { AuthUser } from '../../App';
 import { apiFetch } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 import { AssetFormDialog, type AssetFormRecord } from './AssetFormDialog';
+import { canUseAssetLabelExtraction } from './asset-prefill-state';
 
 type Asset = AssetFormRecord & { status: string; assignedEmployee?: string | null; warrantyExpiresAt?: string | null };
 type License = { id: string; name: string; vendor?: string | null; seatCount?: number | null; seatsUsed: number; expiresAt?: string | null };
@@ -24,7 +25,7 @@ export function AssetsPanel({ user }: { user: AuthUser }) {
   const [form, setForm] = useState({ assetTag: '', name: '', category: 'laptop', condition: 'good', licenseName: '', seatCount: '' });
   const [submitting, setSubmitting] = useState(false);
   const canManageAssets = Boolean(user.permissions?.includes('assets.manage'));
-  const canExtractAssetLabels = canManageAssets && Boolean(user.permissions?.includes('document_extraction.asset.manage'));
+  const canExtractAssetLabels = canUseAssetLabelExtraction(user.permissions);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
