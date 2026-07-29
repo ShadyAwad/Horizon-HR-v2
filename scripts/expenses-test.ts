@@ -76,7 +76,7 @@ assert.equal(requestFingerprint(fingerprintInput), requestFingerprint({ ...finge
 assert.notEqual(requestFingerprint(fingerprintInput), requestFingerprint({ ...fingerprintInput, amount: '125.51' }));
 pass('Create retries use deterministic request fingerprints without floating-point arithmetic');
 
-const [migration, routes, registry, resolver, scopedPermissions, server, packageJson] = await Promise.all([
+const [migration, routes, registry, resolver, scopedPermissions, server, packageJson, panel, dashboard, language, uiContract] = await Promise.all([
   readFile('src/db/migrations/20260729_add_expense_claims.sql', 'utf8'),
   readFile('src/server/expenses/expense-routes.ts', 'utf8'),
   readFile('src/server/organisation/permission-registry.ts', 'utf8'),
@@ -84,6 +84,10 @@ const [migration, routes, registry, resolver, scopedPermissions, server, package
   readFile('src/server/organisation/scoped-permissions.ts', 'utf8'),
   readFile('server.ts', 'utf8'),
   readFile('package.json', 'utf8'),
+  readFile('src/components/expenses/ExpensesPanel.tsx', 'utf8'),
+  readFile('src/pages/Dashboard.tsx', 'utf8'),
+  readFile('src/lib/LanguageContext.tsx', 'utf8'),
+  readFile('src/components/expenses/expense-ui-contract.ts', 'utf8'),
 ]);
 
 for (const table of ['expense_claims', 'expense_claim_history']) {
@@ -256,5 +260,98 @@ assert.match(routes, /withTenant/);
 assert.doesNotMatch(routes, /DELETE FROM expense_claims|DELETE FROM expense_claim_history/);
 assert.doesNotMatch(routes, /Math\.(round|floor)|parseFloat|Number\(value\.amount\)/);
 pass('History is immutable, mutations are transactional, claims are never hard-deleted, and money avoids floats');
+
+assert.match(dashboard, /const ExpensesPanel = lazy/);
+assert((dashboard.match(/t\('dash\.expenses'\)/g) || []).length >= 3);
+assert.match(dashboard, /activeTab === 'expenses'/);
+assert.match(dashboard, /<ExpensesPanel[\s\S]*deepLink=\{expenseDeepLink\}/);
+assert.doesNotMatch(dashboard, /My Expenses|Expense Approvals/);
+pass('Dashboard exposes one lazy Expenses workspace without duplicate top-level Finance entries');
+
+for (const view of ['claims', 'new', 'history', 'approvals', 'reimbursements']) {
+  assert(panel.includes(`'${view}'`), `Missing Expense view ${view}.`);
+}
+assert.match(panel, /financeAccess \|\| explicitFinance/);
+assert.match(panel, /if \(explicitReimburse\)/);
+assert.match(panel, /response\.status === 403/);
+assert.doesNotMatch(panel, /user\.role\s*===\s*['"]hr_admin/);
+assert.doesNotMatch(panel, /user\.role\s*===\s*['"]manager/);
+pass('Privileged Expense views use explicit permission or successful scoped API evidence, never role names');
+
+for (const route of [
+  '/api/me/expense-claims',
+  '/api/finance/expense-claims',
+  '/api/document-extractions',
+]) assert(panel.includes(route), `UI does not use ${route}.`);
+assert.match(panel, /mode', 'expense_receipt'/);
+assert.match(panel, /accept="image\/jpeg,image\/png,image\/webp"/);
+assert.doesNotMatch(panel, /application\/pdf|\.pdf/);
+assert.match(panel, /onDrop=/);
+assert.match(panel, /fileInputRef\.current\?\.click/);
+assert.match(panel, /RECEIPT_MAX_BYTES/);
+assert.match(panel, /manualFallback/);
+pass('Receipt flow supports keyboard and drag/drop JPEG, PNG, and WebP with manual fallback and no PDF offer');
+
+for (const field of ['merchantName', 'transactionDate', 'totalAmount', 'currency']) {
+  assert(panel.includes(field), `Missing curated extraction field ${field}.`);
+}
+assert.match(panel, /dirtyFieldsRef\.current\.has\(field\)/);
+assert.match(panel, /applySuggestion/);
+assert.match(panel, /confidenceLevel/);
+assert.doesNotMatch(panel, /rawOcr|ocrText|providerPayload|providerJson/);
+assert.match(panel, /DELETE.*document-extractions|method: 'DELETE'/s);
+pass('OCR suggestions remain editable, preserve user edits, expose confidence, and clean abandoned extraction references');
+
+assert.match(panel, /type="text" inputMode="decimal"/);
+assert.match(panel, /EXPENSE_AMOUNT_PATTERN/);
+assert.doesNotMatch(panel, /parseFloat|parseInt\(form\.amount|Number\(form\.amount/);
+assert.match(panel, /Idempotency-Key/);
+assert.match(panel, /extractionId,\s*merchantName:[\s\S]*businessReason:/);
+assert.doesNotMatch(panel, /body: JSON\.stringify\(\{[\s\S]{0,500}(employeeId|tenantId|status:)/);
+pass('Claim confirmation sends decimal text and the bounded public payload with an idempotency key');
+
+assert.match(panel, /expectedVersion: claim\.version/);
+assert.match(panel, /approvalNotReimbursement/);
+assert.match(panel, /noBankTransfer/);
+assert.match(panel, /claim\.canReimburse && explicitReimburse/);
+assert.match(panel, /refresh|loadOwnClaims/);
+assert.match(routes, /approvalSource: row\.approval_source \|\| null/);
+assert.match(routes, /approvalScopeType: row\.approval_scope_type \|\| null/);
+assert.doesNotMatch(panel, /approval_scope_id|delegationId|authoritySourceId/);
+pass('Cancel, approval, rejection, and reimbursement use versions, confirmations, and server-authoritative refresh');
+
+assert.match(routes, /deepLink:\s*\{/);
+assert.match(routes, /section: 'expenses'/);
+assert.match(routes, /claimId: input\.claimId/);
+assert.match(dashboard, /notification\.expense_approval_required/);
+assert.match(dashboard, /claimId: params\.get\('claimId'\)/);
+assert.match(panel, /UUID_PATTERN\.test\(claimId\)/);
+pass('Expense notifications deep-link to a validated claim in the correct internal workspace view');
+
+for (const key of [
+  'expenses.title',
+  'expenses.myClaims',
+  'expenses.approvals',
+  'expenses.reimbursements',
+  'expenses.dropReceipt',
+  'expenses.status.pending',
+  'expenses.category.travel',
+  'dash.expenses',
+]) {
+  assert(language.includes(`'${key}'`), `Missing translation ${key}.`);
+}
+assert.match(panel, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+assert.match(panel, /role="tablist"/);
+assert.match(panel, /aria-selected=/);
+assert.match(panel, /role="dialog"/);
+assert.match(panel, /event\.key === 'Escape'/);
+assert.match(panel, /max-h-\[calc\(100dvh-1rem\)\]/);
+assert.match(panel, /overflow-x-hidden/);
+pass('Expense UI contracts cover English/Arabic, RTL, semantic tabs, keyboard dialogs, and mobile-safe overflow');
+
+assert.equal((uiContract.match(/'image\/jpeg'|'image\/png'|'image\/webp'/g) || []).length, 3);
+assert.equal((uiContract.match(/'travel'|'meals'|'accommodation'|'transport'|'office_supplies'|'software'|'training'|'communications'|'other'/g) || []).length, 9);
+assert.equal((uiContract.match(/'AED'|'AUD'|'BHD'|'CAD'|'CHF'|'CNY'|'DKK'|'EGP'|'EUR'|'GBP'|'HKD'|'INR'|'JPY'|'KWD'|'MAD'|'NOK'|'NZD'|'OMR'|'QAR'|'SAR'|'SEK'|'SGD'|'TRY'|'USD'|'ZAR'/g) || []).length, 25);
+pass('Browser-safe category, currency, file, and decimal contracts mirror the bounded server registries');
 
 console.log(`\nExpense reimbursement contracts passed: ${passes.length}`);
