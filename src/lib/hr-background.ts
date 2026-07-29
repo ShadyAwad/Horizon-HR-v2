@@ -78,6 +78,11 @@ export type AttendanceRollupJobData = {
   workDate: string;
 };
 
+export type QrExpiryCleanupJobData = {
+  tenantId: string;
+  tokenRecordId: string;
+};
+
 export function getHrQueue() {
   if (!hrQueue) {
     hrQueue = new Queue(HR_QUEUE_NAME, { connection: redisConnection });
@@ -137,6 +142,18 @@ export async function enqueueAuditLog(data: AuditLogJobData) {
     backoff: { type: 'exponential', delay: 2_000 },
     removeOnComplete: 250,
     removeOnFail: 1_000,
+  });
+}
+
+export function enqueueQrExpiryCleanup(data: QrExpiryCleanupJobData, expiresAt: Date) {
+  const delay = Math.max(0, expiresAt.getTime() - Date.now());
+  return getHrQueue().add('expireQrAccessToken', data, {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 5_000 },
+    delay,
+    removeOnComplete: 250,
+    removeOnFail: 1_000,
+    jobId: `qr-expiry:${data.tokenRecordId}`,
   });
 }
 

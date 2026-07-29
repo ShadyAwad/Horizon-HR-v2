@@ -7,7 +7,9 @@ import {
   withTenant,
   type AttendanceRollupJobData,
   type AuditLogJobData,
+  type QrExpiryCleanupJobData,
 } from '../lib/hr-background';
+import { QrTokenService } from '../server/qr/qr-token-service';
 
 console.log(
   `[Worker Engine] Initializing connection to Redis at ${redisConnectionLabel}...`,
@@ -114,6 +116,13 @@ const hrWorker = new Worker(
         await writeAuditLog(job.data as AuditLogJobData);
         console.log(`[Audit] Wrote ${job.data.action} audit log for tenant=${job.data.tenantId}`);
         break;
+
+      case 'expireQrAccessToken': {
+        const data = job.data as QrExpiryCleanupJobData;
+        await new QrTokenService().expireToken(data.tenantId, data.tokenRecordId);
+        console.log(`[QR] Processed token expiry for tokenRecordId=${data.tokenRecordId}`);
+        break;
+      }
         
       default:
         throw new Error(`Unknown job type: ${job.name}`);

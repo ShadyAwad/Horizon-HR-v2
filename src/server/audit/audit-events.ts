@@ -338,7 +338,10 @@ export async function recordAuditEvent(
 ) {
   const allowedKeys = WRITE_METADATA_ALLOWLIST[event.action];
   const source = event.metadata || {};
-  const rejectedKey = Object.keys(source).find((key) => SECRET_KEY_PATTERN.test(key) || !allowedKeys.includes(key));
+  const rejectedKey = Object.keys(source).find((key) => (
+    !allowedKeys.includes(key)
+    || (SECRET_KEY_PATTERN.test(key) && key !== 'tokenRecordId')
+  ));
   if (rejectedKey) throw new Error(`Audit metadata key is not allowed for ${event.action}.`);
 
   await client.query(

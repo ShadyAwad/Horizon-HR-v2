@@ -1,6 +1,4 @@
 import type express from 'express';
-import { withTenant } from '../../lib/hr-background';
-import { assertQrIssuePermission } from './qr-token-permissions';
 import { QrTokenService } from './qr-token-service';
 import { isQrTokenPurpose, QrTokenError, type QrTokenPurpose } from './qr-token-types';
 import {
@@ -27,6 +25,8 @@ const PUBLIC_PURPOSES: Array<{ path: string; purpose: QrTokenPurpose }> = [
 ];
 
 function hidden(res: express.Response) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
   return res.status(404).json({
     success: false,
     code: 'QR_TOKEN_NOT_FOUND',
@@ -73,12 +73,6 @@ export function registerQrTokenRoutes(
         if (body.subjectId !== undefined) throw new QrTokenError(400, 'QR_INVALID_REQUEST', 'Onboarding tokens do not accept a subject identifier.');
         expiresInMinutes = normalizeInviteExpiryMinutes(body.expiresInMinutes);
       }
-      await withTenant(identity.tenantId, (client) => assertQrIssuePermission(
-        client,
-        identity,
-        purpose,
-        { employeeId, assetId },
-      ));
       const token = await service.issue(identity, {
         purpose,
         employeeId,
@@ -86,6 +80,33 @@ export function registerQrTokenRoutes(
         expiresInMinutes,
       });
       return res.status(201).json({ success: true, token });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.post('/api/qr/tokens/:tokenRecordId/rotate', issuanceRateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const tokenRecordId = requireUuid(req.params.tokenRecordId, 'Token');
+      strictQrObject(req.body || {}, []);
+      const token = await service.rotate(
+        { tenantId: req.authUser!.tenantId, employeeId: req.authUser!.employeeId },
+        tokenRecordId,
+      );
+      return res.json({ success: true, token });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  app.delete('/api/qr/tokens/:tokenRecordId', issuanceRateLimiter, standardAuth, mutationGuard, async (req, res) => {
+    try {
+      const tokenRecordId = requireUuid(req.params.tokenRecordId, 'Token');
+      const result = await service.revoke(
+        { tenantId: req.authUser!.tenantId, employeeId: req.authUser!.employeeId },
+        tokenRecordId,
+      );
+      return res.json(result);
     } catch (error) {
       return sendError(res, error);
     }
@@ -105,4 +126,18 @@ export function registerQrTokenRoutes(
       }
     });
   }
+
+  app.post('/api/public/onboarding-invites/:token/consume', publicRateLimiter, async (req, res) => {
+    if (!isValidQrToken(req.params.token)) return hidden(res);
+    try {
+      strictQrObject(req.body || {}, []);
+      const result = await service.consumeOnboardingInvite(hashQrToken(req.params.token));
+      if (!result) return hidden(res);
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.json({ success: true, ...result });
+    } catch {
+      return hidden(res);
+    }
+  });
 }

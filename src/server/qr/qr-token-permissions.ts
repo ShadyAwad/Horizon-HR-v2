@@ -12,6 +12,7 @@ export const QR_PERMISSIONS = {
 
 type Identity = { tenantId: string; employeeId: string };
 type Subject = { employeeId?: string | null; assetId?: string | null };
+export type QrPermissionRecord = Subject & { purpose: QrTokenPurpose };
 
 async function authority(
   client: PoolClient,
@@ -81,4 +82,20 @@ export async function assertQrIssuePermission(
 
   await requireAllowed(client, identity, 'hiring.create');
   return requireAllowed(client, identity, QR_PERMISSIONS.onboardingManage);
+}
+
+
+export async function assertQrMutationPermission(
+  client: PoolClient,
+  identity: Identity,
+  record: QrPermissionRecord,
+  operation: 'rotate' | 'revoke',
+) {
+  await assertQrIssuePermission(client, identity, record.purpose, record);
+  if (
+    operation === 'revoke'
+    && !(record.purpose === 'employee_verification' && record.employeeId === identity.employeeId)
+  ) {
+    await requireAllowed(client, identity, QR_PERMISSIONS.revoke, record.employeeId || null);
+  }
 }
