@@ -81,6 +81,8 @@ type Claim = {
   };
   canApprove?: boolean;
   canReimburse?: boolean;
+  approvalSource?: string | null;
+  approvalScopeType?: string | null;
 };
 
 type ClaimHistory = {
@@ -340,6 +342,10 @@ export function ExpensesPanel({
 
   const statusLabel = useCallback((status: ExpenseStatus) => t(`expenses.status.${status}` as Parameters<typeof t>[0]), [t]);
   const categoryLabel = useCallback((category: ExpenseCategory) => t(`expenses.category.${category}` as Parameters<typeof t>[0]), [t]);
+  const authorityLabel = useCallback((claim: Claim) => {
+    if (!claim.approvalSource) return t('expenses.authority.scoped');
+    return t(`expenses.authority.${claim.approvalSource}` as Parameters<typeof t>[0]);
+  }, [t]);
   const formatDate = useCallback((value: string | null) => {
     if (!value) return t('expenses.notAvailable');
     const parsed = new Date(value.length === 10 ? `${value}T00:00:00` : value);
@@ -735,6 +741,13 @@ export function ExpensesPanel({
           {finance && claim.employee && <p className="mb-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">{claim.employee.displayName}</p>}
           <h3 className="truncate font-bold">{claim.merchantName}</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-emerald-100/60">{formatDate(claim.expenseDate)} · {categoryLabel(claim.category)}</p>
+          {finance && claim.employee && (
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-emerald-700 dark:text-emerald-300">{authorityLabel(claim)}</span>
+              {claim.approvalScopeType && <span className="rounded-full border border-slate-300 px-2 py-1 text-slate-500 dark:border-emerald-500/15 dark:text-emerald-100/55">{t(`expenses.scope.${claim.approvalScopeType}` as Parameters<typeof t>[0])}</span>}
+              {(claim.employee.departmentName || claim.employee.teamName) && <span className="rounded-full border border-slate-300 px-2 py-1 text-slate-500 dark:border-emerald-500/15 dark:text-emerald-100/55">{claim.employee.teamName || claim.employee.departmentName}</span>}
+            </div>
+          )}
         </div>
         <div className="text-end">
           <p className="font-mono text-lg font-black">{displayAmount(claim)}</p>

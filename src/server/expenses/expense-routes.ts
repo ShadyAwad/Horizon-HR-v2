@@ -147,6 +147,8 @@ function safeFinanceClaim(row: ClaimRow, capabilities: { canApprove: boolean; ca
       departmentName: row.department_name || null,
       teamName: row.team_name || null,
     },
+    approvalSource: row.approval_source || null,
+    approvalScopeType: row.approval_scope_type || null,
     canApprove: row.status === 'pending' && capabilities.canApprove,
     canReimburse: row.status === 'approved' && capabilities.canReimburse,
   };
@@ -186,6 +188,17 @@ async function notify(client: PoolClient, input: {
     category: input.category,
     currency: input.currency,
     workspace: 'expenses',
+    deepLink: {
+      section: 'expenses',
+      view: input.eventType === 'notification.expense_approval_required'
+        || input.eventType === 'notification.expense_approver_unconfigured'
+        ? 'approvals'
+        : input.eventType === 'notification.expense_awaiting_reimbursement'
+          ? 'reimbursements'
+          : 'claims',
+      claimId: input.claimId,
+      eventType: input.eventType,
+    },
   };
   await client.query(
     `INSERT INTO outbox_events(tenant_id,event_type,payload)
