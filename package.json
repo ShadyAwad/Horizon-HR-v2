@@ -30,6 +30,7 @@
     "test:leave": "tsx scripts/leave-test.ts",
     "test:theme": "tsx scripts/theme-test.ts",
     "test:locations": "tsx scripts/locations-test.ts",
+    "test:document-extraction": "tsx scripts/document-extraction-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
