@@ -31,6 +31,7 @@
     "test:theme": "tsx scripts/theme-test.ts",
     "test:locations": "tsx scripts/locations-test.ts",
     "test:document-extraction": "tsx scripts/document-extraction-test.ts",
+    "test:expenses": "tsx scripts/expenses-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
