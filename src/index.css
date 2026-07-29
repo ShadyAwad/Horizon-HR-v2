@@ -24,7 +24,7 @@
     --stanza-control-height: max(2.5rem, calc(2.5rem * var(--stanza-ui-scale)));
     --bg-primary: #020604;
     --text-primary: #e6fff5;
-    --stanza-page-bg: #020604;
+    --stanza-page-bg: #020403;
     --stanza-surface: #04110d;
     --stanza-surface-elevated: #061811;
     --stanza-surface-muted: #03100b;
@@ -38,7 +38,7 @@
     --stanza-subtle-accent-surface: rgb(16 185 129 / 0.1);
     --stanza-border-subtle: rgb(16 185 129 / 0.15);
     --stanza-border-strong: rgb(52 211 153 / 0.34);
-    --stanza-text-primary: #e6fff5;
+    --stanza-text-primary: #f1f5f9;
     --stanza-text-secondary: #b7d9c7;
     --stanza-text-muted: #9bd8bd;
     --stanza-icon-muted: #9bd8bd;
