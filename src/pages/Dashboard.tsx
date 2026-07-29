@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, u
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -33,6 +33,7 @@ import {
   useStanzaPreferences,
 } from '../lib/StanzaPreferencesContext';
 import type { LightIntensity } from '../lib/StanzaPreferencesContext';
+import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -50,6 +51,7 @@ const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel'
 const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwapApprovalsPanel').then((module) => ({ default: module.ShiftSwapApprovalsPanel })));
 const LeaveWorkspace = lazy(() => import('../components/roster/LeaveWorkspace').then((module) => ({ default: module.LeaveWorkspace })));
 const LocationsPanel = lazy(() => import('../components/locations/LocationsPanel').then((module) => ({ default: module.LocationsPanel })));
+const ExpensesPanel = lazy(() => import('../components/expenses/ExpensesPanel').then((module) => ({ default: module.ExpensesPanel })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -780,10 +782,11 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>('geofence');
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
+  const [expenseDeepLink, setExpenseDeepLink] = useState<ExpenseDeepLink | null>(null);
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -1312,9 +1315,23 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       view?: string;
       leaveView?: string;
       requestId?: string;
+      claimId?: string;
       eventType?: string;
     };
-    const openLeaveNotification = (navigation: NotificationNavigation) => {
+    const openNotification = (navigation: NotificationNavigation) => {
+      if (navigation.section === 'expenses') {
+        const claimId = isUuidString(navigation.claimId) ? navigation.claimId! : null;
+        const approvalEvent = navigation.eventType === 'notification.expense_approval_required'
+          || navigation.eventType === 'notification.expense_approver_unconfigured';
+        const reimbursementEvent = navigation.eventType === 'notification.expense_awaiting_reimbursement'
+          || navigation.view === 'reimbursements';
+        setActiveTab('expenses');
+        setExpenseDeepLink({
+          view: reimbursementEvent ? 'reimbursements' : approvalEvent || navigation.view === 'approvals' ? 'approvals' : 'claims',
+          claimId,
+        });
+        return;
+      }
       if (navigation.section !== 'roster') return;
       if (navigation.view === 'schedule') {
         setActiveTab('roster');
@@ -1332,16 +1349,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
     const openFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      openLeaveNotification({
+      openNotification({
         section: params.get('section') || undefined,
         view: params.get('view') || undefined,
         leaveView: params.get('leaveView') || undefined,
         requestId: params.get('requestId') || undefined,
+        claimId: params.get('claimId') || undefined,
         eventType: params.get('eventType') || undefined,
       });
     };
     const onNotificationNavigation = (event: Event) => {
-      openLeaveNotification((event as CustomEvent<NotificationNavigation>).detail || {});
+      openNotification((event as CustomEvent<NotificationNavigation>).detail || {});
     };
     openFromUrl();
     window.addEventListener('popstate', openFromUrl);
@@ -4157,6 +4175,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
              <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} className="absolute end-0 top-0" />
           </button>
           <button
+            type="button"
+            onClick={() => {
+              setActiveTab('expenses');
+              setShowPayrollPanel(false);
+              setShowGrievancesPanel(false);
+              setShowResignationsPanel(false);
+            }}
+            className={cn("h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'expenses' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
+            title={t('dash.expenses')}
+            aria-label={t('dash.expenses')}
+          >
+            <ReceiptText className="h-5 w-5" />
+          </button>
+          <button
             onClick={() => {
               setActiveTab('feed');
               setShowPayrollPanel(false);
@@ -4451,6 +4483,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        {t('dash.roster')}
                        <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('expenses');
+                        setShowPayrollPanel(false);
+                        setShowGrievancesPanel(false);
+                        setShowResignationsPanel(false);
+                      }}
+                      className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'expenses' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
+                    >
+                      <ReceiptText className="h-4 w-4 hidden sm:block" />
+                      {t('dash.expenses')}
+                    </button>
                     {canViewHiring && (
                       <button
                         type="button"
@@ -4620,6 +4665,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'locations' && canViewLocations && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <LocationsPanel />
+                  </Suspense>
+                )}
+                {activeTab === 'expenses' && (
+                  <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                    <ExpensesPanel
+                      user={user}
+                      deepLink={expenseDeepLink}
+                      onDeepLinkHandled={() => setExpenseDeepLink(null)}
+                    />
                   </Suspense>
                 )}
                 {false && activeTab === 'roster' && rosterSubview === 'swaps' && (
