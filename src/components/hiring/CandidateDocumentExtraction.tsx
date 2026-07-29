@@ -58,6 +58,8 @@ const FIELD_MAP: Array<{
   { extraction: 'phoneNumber', applicant: 'phone', labelKey: 'hiring.phone' },
 ];
 
+class CandidateExtractionUiError extends Error {}
+
 function responseCode(payload: unknown) {
   return payload && typeof payload === 'object' && 'code' in payload && typeof payload.code === 'string'
     ? payload.code
@@ -100,6 +102,7 @@ export function CandidateDocumentExtraction({
   const [fields, setFields] = useState<CandidateFields | null>(null);
   const [ignored, setIgnored] = useState<Set<CandidateSuggestionKey>>(new Set());
   const [warningFields, setWarningFields] = useState<Set<string>>(new Set());
+  const [missingFields, setMissingFields] = useState<ExtractionFieldKey[]>([]);
   const [error, setError] = useState('');
 
   const cleanupExtraction = useCallback(async () => {
@@ -176,6 +179,7 @@ export function CandidateDocumentExtraction({
     setFields(safeFields);
     setIgnored(new Set());
     setWarningFields(new Set((payload.warnings || []).map((warning) => warning.field || '').filter(Boolean)));
+    setMissingFields(FIELD_MAP.filter(({ extraction }) => !safeFields[extraction].value).map(({ extraction }) => extraction));
     const initial: Partial<Record<CandidateSuggestionKey, string>> = {};
     for (const { extraction, applicant } of FIELD_MAP) {
       const value = safeFields[extraction].value;
@@ -203,7 +207,7 @@ export function CandidateDocumentExtraction({
       });
       const payload = await response.json().catch(() => ({})) as ExtractionPayload;
       if (!response.ok || !payload.success || !payload.extractionId) {
-        throw new Error(mapError(response.status, payload, false));
+        throw new CandidateExtractionUiError(mapError(response.status, payload, false));
       }
       extractionRef.current = payload.extractionId;
       if (priorExtraction && priorExtraction !== payload.extractionId) {
@@ -215,7 +219,7 @@ export function CandidateDocumentExtraction({
       setError(
         caught instanceof DOMException && caught.name === 'AbortError'
           ? mapError(0, null, true)
-          : caught instanceof Error
+          : caught instanceof CandidateExtractionUiError
             ? caught.message
             : t('hiring.extractionUnavailable'),
       );
@@ -232,6 +236,7 @@ export function CandidateDocumentExtraction({
     setFields(null);
     setIgnored(new Set());
     setWarningFields(new Set());
+    setMissingFields([]);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     await cleanupExtraction();
@@ -340,6 +345,13 @@ export function CandidateDocumentExtraction({
           <h5 className="text-sm font-black text-slate-900 dark:text-emerald-50">
             {t('hiring.extractionSuggestions')}
           </h5>
+          {missingFields.length > 0 && (
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-100">
+              {t('hiring.extractionPartial')}
+              {' '}
+              {missingFields.map((field) => t(`hiring.extractionMissing.${field}` as never)).join(', ')}
+            </p>
+          )}
           {FIELD_MAP.map(({ extraction, applicant, labelKey }) => {
             const suggestion = fields[extraction];
             const hidden = ignored.has(applicant);

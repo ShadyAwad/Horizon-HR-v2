@@ -14,6 +14,12 @@ import {
   CandidateDocumentExtraction,
   type CandidateSuggestionKey,
 } from './CandidateDocumentExtraction';
+import {
+  INITIAL_CANDIDATE_FIELD_ORIGINS,
+  markCandidateFieldEdited,
+  markCandidateSuggestionApplied,
+  mergeInitialCandidateSuggestions,
+} from './candidate-prefill-state';
 
 type ModalKind = 'create' | 'edit' | 'note' | 'stage' | 'handoff' | 'archive' | null;
 type PanelProps = { user: AuthUser; onRefreshAttentionCounts: () => void };
@@ -281,15 +287,15 @@ function ApplicantForm({
 }) {
   const { t } = useLanguage();
   const [extractionProcessing, setExtractionProcessing] = useState(false);
+  const candidateOriginsRef = useRef({ ...INITIAL_CANDIDATE_FIELD_ORIGINS });
   const updateCandidateField = (key: CandidateSuggestionKey, value: string) => {
+    candidateOriginsRef.current = markCandidateSuggestionApplied(candidateOriginsRef.current, key);
     onChange({ ...form, [key]: value });
   };
   const applyInitialSuggestions = (suggestions: Partial<Record<CandidateSuggestionKey, string>>) => {
-    const next = { ...form };
-    for (const [key, value] of Object.entries(suggestions) as Array<[CandidateSuggestionKey, string]>) {
-      if (!next[key]) next[key] = value;
-    }
-    onChange(next);
+    const merged = mergeInitialCandidateSuggestions(form, candidateOriginsRef.current, suggestions);
+    candidateOriginsRef.current = merged.origins;
+    onChange(merged.form);
   };
   const field = (key: keyof HiringApplicantInput, label: string, type = 'text') => (
     <label className="block text-sm font-bold">
@@ -297,7 +303,12 @@ function ApplicantForm({
       <input
         type={type}
         value={form[key] || ''}
-        onChange={(event) => onChange({ ...form, [key]: event.target.value })}
+        onChange={(event) => {
+          if (key === 'fullName' || key === 'email' || key === 'phone') {
+            candidateOriginsRef.current = markCandidateFieldEdited(candidateOriginsRef.current, key);
+          }
+          onChange({ ...form, [key]: event.target.value });
+        }}
         className="mt-1 w-full rounded-lg border border-emerald-500/20 bg-black/5 px-3 py-2 text-base outline-none focus:border-emerald-500 dark:bg-black/35"
       />
     </label>
