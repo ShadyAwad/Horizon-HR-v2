@@ -344,6 +344,7 @@ assert.match(panel, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.match(panel, /role="tablist"/);
 assert.match(panel, /aria-selected=/);
 assert.match(panel, /role="dialog"/);
+assert.match(panel, /createPortal\([\s\S]*document\.body/);
 assert.match(panel, /event\.key === 'Escape'/);
 assert.match(panel, /max-h-\[calc\(100dvh-1rem\)\]/);
 assert.match(panel, /overflow-x-hidden/);

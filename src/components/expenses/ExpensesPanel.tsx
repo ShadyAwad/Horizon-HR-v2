@@ -30,6 +30,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { AuthUser } from '../../App';
 import { apiFetch, apiUrl } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
@@ -230,7 +231,7 @@ function Dialog({
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/65 p-0 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div
         ref={dialogRef}
@@ -250,7 +251,8 @@ function Dialog({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
