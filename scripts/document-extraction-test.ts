@@ -57,24 +57,33 @@ function upload(buffer: Buffer, mimetype: string, originalname: string, size = b
   return { buffer, mimetype, originalname, size };
 }
 
-const [png, jpeg] = await Promise.all([
+const [png, jpeg, webp] = await Promise.all([
   sharp({
     create: { width: 24, height: 24, channels: 4, background: { r: 0, g: 128, b: 80, alpha: 1 } },
   }).png().toBuffer(),
   sharp({
     create: { width: 24, height: 24, channels: 3, background: { r: 0, g: 128, b: 80 } },
   }).jpeg().toBuffer(),
+  sharp({
+    create: { width: 24, height: 24, channels: 3, background: { r: 0, g: 128, b: 80 } },
+  }).webp().toBuffer(),
 ]);
 
 const preparedPng = await validateAndPrepareImage(upload(png, 'image/png', 'receipt.png'));
 const preparedJpeg = await validateAndPrepareImage(upload(jpeg, 'image/jpeg', 'receipt.jpg'));
+const preparedWebp = await validateAndPrepareImage(upload(webp, 'image/webp', 'label.webp'));
 assert.equal(preparedPng.mimeType, 'image/png');
 assert.equal(preparedJpeg.mimeType, 'image/jpeg');
+assert.equal(preparedWebp.mimeType, 'image/webp');
 assert(preparedPng.width <= 4096 && preparedJpeg.height <= 4096);
 pass('Valid JPEG and PNG images are decoded and normalized');
 
 await expectExtractionError(
   Promise.resolve().then(() => validateUploadEnvelope(upload(Buffer.from('MZ executable'), 'application/octet-stream', 'payload.exe'))),
+  'UNSUPPORTED_FILE_TYPE',
+);
+await expectExtractionError(
+  Promise.resolve().then(() => validateUploadEnvelope(upload(Buffer.from('%PDF-1.7'), 'application/pdf', 'label.pdf'))),
   'UNSUPPORTED_FILE_TYPE',
 );
 await expectExtractionError(
@@ -280,6 +289,12 @@ try {
     body: imageForm('candidate_document'),
   });
   assert.equal(hrWithoutPermission.response.status, 403, JSON.stringify(hrWithoutPermission.body));
+  const assetManagerWithoutExtractionPermission = await request('/api/document-extractions', {
+    method: 'POST',
+    headers: { Origin: baseUrl, 'x-test-auth': 'true', 'x-test-permissions': 'assets.manage' },
+    body: imageForm('asset_label'),
+  });
+  assert.equal(assetManagerWithoutExtractionPermission.response.status, 403, JSON.stringify(assetManagerWithoutExtractionPermission.body));
 
   for (const mode of ['expense_receipt', 'candidate_document', 'asset_label'] as const) {
     const allowed = await request('/api/document-extractions', {
@@ -356,6 +371,9 @@ const registrySource = await readFile('src/server/organisation/permission-regist
 const candidateUiSource = await readFile('src/components/hiring/CandidateDocumentExtraction.tsx', 'utf8');
 const candidateFormSource = await readFile('src/components/hiring/HiringPanel.tsx', 'utf8');
 const candidateStateSource = await readFile('src/components/hiring/candidate-prefill-state.ts', 'utf8');
+const assetUiSource = await readFile('src/components/assets/AssetLabelExtraction.tsx', 'utf8');
+const assetFormSource = await readFile('src/components/assets/AssetFormDialog.tsx', 'utf8');
+const assetStateSource = await readFile('src/components/assets/asset-prefill-state.ts', 'utf8');
 const docs = await readFile('docs/document-extraction.md', 'utf8');
 assert.match(migration, /UNIQUE \(id, tenant_id\)/);
 assert.match(migration, /FOREIGN KEY \(requested_by_employee_id, tenant_id\)/);
@@ -394,6 +412,28 @@ for (const sensitiveField of ['birthDate', 'gender', 'ethnicity', 'religion', 'd
 }
 assert.doesNotMatch(candidateUiSource, /\bage\s*[:=]/);
 pass('Candidate UI offers image-only optional prefill without provider details, protected attributes, or automatic applicant mutation');
+
+assert.match(assetUiSource, /asset_label/);
+assert.match(assetUiSource, /image\/jpeg,image\/png,image\/webp/);
+assert.doesNotMatch(assetUiSource, /application\/pdf|\.pdf/i);
+assert.match(assetUiSource, /serialNumber/);
+assert.match(assetUiSource, /model/);
+assert.match(assetUiSource, /manufacturer/);
+assert.match(assetUiSource, /barcodeText/);
+assert.match(assetUiSource, /extractionUseAsSerial/);
+assert.match(assetUiSource, /method: 'DELETE'/);
+assert.match(assetUiSource, /mountedRef/);
+assert.doesNotMatch(assetUiSource, /rawOcr|providerPayload|storageKey|temporaryUrl/);
+assert.match(assetStateSource, /manually-cleared/);
+assert.match(assetStateSource, /originAfterManualChange/);
+assert.match(assetStateSource, /origins\[field\] !== 'untouched'/);
+assert.match(assetStateSource, /assets\.manage/);
+assert.match(assetStateSource, /document_extraction\.asset\.manage/);
+assert.match(assetFormSource, /data-field-origin/);
+assert.match(assetFormSource, /confirmSerialChange/);
+assert.match(assetFormSource, /serial-availability/);
+assert.doesNotMatch(assetFormSource, /extractionId|confidenceLevel|barcodeText|rawOcr|providerPayload|storageKey/);
+pass('Asset UI keeps extraction private, permission-gated, editable, temporary, and separate from explicit asset persistence');
 
 const projection = presentAuditEvent('document_extraction.completed', 'document_extraction_job', {
   extractionId: EXTRACTION_A,
