@@ -56,6 +56,7 @@ import { registerShiftSwapRoutes } from './src/server/roster/shift-swap-routes';
 import { registerLocationRoutes } from './src/server/locations/location-routes';
 import { registerLeaveRoutes } from './src/server/leave/leave-routes';
 import { registerDocumentExtractionRoutes } from './src/server/document-extraction/extraction-routes';
+import { registerExpenseRoutes } from './src/server/expenses/expense-routes';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
@@ -2098,6 +2099,7 @@ async function startServer() {
   const assetEvidenceRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
   const organisationMutationRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 60);
   const documentExtractionRateLimiter = createAuthRateLimiter(60 * 60 * 1000, 20);
+  const expenseMutationRateLimiter = createAuthRateLimiter(15 * 60 * 1000, 40);
   const avatarUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: PROFILE_IMAGE_MAX_BYTES, files: 1 },
@@ -2217,6 +2219,11 @@ async function startServer() {
     standardAuth: demoAuth,
     mutationGuard: isSameOriginSessionMutation,
     rateLimiter: documentExtractionRateLimiter,
+  });
+  registerExpenseRoutes(app, {
+    standardAuth: demoAuth,
+    mutationGuard: isSameOriginSessionMutation,
+    rateLimiter: expenseMutationRateLimiter,
   });
 
   app.post('/api/assets/:assetId/evidence', assetEvidenceRateLimiter, demoAuth, async (req, res) => {
