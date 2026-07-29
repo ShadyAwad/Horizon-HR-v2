@@ -4,7 +4,8 @@ import { apiFetch, apiUrl } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 import { cn } from '../../lib/utils';
 
-export type AssetSuggestionKey = 'serialNumber' | 'model' | 'manufacturer' | 'barcodeText';
+export type AssetSuggestionKey = 'serialNumber' | 'modelNumber' | 'manufacturer' | 'barcodeText';
+type AssetFormSuggestionKey = 'serialNumber' | 'model' | 'manufacturer';
 type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unavailable';
 type ExtractedField = {
   value: string | null;
@@ -23,14 +24,14 @@ type ExtractionPayload = {
 type Props = {
   enabled: boolean;
   saveCompleted: boolean;
-  onApply: (field: Exclude<AssetSuggestionKey, 'barcodeText'>, value: string) => void;
-  onInitialSuggestions: (suggestions: Partial<Record<Exclude<AssetSuggestionKey, 'barcodeText'>, string>>) => void;
+  onApply: (field: AssetFormSuggestionKey, value: string) => void;
+  onInitialSuggestions: (suggestions: Partial<Record<AssetFormSuggestionKey, string>>) => void;
   onProcessingChange: (processing: boolean) => void;
 };
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_BYTES = 10 * 1024 * 1024;
-const FIELD_KEYS: AssetSuggestionKey[] = ['serialNumber', 'model', 'manufacturer', 'barcodeText'];
+const FIELD_KEYS: AssetSuggestionKey[] = ['serialNumber', 'modelNumber', 'manufacturer', 'barcodeText'];
 
 class AssetExtractionUiError extends Error {}
 
@@ -175,12 +176,13 @@ export function AssetLabelExtraction({
         return;
       }
       const nextDrafts: Partial<Record<AssetSuggestionKey, string>> = {};
-      const initial: Partial<Record<Exclude<AssetSuggestionKey, 'barcodeText'>, string>> = {};
+      const initial: Partial<Record<AssetFormSuggestionKey, string>> = {};
       for (const key of FIELD_KEYS) {
         const value = normalized[key].value;
         if (!value) continue;
         nextDrafts[key] = value;
-        if (key !== 'barcodeText') initial[key] = value;
+        if (key === 'modelNumber') initial.model = value;
+        else if (key !== 'barcodeText') initial[key] = value;
       }
       setDrafts(nextDrafts);
       onInitialSuggestions(initial);
@@ -254,7 +256,7 @@ export function AssetLabelExtraction({
         if (!field.value || ignored.has(key)) return null;
         const draft = drafts[key] || '';
         const warning = Boolean(field.warning || warningFields.has(key) || (key === 'serialNumber' && /[OIB][018]|[018][OIB]/i.test(draft)));
-        return <article key={key} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/20"><label className="block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-emerald-100/50">{t(`assets.extractionField.${key}` as never)}<input value={draft} maxLength={key === 'serialNumber' ? 160 : key === 'barcodeText' ? 200 : 120} onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-emerald-500/20 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 outline-none focus:border-emerald-500 dark:bg-black/35 dark:text-emerald-50" /></label><p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/60">{t(`assets.confidence.${field.confidenceLevel}` as never)}{warning ? ` · ${t(`assets.extractionWarning.${key}` as never)}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{key !== 'barcodeText' ? <button type="button" onClick={() => onApply(key, draft)} className="min-h-10 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-[#02110b]">{t('assets.extractionApply')}</button> : <button type="button" onClick={() => onApply('serialNumber', draft)} className="min-h-10 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-[#02110b]">{t('assets.extractionUseAsSerial')}</button>}<button type="button" onClick={() => setIgnored((current) => new Set(current).add(key))} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold dark:border-emerald-500/20">{t('assets.extractionIgnore')}</button></div></article>;
+        return <article key={key} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/20"><label className="block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-emerald-100/50">{t(`assets.extractionField.${key}` as never)}<input value={draft} maxLength={key === 'serialNumber' ? 160 : key === 'barcodeText' ? 200 : 120} onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-emerald-500/20 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 outline-none focus:border-emerald-500 dark:bg-black/35 dark:text-emerald-50" /></label><p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/60">{t(`assets.confidence.${field.confidenceLevel}` as never)}{warning ? ` · ${t(`assets.extractionWarning.${key}` as never)}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{key !== 'barcodeText' ? <button type="button" onClick={() => onApply(key === 'modelNumber' ? 'model' : key, draft)} className="min-h-10 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-[#02110b]">{t('assets.extractionApply')}</button> : <button type="button" onClick={() => onApply('serialNumber', draft)} className="min-h-10 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-[#02110b]">{t('assets.extractionUseAsSerial')}</button>}<button type="button" onClick={() => setIgnored((current) => new Set(current).add(key))} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold dark:border-emerald-500/20">{t('assets.extractionIgnore')}</button></div></article>;
       })}</div>}
     </section>
   );
