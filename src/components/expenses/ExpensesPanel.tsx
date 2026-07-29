@@ -525,10 +525,11 @@ export function ExpensesPanel({
       const payload = await response.json() as ExtractionResponse;
       if (!response.ok || !payload.success) {
         const code = errorCode(payload);
-        const mapped = code.includes('RATE') ? t('expenses.extractionRateLimit')
+        const mapped = response.status === 429 || code.includes('RATE') ? t('expenses.extractionRateLimit')
           : code.includes('TYPE') ? t('expenses.unsupportedFile')
             : code.includes('SIZE') ? t('expenses.fileTooLarge')
               : code.includes('TIMEOUT') ? t('expenses.extractionTimeout')
+                : code.includes('EXPIRED') ? t('expenses.extractionExpired')
                 : t('expenses.extractionUnavailable');
         throw new Error(mapped);
       }
@@ -627,7 +628,15 @@ export function ExpensesPanel({
         }),
       });
       const payload = await response.json() as { success: boolean; claim?: Claim; duplicateWarning?: boolean; message?: string };
-      if (!response.ok || !payload.success) throw new Error(readError(payload, t('expenses.submitError')));
+      if (!response.ok || !payload.success) {
+        if (errorCode(payload) === 'EXPENSE_EXTRACTION_NOT_FOUND') {
+          extractionRef.current = null;
+          setExtractionId(null);
+          setSuggestions(null);
+          throw new Error(t('expenses.extractionExpired'));
+        }
+        throw new Error(readError(payload, t('expenses.submitError')));
+      }
       submittedRef.current = true;
       setDuplicateWarning(Boolean(payload.duplicateWarning));
       setClaimStep(4);
@@ -1049,6 +1058,11 @@ export function ExpensesPanel({
               </div>
               <p className="mt-3 text-xs text-slate-500 dark:text-emerald-100/50">{t('expenses.temporaryReceipt')}</p>
               {extractionError && <p role="alert" className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">{extractionError} {t('expenses.manualFallback')}</p>}
+              {suggestions && (
+                <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+                  {t('expenses.replacePreservesEdits')}
+                </p>
+              )}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <button type="button" onClick={() => setClaimStep(2)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold dark:border-emerald-500/20">{t('expenses.continueManual')}</button>
                 <button type="button" disabled={!receiptFile || extracting} onClick={() => void extractReceipt()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
