@@ -16,10 +16,41 @@
       body {
         min-width: 320px;
       }
+
+      html[data-theme="light"][data-light-intensity="bright"],
+      html[data-theme="light"][data-light-intensity="bright"] body,
+      html[data-theme="light"][data-light-intensity="bright"] #root {
+        background: #fbfefc;
+        color: #153326;
+      }
+
+      html[data-theme="light"][data-light-intensity="balanced"],
+      html[data-theme="light"][data-light-intensity="balanced"] body,
+      html[data-theme="light"][data-light-intensity="balanced"] #root {
+        background: #f4faf6;
+        color: #173326;
+      }
+
+      html[data-theme="light"][data-light-intensity="deep"],
+      html[data-theme="light"][data-light-intensity="deep"] body,
+      html[data-theme="light"][data-light-intensity="deep"] #root {
+        background: #e4f0e8;
+        color: #143025;
+      }
     </style>
-    <script>
+      <script>
       try {
         const theme = localStorage.getItem('horizon-theme');
+        let storedPreferences = {};
+        try {
+          storedPreferences = JSON.parse(localStorage.getItem('stanza.preferences.v1') || '{}');
+        } catch {
+          storedPreferences = {};
+        }
+        const lightIntensity = ['bright', 'balanced', 'deep'].includes(storedPreferences.lightIntensity)
+          ? storedPreferences.lightIntensity
+          : 'balanced';
+        document.documentElement.dataset.lightIntensity = lightIntensity;
         if (theme === 'light') {
           document.documentElement.classList.remove('dark');
           document.documentElement.dataset.theme = 'light';

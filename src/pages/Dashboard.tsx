@@ -32,6 +32,7 @@ import {
   MIN_INTERFACE_SCALE,
   useStanzaPreferences,
 } from '../lib/StanzaPreferencesContext';
+import type { LightIntensity } from '../lib/StanzaPreferencesContext';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -933,6 +934,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setLanyardEnabled,
     setInterfaceScale,
     resetInterfaceScale,
+    lightIntensity,
+    setLightIntensity,
   } = useStanzaPreferences();
 
   const geo = useGeolocation();
@@ -3968,6 +3971,42 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             AR-AE
           </button>
         </div>
+
+        <div className="stanza-light-intensity-control min-w-0 rounded-lg border border-emerald-500/15 bg-white px-3 py-3 dark:border-emerald-500/20 dark:bg-black/40 sm:col-span-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p id="stanza-light-intensity-label" className="text-xs font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lightIntensity')}</p>
+              <p id="stanza-light-intensity-help" className="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-emerald-100/50">
+                {isDark ? t('dash.lightIntensityAppliesToLight') : t('dash.lightIntensityDescription')}
+              </p>
+            </div>
+            <div
+              role="radiogroup"
+              aria-labelledby="stanza-light-intensity-label"
+              aria-describedby="stanza-light-intensity-help"
+              className="grid w-full grid-cols-3 gap-1 rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-1 sm:w-auto"
+              dir={isRtl ? 'rtl' : 'ltr'}
+            >
+              {(['bright', 'balanced', 'deep'] as const).map((intensity) => (
+                <button
+                  key={intensity}
+                  type="button"
+                  role="radio"
+                  aria-checked={lightIntensity === intensity}
+                  onClick={() => setLightIntensity(intensity as LightIntensity)}
+                  className={cn(
+                    'min-h-10 rounded-md px-3 text-xs font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#061411]',
+                    lightIntensity === intensity
+                      ? 'bg-emerald-500 text-black shadow-sm'
+                      : 'text-neutral-600 hover:bg-white/75 hover:text-emerald-700 dark:text-emerald-100/60 dark:hover:bg-black/25 dark:hover:text-emerald-100',
+                  )}
+                >
+                  {t(`dash.lightIntensity${intensity.charAt(0).toUpperCase()}${intensity.slice(1)}` as 'dash.lightIntensityBright')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3977,21 +4016,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   ref={dashboardRootRef}
   dir={isRtl ? 'rtl' : 'ltr'}
   className={cn(
-    "stanza-dashboard h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[#020403] text-slate-100 font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
+    "stanza-dashboard h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[var(--stanza-page-bg)] text-[color:var(--stanza-text-primary)] font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
     isRtl ? "text-right" : "text-left"
   )}
 >
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
-  <div className="absolute inset-0 bg-[linear-gradient(180deg,#f7fbf8_0%,#ecfdf5_45%,#f7fbf8_100%)] dark:hidden" />
+  <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />
 
   {/* Dark mode base */}
   <div className="absolute inset-0 hidden dark:block bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_38%),linear-gradient(180deg,#020403_0%,#03100b_52%,#020403_100%)]" />
 
   {/* Light mode topography */}
   <div
-    className="absolute inset-0 bg-emerald-700/10 opacity-50 dark:hidden"
+    className="stanza-light-topography absolute inset-0 dark:hidden"
     style={{
       WebkitMaskImage: "url('/topography.svg')",
       maskImage: "url('/topography.svg')",
@@ -4020,8 +4059,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   />
 
   {/* Light mode soft glows */}
-  <div className="absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full bg-emerald-300/20 blur-3xl dark:hidden" />
-  <div className="absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full bg-emerald-200/25 blur-3xl dark:hidden" />
+  <div className="stanza-light-glow stanza-light-glow-top absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full blur-3xl dark:hidden" />
+  <div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" />
 
   {/* Dark mode soft glows */}
   <div className="absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl dark:block" />

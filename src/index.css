@@ -24,6 +24,24 @@
     --stanza-control-height: max(2.5rem, calc(2.5rem * var(--stanza-ui-scale)));
     --bg-primary: #020604;
     --text-primary: #e6fff5;
+    --stanza-page-bg: #020604;
+    --stanza-surface: #04110d;
+    --stanza-surface-elevated: #061811;
+    --stanza-surface-muted: #03100b;
+    --stanza-navigation-surface: #061411;
+    --stanza-sidebar-surface: #061411;
+    --stanza-input-bg: #061811;
+    --stanza-dropdown-bg: #061811;
+    --stanza-editor-toolbar-bg: #03100b;
+    --stanza-hover-surface: #0b2a1e;
+    --stanza-selected-surface: #064e3b;
+    --stanza-subtle-accent-surface: rgb(16 185 129 / 0.1);
+    --stanza-border-subtle: rgb(16 185 129 / 0.15);
+    --stanza-border-strong: rgb(52 211 153 / 0.34);
+    --stanza-text-primary: #e6fff5;
+    --stanza-text-secondary: #b7d9c7;
+    --stanza-text-muted: #9bd8bd;
+    --stanza-icon-muted: #9bd8bd;
     --panel-border: rgb(16 185 129 / 0.15);
     --stanza-select-bg: #061811;
     --stanza-select-text: #e6fff5;
@@ -40,20 +58,110 @@
   }
 
   :root[data-theme="light"] {
-    --bg-primary: #f7fbf8;
-    --text-primary: #171717;
-    --panel-border: #d6e7dc;
-    --stanza-select-bg: #ffffff;
-    --stanza-select-text: #173326;
-    --stanza-select-border: #8fb8a2;
+    --bg-primary: #f4faf6;
+    --text-primary: #173326;
+    --panel-border: #c7dfd0;
+    --stanza-page-bg: #f4faf6;
+    --stanza-surface: #ffffff;
+    --stanza-surface-elevated: #ffffff;
+    --stanza-surface-muted: #edf6f0;
+    --stanza-navigation-surface: #f8fcf9;
+    --stanza-sidebar-surface: #fbfefc;
+    --stanza-input-bg: #ffffff;
+    --stanza-dropdown-bg: #ffffff;
+    --stanza-editor-toolbar-bg: #f1f8f3;
+    --stanza-hover-surface: #e4f4e9;
+    --stanza-selected-surface: #c9f3dc;
+    --stanza-subtle-accent-surface: #e6f7ec;
+    --stanza-border-subtle: #c7dfd0;
+    --stanza-border-strong: #8fb8a2;
+    --stanza-text-primary: #173326;
+    --stanza-text-secondary: #365746;
+    --stanza-text-muted: #587465;
+    --stanza-icon-muted: #486657;
+    --stanza-select-bg: var(--stanza-input-bg);
+    --stanza-select-text: var(--stanza-text-primary);
+    --stanza-select-border: var(--stanza-border-strong);
     --stanza-select-focus: #047857;
-    --stanza-select-option-bg: #ffffff;
-    --stanza-select-option-text: #173326;
-    --stanza-select-option-selected-bg: #c9f3dc;
-    --stanza-select-muted: #486657;
-    --stanza-menu-bg: #ffffff;
-    --stanza-menu-text: #173326;
+    --stanza-select-option-bg: var(--stanza-dropdown-bg);
+    --stanza-select-option-text: var(--stanza-text-primary);
+    --stanza-select-option-selected-bg: var(--stanza-selected-surface);
+    --stanza-select-muted: var(--stanza-text-muted);
+    --stanza-menu-bg: var(--stanza-dropdown-bg);
+    --stanza-menu-text: var(--stanza-text-primary);
     color-scheme: light;
+  }
+
+  :root[data-theme="light"][data-light-intensity="bright"] {
+    --bg-primary: #fbfefc;
+    --text-primary: #153326;
+    --panel-border: #d5e7da;
+    --stanza-page-bg: #fbfefc;
+    --stanza-surface: #ffffff;
+    --stanza-surface-elevated: #ffffff;
+    --stanza-surface-muted: #f3faf5;
+    --stanza-navigation-surface: #fcfffd;
+    --stanza-sidebar-surface: #ffffff;
+    --stanza-input-bg: #ffffff;
+    --stanza-dropdown-bg: #ffffff;
+    --stanza-editor-toolbar-bg: #f6fbf7;
+    --stanza-hover-surface: #edf8f0;
+    --stanza-selected-surface: #d9f5e3;
+    --stanza-subtle-accent-surface: #eef9f1;
+    --stanza-border-subtle: #d5e7da;
+    --stanza-border-strong: #9cc5ad;
+    --stanza-text-primary: #153326;
+    --stanza-text-secondary: #3c5c4a;
+    --stanza-text-muted: #66806f;
+    --stanza-icon-muted: #54705e;
+  }
+
+  :root[data-theme="light"][data-light-intensity="balanced"] {
+    --bg-primary: #f4faf6;
+    --text-primary: #173326;
+    --panel-border: #c7dfd0;
+    --stanza-page-bg: #f4faf6;
+    --stanza-surface: #ffffff;
+    --stanza-surface-elevated: #ffffff;
+    --stanza-surface-muted: #edf6f0;
+    --stanza-navigation-surface: #f8fcf9;
+    --stanza-sidebar-surface: #fbfefc;
+    --stanza-input-bg: #ffffff;
+    --stanza-dropdown-bg: #ffffff;
+    --stanza-editor-toolbar-bg: #f1f8f3;
+    --stanza-hover-surface: #e4f4e9;
+    --stanza-selected-surface: #c9f3dc;
+    --stanza-subtle-accent-surface: #e6f7ec;
+    --stanza-border-subtle: #c7dfd0;
+    --stanza-border-strong: #8fb8a2;
+    --stanza-text-primary: #173326;
+    --stanza-text-secondary: #365746;
+    --stanza-text-muted: #587465;
+    --stanza-icon-muted: #486657;
+  }
+
+  :root[data-theme="light"][data-light-intensity="deep"] {
+    --bg-primary: #e4f0e8;
+    --text-primary: #143025;
+    --panel-border: #a9cbb5;
+    --stanza-page-bg: #e4f0e8;
+    --stanza-surface: #f7fcf8;
+    --stanza-surface-elevated: #ffffff;
+    --stanza-surface-muted: #d8eadf;
+    --stanza-navigation-surface: #eef7f0;
+    --stanza-sidebar-surface: #f2faf4;
+    --stanza-input-bg: #ffffff;
+    --stanza-dropdown-bg: #ffffff;
+    --stanza-editor-toolbar-bg: #e4f1e8;
+    --stanza-hover-surface: #cbe5d4;
+    --stanza-selected-surface: #b8e3c7;
+    --stanza-subtle-accent-surface: #d3eadb;
+    --stanza-border-subtle: #a9cbb5;
+    --stanza-border-strong: #739d83;
+    --stanza-text-primary: #143025;
+    --stanza-text-secondary: #2f5140;
+    --stanza-text-muted: #506e5b;
+    --stanza-icon-muted: #3f604d;
   }
   
   .dark {
@@ -70,6 +178,41 @@
     --stanza-select-muted: #9bd8bd;
     --stanza-menu-bg: #061811;
     --stanza-menu-text: #e6fff5;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard {
+    background-color: var(--stanza-page-bg);
+    color: var(--stanza-text-primary);
+  }
+
+  :root[data-theme="light"] .stanza-dashboard .bg-white {
+    background-color: var(--stanza-surface) !important;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/95,
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/90 {
+    background-color: color-mix(in srgb, var(--stanza-surface-elevated) 95%, transparent) !important;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/85,
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/80,
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/75,
+  :root[data-theme="light"] .stanza-dashboard .bg-white\/70 {
+    background-color: color-mix(in srgb, var(--stanza-surface) 88%, transparent) !important;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard :is(.bg-white\/60, .bg-white\/55, .bg-neutral-50, .bg-neutral-50\/90) {
+    background-color: var(--stanza-surface-muted) !important;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard :is(.bg-black\/5, .bg-black\/10, .bg-black\/15) {
+    background-color: var(--stanza-surface-muted) !important;
+  }
+
+  :root[data-theme="light"] .stanza-dashboard :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    background-color: var(--stanza-input-bg);
+    color: var(--stanza-text-primary);
+    border-color: var(--stanza-border-subtle);
   }
 
   html,
@@ -131,6 +274,28 @@
 }
 
 @layer components {
+  .stanza-light-atmosphere {
+    background: linear-gradient(180deg, var(--stanza-page-bg) 0%, var(--stanza-subtle-accent-surface) 45%, var(--stanza-page-bg) 100%);
+  }
+
+  .stanza-light-topography {
+    background-color: var(--stanza-icon-muted);
+    opacity: 0.12;
+  }
+
+  .stanza-light-glow-top {
+    background-color: color-mix(in srgb, var(--stanza-selected-surface) 76%, transparent);
+  }
+
+  .stanza-light-glow-bottom {
+    background-color: color-mix(in srgb, var(--stanza-subtle-accent-surface) 88%, transparent);
+  }
+
+  :root[data-theme="light"] .stanza-dashboard .stanza-light-intensity-control {
+    background-color: var(--stanza-navigation-surface) !important;
+    border-color: var(--stanza-border-subtle);
+  }
+
   /* Shared dashboard select primitive. Native option styling remains browser
      controlled on a few platforms, so the theme's color-scheme is retained as
      the safe fallback for system pickers. */
