@@ -4701,7 +4701,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
                 {activeTab === 'assets' && canViewAssets && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <AssetsPanel />
+                    <AssetsPanel user={user} />
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
