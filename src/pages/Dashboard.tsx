@@ -780,7 +780,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations' | 'shiftSwaps' | 'shiftSwapApprovals'>('geofence');
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>('geofence');
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
@@ -4451,18 +4451,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        {t('dash.roster')}
                        <AttentionBadge count={attentionCounts.leaveRequests} ariaLabel={attentionAriaLabel(t('dash.roster'), attentionCounts.leaveRequests)} />
                     </button>
-                    <span className="hidden" aria-hidden="true">
-                    <button
-                       type="button"
-                       onClick={() => { setActiveTab('roster'); setRosterSubview('swaps'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false); }}
-                       className="hidden"
-                       aria-label={lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
-                    >
-                       <RefreshCw className="w-4 h-4 hidden sm:block" />
-                       {lang === 'ar' ? 'تبديل المناوبات' : 'My Shift Swaps'}
-                    </button>
-                    {canApproveShiftSwaps && <button type="button" onClick={() => setActiveTab('shiftSwapApprovals')} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'shiftSwapApprovals' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}>{lang === 'ar' ? 'موافقات التبديل' : 'Swap Approvals'}</button>}
-                    </span>
                     {canViewHiring && (
                       <button
                         type="button"
@@ -5083,7 +5071,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       </div>
                       <div className="flex items-center gap-2">
                         {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{t('dash.autoSaved')}</span>}
-                        {rosterSubview === 'leave' && <button type="button" onClick={openLeaveRequestFlow} className="rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
+                        {(rosterSubview === 'leave' || rosterSubview === 'schedule') && <button type="button" onClick={openLeaveRequestFlow} className="rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
                       </div>
                     </div>
                     <div role="tablist" aria-label={t('dash.rosterHub')} className="flex max-w-full gap-1 overflow-x-auto p-2" onKeyDown={(event) => {
@@ -5127,16 +5115,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'roster' && rosterSubview === 'schedule' && (
                     <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
                        <div className="border-b border-emerald-500/15 p-4 dark:border-emerald-500/10">
-                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                           <div>
-                             <h3 className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                               <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
-                               {t('dash.rosterHub')}
-                             </h3>
-                             <p className="mt-1 text-[11px] text-neutral-500 dark:text-emerald-100/45" dir="ltr">
-                               {rosterStartDate} - {rosterEndDate}
-                             </p>
-                           </div>
+                         <div className="flex flex-wrap items-center justify-end gap-2">
                            <div className="flex flex-wrap items-center gap-2">
                              <span className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">{t('dash.weekView')}</span>
                              {canManageRoster && (
@@ -5145,15 +5124,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                  {t('dash.autoSaved')}
                                </span>
                              )}
-                             <button
-                               type="button"
-                               title={t('dash.applyLeave')}
-                               aria-label={t('dash.applyLeave')}
-                               onClick={openLeaveRequestFlow}
-                               className="px-3 py-1 text-slate-500 dark:text-slate-400 text-xs hover:text-slate-800 dark:hover:text-slate-300 font-bold uppercase transition-colors"
-                             >
-                               {t('dash.applyLeave')}
-                             </button>
                            </div>
                          </div>
 
