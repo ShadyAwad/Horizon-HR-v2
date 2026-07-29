@@ -10,6 +10,10 @@ export const INITIAL_CANDIDATE_FIELD_ORIGINS: CandidateFieldOrigins = {
   phone: 'untouched',
 };
 
+export function canUseCandidateDocumentExtraction(permissions: readonly string[] | undefined) {
+  return Boolean(permissions?.includes('document_extraction.candidate.manage'));
+}
+
 export function mergeInitialCandidateSuggestions(
   form: HiringApplicantInput,
   origins: CandidateFieldOrigins,

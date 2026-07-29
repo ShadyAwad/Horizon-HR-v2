@@ -277,7 +277,7 @@ try {
   const hrWithoutPermission = await request('/api/document-extractions', {
     method: 'POST',
     headers: { Origin: baseUrl, 'x-test-auth': 'true', 'x-test-role': 'hr_admin' },
-    body: imageForm('expense_receipt'),
+    body: imageForm('candidate_document'),
   });
   assert.equal(hrWithoutPermission.response.status, 403, JSON.stringify(hrWithoutPermission.body));
 
@@ -353,6 +353,9 @@ const serviceSource = await readFile('src/server/document-extraction/extraction-
 const routesSource = await readFile('src/server/document-extraction/extraction-routes.ts', 'utf8');
 const storageSource = await readFile('src/server/document-extraction/extraction-storage.ts', 'utf8');
 const registrySource = await readFile('src/server/organisation/permission-registry.ts', 'utf8');
+const candidateUiSource = await readFile('src/components/hiring/CandidateDocumentExtraction.tsx', 'utf8');
+const candidateFormSource = await readFile('src/components/hiring/HiringPanel.tsx', 'utf8');
+const candidateStateSource = await readFile('src/components/hiring/candidate-prefill-state.ts', 'utf8');
 const docs = await readFile('docs/document-extraction.md', 'utf8');
 assert.match(migration, /UNIQUE \(id, tenant_id\)/);
 assert.match(migration, /FOREIGN KEY \(requested_by_employee_id, tenant_id\)/);
@@ -372,6 +375,25 @@ assert.doesNotMatch(storageSource, /uploads[\\/]company-feed|express\.static/);
 for (const permission of Object.values(MODE_PERMISSIONS)) assert(registrySource.includes(permission));
 assert.match(docs, /disabled when no OCR\s+adapter is configured/);
 pass('Migration, RLS, tenant ownership, abuse controls, and no-business-mutation contracts hold');
+
+assert.match(candidateUiSource, /candidate_document/);
+assert.match(candidateUiSource, /image\/jpeg,image\/png,image\/webp/);
+assert.doesNotMatch(candidateUiSource, /application\/pdf|\.pdf/i);
+assert.match(candidateUiSource, /CandidateExtractionUiError/);
+assert.match(candidateUiSource, /extractionUnavailable/);
+assert.match(candidateUiSource, /method: 'DELETE'/);
+assert.match(candidateUiSource, /mountedRef/);
+assert.match(candidateUiSource, /onApplySuggestion/);
+assert.match(candidateUiSource, /onInitialSuggestions/);
+assert.match(candidateStateSource, /document_extraction\.candidate\.manage/);
+assert.match(candidateFormSource, /canUseCandidateDocumentExtraction\(user\.permissions\)/);
+assert.match(candidateFormSource, /createHiringApplicant\(user, form\)/);
+assert.doesNotMatch(candidateFormSource, /createHiringApplicant\(user,\s*\{[^}]*extraction/i);
+for (const sensitiveField of ['birthDate', 'gender', 'ethnicity', 'religion', 'disability', 'maritalStatus', 'politicalBeliefs', 'sexualOrientation']) {
+  assert(!candidateUiSource.includes(sensitiveField), `candidate UI must not consume ${sensitiveField}`);
+}
+assert.doesNotMatch(candidateUiSource, /\bage\s*[:=]/);
+pass('Candidate UI offers image-only optional prefill without provider details, protected attributes, or automatic applicant mutation');
 
 const projection = presentAuditEvent('document_extraction.completed', 'document_extraction_job', {
   extractionId: EXTRACTION_A,
