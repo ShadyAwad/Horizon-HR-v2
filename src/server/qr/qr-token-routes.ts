@@ -20,6 +20,7 @@ type Dependencies = {
 
 const PUBLIC_PURPOSES: Array<{ path: string; purpose: QrTokenPurpose }> = [
   { path: '/api/public/verify/employee/:token', purpose: 'employee_verification' },
+  { path: '/api/public/verify/asset/:token', purpose: 'asset_lookup' },
   { path: '/api/public/assets/:token', purpose: 'asset_lookup' },
   { path: '/api/public/onboarding-invites/:token', purpose: 'onboarding_invite' },
 ];

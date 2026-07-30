@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     is_demo_tenant BOOLEAN NOT NULL DEFAULT false,
     badge_disclosure_level VARCHAR(32) NOT NULL DEFAULT 'name_only'
       CHECK (badge_disclosure_level IN ('name_only', 'name_and_title', 'name_title_and_department')),
+    asset_label_disclosure_level VARCHAR(32) NOT NULL DEFAULT 'label_only'
+      CHECK (asset_label_disclosure_level IN ('label_only', 'label_and_type', 'label_type_and_model')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -97,6 +97,23 @@ export async function assertEmployeeBadgeReadPermission(
   );
 }
 
+export async function assertAssetLabelReadPermission(
+  client: PoolClient,
+  identity: Identity,
+  assetId: string,
+) {
+  const asset = (await client.query(
+    `SELECT assignment.employee_id
+       FROM assets asset
+       LEFT JOIN asset_assignments assignment ON assignment.tenant_id=asset.tenant_id
+         AND assignment.asset_id=asset.id AND assignment.status='active'
+      WHERE asset.tenant_id=$1 AND asset.id=$2`,
+    [identity.tenantId, assetId],
+  )).rows[0];
+  if (!asset) throw new QrTokenError(404, 'QR_SUBJECT_NOT_FOUND', 'The QR subject is unavailable.');
+  return requireAllowed(client, identity, 'assets.view', asset.employee_id || null);
+}
+
 
 export async function assertQrMutationPermission(
   client: PoolClient,

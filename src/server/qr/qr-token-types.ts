@@ -3,6 +3,7 @@ export type QrTokenPurpose = (typeof QR_TOKEN_PURPOSES)[number];
 export type QrSubjectType = 'employee' | 'asset' | 'onboarding_invite';
 export type QrTokenStatus = 'active' | 'used' | 'expired' | 'revoked';
 export type BadgeDisclosureLevel = 'name_only' | 'name_and_title' | 'name_title_and_department';
+export type AssetLabelDisclosureLevel = 'label_only' | 'label_and_type' | 'label_type_and_model';
 
 export const QR_PURPOSE_CONFIG: Record<QrTokenPurpose, {
   subjectType: QrSubjectType;
@@ -18,7 +19,7 @@ export const QR_PURPOSE_CONFIG: Record<QrTokenPurpose, {
   },
   asset_lookup: {
     subjectType: 'asset',
-    publicPath: '/assets/lookup',
+    publicPath: '/verify/asset',
     singleUse: false,
     expiryRequired: false,
   },
@@ -28,6 +29,32 @@ export const QR_PURPOSE_CONFIG: Record<QrTokenPurpose, {
     singleUse: true,
     expiryRequired: true,
   },
+};
+
+export type AssetQrLabel = {
+  state: 'active' | 'revoked' | 'not_issued';
+  canIssue: boolean;
+  canRotate: boolean;
+  canRevoke: boolean;
+  requiresRotation: boolean;
+  verificationUrl: string | null;
+  issuedAt: string | null;
+  lastUpdatedAt: string | null;
+  revokedAt: string | null;
+  display: { label: string; category: string | null; manufacturer: string | null; model: string | null; status: string };
+};
+
+export type PublicAssetVerification = {
+  verified: boolean;
+  status: 'active' | 'lost' | 'inactive';
+  companyName: string;
+  publicAssetLabel?: string;
+  assetType?: string;
+  manufacturerModel?: string;
+  broadStatus?: string;
+  issuedByCompany: true;
+  verifiedAt: string;
+  lastUpdatedAt: string;
 };
 
 export type QrTokenPresentation = {

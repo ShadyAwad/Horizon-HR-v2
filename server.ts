@@ -59,6 +59,7 @@ import { registerDocumentExtractionRoutes } from './src/server/document-extracti
 import { registerExpenseRoutes } from './src/server/expenses/expense-routes';
 import { registerQrTokenRoutes } from './src/server/qr/qr-token-routes';
 import { registerEmployeeBadgeRoutes } from './src/server/qr/employee-badge-routes';
+import { registerAssetQrLabelRoutes } from './src/server/qr/asset-qr-label-routes';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
@@ -2236,6 +2237,11 @@ async function startServer() {
     publicRateLimiter: qrPublicResolutionRateLimiter,
   });
   registerEmployeeBadgeRoutes(app, {
+    standardAuth: demoAuth,
+    mutationGuard: isSameOriginSessionMutation,
+    issuanceRateLimiter: qrIssuanceRateLimiter,
+  });
+  registerAssetQrLabelRoutes(app, {
     standardAuth: demoAuth,
     mutationGuard: isSameOriginSessionMutation,
     issuanceRateLimiter: qrIssuanceRateLimiter,

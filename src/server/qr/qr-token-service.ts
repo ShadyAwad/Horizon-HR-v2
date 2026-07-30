@@ -1,9 +1,9 @@
 import type { PoolClient } from 'pg';
 import { enqueueQrExpiryCleanup, getDbPool, withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
-import { assertEmployeeBadgeReadPermission, assertQrIssuePermission, assertQrMutationPermission } from './qr-token-permissions';
+import { assertAssetLabelReadPermission, assertEmployeeBadgeReadPermission, assertQrIssuePermission, assertQrMutationPermission } from './qr-token-permissions';
 import { decryptQrToken, encryptQrToken } from './qr-token-crypto';
-import { QR_PURPOSE_CONFIG, QrTokenError, type DigitalBadge, type PublicEmployeeVerification, type QrTokenPresentation, type QrTokenPurpose } from './qr-token-types';
+import { QR_PURPOSE_CONFIG, QrTokenError, type AssetLabelDisclosureLevel, type AssetQrLabel, type DigitalBadge, type PublicAssetVerification, type PublicEmployeeVerification, type QrTokenPresentation, type QrTokenPurpose } from './qr-token-types';
 import { generateOpaqueQrToken, getCanonicalQrOrigin, hashQrToken } from './qr-token-validation';
 
 type Identity = { tenantId: string; employeeId: string };
@@ -307,6 +307,62 @@ export class QrTokenService {
     return this.getEmployeeBadge(identity, employeeId);
   }
 
+  async getAssetQrLabel(identity: Identity, assetId: string): Promise<AssetQrLabel> {
+    return withTenant(identity.tenantId, async (client) => {
+      await assertAssetLabelReadPermission(client, identity, assetId);
+      const asset = (await client.query(
+        `SELECT id,asset_tag AS "label",category,manufacturer,model,status
+           FROM assets WHERE tenant_id=$1 AND id=$2`,
+        [identity.tenantId, assetId],
+      )).rows[0];
+      if (!asset) throw new QrTokenError(404, 'QR_SUBJECT_NOT_FOUND', 'The QR subject is unavailable.');
+      const token = (await client.query(
+        `SELECT id,status,token_ciphertext,created_at AS "issuedAt",updated_at AS "lastUpdatedAt",revoked_at AS "revokedAt"
+           FROM qr_access_tokens WHERE tenant_id=$1 AND purpose='asset_lookup' AND asset_id=$2
+          ORDER BY created_at DESC,id DESC LIMIT 1`,
+        [identity.tenantId, assetId],
+      )).rows[0] as { status: 'active' | 'revoked' | 'expired'; token_ciphertext: string | null; issuedAt: Date; lastUpdatedAt: Date; revokedAt: Date | null } | undefined;
+      const rawToken = token?.status === 'active' ? decryptQrToken(token.token_ciphertext) : null;
+      return {
+        state: token?.status === 'active' ? 'active' : token?.status === 'revoked' ? 'revoked' : 'not_issued',
+        canIssue: token?.status !== 'active', canRotate: token?.status === 'active', canRevoke: token?.status === 'active',
+        requiresRotation: Boolean(token?.status === 'active' && !rawToken),
+        verificationUrl: rawToken ? `${getCanonicalQrOrigin()}${QR_PURPOSE_CONFIG.asset_lookup.publicPath}/${rawToken}` : null,
+        issuedAt: token ? new Date(token.issuedAt).toISOString() : null,
+        lastUpdatedAt: token ? new Date(token.lastUpdatedAt).toISOString() : null,
+        revokedAt: token?.revokedAt ? new Date(token.revokedAt).toISOString() : null,
+        display: { label: asset.label, category: asset.category || null, manufacturer: asset.manufacturer || null, model: asset.model || null, status: asset.status },
+      };
+    });
+  }
+
+  async issueAssetQrLabel(identity: Identity, assetId: string) {
+    const current = await this.getAssetQrLabel(identity, assetId);
+    if (current.state === 'active') return { label: current, created: false };
+    await this.issue(identity, { purpose: 'asset_lookup', assetId });
+    return { label: await this.getAssetQrLabel(identity, assetId), created: true };
+  }
+
+  async rotateAssetQrLabel(identity: Identity, assetId: string) {
+    const record = await withTenant(identity.tenantId, async (client) => (await client.query(
+      `SELECT id FROM qr_access_tokens WHERE tenant_id=$1 AND purpose='asset_lookup' AND asset_id=$2 AND status='active'`,
+      [identity.tenantId, assetId],
+    )).rows[0]);
+    if (!record) throw new QrTokenError(404, 'QR_ASSET_LABEL_NOT_FOUND', 'No active asset label exists.');
+    await this.rotate(identity, record.id);
+    return this.getAssetQrLabel(identity, assetId);
+  }
+
+  async revokeAssetQrLabel(identity: Identity, assetId: string) {
+    const record = await withTenant(identity.tenantId, async (client) => (await client.query(
+      `SELECT id FROM qr_access_tokens WHERE tenant_id=$1 AND purpose='asset_lookup' AND asset_id=$2 AND status='active'`,
+      [identity.tenantId, assetId],
+    )).rows[0]);
+    if (!record) throw new QrTokenError(404, 'QR_ASSET_LABEL_NOT_FOUND', 'No active asset label exists.');
+    await this.revoke(identity, record.id);
+    return this.getAssetQrLabel(identity, assetId);
+  }
+
   async consumeOnboardingInvite(tokenHash: string): Promise<{ consumed: true } | null> {
     const tenantLookup = await getDbPool().query(
       `SELECT tenant_id FROM qr_access_tokens
@@ -458,10 +514,35 @@ export class QrTokenService {
       }
       if (purpose === 'asset_lookup') {
         const asset = (await client.query(
-          `SELECT status FROM assets WHERE tenant_id=$1 AND id=$2`,
+          `SELECT asset.asset_tag AS "label",asset.category,asset.manufacturer,asset.model,asset.status,
+                  asset.updated_at AS "lastUpdatedAt",tenant.company_name AS "companyName",
+                  tenant.asset_label_disclosure_level AS "disclosureLevel"
+             FROM assets asset JOIN tenants tenant ON tenant.id=asset.tenant_id
+            WHERE asset.tenant_id=$1 AND asset.id=$2`,
           [tenantId, row.asset_id],
         )).rows[0];
-        return asset ? { valid: true, purpose, assetState: asset.status } : null;
+        if (!asset) return null;
+        const state = String(asset.status);
+        const lost = state === 'lost';
+        const inactive = state === 'retired' || state === 'disposed';
+        const verification: PublicAssetVerification = {
+          verified: !lost && !inactive,
+          status: lost ? 'lost' : inactive ? 'inactive' : 'active',
+          companyName: asset.companyName,
+          issuedByCompany: true,
+          verifiedAt: new Date().toISOString(),
+          lastUpdatedAt: new Date(asset.lastUpdatedAt).toISOString(),
+        };
+        if (!lost && !inactive) {
+          verification.publicAssetLabel = asset.label;
+          verification.broadStatus = state === 'maintenance' ? 'maintenance' : state === 'assigned' ? 'assigned' : 'active';
+          const disclosure = (asset.disclosureLevel || 'label_only') as AssetLabelDisclosureLevel;
+          if (disclosure === 'label_and_type' || disclosure === 'label_type_and_model') verification.assetType = asset.category;
+          if (disclosure === 'label_type_and_model' && (asset.manufacturer || asset.model)) {
+            verification.manufacturerModel = [asset.manufacturer, asset.model].filter(Boolean).join(' ');
+          }
+        }
+        return verification;
       }
       return {
         valid: true,
