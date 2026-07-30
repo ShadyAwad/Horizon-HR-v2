@@ -84,6 +84,19 @@ export async function assertQrIssuePermission(
   return requireAllowed(client, identity, QR_PERMISSIONS.onboardingManage);
 }
 
+export async function assertEmployeeBadgeReadPermission(
+  client: PoolClient,
+  identity: Identity,
+  employeeId: string,
+) {
+  return requireAllowed(
+    client,
+    identity,
+    employeeId === identity.employeeId ? QR_PERMISSIONS.employeeSelf : QR_PERMISSIONS.employeeManage,
+    employeeId,
+  );
+}
+
 
 export async function assertQrMutationPermission(
   client: PoolClient,

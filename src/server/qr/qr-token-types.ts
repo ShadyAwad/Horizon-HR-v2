@@ -2,6 +2,7 @@ export const QR_TOKEN_PURPOSES = ['employee_verification', 'asset_lookup', 'onbo
 export type QrTokenPurpose = (typeof QR_TOKEN_PURPOSES)[number];
 export type QrSubjectType = 'employee' | 'asset' | 'onboarding_invite';
 export type QrTokenStatus = 'active' | 'used' | 'expired' | 'revoked';
+export type BadgeDisclosureLevel = 'name_only' | 'name_and_title' | 'name_title_and_department';
 
 export const QR_PURPOSE_CONFIG: Record<QrTokenPurpose, {
   subjectType: QrSubjectType;
@@ -38,6 +39,37 @@ export type QrTokenPresentation = {
   status: QrTokenStatus;
   rotatable: boolean;
   revocable: boolean;
+};
+
+export type DigitalBadge = {
+  state: 'active' | 'inactive' | 'revoked' | 'not_issued';
+  canIssue: boolean;
+  canRotate: boolean;
+  canRevoke: boolean;
+  requiresRotation: boolean;
+  verificationUrl: string | null;
+  issuedAt: string | null;
+  lastUpdatedAt: string | null;
+  revokedAt: string | null;
+  display: {
+    name: string;
+    companyName: string;
+    jobTitle: string | null;
+    departmentName: string | null;
+    avatarUrl: string | null;
+  };
+};
+
+export type PublicEmployeeVerification = {
+  verified: boolean;
+  status: 'active' | 'inactive';
+  employeeDisplayName?: string;
+  companyName: string;
+  jobTitle?: string;
+  departmentName?: string;
+  issuedByCompany: true;
+  verifiedAt: string;
+  badgeLastUpdatedAt: string;
 };
 
 export class QrTokenError extends Error {

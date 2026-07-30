@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     capacity_tier VARCHAR(50) NOT NULL DEFAULT '100-500',
     allows_company_loans BOOLEAN NOT NULL DEFAULT false,
     is_demo_tenant BOOLEAN NOT NULL DEFAULT false,
+    badge_disclosure_level VARCHAR(32) NOT NULL DEFAULT 'name_only'
+      CHECK (badge_disclosure_level IN ('name_only', 'name_and_title', 'name_title_and_department')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
