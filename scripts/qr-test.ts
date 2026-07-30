@@ -10,6 +10,7 @@ import { presentAuditEvent, recordAuditEvent } from '../src/server/audit/audit-e
 import { assertQrIssuePermission } from '../src/server/qr/qr-token-permissions';
 import { decryptQrToken, encryptQrToken } from '../src/server/qr/qr-token-crypto';
 import { registerQrTokenRoutes } from '../src/server/qr/qr-token-routes';
+import { registerAssetQrLabelRoutes } from '../src/server/qr/asset-qr-label-routes';
 import { QrTokenService } from '../src/server/qr/qr-token-service';
 import { QrTokenError, type QrTokenPurpose } from '../src/server/qr/qr-token-types';
 import {
@@ -227,6 +228,17 @@ registerQrTokenRoutes(app, {
   issuanceRateLimiter,
   publicRateLimiter,
   service: fakeService,
+});
+registerAssetQrLabelRoutes(app, {
+  standardAuth,
+  mutationGuard,
+  issuanceRateLimiter,
+  service: {
+    getAssetQrLabel: async () => ({ state: 'not_issued', canIssue: true, canRotate: false, canRevoke: false, requiresRotation: false, verificationUrl: null, issuedAt: null, lastUpdatedAt: null, revokedAt: null, display: { label: 'Fixture', category: null, manufacturer: null, model: null, status: 'available' } }),
+    issueAssetQrLabel: async () => ({ created: true, label: { state: 'active' } }),
+    rotateAssetQrLabel: async () => ({ state: 'active' }),
+    revokeAssetQrLabel: async () => ({ state: 'revoked' }),
+  } as unknown as QrTokenService,
 });
 const server = http.createServer(app);
 await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));

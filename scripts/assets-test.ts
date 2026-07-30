@@ -21,6 +21,12 @@ const server = read('server.ts');
 const evidenceStorage = read('src/lib/asset-evidence-storage.ts');
 const assetForm = read('src/components/assets/AssetFormDialog.tsx');
 const extractionUi = read('src/components/assets/AssetLabelExtraction.tsx');
+const assetQrRoutes = read('src/server/qr/asset-qr-label-routes.ts');
+const qrService = read('src/server/qr/qr-token-service.ts');
+const qrPermissions = read('src/server/qr/qr-token-permissions.ts');
+const qrPanel = read('src/components/assets/AssetQrLabelPanel.tsx');
+const publicAssetPage = read('src/pages/PublicAssetVerification.tsx');
+const assetDisclosureMigration = read('src/db/migrations/20260731_add_asset_qr_label_disclosure.sql');
 
 const blankIdentifiers = { serialNumber: '', model: '', manufacturer: '' };
 const firstPrefill = applyUntouchedAssetSuggestions(
@@ -92,6 +98,12 @@ const checks: Array<[string, boolean]> = [
   ['serial availability excludes only the edited asset', /id<>\$3/.test(routes) && /assetId/.test(assetForm)],
   ['database uniqueness returns a safe serial conflict', /assets_tenant_serial_unique/.test(routes) && /ASSET_SERIAL_EXISTS/.test(routes) && /Serial number already exists/.test(routes)],
   ['dialog is portal based responsive RTL and scroll safe', /createPortal/.test(assetForm) && /dir=\{isRtl/.test(assetForm) && /100dvh/.test(assetForm) && /overflow-x-hidden/.test(assetForm)],
+  ['asset QR labels use dedicated tenant-scoped routes', /\/api\/hr\/assets\/:assetId\/qr-label/.test(assetQrRoutes) && /requireUuid/.test(assetQrRoutes) && /issuanceRateLimiter/.test(assetQrRoutes)],
+  ['asset QR authority is permission and scope based', /assets\.manage/.test(qrPermissions) && /qr\.asset_label\.manage/.test(qrPermissions) && !/hr_admin/.test(assetQrRoutes)],
+  ['asset public disclosure defaults to label only and excludes private fields', /asset_label_disclosure_level/.test(assetDisclosureMigration) && /serial_number/.test(qrService) === false && /assignment history/i.test(qrService) === false],
+  ['asset verification is purpose-bound and has generic invalid handling', /verify\/asset/.test(publicAssetPage) && /Asset label could not be verified/.test(read('src/lib/LanguageContext.tsx'))],
+  ['asset QR rendering uses only server URL with a white quiet zone', /QRCodeSVG/.test(qrPanel) && /value=\{label\.verificationUrl\}/.test(qrPanel) && /bgColor="#ffffff"/.test(qrPanel) && !/APP_BASE_URL|window\.location/.test(qrPanel)],
+  ['asset QR panel supports issue rotate revoke print download and confirmation', /action\('issue'\)/.test(qrPanel) && /setConfirm\('rotate'\)/.test(qrPanel) && /setConfirm\('revoke'\)/.test(qrPanel) && /window\.print/.test(qrPanel) && /XMLSerializer/.test(qrPanel) && /role="dialog"/.test(qrPanel)],
 ];
 
 let failed = false;
