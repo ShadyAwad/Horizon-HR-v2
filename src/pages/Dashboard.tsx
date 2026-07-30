@@ -45,6 +45,7 @@ const SessionManagementPanel = lazy(() => import('../components/sessions/Session
 const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCenterPanel').then((module) => ({ default: module.SessionCenterPanel })));
 const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((module) => ({ default: module.AssetsPanel })));
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
+const DigitalBadgePanel = lazy(() => import('../components/qr/DigitalBadgePanel').then((module) => ({ default: module.DigitalBadgePanel })));
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
 const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
 const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
@@ -6306,6 +6307,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
                            <Suspense fallback={<div className="min-h-28 animate-pulse rounded-lg bg-emerald-500/5" />}>
                              <MyEquipmentPanel />
+                           </Suspense>
+                         </div>
+                         <div className="md:col-span-2">
+                           <Suspense fallback={<div className="min-h-64 animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                             <DigitalBadgePanel offline={isOffline} />
                            </Suspense>
                          </div>
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
