@@ -8,6 +8,7 @@ import type { PoolClient } from 'pg';
 import { getDbPool } from '../src/lib/hr-background';
 import { presentAuditEvent, recordAuditEvent } from '../src/server/audit/audit-events';
 import { assertQrIssuePermission } from '../src/server/qr/qr-token-permissions';
+import { decryptQrToken, encryptQrToken } from '../src/server/qr/qr-token-crypto';
 import { registerQrTokenRoutes } from '../src/server/qr/qr-token-routes';
 import { QrTokenService } from '../src/server/qr/qr-token-service';
 import { QrTokenError, type QrTokenPurpose } from '../src/server/qr/qr-token-types';
@@ -19,6 +20,8 @@ import {
   hashQrToken,
   isValidQrToken,
 } from '../src/server/qr/qr-token-validation';
+
+process.env.QR_TOKEN_ENCRYPTION_KEY ||= Buffer.alloc(32, 91).toString('base64');
 
 const TENANT_A = '00000000-0000-4000-8000-000000000001';
 const EMPLOYEE_A = '00000000-0000-4000-8000-000000000002';
@@ -48,6 +51,10 @@ for (const token of generated) {
   assert.equal(Buffer.from(token, 'base64url').byteLength, QR_TOKEN_BYTES);
   assert.equal(hashQrToken(token).length, 64);
 }
+const encryptedToken = encryptQrToken([...generated][0]);
+assert.notEqual(encryptedToken, [...generated][0]);
+assert.equal(decryptQrToken(encryptedToken), [...generated][0]);
+assert.equal(decryptQrToken('v1.bad.payload'), null);
 assert.equal(isValidQrToken('short'), false);
 assert.equal(isValidQrToken(`${'a'.repeat(42)}!`), false);
 pass('Tokens use 256 bits of cryptographic randomness and URL-safe encoding');
@@ -296,6 +303,9 @@ const routesSource = await readFile('src/server/qr/qr-token-routes.ts', 'utf8');
 const validationSource = await readFile('src/server/qr/qr-token-validation.ts', 'utf8');
 const serverSource = await readFile('server.ts', 'utf8');
 const workerSource = await readFile('src/workers/hr-worker.ts', 'utf8');
+const badgeRoutesSource = await readFile('src/server/qr/employee-badge-routes.ts', 'utf8');
+const badgePanelSource = await readFile('src/components/qr/DigitalBadgePanel.tsx', 'utf8');
+const publicVerificationSource = await readFile('src/pages/PublicEmployeeVerification.tsx', 'utf8');
 assert.match(migration, /UNIQUE \(id, tenant_id\)/);
 assert.match(migration, /UNIQUE \(token_hash\)/);
 assert.match(migration, /FOREIGN KEY \(employee_id, tenant_id\)/);
@@ -315,6 +325,13 @@ assert.doesNotMatch(validationSource, /stanza\.pages\.dev/i);
 assert.match(serverSource, /qrPublicResolutionRateLimiter/);
 assert.match(serverSource, /qrIssuanceRateLimiter/);
 assert.match(workerSource, /expireQrAccessToken/);
+assert.match(badgeRoutesSource, /\/api\/me\/digital-badge/);
+assert.match(badgeRoutesSource, /\/api\/hr\/employees\/:employeeId\/digital-badge/);
+assert.match(badgePanelSource, /QRCodeSVG/);
+assert.match(badgePanelSource, /verificationUrl/);
+assert.doesNotMatch(badgePanelSource, /APP_BASE_URL|location\.origin|VITE_PUBLIC_APP_URL/);
+assert.match(publicVerificationSource, /cache: 'no-store'/);
+assert.doesNotMatch(publicVerificationSource, /document\.title\s*=.*token/);
 pass('Schema, RLS, hashing, rate limits, worker cleanup, and no-business-mutation contracts hold');
 
 const projection = presentAuditEvent('qr.token_issued', 'qr_access_token', {
