@@ -15,17 +15,22 @@ export const INTERFACE_SCALE_STEP = 0.05;
 export const LIGHT_INTENSITIES = ['bright', 'balanced', 'deep'] as const;
 
 export type LightIntensity = typeof LIGHT_INTENSITIES[number];
+export type RosterPresentationMode = 'auto' | 'fit' | 'detailed';
 
 export type StanzaPreferences = {
   lanyardEnabled: boolean;
   interfaceScale: number;
   lightIntensity: LightIntensity;
+  mobileShortcuts: string[];
+  rosterPresentationMode: RosterPresentationMode;
 };
 
 const DEFAULT_PREFERENCES: StanzaPreferences = {
   lanyardEnabled: true,
   interfaceScale: 1,
   lightIntensity: 'balanced',
+  mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
+  rosterPresentationMode: 'auto',
 };
 
 export function isLightIntensity(value: unknown): value is LightIntensity {
@@ -55,6 +60,12 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       lightIntensity: isLightIntensity(parsed.lightIntensity)
         ? parsed.lightIntensity
         : DEFAULT_PREFERENCES.lightIntensity,
+      mobileShortcuts: Array.isArray(parsed.mobileShortcuts)
+        ? [...new Set(parsed.mobileShortcuts.filter((value): value is string => typeof value === 'string'))].slice(0, 20)
+        : DEFAULT_PREFERENCES.mobileShortcuts,
+      rosterPresentationMode: parsed.rosterPresentationMode === 'fit' || parsed.rosterPresentationMode === 'detailed'
+        ? parsed.rosterPresentationMode
+        : 'auto',
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -85,6 +96,8 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setInterfaceScale: (scale: number) => void;
   resetInterfaceScale: () => void;
   setLightIntensity: (intensity: LightIntensity) => void;
+  setMobileShortcuts: (shortcuts: string[]) => void;
+  setRosterPresentationMode: (mode: RosterPresentationMode) => void;
 };
 
 const StanzaPreferencesContext = createContext<StanzaPreferencesContextValue | null>(null);
@@ -128,6 +141,12 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setLightIntensity = useCallback((lightIntensity: LightIntensity) => {
     setPreferences((current) => ({ ...current, lightIntensity }));
   }, []);
+  const setMobileShortcuts = useCallback((mobileShortcuts: string[]) => {
+    setPreferences((current) => ({ ...current, mobileShortcuts: [...new Set(mobileShortcuts)].slice(0, 20) }));
+  }, []);
+  const setRosterPresentationMode = useCallback((rosterPresentationMode: RosterPresentationMode) => {
+    setPreferences((current) => ({ ...current, rosterPresentationMode }));
+  }, []);
 
   const value = useMemo<StanzaPreferencesContextValue>(() => ({
     ...preferences,
@@ -135,7 +154,9 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setInterfaceScale,
     resetInterfaceScale,
     setLightIntensity,
-  }), [preferences, resetInterfaceScale, setInterfaceScale, setLanyardEnabled, setLightIntensity]);
+    setMobileShortcuts,
+    setRosterPresentationMode,
+  }), [preferences, resetInterfaceScale, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

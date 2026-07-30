@@ -34,6 +34,8 @@ import {
 } from '../lib/StanzaPreferencesContext';
 import type { LightIntensity } from '../lib/StanzaPreferencesContext';
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
+import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
+import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -785,6 +787,7 @@ function useGeolocation() {
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>(initialTab || 'geofence');
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
+  const [expandedRosterDate, setExpandedRosterDate] = useState<string | null>(null);
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
   const [expenseDeepLink, setExpenseDeepLink] = useState<ExpenseDeepLink | null>(null);
@@ -940,7 +943,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     resetInterfaceScale,
     lightIntensity,
     setLightIntensity,
+    mobileShortcuts,
+    setMobileShortcuts,
+    rosterPresentationMode,
+    setRosterPresentationMode,
   } = useStanzaPreferences();
+  const rosterDisplayMode = rosterPresentationMode === 'auto'
+    ? (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'fit' : 'detailed')
+    : rosterPresentationMode;
 
   const geo = useGeolocation();
 
@@ -1270,9 +1280,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canManageLoans = hasPermission(user, 'loans.manage');
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
   const canViewHiring = hasPermission(user, 'hiring.view');
-  const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
+  const canViewLiveEmployees = hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
-  const canManageSessions = user.role === 'hr_admin' && hasPermission(user, 'sessions.manage');
+  const canManageSessions = hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
   const canViewOrganisation = hasPermission(user, 'organisation.view');
@@ -1308,6 +1318,38 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const attentionAriaLabel = (label: string, count: number) => (
     count > 0 ? `${label}: ${count} ${t('dash.actionItems')}` : label
   );
+  const selectNavigationItem = useCallback((id: string) => {
+    setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
+    if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
+    if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); return; }
+    if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
+    setActiveTab(id as typeof activeTab);
+  }, []);
+  const navigationItems = useMemo<DashboardNavigationItem[]>(() => {
+    const item = (id: string, label: string, group: string, icon: ReactNode, allowed = true, badge = 0): DashboardNavigationItem | null => allowed ? {
+      id, label, group, icon, badge, active: id === 'payroll' ? activeTab === 'profile' && showPayrollPanel : id === 'grievances' ? activeTab === 'profile' && showGrievancesPanel : id === 'resignations' ? activeTab === 'resignations' : id === 'profile' ? activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel && !showResignationsPanel : activeTab === id,
+      onSelect: () => selectNavigationItem(id),
+    } : null;
+    return [
+      item('geofence', t('dash.geoOp'), 'Workspace', <Map className="h-5 w-5" />, true, attentionCounts.breakRequests),
+      item('roster', t('dash.roster'), 'Workspace', <Calendar className="h-5 w-5" />, true, attentionCounts.leaveRequests),
+      item('expenses', t('dash.expenses'), 'Workspace', <ReceiptText className="h-5 w-5" />, true),
+      item('hiring', t('hiring.title'), 'Workspace', <BriefcaseBusiness className="h-5 w-5" />, canViewHiring, attentionCounts.hiring),
+      item('performance', t('performance.title'), 'Workspace', <BarChart3 className="h-5 w-5" />, canViewPerformance),
+      item('organisation', t('organisation.title'), 'People & Operations', <Network className="h-5 w-5" />, canViewOrganisation),
+      item('locations', lang === 'ar' ? 'المواقع' : 'Locations', 'People & Operations', <MapPin className="h-5 w-5" />, canViewLocations),
+      item('liveEmployees', t('liveEmployees.title'), 'People & Operations', <UsersRound className="h-5 w-5" />, canViewLiveEmployees),
+      item('assets', t('assets.title'), 'People & Operations', <Box className="h-5 w-5" />, canViewAssets),
+      item('feed', t('dash.companyFeed'), 'Administration', <Newspaper className="h-5 w-5" />, true),
+      item('payroll', t('profile.payroll'), 'Administration', <DollarSign className="h-5 w-5" />, canUsePayrollPanel, payrollAttentionCount),
+      item('grievances', t('dash.grievances'), 'Administration', <MessageSquare className="h-5 w-5" />, true, attentionCounts.grievances),
+      item('resignations', t('dash.resignations'), 'Administration', <FileText className="h-5 w-5" />, true, attentionCounts.resignations),
+      item('audit', t('audit.title'), 'Administration', <ScrollText className="h-5 w-5" />, canViewAudit),
+      item('sessionCenter', t('sessions.sessionCenter'), 'Administration', <ShieldCheck className="h-5 w-5" />, canManageSessions),
+      item('profile', t('dash.profile'), 'Administration', <User className="h-5 w-5" />),
+    ].filter(Boolean) as DashboardNavigationItem[];
+  }, [activeTab, attentionCounts, canManageSessions, canUsePayrollPanel, canViewAssets, canViewAudit, canViewHiring, canViewLiveEmployees, canViewLocations, canViewOrganisation, canViewPerformance, lang, payrollAttentionCount, selectNavigationItem, showGrievancesPanel, showPayrollPanel, showResignationsPanel, t]);
+  const activeNavigationLabel = navigationItems.find((item) => item.active)?.label || t('dash.geoOp');
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
   useEffect(() => {
@@ -2006,6 +2048,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       setResignationsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'resignations' && showResignationsPanel) void loadResignations();
+  }, [activeTab, showResignationsPanel, user.id, user.tenantId]);
 
   const submitResignation = async () => {
     if (!resignationForm.requestedLastWorkingDay) {
@@ -4026,6 +4072,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             </div>
           </div>
         </div>
+        <div className="sm:col-span-2">
+          <MobileShortcutSettings items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} />
+        </div>
       </div>
     </div>
   );
@@ -4108,9 +4157,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </DashboardLanyardBoundary>
       )}
 
-      {/* Sidebar Navigation */}
+      <DashboardNavigation
+        items={navigationItems}
+        mobileShortcuts={mobileShortcuts}
+        onShortcutsChange={setMobileShortcuts}
+        onOpenControlCenter={() => setShowControlCenter(true)}
+        onLogout={onLogout}
+        userName={user.name}
+        userEmail={user.email}
+      />
+
+      {/* Legacy navigation remains mounted only as a compatibility reference while the registry-backed rail owns rendering. */}
 <aside
   className={cn(
+    "hidden",
     "fixed left-3 right-3 md:static md:left-auto md:right-auto",
     "bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-auto",
     "w-auto max-w-[calc(100vw-1.5rem)] md:w-16 lg:w-[72px] md:max-w-full",
@@ -4129,7 +4189,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   )}
 >       <button
           type="button"
-          id="stanza-control-center-trigger"
+          id="stanza-control-center-trigger-legacy"
           aria-label={t('dash.controlCenterTitle')}
           aria-expanded={showControlCenter}
           aria-controls="stanza-control-center"
@@ -4446,6 +4506,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           <div className="min-w-0">
             <h1 className="flex items-center text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
+              <span className={cn("ms-3 hidden text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}>{activeNavigationLabel}</span>
               <span className={cn("hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
             </h1>
           </div>
@@ -4457,7 +4518,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden max-w-full items-center gap-2 overflow-x-auto pb-1 md:flex [&>button]:min-w-max [&>button]:shrink-0 [&>button]:whitespace-nowrap">
+                <div className="hidden">
                     <button 
                        onClick={() => {
                          setActiveTab('geofence');
@@ -5208,6 +5269,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              </div>
                            </div>
                          )}
+                         <div className="mt-3 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Roster presentation">
+                           <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{lang === 'ar' ? 'عرض الجدول' : 'Schedule view'}</span>
+                           {(['fit', 'detailed'] as const).map((mode) => (
+                             <button key={mode} type="button" role="radio" aria-checked={rosterDisplayMode === mode} onClick={() => setRosterPresentationMode(mode)} className={cn('min-h-10 rounded-lg border px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterDisplayMode === mode ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'border-emerald-500/15 text-slate-500 dark:text-emerald-100/60')}>
+                               {mode === 'fit' ? (lang === 'ar' ? 'ملاءمة الشاشة' : 'Fit screen') : (lang === 'ar' ? 'شبكة تفصيلية' : 'Detailed grid')}
+                             </button>
+                           ))}
+                           {rosterDisplayMode === 'fit' && <span className="text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'اختر يوماً لتعديل الجدول الكامل.' : 'Select a day to edit the full schedule.'}</span>}
+                         </div>
                          {canViewAllRosters && (
                            <label className="mt-3 block max-w-sm">
                              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterEmployee')}</span>
@@ -5228,7 +5298,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        <>
                        {rosterMessage && <p className="mx-4 mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-200">{rosterMessage}</p>}
                        {rosterLoading && <p className="mx-4 mt-4 text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterLoading')}</p>}
-                       <div className="w-full max-w-full overflow-x-auto flex-1">
+                       {rosterDisplayMode === 'fit' ? (
+                         <div className="space-y-2 p-3">
+                           {visibleSchedule.map((s) => {
+                             const expanded = expandedRosterDate === s.date;
+                             const scheduled = Boolean(s.shiftStart && s.shiftEnd);
+                             return <article key={s.date} className={cn('overflow-hidden rounded-xl border border-emerald-500/15 bg-white/75 dark:bg-black/25', s.hasRosterConflict && 'border-amber-500/35', s.approvedLeave && 'border-emerald-500/35')}>
+                               <button type="button" aria-expanded={expanded} onClick={() => setExpandedRosterDate(expanded ? null : s.date)} className="flex min-h-16 w-full items-start justify-between gap-3 p-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"><span><strong className="block text-sm text-slate-900 dark:text-emerald-50">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></strong><span className="mt-1 block text-xs text-slate-600 dark:text-emerald-100/65">{scheduled ? `${getShiftFrame(s)} · ${s.breakStart && s.breakEnd ? `${s.breakStart}-${s.breakEnd}` : t('dash.noBreak')}` : t('dash.abstained')} · {displayShiftType(s.type)}</span></span><span className="flex flex-col items-end gap-1"><span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold', scheduled ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-neutral-500/20 text-neutral-500 dark:text-emerald-100/45')}>{scheduled ? t('dash.scheduled') : t('dash.abstained')}</span>{s.approvedLeave && <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-200">{s.hasRosterConflict ? (lang === 'ar' ? 'تعارض إجازة' : 'Leave conflict') : (lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave')}</span>}</span></button>
+                               {expanded && <div className="border-t border-emerald-500/15 p-3"><p className="text-xs text-slate-600 dark:text-emerald-100/65">{s.approvedLeave ? `${lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave'}${s.leaveType ? ` · ${displayEnum(s.leaveType)}` : ''}` : displayShiftType(s.type)}</p>{canManageRoster ? <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs font-bold">{t('dash.shiftFrame')}<input type="time" value={s.shiftStart} onChange={(event) => updateShift(s.date, 'shiftStart', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{lang === 'ar' ? 'نهاية الوردية' : 'Shift end'}<input type="time" value={s.shiftEnd} onChange={(event) => updateShift(s.date, 'shiftEnd', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{t('dash.breakTime')}<input type="time" value={s.breakStart} onChange={(event) => updateShift(s.date, 'breakStart', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{lang === 'ar' ? 'نهاية الاستراحة' : 'Break end'}<input type="time" value={s.breakEnd} onChange={(event) => updateShift(s.date, 'breakEnd', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="col-span-2 text-xs font-bold">{t('dash.locationRole')}<input value={s.type} onChange={(event) => updateShift(s.date, 'type', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label></div> : <p className="mt-3 text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'عرض للقراءة فقط' : 'Read-only schedule'}</p>}</div>}
+                             </article>;
+                           })}
+                         </div>
+                       ) : (
+                       <div role="region" aria-label="Detailed roster grid. More schedule fields are available by horizontal scrolling." className="stanza-scrollbar w-full max-w-full overflow-x-auto flex-1">
                          <table className={cn("w-full min-w-[760px]", isRtl ? "text-right" : "text-left")}>
                            <thead>
                              <tr className="text-[10px] text-neutral-500 dark:text-emerald-100/45 uppercase font-bold border-b border-emerald-500/15 dark:border-emerald-500/15 bg-white/70 dark:bg-black/25">
@@ -5341,6 +5423,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </tbody>
                          </table>
                        </div>
+                       )}
                        </>
                        )}
                     </motion.div>

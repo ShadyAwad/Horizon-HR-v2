@@ -635,6 +635,21 @@
   -webkit-user-drag: none;
 }
 
+.stanza-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--stanza-select-focus) 48%, transparent) color-mix(in srgb, var(--stanza-select-bg) 55%, transparent);
+  scrollbar-width: thin;
+}
+
+.stanza-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+.stanza-scrollbar::-webkit-scrollbar-track { background: color-mix(in srgb, var(--stanza-select-bg) 58%, transparent); border-radius: 999px; }
+.stanza-scrollbar::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--stanza-select-focus) 50%, transparent); border: 2px solid transparent; background-clip: padding-box; border-radius: 999px; }
+.stanza-scrollbar::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--stanza-select-focus) 70%, transparent); }
+.stanza-scrollbar::-webkit-scrollbar-thumb:active { background-color: var(--stanza-select-focus); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stanza-attention-badge { animation: none; }
+}
+
 .stanza-control-center-backdrop {
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
