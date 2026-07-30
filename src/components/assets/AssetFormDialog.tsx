@@ -4,6 +4,7 @@ import { LoaderCircle, X } from 'lucide-react';
 import { apiFetch, apiUrl } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 import { AssetLabelExtraction } from './AssetLabelExtraction';
+import { AssetQrLabelPanel } from './AssetQrLabelPanel';
 import {
   applyUntouchedAssetSuggestions,
   createAssetFieldOrigins,
@@ -38,6 +39,7 @@ type AssetForm = {
 type Props = {
   asset: AssetFormRecord | null;
   canExtract: boolean;
+  canManageQr?: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 };
@@ -66,7 +68,7 @@ function safeMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
-export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) {
+export function AssetFormDialog({ asset, canExtract, canManageQr = false, onClose, onSaved }: Props) {
   const { t, isRtl } = useLanguage();
   const [form, setForm] = useState(() => initialForm(asset));
   const [fieldOrigins, setFieldOrigins] = useState<AssetFieldOrigins>(() => createAssetFieldOrigins(Boolean(asset)));
@@ -236,6 +238,7 @@ export function AssetFormDialog({ asset, canExtract, onClose, onSaved }: Props) 
             <button type="submit" disabled={saving || extractionProcessing || serialAvailability === 'conflict'} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : t('assets.save')}</button>
           </div>
         </form>
+        {asset && <AssetQrLabelPanel assetId={asset.id} canManage={canManageQr} />}
       </section>
     </div>
   );

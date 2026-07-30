@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@media print {
+  body * { visibility: hidden !important; }
+  .asset-qr-print, .asset-qr-print * { visibility: visible !important; }
+  .asset-qr-print { position: fixed; inset: 16mm auto auto 16mm; width: 72mm; border: 0 !important; box-shadow: none !important; }
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
