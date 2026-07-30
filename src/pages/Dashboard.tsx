@@ -782,8 +782,8 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>('geofence');
+export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
+  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>(initialTab || 'geofence');
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);

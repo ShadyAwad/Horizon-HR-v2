@@ -12,10 +12,12 @@ const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ defa
 const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
 const loadResetPassword = () => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword }));
 const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
+const loadPublicAssetVerification = () => import('./pages/PublicAssetVerification').then((module) => ({ default: module.PublicAssetVerification }));
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
 const ResetPassword = lazy(loadResetPassword);
 const PublicEmployeeVerification = lazy(loadPublicEmployeeVerification);
+const PublicAssetVerification = lazy(loadPublicAssetVerification);
 const AUTH_TRANSITION_MINIMUM_MS = 280;
 
 const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
@@ -64,6 +66,9 @@ function getStoredUser() {
 export default function App() {
   const publicEmployeeMatch = /^\/verify\/employee\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const isPublicEmployeeVerification = Boolean(publicEmployeeMatch);
+  const publicAssetMatch = /^\/verify\/asset\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
+  const isPublicAssetVerification = Boolean(publicAssetMatch);
+  const dashboardReturnTab = new URLSearchParams(window.location.search).get('returnTo') === 'assets' ? 'assets' : undefined;
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
   const [pendingRecognition, setPendingRecognition] = useState<RecognitionCelebrationPayload | null>(null);
@@ -93,7 +98,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (window.location.pathname === '/reset-password' || isPublicEmployeeVerification) {
+    if (window.location.pathname === '/reset-password' || isPublicEmployeeVerification || isPublicAssetVerification) {
       setSessionChecked(true);
       return () => { cancelled = true; };
     }
@@ -116,7 +121,7 @@ export default function App() {
       });
 
     return () => { cancelled = true; };
-  }, [isPublicEmployeeVerification]);
+  }, [isPublicAssetVerification, isPublicEmployeeVerification]);
 
   useEffect(() => {
     const titles = {
@@ -256,6 +261,10 @@ export default function App() {
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <PublicEmployeeVerification token={publicEmployeeMatch![1]} />
            </Suspense>
+         ) : isPublicAssetVerification ? (
+           <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
+             <PublicAssetVerification token={publicAssetMatch![1]} />
+           </Suspense>
          ) : !sessionChecked ? (
            <AuthShell pulseState="idle" onPulseComplete={() => undefined}>
              <AuthTransitionLoader transition="logging-in" />
@@ -269,6 +278,7 @@ export default function App() {
                  onShowDemoNotice={() => setShowDemoNotice(true)}
                  onUserUpdate={updateAuthUser}
                  initialRecognition={pendingRecognition}
+                 initialTab={dashboardReturnTab}
                  onRecognitionDisplayed={() => setPendingRecognition(null)}
                />
              </Suspense>
@@ -312,7 +322,7 @@ export default function App() {
              </button>
            </div>
          )}
-         {!isPublicEmployeeVerification && <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />}
+         {!isPublicEmployeeVerification && !isPublicAssetVerification && <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />}
         </div>
       </LanguageProvider>
     </ThemeProvider>
