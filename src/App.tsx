@@ -11,9 +11,11 @@ import type { RecognitionCelebrationPayload } from './components/performance/Rec
 const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
 const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
 const loadResetPassword = () => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword }));
+const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
 const ResetPassword = lazy(loadResetPassword);
+const PublicEmployeeVerification = lazy(loadPublicEmployeeVerification);
 const AUTH_TRANSITION_MINIMUM_MS = 280;
 
 const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
@@ -60,6 +62,8 @@ function getStoredUser() {
 }
 
 export default function App() {
+  const publicEmployeeMatch = /^\/verify\/employee\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
+  const isPublicEmployeeVerification = Boolean(publicEmployeeMatch);
   const [authState, setAuthState] = useState<'login' | 'signup' | 'authenticated'>('login');
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
   const [pendingRecognition, setPendingRecognition] = useState<RecognitionCelebrationPayload | null>(null);
@@ -89,7 +93,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (window.location.pathname === '/reset-password') {
+    if (window.location.pathname === '/reset-password' || isPublicEmployeeVerification) {
       setSessionChecked(true);
       return () => { cancelled = true; };
     }
@@ -112,7 +116,7 @@ export default function App() {
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [isPublicEmployeeVerification]);
 
   useEffect(() => {
     const titles = {
@@ -248,7 +252,11 @@ export default function App() {
     <ThemeProvider>
       <LanguageProvider>
         <div className="w-full min-h-screen bg-[#020604] text-emerald-50 transition-colors duration-300">
-         {!sessionChecked ? (
+         {isPublicEmployeeVerification ? (
+           <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
+             <PublicEmployeeVerification token={publicEmployeeMatch![1]} />
+           </Suspense>
+         ) : !sessionChecked ? (
            <AuthShell pulseState="idle" onPulseComplete={() => undefined}>
              <AuthTransitionLoader transition="logging-in" />
            </AuthShell>
@@ -304,7 +312,7 @@ export default function App() {
              </button>
            </div>
          )}
-         <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />
+         {!isPublicEmployeeVerification && <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />}
         </div>
       </LanguageProvider>
     </ThemeProvider>
