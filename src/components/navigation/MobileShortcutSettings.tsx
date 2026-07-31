@@ -88,7 +88,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
         <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">
           {text(
             'Choose at least four shortcuts. Stanza and customise remain fixed.',
-            '\u0627\u062e\u062a\u0631 \u0623\u0631\u0628\u0639\u0629 \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644.',
+            '\u0627\u062e\u062a\u0631 \u0623\u0631\u0628\u0639\u0629 \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644. \u064a\u0628\u0642\u0649 \u0632\u0631 Stanza \u0648\u062e\u064a\u0627\u0631 \u0627\u0644\u062a\u062e\u0635\u064a\u0635 \u062b\u0627\u0628\u062a\u064a\u0646.',
           )}
         </p>
       </div>
@@ -217,7 +217,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
           className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          {text('Reset to recommended', '\u0625\u0639\u0627\u062f\u0629 \u0625\u0644\u0649 \u0627\u0644\u0645\u0642\u062a\u0631\u062d')}
+          {text('Reset to recommended', '\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u062a\u0639\u064a\u064a\u0646 \u0625\u0644\u0649 \u0627\u0644\u062a\u0631\u062a\u064a\u0628 \u0627\u0644\u0645\u0642\u062a\u0631\u062d')}
         </button>
         <button
           type="button"

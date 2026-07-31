@@ -4402,17 +4402,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         <div className="mt-3 space-y-3">
           <section className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
             <div className="min-w-0">
-              <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{lang === 'ar' ? '\u0646\u0645\u0637 \u0627\u0644\u062a\u0646\u0642\u0644' : 'Navigation style'}</p>
+              <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.navigationStyle')}</p>
               <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
                 {desktopNavigationMode === 'launcher'
-                  ? (lang === 'ar' ? '\u064a\u0632\u064a\u062f \u0645\u0633\u0627\u062d\u0629 \u0627\u0644\u0639\u0645\u0644. \u0627\u0641\u062a\u062d \u0627\u0644\u062a\u0646\u0642\u0644 \u0645\u0646 \u0632\u0631 Stanza.' : 'Maximises workspace width. Open navigation from the Stanza button.')
-                  : (lang === 'ar' ? '\u064a\u0628\u0642\u064a \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0627\u0644\u0648\u062d\u062f\u0627\u062a \u0638\u0627\u0647\u0631\u0629 \u0639\u0644\u0649 \u0627\u0644\u062c\u0627\u0646\u0628.' : 'Keeps module shortcuts visible along the side.')}
+                  ? t('dash.launcherOnlyDescription')
+                  : t('dash.compactRailDescription')}
               </p>
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={lang === 'ar' ? '\u0646\u0645\u0637 \u0627\u0644\u062a\u0646\u0642\u0644' : 'Navigation style'}>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={t('dash.navigationStyle')}>
               {([
-                ['launcher', lang === 'ar' ? '\u0632\u0631 Stanza \u0641\u0642\u0637' : 'Launcher only'],
-                ['rail', lang === 'ar' ? '\u0634\u0631\u064a\u0637 \u0645\u062e\u062a\u0635\u0631' : 'Compact rail'],
+                ['launcher', t('dash.launcherOnly')],
+                ['rail', t('dash.compactRail')],
               ] as const).map(([mode, label]) => (
                 <button
                   key={mode}
@@ -4438,7 +4438,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 outline-none transition-colors hover:border-emerald-400 hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:text-emerald-300 dark:focus-visible:ring-offset-[#061411]"
             >
               <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>{lang === 'ar' ? '\u0625\u0639\u0627\u062f\u0629 \u062a\u0639\u064a\u064a\u0646 \u0627\u0644\u0648\u062d\u062f\u0627\u062a \u0627\u0644\u0623\u062e\u064a\u0631\u0629 \u0648\u0627\u0644\u0623\u0643\u062b\u0631 \u0627\u0633\u062a\u062e\u062f\u0627\u0645\u064b\u0627' : 'Reset recent and frequent modules'}</span>
+              <span>{t('dash.resetRecentFrequent')}</span>
             </button>
           </section>
           {isLanyardCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
@@ -4449,7 +4449,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               </p>
               {desktopNavigationMode === 'rail' && (
                 <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                  {lang === 'ar' ? '\u062a\u0638\u0647\u0631 \u0641\u064a \u0648\u0636\u0639 \u0632\u0631 Stanza \u0641\u0642\u0637.' : 'Shown in Launcher Only mode.'}
+                  {t('dash.lanyardLauncherOnly')}
                 </p>
               )}
             </div>
