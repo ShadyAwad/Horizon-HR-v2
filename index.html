@@ -17,23 +17,47 @@
         min-width: 320px;
       }
 
-      html[data-theme="light"][data-light-intensity="bright"],
-      html[data-theme="light"][data-light-intensity="bright"] body,
-      html[data-theme="light"][data-light-intensity="bright"] #root {
+      html[data-theme="light"][data-light-intensity="0"],
+      html[data-theme="light"][data-light-intensity="10"],
+      html[data-theme="light"][data-light-intensity="20"],
+      html[data-theme="light"][data-light-intensity="0"] body,
+      html[data-theme="light"][data-light-intensity="10"] body,
+      html[data-theme="light"][data-light-intensity="20"] body,
+      html[data-theme="light"][data-light-intensity="0"] #root,
+      html[data-theme="light"][data-light-intensity="10"] #root,
+      html[data-theme="light"][data-light-intensity="20"] #root {
         background: #fbfefc;
         color: #153326;
       }
 
-      html[data-theme="light"][data-light-intensity="balanced"],
-      html[data-theme="light"][data-light-intensity="balanced"] body,
-      html[data-theme="light"][data-light-intensity="balanced"] #root {
+      html[data-theme="light"][data-light-intensity="30"],
+      html[data-theme="light"][data-light-intensity="40"],
+      html[data-theme="light"][data-light-intensity="50"],
+      html[data-theme="light"][data-light-intensity="60"],
+      html[data-theme="light"][data-light-intensity="70"],
+      html[data-theme="light"][data-light-intensity="30"] body,
+      html[data-theme="light"][data-light-intensity="40"] body,
+      html[data-theme="light"][data-light-intensity="50"] body,
+      html[data-theme="light"][data-light-intensity="60"] body,
+      html[data-theme="light"][data-light-intensity="70"] body,
+      html[data-theme="light"][data-light-intensity="30"] #root,
+      html[data-theme="light"][data-light-intensity="40"] #root,
+      html[data-theme="light"][data-light-intensity="50"] #root,
+      html[data-theme="light"][data-light-intensity="60"] #root,
+      html[data-theme="light"][data-light-intensity="70"] #root {
         background: #f4faf6;
         color: #173326;
       }
 
-      html[data-theme="light"][data-light-intensity="deep"],
-      html[data-theme="light"][data-light-intensity="deep"] body,
-      html[data-theme="light"][data-light-intensity="deep"] #root {
+      html[data-theme="light"][data-light-intensity="80"],
+      html[data-theme="light"][data-light-intensity="90"],
+      html[data-theme="light"][data-light-intensity="100"],
+      html[data-theme="light"][data-light-intensity="80"] body,
+      html[data-theme="light"][data-light-intensity="90"] body,
+      html[data-theme="light"][data-light-intensity="100"] body,
+      html[data-theme="light"][data-light-intensity="80"] #root,
+      html[data-theme="light"][data-light-intensity="90"] #root,
+      html[data-theme="light"][data-light-intensity="100"] #root {
         background: #e4f0e8;
         color: #143025;
       }
@@ -47,9 +71,14 @@
         } catch {
           storedPreferences = {};
         }
-        const lightIntensity = ['bright', 'balanced', 'deep'].includes(storedPreferences.lightIntensity)
+        const legacyIntensity = { bright: 15, balanced: 50, deep: 85 };
+        const numericIntensity = typeof storedPreferences.lightIntensity === 'number'
           ? storedPreferences.lightIntensity
-          : 'balanced';
+          : legacyIntensity[storedPreferences.lightIntensity];
+        const safeIntensity = Number.isFinite(numericIntensity)
+          ? Math.min(100, Math.max(0, Math.round(numericIntensity)))
+          : 50;
+        const lightIntensity = Math.round(safeIntensity / 10) * 10;
         document.documentElement.dataset.lightIntensity = lightIntensity;
         if (theme === 'light') {
           document.documentElement.classList.remove('dark');

@@ -12,9 +12,10 @@ export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
 export const MIN_INTERFACE_SCALE = 0.85;
 export const MAX_INTERFACE_SCALE = 1.2;
 export const INTERFACE_SCALE_STEP = 0.05;
-export const LIGHT_INTENSITIES = ['bright', 'balanced', 'deep'] as const;
+export const LIGHT_INTENSITY_STOPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+export const DEFAULT_LIGHT_INTENSITY = 50;
 
-export type LightIntensity = typeof LIGHT_INTENSITIES[number];
+export type LightIntensity = number;
 export type RosterPresentationMode = 'auto' | 'fit' | 'detailed';
 export type DesktopNavigationMode = 'launcher' | 'rail';
 
@@ -30,14 +31,29 @@ export type StanzaPreferences = {
 const DEFAULT_PREFERENCES: StanzaPreferences = {
   lanyardEnabled: true,
   interfaceScale: 1,
-  lightIntensity: 'balanced',
+  lightIntensity: DEFAULT_LIGHT_INTENSITY,
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
 };
 
-export function isLightIntensity(value: unknown): value is LightIntensity {
-  return typeof value === 'string' && LIGHT_INTENSITIES.includes(value as LightIntensity);
+export function clampLightIntensity(value: unknown): LightIntensity {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_LIGHT_INTENSITY;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function resolveLightIntensityStop(value: LightIntensity) {
+  const normalized = clampLightIntensity(value);
+  return LIGHT_INTENSITY_STOPS.reduce((nearest, stop) => (
+    Math.abs(stop - normalized) < Math.abs(nearest - normalized) ? stop : nearest
+  ), LIGHT_INTENSITY_STOPS[0]);
+}
+
+function readLightIntensity(value: unknown): LightIntensity {
+  if (value === 'bright') return 15;
+  if (value === 'balanced') return 50;
+  if (value === 'deep') return 85;
+  return clampLightIntensity(value);
 }
 
 const clampScale = (value: number) => Math.min(
@@ -60,9 +76,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       interfaceScale: typeof parsed.interfaceScale === 'number' && Number.isFinite(parsed.interfaceScale)
         ? clampScale(parsed.interfaceScale)
         : DEFAULT_PREFERENCES.interfaceScale,
-      lightIntensity: isLightIntensity(parsed.lightIntensity)
-        ? parsed.lightIntensity
-        : DEFAULT_PREFERENCES.lightIntensity,
+      lightIntensity: readLightIntensity(parsed.lightIntensity),
       mobileShortcuts: Array.isArray(parsed.mobileShortcuts)
         ? [...new Set(parsed.mobileShortcuts.filter((value): value is string => typeof value === 'string'))].slice(0, 20)
         : DEFAULT_PREFERENCES.mobileShortcuts,
@@ -85,9 +99,7 @@ export function applyInterfaceScale(interfaceScale: number) {
 
 export function applyLightIntensity(lightIntensity: LightIntensity) {
   if (typeof document === 'undefined') return;
-  document.documentElement.dataset.lightIntensity = isLightIntensity(lightIntensity)
-    ? lightIntensity
-    : DEFAULT_PREFERENCES.lightIntensity;
+  document.documentElement.dataset.lightIntensity = String(resolveLightIntensityStop(lightIntensity));
 }
 
 export function initializeStanzaPreferences() {
@@ -101,7 +113,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setLanyardEnabled: (enabled: boolean) => void;
   setInterfaceScale: (scale: number) => void;
   resetInterfaceScale: () => void;
-  setLightIntensity: (intensity: LightIntensity) => void;
+  setLightIntensity: (intensity: number) => void;
   setMobileShortcuts: (shortcuts: string[]) => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
@@ -145,8 +157,8 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
 
   const resetInterfaceScale = useCallback(() => setInterfaceScale(1), [setInterfaceScale]);
 
-  const setLightIntensity = useCallback((lightIntensity: LightIntensity) => {
-    setPreferences((current) => ({ ...current, lightIntensity }));
+  const setLightIntensity = useCallback((lightIntensity: number) => {
+    setPreferences((current) => ({ ...current, lightIntensity: clampLightIntensity(lightIntensity) }));
   }, []);
   const setMobileShortcuts = useCallback((mobileShortcuts: string[]) => {
     setPreferences((current) => ({ ...current, mobileShortcuts: [...new Set(mobileShortcuts)].slice(0, 20) }));

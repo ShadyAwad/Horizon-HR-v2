@@ -32,7 +32,6 @@ import {
   MIN_INTERFACE_SCALE,
   useStanzaPreferences,
 } from '../lib/StanzaPreferencesContext';
-import type { LightIntensity } from '../lib/StanzaPreferencesContext';
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
@@ -4030,7 +4029,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     );
   };
 
-  const renderControlCenterSettings = () => (
+  const renderControlCenterSettings = () => {
+    const lightIntensityLabel = lightIntensity <= 25
+      ? t('dash.lightIntensityBright')
+      : lightIntensity <= 74
+        ? t('dash.lightIntensityBalanced')
+        : t('dash.lightIntensityDeep');
+
+    return (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
       <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.settings')}</p>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4078,30 +4084,28 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {isDark ? t('dash.lightIntensityAppliesToLight') : t('dash.lightIntensityDescription')}
               </p>
             </div>
-            <div
-              role="radiogroup"
-              aria-labelledby="stanza-light-intensity-label"
-              aria-describedby="stanza-light-intensity-help"
-              className="grid w-full grid-cols-3 gap-1 rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-1 sm:w-auto"
-              dir={isRtl ? 'rtl' : 'ltr'}
-            >
-              {(['bright', 'balanced', 'deep'] as const).map((intensity) => (
-                <button
-                  key={intensity}
-                  type="button"
-                  role="radio"
-                  aria-checked={lightIntensity === intensity}
-                  onClick={() => setLightIntensity(intensity as LightIntensity)}
-                  className={cn(
-                    'min-h-10 rounded-md px-3 text-xs font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#061411]',
-                    lightIntensity === intensity
-                      ? 'bg-emerald-500 text-black shadow-sm'
-                      : 'text-neutral-600 hover:bg-white/75 hover:text-emerald-700 dark:text-emerald-100/60 dark:hover:bg-black/25 dark:hover:text-emerald-100',
-                  )}
-                >
-                  {t(`dash.lightIntensity${intensity.charAt(0).toUpperCase()}${intensity.slice(1)}` as 'dash.lightIntensityBright')}
-                </button>
-              ))}
+            <div className="w-full min-w-0 sm:max-w-xs" dir={isRtl ? 'rtl' : 'ltr'}>
+              <output className="mb-2 block text-xs font-bold text-emerald-700 dark:text-emerald-300" htmlFor="stanza-light-intensity">
+                {lightIntensityLabel} - {lightIntensity}%
+              </output>
+              <input
+                id="stanza-light-intensity"
+                className="h-10 w-full cursor-pointer accent-emerald-500 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#061411]"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={lightIntensity}
+                aria-labelledby="stanza-light-intensity-label"
+                aria-describedby="stanza-light-intensity-help"
+                aria-valuetext={`${lightIntensityLabel} ${lightIntensity}%`}
+                onChange={(event) => setLightIntensity(Number(event.target.value))}
+              />
+              <div aria-hidden="true" className="mt-1 flex justify-between text-[10px] font-bold text-neutral-500 dark:text-emerald-100/50">
+                <span>{t('dash.lightIntensityBright')}</span>
+                <span>{t('dash.lightIntensityBalanced')}</span>
+                <span>{t('dash.lightIntensityDeep')}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -4110,7 +4114,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
 <div
