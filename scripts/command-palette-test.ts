@@ -83,6 +83,8 @@ assert.deepEqual(
 );
 assert.equal(commands.every((command) => command.dangerous === false), true);
 assert.equal(commands.every((command) => !('permission' in command)), true, 'raw permission evidence is not exposed');
+assert.equal(commands[0].sourceNavigationId, 'roster', 'global module commands retain their stable navigation id');
+assert.equal(commands.find((command) => command.id === 'roster:leave')?.sourceNavigationId, undefined, 'internal workflows are not treated as global module navigation');
 commands[0].execute();
 assert.equal(executions, 1, 'navigation commands reuse the original navigation action');
 
@@ -137,6 +139,8 @@ const checks: Array<[string, boolean]> = [
   ['slash ignores editable fields and blocking dialogs', /event\.key === '\/'/.test(dashboard) && /input, textarea, select, \[contenteditable="true"\]/.test(dashboard) && /querySelector\('\[role="dialog"\]\[aria-modal="true"\]'\)/.test(dashboard)],
   ['Escape closes and focus is restored', /event\.key === 'Escape'/.test(palette) && /returnFocusTarget\?\.isConnected/.test(dashboard)],
   ['launcher search opens the palette without maintaining a second input', /onOpenCommandPalette\(launcherRef\.current\)/.test(navigation) && !/Search modules/.test(navigation)],
+  ['only global module commands feed launcher usage tracking', /command\.type === 'navigation' && command\.sourceNavigationId/.test(dashboard) && /recordModuleNavigation\(command\.sourceNavigationId\)/.test(dashboard) && /sourceNavigationId: item\.id/.test(registrySource)],
+  ['launcher remains queryless while palette search stays authoritative', /data-launcher-section="recent"/.test(navigation) && /data-launcher-section="frequent"/.test(navigation) && !/useState\([^)]*query/.test(navigation) && /searchCommands/.test(palette)],
   ['launcher opening alone does not autofocus a search field', !/querySelector<HTMLInputElement>/.test(navigation) && !/autoFocus/.test(navigation)],
   ['mobile navigation exposes the same explicit search action', /Search Stanza/.test(navigation) && /bottom-\[calc\(5\.5rem\+env\(safe-area-inset-bottom\)\)\]/.test(navigation)],
   ['dialog uses portal, accessible semantics, and a focus trap', /createPortal/.test(palette) && /role="dialog"/.test(palette) && /aria-modal="true"/.test(palette) && /trapFocus/.test(palette)],
