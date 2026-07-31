@@ -997,7 +997,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
   }, []);
 
-  const shouldMountLanyard = lanyardEnabled && isLanyardCapable;
+  const shouldMountLanyard = lanyardEnabled && isLanyardCapable && desktopNavigationMode === 'launcher';
 
   useEffect(() => {
     const generation = ++lanyardMountGeneration.current;
@@ -3946,6 +3946,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
                 {t('dash.lanyardCardDescription')}
               </p>
+              {desktopNavigationMode === 'rail' && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  {lang === 'ar' ? '\u062a\u0638\u0647\u0631 \u0641\u064a \u0648\u0636\u0639 \u0632\u0631 Stanza \u0641\u0642\u0637.' : 'Shown in Launcher Only mode.'}
+                </p>
+              )}
             </div>
             <div className="grid shrink-0 grid-cols-[minmax(3.75rem,auto)_3rem] items-center gap-3" dir={isRtl ? "rtl" : "ltr"}>
               <span className="min-w-[3.75rem] whitespace-nowrap text-center text-xs font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/55">
@@ -4182,9 +4187,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <StanzaDashboardLanyard
               anchorNdc={lanyardAnchorNdc}
               eventSource={dashboardRootRef.current}
-              hidden={!isLanyardSceneReady || isNavigationOpen || showControlCenter}
-              interactionEnabled={!showControlCenter && !isNavigationOpen && isDashboardVisible}
-              paused={!isDashboardVisible || isNavigationOpen || showControlCenter}
+              hidden={!isLanyardSceneReady || showControlCenter}
+              interactionEnabled={!showControlCenter && isDashboardVisible}
+              paused={!isDashboardVisible || showControlCenter}
               language={lang}
               direction={isRtl ? 'rtl' : 'ltr'}
               anchorSide={lanyardAnchorSide}
