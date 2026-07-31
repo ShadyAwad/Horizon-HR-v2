@@ -916,6 +916,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [commandPaletteFocusRequest, setCommandPaletteFocusRequest] = useState(0);
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isMobileNavigationLayout, setIsMobileNavigationLayout] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const [launcherHeaderTarget, setLauncherHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [showMobileShortcutEditor, setShowMobileShortcutEditor] = useState(false);
   const mobileShortcutEditorTriggerRef = useRef<HTMLButtonElement>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
@@ -4701,6 +4702,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         items={navigationItems}
         moduleUsage={moduleUsage}
         onModuleNavigate={recordModuleNavigation}
+        desktopLauncherTarget={launcherHeaderTarget}
+        isMobileLayout={isMobileNavigationLayout}
         desktopMode={desktopNavigationMode}
         railOrder={desktopRailOrder}
         onRailOrderChange={setDesktopRailOrder}
@@ -5067,8 +5070,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
-        <header className={cn("mb-4 min-w-0", desktopNavigationMode === 'launcher' && "md:ps-[4.5rem] md:pt-1")}>
-          <div className="min-w-0">
+        <header
+          data-dashboard-context-header
+          className={cn(
+            "mb-4 min-w-0",
+            desktopNavigationMode === 'launcher' && "[--launcher-header-slot:3.75rem] md:grid md:grid-cols-[var(--launcher-header-slot)_minmax(0,1fr)] md:items-start md:gap-3",
+          )}
+        >
+          {desktopNavigationMode === 'launcher' && (
+            <div
+              ref={setLauncherHeaderTarget}
+              data-launcher-header-slot
+              className="hidden min-h-11 w-full items-start justify-center md:flex"
+            />
+          )}
+          <div data-dashboard-context-content className="min-w-0 md:pt-1">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
               <span className={cn("hidden min-w-0 truncate text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}>{activeNavigationLabel}</span>
