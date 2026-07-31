@@ -13,13 +13,20 @@ const css = read('src/index.css');
 const defaults = readStanzaPreferences(null);
 assert.deepEqual(defaults.mobileShortcuts, ['geofence', 'roster', 'feed', 'profile']);
 assert.equal(defaults.rosterPresentationMode, 'auto');
-const restored = readStanzaPreferences(JSON.stringify({ mobileShortcuts: ['unknown', 'roster', 'roster', 'feed'], rosterPresentationMode: 'fit' }));
+assert.equal(defaults.desktopNavigationMode, 'launcher');
+const restored = readStanzaPreferences(JSON.stringify({ mobileShortcuts: ['unknown', 'roster', 'roster', 'feed'], rosterPresentationMode: 'fit', desktopNavigationMode: 'rail' }));
 assert.deepEqual(restored.mobileShortcuts, ['unknown', 'roster', 'feed']);
 assert.equal(restored.rosterPresentationMode, 'fit');
+assert.equal(restored.desktopNavigationMode, 'rail');
+assert.equal(readStanzaPreferences(JSON.stringify({ desktopNavigationMode: 'unknown' })).desktopNavigationMode, 'launcher');
 
 const checks: Array<[string, boolean]> = [
   ['horizontal global strip is removed from the rendered dashboard', /<div className="hidden">[\s\S]*Tab Contents/.test(dashboard)],
   ['only the registry-backed desktop rail is live', (dashboard.match(/<DashboardNavigation\s/g) || []).length === 1 && /\{false && <aside/.test(dashboard)],
+  ['launcher-only is the default desktop mode and has no permanent module rail', /desktopMode = 'launcher'/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
+  ['compact rail is an optional registry-backed presentation', /desktopMode === 'rail'/.test(nav) && /items\.map\(\(item\) => itemButton/.test(nav)],
+  ['desktop navigation preference persists and preserves the active route', /desktopNavigationMode/.test(dashboard) && /setDesktopNavigationMode\(mode\)/.test(dashboard) && /setActiveTab/.test(dashboard)],
+  ['launcher-only dock stays fixed and does not reserve a rail layout column', /md:fixed md:start-4 md:top-4/.test(nav) && /desktopMode === 'rail'\s*\? 'md:static/.test(nav)],
   ['legacy rail cannot reserve layout width or create a second navigation landmark', /\{false && <aside[\s\S]*?<\/aside>\}/.test(dashboard)],
   ['desktop rail occupies the sole predictable layout column while the panel overlays content', /md:static/.test(nav) && /fixed z-30/.test(nav) && /md:start-\[5\.5rem\]/.test(nav)],
   ['main content has no legacy sidebar offset and header is contextual rather than global navigation', /<main className="min-w-0 w-full max-w-full flex-1/.test(dashboard) && /activeNavigationLabel/.test(dashboard) && /flex-wrap items-center gap-2/.test(dashboard)],
@@ -33,8 +40,11 @@ const checks: Array<[string, boolean]> = [
   ['fit screen exposes accessible expandable day cards', /expandedRosterDate/.test(dashboard) && /aria-expanded=\{expanded\}/.test(dashboard) && /Read-only schedule/.test(dashboard)],
   ['shared native scrollbar treatment is theme-token based', /.stanza-scrollbar/.test(css) && /scrollbar-color/.test(css) && /::-webkit-scrollbar-thumb/.test(css)],
   ['one lazy lanyard remains anchored to the launcher without a layout column', (dashboard.match(/<StanzaDashboardLanyard/g) || []).length === 1 && /stanza-control-center-trigger/.test(dashboard) && /pointer-events-none fixed inset-0/.test(read('src/components/lanyard/StanzaDashboardLanyard.tsx'))],
+  ['external lanyard hides while the complete navigation panel is open', /hidden=\{!isLanyardSceneReady \|\| isNavigationOpen\}/.test(dashboard) && /onOpenChange=\{setIsNavigationOpen\}/.test(dashboard) && /onOpenChange\?\.\(open\)/.test(nav)],
+  ['Control Center remains separate from launcher navigation', /onOpenControlCenter/.test(nav) && /<Settings/.test(nav) && !/onClick=\{onOpenControlCenter\}[^\n]*StanzaFingerprintMark/.test(nav)],
   ['mobile bottom navigation and More sheet remain intact', /md:hidden/.test(nav) && /MoreHorizontal/.test(nav) && /bottom-\[calc\(\.75rem\+env\(safe-area-inset-bottom\)\)\]/.test(nav)],
   ['navigation surface is RTL and theme safe', /isRtl/.test(nav) && /dark:bg/.test(nav) && /lang === 'ar'/.test(nav)],
+  ['preference control is keyboard-accessible and reduced-motion safe', /role="radiogroup"/.test(dashboard) && /role="radio"/.test(dashboard) && /motion-reduce:transition-none/.test(dashboard) && /motion-reduce:transition-none/.test(nav)],
 ];
 let failed = false;
 for (const [label, passed] of checks) { console.log(`${passed ? 'PASS' : 'FAIL'} ${label}`); failed ||= !passed; }
