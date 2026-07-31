@@ -4548,7 +4548,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     return (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.settings')}</p>
+      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.appearance')}</p>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
