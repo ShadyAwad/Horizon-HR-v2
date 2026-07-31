@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, u
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
-  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText
+  Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText, Settings
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
@@ -37,6 +37,9 @@ import { DashboardNavigation, type DashboardNavigationItem } from '../components
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
 import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOrderSettings';
+import { buildCommandRegistry } from '../components/command-palette/command-registry';
+import type { CommandPaletteLabels } from '../components/command-palette/CommandPalette';
+import type { StanzaCommand } from '../components/command-palette/command-palette-types';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -56,6 +59,7 @@ const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwa
 const LeaveWorkspace = lazy(() => import('../components/roster/LeaveWorkspace').then((module) => ({ default: module.LeaveWorkspace })));
 const LocationsPanel = lazy(() => import('../components/locations/LocationsPanel').then((module) => ({ default: module.LocationsPanel })));
 const ExpensesPanel = lazy(() => import('../components/expenses/ExpensesPanel').then((module) => ({ default: module.ExpensesPanel })));
+const CommandPalette = lazy(() => import('../components/command-palette/CommandPalette').then((module) => ({ default: module.CommandPalette })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -898,6 +902,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandPaletteFocusRequest, setCommandPaletteFocusRequest] = useState(0);
+  const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isMobileNavigationLayout, setIsMobileNavigationLayout] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [showMobileShortcutEditor, setShowMobileShortcutEditor] = useState(false);
   const mobileShortcutEditorTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1364,6 +1371,99 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       item('profile', t('dash.profile'), 'administration', <User className="h-5 w-5" />),
     ].filter(Boolean) as DashboardNavigationItem[];
   }, [activeTab, attentionCounts, canManageSessions, canUsePayrollPanel, canViewAssets, canViewAudit, canViewHiring, canViewLiveEmployees, canViewLocations, canViewOrganisation, canViewPerformance, lang, payrollAttentionCount, selectNavigationItem, showGrievancesPanel, showPayrollPanel, showResignationsPanel, t]);
+  const commandPaletteLabels = useMemo<CommandPaletteLabels>(() => {
+    const arabic = lang === 'ar';
+    return {
+      title: arabic ? 'أوامر Stanza' : 'Stanza Command Palette',
+      searchPlaceholder: arabic ? 'البحث في Stanza...' : 'Search Stanza...',
+      close: arabic ? 'إغلاق الأوامر' : 'Close command palette',
+      clearSearch: arabic ? 'مسح البحث' : 'Clear search',
+      noResults: arabic ? 'لا توجد أوامر مطابقة.' : 'No matching commands.',
+      resultCount: (count) => arabic ? `${count} من الأوامر المتاحة` : `${count} available commands`,
+      keyboardHelp: arabic
+        ? 'استخدم الأسهم للتنقل، وEnter للفتح، وEscape للإغلاق.'
+        : 'Use arrow keys to navigate, Enter to open, and Escape to close.',
+      groups: {
+        recent: arabic ? 'الأخيرة' : 'Recent',
+        workspace: arabic ? 'مساحة العمل' : 'Workspace',
+        peopleOperations: arabic ? 'الأفراد والعمليات' : 'People & Operations',
+        administration: arabic ? 'الإدارة' : 'Administration',
+        quickActions: arabic ? 'إجراءات سريعة' : 'Quick Actions',
+        settings: arabic ? 'الإعدادات' : 'Settings',
+      },
+    };
+  }, [lang]);
+  const commandPaletteCommands = useMemo(() => buildCommandRegistry({
+    navigationItems,
+    openLabel: (label) => lang === 'ar' ? `فتح ${label}` : `Open ${label}`,
+    moduleDescription: (label) => lang === 'ar' ? `الانتقال إلى ${label}` : `Navigate to ${label}`,
+    additionalCommands: [{
+      id: 'settings:open',
+      type: 'settings',
+      group: 'settings',
+      label: lang === 'ar' ? 'فتح الإعدادات' : 'Open Settings',
+      description: lang === 'ar' ? 'تخصيص تجربة Stanza.' : 'Personalise your Stanza experience.',
+      keywords: ['settings', 'preferences', 'appearance', 'الإعدادات', 'التفضيلات'],
+      icon: <Settings className="h-5 w-5" />,
+      execute: () => setShowControlCenter(true),
+      allowed: true,
+      contextId: 'settings',
+    }],
+  }), [lang, navigationItems]);
+  const activeCommandContext = navigationItems.find((item) => item.active)?.id || activeTab;
+  const openCommandPalette = useCallback((returnFocusTarget?: HTMLElement | null) => {
+    commandPaletteReturnFocusRef.current = returnFocusTarget
+      || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setShowCommandPalette(true);
+    setCommandPaletteFocusRequest((current) => current + 1);
+  }, []);
+  const closeCommandPalette = useCallback(() => {
+    const returnFocusTarget = commandPaletteReturnFocusRef.current;
+    commandPaletteReturnFocusRef.current = null;
+    setShowCommandPalette(false);
+    window.requestAnimationFrame(() => {
+      if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
+    });
+  }, []);
+  const executeCommandPaletteCommand = useCallback((command: StanzaCommand) => {
+    commandPaletteReturnFocusRef.current = null;
+    command.execute();
+    setShowCommandPalette(false);
+  }, []);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return target.matches('input, textarea, select, [contenteditable="true"]')
+        || Boolean(target.closest('[contenteditable="true"]'));
+    };
+    const handleCommandShortcut = (event: KeyboardEvent) => {
+      const commandShortcut = (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && event.key.toLowerCase() === 'k';
+      const slashShortcut = event.key === '/'
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && !event.shiftKey;
+      if (!commandShortcut && !slashShortcut) return;
+
+      if (showCommandPalette) {
+        if (commandShortcut || (slashShortcut && !isEditableTarget(event.target))) {
+          event.preventDefault();
+          setCommandPaletteFocusRequest((current) => current + 1);
+        }
+        return;
+      }
+
+      if (isEditableTarget(event.target)) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      openCommandPalette();
+    };
+    window.addEventListener('keydown', handleCommandShortcut);
+    return () => window.removeEventListener('keydown', handleCommandShortcut);
+  }, [openCommandPalette, showCommandPalette]);
   const activeNavigationLabel = navigationItems.find((item) => item.active)?.label || t('dash.geoOp');
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
@@ -4228,6 +4328,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onShortcutsChange={setMobileShortcuts}
         onOpenMobileShortcutEditor={() => setShowMobileShortcutEditor(true)}
         mobileShortcutEditorTriggerRef={mobileShortcutEditorTriggerRef}
+        onOpenCommandPalette={openCommandPalette}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
         showLanyardDock={shouldMountLanyard && isLanyardIdleReady && !showControlCenter}
@@ -4236,6 +4337,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         userEmail={user.email}
       />
       {showMobileShortcutEditor && <MobileShortcutEditor items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} onClose={() => setShowMobileShortcutEditor(false)} returnFocusRef={mobileShortcutEditorTriggerRef} />}
+      {showCommandPalette && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            commands={commandPaletteCommands}
+            recentCommandIds={[]}
+            currentContextId={activeCommandContext}
+            focusRequest={commandPaletteFocusRequest}
+            isRtl={isRtl}
+            labels={commandPaletteLabels}
+            onClose={closeCommandPalette}
+            onExecute={executeCommandPaletteCommand}
+          />
+        </Suspense>
+      )}
 
       {/* Kept out of the render tree while the registry-backed rail replaces this retired navigation branch. */}
       {false && <aside
