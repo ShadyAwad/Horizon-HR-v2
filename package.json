@@ -34,6 +34,7 @@
     "test:expenses": "tsx scripts/expenses-test.ts",
     "test:qr": "tsx scripts/qr-test.ts",
     "test:navigation": "tsx scripts/navigation-test.ts",
+    "test:command-palette": "tsx scripts/command-palette-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
