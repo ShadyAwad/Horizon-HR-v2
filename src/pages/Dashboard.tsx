@@ -4167,8 +4167,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         userEmail={user.email}
       />
 
-      {/* Legacy navigation remains mounted only as a compatibility reference while the registry-backed rail owns rendering. */}
-<aside
+      {/* Kept out of the render tree while the registry-backed rail replaces this retired navigation branch. */}
+      {false && <aside
   className={cn(
     "hidden",
     "fixed left-3 right-3 md:static md:left-auto md:right-auto",
@@ -4391,7 +4391,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <AttentionBadge count={attentionCounts.resignations} ariaLabel={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)} className="absolute end-0 top-0" />
           </button>
         </nav>
-      </aside>
+      </aside>}
 
       {isOffline && (
         <div className="fixed inset-x-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-50 mx-auto flex max-w-md items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-[#1c1304]/95 px-3 py-2 text-xs font-bold text-amber-100 shadow-2xl shadow-black/35 backdrop-blur-xl">
@@ -4502,12 +4502,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
-        <header className="mb-3">
+        <header className="mb-4 min-w-0">
           <div className="min-w-0">
-            <h1 className="flex items-center text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
-              <span className={cn("ms-3 hidden text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}>{activeNavigationLabel}</span>
-              <span className={cn("hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block", isRtl ? "mr-3" : "ml-3")}>{t('dash.elitePortal')}</span>
+              <span className={cn("hidden min-w-0 truncate text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}>{activeNavigationLabel}</span>
+              <span className="hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block">{t('dash.elitePortal')}</span>
             </h1>
           </div>
         </header>
