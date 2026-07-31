@@ -5080,13 +5080,29 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         {/* Header Pipeline */}
         <header
           data-dashboard-context-header
-          className="mb-4 min-w-0"
+          data-navigation-mode={desktopNavigationMode}
+          className={cn(
+            "dashboard-top-header mb-4 min-w-0",
+            desktopNavigationMode === 'launcher' && "md:grid md:grid-cols-[3.75rem_minmax(0,1fr)] md:items-center"
+          )}
         >
+          {desktopNavigationMode === 'launcher' && (
+            <div
+              data-launcher-header-slot
+              aria-hidden="true"
+              className="hidden h-11 w-[3.75rem] md:block"
+            />
+          )}
           <div data-dashboard-context-content className="min-w-0 md:pt-1">
-            <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white md:flex-nowrap">
               <BrandWordmark />
-              <span className={cn("hidden min-w-0 truncate text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}>{activeNavigationLabel}</span>
-              <span className="hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block">{t('dash.elitePortal')}</span>
+              <span
+                title={activeNavigationLabel}
+                className={cn("hidden min-w-0 shrink truncate whitespace-nowrap text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}
+              >
+                {activeNavigationLabel}
+              </span>
+              <span className="hidden shrink-0 whitespace-nowrap rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block">{t('dash.elitePortal')}</span>
             </h1>
           </div>
         </header>
@@ -5346,7 +5362,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="w-full max-w-full min-h-[calc(100dvh-145px)] md:min-h-0 bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-start md:justify-center text-center backdrop-blur-sm relative overflow-hidden group shadow-xl">
+                    <motion.div
+                      initial={{opacity:0, y:5}}
+                      animate={{opacity:1, y:0}}
+                      className="geo-operations-content relative mx-auto flex min-h-[calc(100dvh-145px)] w-full max-w-[72rem] flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
+                    >
                        <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
@@ -5473,7 +5493,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
 
-                       <div className={cn("relative z-10 mt-4 grid w-full grid-cols-1 gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]", isRtl ? "text-right" : "text-left")}>
+                       <div className={cn("geo-operations-summary-grid relative z-10 mt-4 grid w-full grid-cols-1 gap-3", canCreateBreakRequests && "md:grid-cols-2", isRtl ? "text-right" : "text-left")}>
                          {canCreateBreakRequests && (
                            <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -5639,7 +5659,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        </div>
 
                        {canReviewBreakRequests && (
-                         <div className={cn("relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
+                         <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                              <div>
                                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -5707,7 +5727,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </div>
                        )}
 
-                       <div className={cn("relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
+                       <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                            <div>
                              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
