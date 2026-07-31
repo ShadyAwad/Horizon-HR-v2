@@ -898,6 +898,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
+  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [profilePhotoSaving, setProfilePhotoSaving] = useState(false);
   const [profilePhotoMessage, setProfilePhotoMessage] = useState('');
@@ -4178,9 +4179,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <StanzaDashboardLanyard
               anchorNdc={lanyardAnchorNdc}
               eventSource={dashboardRootRef.current}
-              hidden={!isLanyardSceneReady}
-              interactionEnabled={!showControlCenter && isDashboardVisible}
-              paused={!isDashboardVisible}
+              hidden={!isLanyardSceneReady || isNavigationOpen}
+              interactionEnabled={!showControlCenter && !isNavigationOpen && isDashboardVisible}
+              paused={!isDashboardVisible || isNavigationOpen}
               language={lang}
               direction={isRtl ? 'rtl' : 'ltr'}
               anchorSide={lanyardAnchorSide}
@@ -4197,6 +4198,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         mobileShortcuts={mobileShortcuts}
         onShortcutsChange={setMobileShortcuts}
         onOpenControlCenter={() => setShowControlCenter(true)}
+        onOpenChange={setIsNavigationOpen}
         onLogout={onLogout}
         userName={user.name}
         userEmail={user.email}

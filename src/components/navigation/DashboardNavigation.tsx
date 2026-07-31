@@ -21,6 +21,7 @@ type Props = {
   mobileShortcuts: string[];
   onShortcutsChange: (value: string[]) => void;
   onOpenControlCenter: () => void;
+  onOpenChange?: (open: boolean) => void;
   onLogout: () => void;
   userName: string;
   userEmail: string;
@@ -33,7 +34,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>;
 }
 
-export function DashboardNavigation({ items, desktopMode = 'launcher', mobileShortcuts, onShortcutsChange, onOpenControlCenter, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, desktopMode = 'launcher', mobileShortcuts, onShortcutsChange, onOpenControlCenter, onOpenChange, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
@@ -53,6 +54,7 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', mobileSho
     return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', key); };
   }, [open]);
   useEffect(() => { if (open) panelRef.current?.querySelector<HTMLInputElement>('input')?.focus(); }, [open]);
+  useEffect(() => { onOpenChange?.(open); }, [onOpenChange, open]);
   useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
