@@ -33,6 +33,7 @@ import {
   useStanzaPreferences,
 } from '../lib/StanzaPreferencesContext';
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
+import type { OrganisationPanelView } from '../components/organisation/OrganisationPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
@@ -40,6 +41,10 @@ import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOr
 import { buildCommandRegistry } from '../components/command-palette/command-registry';
 import type { CommandPaletteLabels } from '../components/command-palette/CommandPalette';
 import type { StanzaCommand } from '../components/command-palette/command-palette-types';
+import {
+  normaliseRecentCommandIds,
+  recordRecentCommand,
+} from '../components/command-palette/command-palette-state';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -794,6 +799,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
   const [expenseDeepLink, setExpenseDeepLink] = useState<ExpenseDeepLink | null>(null);
+  const [hiringCreateSignal, setHiringCreateSignal] = useState(0);
+  const [assetCreateSignal, setAssetCreateSignal] = useState(0);
+  const [organisationCommandView, setOrganisationCommandView] = useState<OrganisationPanelView | null>(null);
+  const [organisationCommandSignal, setOrganisationCommandSignal] = useState(0);
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -957,6 +966,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setMobileShortcuts,
     desktopRailOrder,
     setDesktopRailOrder,
+    recentCommandIds,
+    setRecentCommandIds,
     rosterPresentationMode,
     setRosterPresentationMode,
     desktopNavigationMode,
@@ -1393,23 +1404,358 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       },
     };
   }, [lang]);
-  const commandPaletteCommands = useMemo(() => buildCommandRegistry({
+  const explicitCommandPermissions = useMemo(
+    () => new Set(user.permissions || []),
+    [user.permissions],
+  );
+  const commandPaletteCommands = useMemo(() => {
+    const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
+    const openRosterView = (view: typeof rosterSubview) => {
+      selectNavigationItem('roster');
+      setRosterSubview(view);
+      if (view !== 'leave') setLeaveDeepLink(null);
+    };
+    const openExpenseView = (view: ExpenseDeepLink['view']) => {
+      selectNavigationItem('expenses');
+      setExpenseDeepLink({ view, claimId: null });
+    };
+    const openOrganisationView = (view: OrganisationPanelView) => {
+      selectNavigationItem('organisation');
+      setOrganisationCommandView(view);
+      setOrganisationCommandSignal((current) => current + 1);
+    };
+    const revealControl = (navigationId: 'geofence' | 'profile', elementId: string) => {
+      selectNavigationItem(navigationId);
+      window.requestAnimationFrame(() => {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        document.getElementById(elementId)?.scrollIntoView({
+          block: 'center',
+          behavior: reduceMotion ? 'auto' : 'smooth',
+        });
+      });
+    };
+    const canReviewExpenses = [
+      'expenses.view.scoped',
+      'expenses.approve',
+      'expenses.manage',
+    ].some((permission) => explicitCommandPermissions.has(permission));
+    const canReimburseExpenses = [
+      'expenses.reimburse',
+      'expenses.manage',
+    ].some((permission) => explicitCommandPermissions.has(permission));
+    const canOpenOrganisationRoles = [
+      'roles.view',
+      'roles.manage',
+      'permissions.manage',
+    ].some((permission) => explicitCommandPermissions.has(permission));
+
+    return buildCommandRegistry({
+      navigationItems,
+      openLabel: (label) => text(`Open ${label}`, `فتح ${label}`),
+      moduleDescription: (label) => text(`Navigate to ${label}`, `الانتقال إلى ${label}`),
+      additionalCommands: [
+        {
+          id: 'roster:schedule',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Roster Schedule', 'فتح جدول المناوبات'),
+          description: text('View your authorised schedule.', 'عرض جدولك المصرح به.'),
+          keywords: ['roster', 'schedule', 'shift', 'جدول', 'مناوبة'],
+          icon: <Calendar className="h-5 w-5" />,
+          execute: () => openRosterView('schedule'),
+          allowed: true,
+          contextId: 'roster',
+        },
+        {
+          id: 'roster:swaps',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open My Shift Swaps', 'فتح تبديلات مناوباتي'),
+          description: text('Review your incoming and outgoing swaps.', 'مراجعة طلبات تبديل المناوبات الخاصة بك.'),
+          keywords: ['swap', 'shift swap', 'roster', 'تبديل', 'مناوبة'],
+          icon: <RotateCcw className="h-5 w-5" />,
+          execute: () => openRosterView('swaps'),
+          allowed: true,
+          contextId: 'roster',
+        },
+        {
+          id: 'roster:approvals',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Shift Swap Approvals', 'فتح موافقات تبديل المناوبات'),
+          description: text('Open your authorised approval queue.', 'فتح قائمة الموافقات المصرح بها.'),
+          keywords: ['swap approval', 'review swaps', 'موافقة', 'تبديل'],
+          icon: <ShieldCheck className="h-5 w-5" />,
+          execute: () => openRosterView('approvals'),
+          allowed: canApproveShiftSwaps,
+          contextId: 'roster',
+        },
+        {
+          id: 'roster:leave',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Leave', 'فتح الإجازات'),
+          description: text('View leave requests and balances.', 'عرض طلبات الإجازة والأرصدة.'),
+          keywords: ['leave', 'time off', 'absence', 'إجازة', 'غياب'],
+          icon: <Calendar className="h-5 w-5" />,
+          execute: () => openRosterView('leave'),
+          allowed: true,
+          contextId: 'roster',
+        },
+        {
+          id: 'leave:request',
+          type: 'open_existing_flow',
+          group: 'quickActions',
+          label: text('Request Leave', 'طلب إجازة'),
+          description: text('Open the existing leave request form.', 'فتح نموذج طلب الإجازة الحالي.'),
+          keywords: ['request leave', 'time off', 'holiday', 'طلب إجازة'],
+          icon: <Plus className="h-5 w-5" />,
+          execute: () => {
+            openRosterView('leave');
+            setLeaveDeepLink(null);
+            setLeaveRequestSignal((current) => current + 1);
+          },
+          allowed: true,
+          contextId: 'roster',
+        },
+        {
+          id: 'leave:review',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Review Leave Requests', 'مراجعة طلبات الإجازة'),
+          description: text('Open your authorised leave approval queue.', 'فتح قائمة موافقات الإجازة المصرح بها.'),
+          keywords: ['leave approval', 'review leave', 'موافقة إجازة'],
+          icon: <ShieldCheck className="h-5 w-5" />,
+          execute: () => {
+            openRosterView('leave');
+            setLeaveDeepLink({ view: 'approvals', requestId: null });
+          },
+          allowed: hasLeaveApproverAuthority,
+          contextId: 'roster',
+        },
+        {
+          id: 'expenses:claims',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open My Claims', 'فتح مطالباتي'),
+          description: text('View your expense claims.', 'عرض مطالبات المصروفات الخاصة بك.'),
+          keywords: ['expense', 'claim', 'receipt', 'مصروفات', 'مطالبة'],
+          icon: <ReceiptText className="h-5 w-5" />,
+          execute: () => openExpenseView('claims'),
+          allowed: true,
+          contextId: 'expenses',
+        },
+        {
+          id: 'expenses:new',
+          type: 'open_existing_flow',
+          group: 'quickActions',
+          label: text('New Expense Claim', 'مطالبة مصروف جديدة'),
+          description: text('Open the existing expense claim form.', 'فتح نموذج مطالبة المصروف الحالي.'),
+          keywords: ['new expense', 'claim', 'receipt', 'مصروف جديد', 'إيصال'],
+          icon: <Plus className="h-5 w-5" />,
+          execute: () => openExpenseView('new'),
+          allowed: true,
+          contextId: 'expenses',
+        },
+        {
+          id: 'expenses:approvals',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Expense Approvals', 'فتح موافقات المصروفات'),
+          description: text('Open your authorised expense review queue.', 'فتح قائمة مراجعة المصروفات المصرح بها.'),
+          keywords: ['expense approval', 'review claims', 'موافقة مصروفات'],
+          icon: <ShieldCheck className="h-5 w-5" />,
+          execute: () => openExpenseView('approvals'),
+          allowed: canReviewExpenses,
+          contextId: 'expenses',
+        },
+        {
+          id: 'expenses:reimbursements',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Reimbursements', 'فتح المبالغ المستردة'),
+          description: text('Open your authorised reimbursement queue.', 'فتح قائمة السداد المصرح بها.'),
+          keywords: ['reimburse', 'repayment', 'expense', 'سداد', 'مصروفات'],
+          icon: <DollarSign className="h-5 w-5" />,
+          execute: () => openExpenseView('reimbursements'),
+          allowed: canReimburseExpenses,
+          contextId: 'expenses',
+        },
+        {
+          id: 'organisation:people',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Organisation People', 'فتح أفراد المؤسسة'),
+          description: text('View authorised people and placement.', 'عرض الأفراد والتوزيع المصرح بهما.'),
+          keywords: ['people', 'employee', 'organisation', 'أفراد', 'موظف'],
+          icon: <UsersRound className="h-5 w-5" />,
+          execute: () => openOrganisationView('people'),
+          allowed: canViewOrganisation,
+          contextId: 'organisation',
+        },
+        {
+          id: 'organisation:hierarchy',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Organisation Hierarchy', 'فتح الهيكل التنظيمي'),
+          description: text('View the authorised company hierarchy.', 'عرض الهيكل التنظيمي المصرح به.'),
+          keywords: ['hierarchy', 'org chart', 'manager', 'هيكل', 'مدير'],
+          icon: <Network className="h-5 w-5" />,
+          execute: () => openOrganisationView('hierarchy'),
+          allowed: canViewOrganisation,
+          contextId: 'organisation',
+        },
+        {
+          id: 'organisation:roles',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Roles & Permissions', 'فتح الأدوار والصلاحيات'),
+          description: text('Open authorised role administration.', 'فتح إدارة الأدوار المصرح بها.'),
+          keywords: ['roles', 'permissions', 'access', 'أدوار', 'صلاحيات'],
+          icon: <ShieldCheck className="h-5 w-5" />,
+          execute: () => openOrganisationView('roles'),
+          allowed: canViewOrganisation && canOpenOrganisationRoles,
+          contextId: 'organisation',
+        },
+        {
+          id: 'organisation:delegations',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Delegations', 'فتح التفويضات'),
+          description: text('View authorised temporary delegations.', 'عرض التفويضات المؤقتة المصرح بها.'),
+          keywords: ['delegation', 'temporary access', 'تفويض'],
+          icon: <ShieldCheck className="h-5 w-5" />,
+          execute: () => openOrganisationView('delegations'),
+          allowed: canViewOrganisation && explicitCommandPermissions.has('delegations.manage'),
+          contextId: 'organisation',
+        },
+        {
+          id: 'hiring:applicants',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Applicant List', 'فتح قائمة المتقدمين'),
+          description: text('View authorised Hiring applicants.', 'عرض المتقدمين المصرح بهم.'),
+          keywords: ['applicant', 'candidate', 'hiring', 'متقدم', 'توظيف'],
+          icon: <BriefcaseBusiness className="h-5 w-5" />,
+          execute: () => selectNavigationItem('hiring'),
+          allowed: canViewHiring,
+          contextId: 'hiring',
+        },
+        {
+          id: 'hiring:add-applicant',
+          type: 'open_existing_flow',
+          group: 'quickActions',
+          label: text('Add Applicant', 'إضافة متقدم'),
+          description: text('Open the existing applicant form.', 'فتح نموذج المتقدم الحالي.'),
+          keywords: ['add applicant', 'new candidate', 'إضافة متقدم', 'مرشح جديد'],
+          icon: <Plus className="h-5 w-5" />,
+          execute: () => {
+            selectNavigationItem('hiring');
+            setHiringCreateSignal((current) => current + 1);
+          },
+          allowed: canViewHiring && explicitCommandPermissions.has('hiring.create'),
+          contextId: 'hiring',
+        },
+        {
+          id: 'assets:list',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Asset List', 'فتح قائمة الأصول'),
+          description: text('View authorised assets and equipment.', 'عرض الأصول والمعدات المصرح بها.'),
+          keywords: ['assets', 'equipment', 'hardware', 'أصول', 'معدات'],
+          icon: <Box className="h-5 w-5" />,
+          execute: () => selectNavigationItem('assets'),
+          allowed: canViewAssets,
+          contextId: 'assets',
+        },
+        {
+          id: 'assets:add',
+          type: 'open_existing_flow',
+          group: 'quickActions',
+          label: text('Add Asset', 'إضافة أصل'),
+          description: text('Open the existing asset form.', 'فتح نموذج الأصل الحالي.'),
+          keywords: ['add asset', 'new equipment', 'إضافة أصل', 'معدات جديدة'],
+          icon: <Plus className="h-5 w-5" />,
+          execute: () => {
+            selectNavigationItem('assets');
+            setAssetCreateSignal((current) => current + 1);
+          },
+          allowed: canViewAssets && explicitCommandPermissions.has('assets.manage'),
+          contextId: 'assets',
+        },
+        {
+          id: 'profile:digital-id',
+          type: 'internal_view',
+          group: 'quickActions',
+          label: text('Open Digital ID', 'فتح الهوية الرقمية'),
+          description: text('View your existing digital employee ID.', 'عرض هوية الموظف الرقمية الحالية.'),
+          keywords: ['digital id', 'badge', 'qr', 'هوية رقمية', 'بطاقة'],
+          icon: <User className="h-5 w-5" />,
+          execute: () => revealControl('profile', 'stanza-digital-id-panel'),
+          allowed: true,
+          contextId: 'profile',
+        },
+        {
+          id: 'attendance:open-clock',
+          type: 'safe_utility',
+          group: 'quickActions',
+          label: text('Open Clock In', 'فتح تسجيل الحضور'),
+          description: text('Show the attendance control without activating it.', 'عرض زر الحضور دون تشغيله.'),
+          keywords: ['clock in', 'attendance', 'location', 'حضور', 'موقع'],
+          icon: <Map className="h-5 w-5" />,
+          execute: () => revealControl('geofence', 'stanza-attendance-control'),
+          allowed: true,
+          contextId: 'geofence',
+        },
+        {
+          id: 'settings:open',
+          type: 'settings',
+          group: 'settings',
+          label: text('Open Settings', 'فتح الإعدادات'),
+          description: text('Personalise your Stanza experience.', 'تخصيص تجربة Stanza.'),
+          keywords: ['settings', 'preferences', 'appearance', 'الإعدادات', 'التفضيلات'],
+          icon: <Settings className="h-5 w-5" />,
+          execute: () => setShowControlCenter(true),
+          allowed: true,
+          contextId: 'settings',
+        },
+        {
+          id: 'settings:mobile-shortcuts',
+          type: 'settings',
+          group: 'settings',
+          label: text('Open Mobile Shortcut Settings', 'فتح إعدادات اختصارات الهاتف'),
+          description: text('Choose the modules shown in the mobile bar.', 'اختيار الوحدات الظاهرة في شريط الهاتف.'),
+          keywords: ['mobile shortcuts', 'navigation settings', 'اختصارات الهاتف'],
+          icon: <Smartphone className="h-5 w-5" />,
+          execute: () => setShowMobileShortcutEditor(true),
+          allowed: isMobileNavigationLayout,
+          mobileAvailable: true,
+          contextId: 'settings',
+        },
+      ],
+    });
+  }, [
+    canApproveShiftSwaps,
+    canViewAssets,
+    canViewHiring,
+    canViewOrganisation,
+    explicitCommandPermissions,
+    hasLeaveApproverAuthority,
+    isMobileNavigationLayout,
+    lang,
     navigationItems,
-    openLabel: (label) => lang === 'ar' ? `فتح ${label}` : `Open ${label}`,
-    moduleDescription: (label) => lang === 'ar' ? `الانتقال إلى ${label}` : `Navigate to ${label}`,
-    additionalCommands: [{
-      id: 'settings:open',
-      type: 'settings',
-      group: 'settings',
-      label: lang === 'ar' ? 'فتح الإعدادات' : 'Open Settings',
-      description: lang === 'ar' ? 'تخصيص تجربة Stanza.' : 'Personalise your Stanza experience.',
-      keywords: ['settings', 'preferences', 'appearance', 'الإعدادات', 'التفضيلات'],
-      icon: <Settings className="h-5 w-5" />,
-      execute: () => setShowControlCenter(true),
-      allowed: true,
-      contextId: 'settings',
-    }],
-  }), [lang, navigationItems]);
+    selectNavigationItem,
+  ]);
+  const availableCommandIds = useMemo(
+    () => new Set(commandPaletteCommands.map((command) => command.id)),
+    [commandPaletteCommands],
+  );
+  useEffect(() => {
+    const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
+    if (nextRecentCommandIds.join('|') !== recentCommandIds.join('|')) {
+      setRecentCommandIds(nextRecentCommandIds);
+    }
+  }, [availableCommandIds, recentCommandIds, setRecentCommandIds]);
   const activeCommandContext = navigationItems.find((item) => item.active)?.id || activeTab;
   const openCommandPalette = useCallback((returnFocusTarget?: HTMLElement | null) => {
     commandPaletteReturnFocusRef.current = returnFocusTarget
@@ -1427,9 +1773,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   }, []);
   const executeCommandPaletteCommand = useCallback((command: StanzaCommand) => {
     commandPaletteReturnFocusRef.current = null;
+    setRecentCommandIds(recordRecentCommand(recentCommandIds, command.id, availableCommandIds));
     command.execute();
     setShowCommandPalette(false);
-  }, []);
+  }, [availableCommandIds, recentCommandIds, setRecentCommandIds]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) => {
@@ -4341,7 +4688,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         <Suspense fallback={null}>
           <CommandPalette
             commands={commandPaletteCommands}
-            recentCommandIds={[]}
+            recentCommandIds={recentCommandIds}
             currentContextId={activeCommandContext}
             focusRequest={commandPaletteFocusRequest}
             isRtl={isRtl}
@@ -4896,7 +5243,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {/* Tab Contents */}
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} />
+                    <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} openCreateSignal={hiringCreateSignal} />
                   </Suspense>
                 )}
                 {activeTab === 'performance' && canViewPerformance && (
@@ -4906,7 +5253,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
                 {activeTab === 'organisation' && canViewOrganisation && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <OrganisationPanel />
+                    <OrganisationPanel initialView={organisationCommandView} openViewSignal={organisationCommandSignal} />
                   </Suspense>
                 )}
                 {activeTab === 'locations' && canViewLocations && (
@@ -4948,7 +5295,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
                 {activeTab === 'assets' && canViewAssets && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <AssetsPanel user={user} />
+                    <AssetsPanel user={user} openCreateSignal={assetCreateSignal} />
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
@@ -6075,7 +6422,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                   className="min-w-0 rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                                 />
                               </div>
-                              <button
+                              <button 
+                                id="stanza-attendance-control"
                                 type="button"
                                 onClick={runPayroll}
                                 disabled={isOffline || payrollSubmitting}
@@ -6577,7 +6925,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              <MyEquipmentPanel />
                            </Suspense>
                          </div>
-                         <div className="md:col-span-2">
+                          <div id="stanza-digital-id-panel" className="md:col-span-2">
                            <Suspense fallback={<div className="min-h-64 animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                              <DigitalBadgePanel offline={isOffline} />
                            </Suspense>

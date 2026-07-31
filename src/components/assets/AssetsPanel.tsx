@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, ChevronLeft, ChevronRight, ClipboardList, LoaderCircle, Pencil, Plus, RefreshCw, Search } from 'lucide-react';
 import type { AuthUser } from '../../App';
 import { apiFetch } from '../../lib/api';
@@ -13,7 +13,7 @@ type LicenseResponse = { licenses: License[]; page: number; pageSize: number; to
 
 const formatDate = (value: string | null | undefined, locale: string) => value ? new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-US', { dateStyle: 'medium' }).format(new Date(value)) : '-';
 
-export function AssetsPanel({ user }: { user: AuthUser }) {
+export function AssetsPanel({ user, openCreateSignal = 0 }: { user: AuthUser; openCreateSignal?: number }) {
   const { t, lang, isRtl } = useLanguage();
   const [view, setView] = useState<'hardware' | 'software'>('hardware');
   const [hardware, setHardware] = useState<AssetResponse | null>(null);
@@ -27,6 +27,7 @@ export function AssetsPanel({ user }: { user: AuthUser }) {
   const canManageAssets = Boolean(user.permissions?.includes('assets.manage'));
   const canManageAssetQr = Boolean(user.permissions?.includes('assets.manage') && user.permissions?.includes('qr.asset_label.manage'));
   const canExtractAssetLabels = canUseAssetLabelExtraction(user.permissions);
+  const handledCreateSignal = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -39,6 +40,14 @@ export function AssetsPanel({ user }: { user: AuthUser }) {
   }, [page, search, t, view]);
   useEffect(() => { const handle = window.setTimeout(() => void load(), 120); return () => window.clearTimeout(handle); }, [load]);
   useEffect(() => { setPage(1); }, [view]);
+  useEffect(() => {
+    if (!openCreateSignal || handledCreateSignal.current === openCreateSignal) return;
+    handledCreateSignal.current = openCreateSignal;
+    if (!canManageAssets) return;
+    setView('hardware');
+    setSelectedAsset(null);
+    setAssetDialogOpen(true);
+  }, [canManageAssets, openCreateSignal]);
 
   const create = async () => {
     setSubmitting(true); setError('');

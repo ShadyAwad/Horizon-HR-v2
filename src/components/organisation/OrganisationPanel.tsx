@@ -83,7 +83,15 @@ function TeamMembershipFields({ team, activePeople, teams, inputClass, t, onChan
   </div>;
 }
 
-export function OrganisationPanel() {
+export type OrganisationPanelView = 'overview' | 'people' | 'hierarchy' | 'departments' | 'teams' | 'titles' | 'roles' | 'delegations';
+
+export function OrganisationPanel({
+  initialView,
+  openViewSignal = 0,
+}: {
+  initialView?: OrganisationPanelView | null;
+  openViewSignal?: number;
+}) {
   const { t, isRtl } = useLanguage();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -95,7 +103,13 @@ export function OrganisationPanel() {
   const [peoplePage, setPeoplePage] = useState(1);
   const [peopleTotal, setPeopleTotal] = useState(0);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [tab, setTab] = useState<'overview' | 'people' | 'hierarchy' | 'departments' | 'teams' | 'titles' | 'roles' | 'delegations'>('overview');
+  const [tab, setTab] = useState<OrganisationPanelView>('overview');
+  const handledOpenViewSignal = useRef(0);
+  useEffect(() => {
+    if (!initialView || !openViewSignal || handledOpenViewSignal.current === openViewSignal) return;
+    handledOpenViewSignal.current = openViewSignal;
+    setTab(initialView);
+  }, [initialView, openViewSignal]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);

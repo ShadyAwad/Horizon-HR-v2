@@ -23,7 +23,11 @@ import {
 } from './candidate-prefill-state';
 
 type ModalKind = 'create' | 'edit' | 'note' | 'stage' | 'handoff' | 'archive' | null;
-type PanelProps = { user: AuthUser; onRefreshAttentionCounts: () => void };
+type PanelProps = {
+  user: AuthUser;
+  onRefreshAttentionCounts: () => void;
+  openCreateSignal?: number;
+};
 const PAGE_SIZE = 20;
 const EMPTY_APPLICANT: HiringApplicantInput = { fullName: '', email: '', phone: '', positionTitle: '', department: '', source: '', appliedAt: '' };
 const stageColors: Record<HiringStage, string> = {
@@ -59,7 +63,7 @@ function ErrorMessage({ error }: { error: string }) {
   return error ? <p role="alert" className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{error}</p> : null;
 }
 
-export function HiringPanel({ user, onRefreshAttentionCounts }: PanelProps) {
+export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal = 0 }: PanelProps) {
   const { t, isRtl, lang } = useLanguage();
   const locale = lang === 'ar' ? 'ar-EG' : 'en-US';
   const can = useCallback((permission: string) => hasPermission(user, permission), [user]);
@@ -149,6 +153,12 @@ export function HiringPanel({ user, onRefreshAttentionCounts }: PanelProps) {
   const refresh = async (id = selectedId) => { await loadList(); if (id) await loadDetail(id); };
   const closeModal = () => { setModal(null); setError(''); setMessage(''); setMutationLoading(false); };
   const openCreate = () => { setForm(EMPTY_APPLICANT); setApplicantCreated(false); setDuplicateApplicantId(null); setModal('create'); setError(''); if (can('hiring.assign')) void listHiringReviewers(user).then((response) => setReviewers(response.reviewers)).catch(() => setReviewers([])); };
+  const handledCreateSignal = useRef(0);
+  useEffect(() => {
+    if (!openCreateSignal || handledCreateSignal.current === openCreateSignal) return;
+    handledCreateSignal.current = openCreateSignal;
+    if (can('hiring.create')) openCreate();
+  }, [can, openCreateSignal]);
   const openEdit = () => {
     if (!detail) return;
     setForm({ fullName: detail.fullName, email: detail.email || '', phone: detail.phone || '', positionTitle: detail.positionTitle, department: detail.department || '', source: detail.source || '', appliedAt: detail.appliedAt?.slice(0, 10) || '' });

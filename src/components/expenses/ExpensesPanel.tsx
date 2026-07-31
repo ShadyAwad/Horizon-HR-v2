@@ -49,7 +49,7 @@ import {
 export type ExpenseWorkspaceView = 'claims' | 'new' | 'history' | 'approvals' | 'reimbursements';
 
 export type ExpenseDeepLink = {
-  view: Exclude<ExpenseWorkspaceView, 'new' | 'history'>;
+  view: ExpenseWorkspaceView;
   claimId: string | null;
 };
 
@@ -451,6 +451,14 @@ export function ExpensesPanel({
 
   useEffect(() => {
     if (!deepLink) return;
+    if (deepLink.view === 'new') {
+      submittedRef.current = false;
+      setClaimFlowOpen(true);
+      setActiveView('new');
+      setDetailError('');
+      onDeepLinkHandled?.();
+      return;
+    }
     const view = deepLink.view === 'reimbursements' && !explicitReimburse
       ? financeAccess ? 'approvals' : 'claims'
       : deepLink.view === 'approvals' && !financeAccess
@@ -458,7 +466,10 @@ export function ExpensesPanel({
         : deepLink.view;
     setActiveView(view);
     if (deepLink.claimId) void loadDetail(deepLink.claimId, view !== 'claims');
-    else if (!deepLink.claimId) setDetailError(t('expenses.deepLinkInvalid'));
+    else {
+      setDetail(null);
+      setDetailError('');
+    }
     onDeepLinkHandled?.();
   }, [deepLink, explicitReimburse, financeAccess, loadDetail, onDeepLinkHandled, t]);
 
