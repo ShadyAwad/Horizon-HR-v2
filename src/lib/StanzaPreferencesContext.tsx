@@ -7,6 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  normaliseModuleUsage,
+  type ModuleUsage,
+} from '../components/navigation/module-usage';
 
 export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
 export const MIN_INTERFACE_SCALE = 0.85;
@@ -26,6 +30,7 @@ export type StanzaPreferences = {
   mobileShortcuts: string[];
   desktopRailOrder: string[];
   recentCommandIds: string[];
+  moduleUsage: ModuleUsage;
   rosterPresentationMode: RosterPresentationMode;
   desktopNavigationMode: DesktopNavigationMode;
 };
@@ -37,6 +42,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   desktopRailOrder: [],
   recentCommandIds: [],
+  moduleUsage: {},
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
 };
@@ -90,6 +96,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       recentCommandIds: Array.isArray(parsed.recentCommandIds)
         ? [...new Set(parsed.recentCommandIds.filter((value): value is string => typeof value === 'string' && value.length <= 120))].slice(0, 6)
         : DEFAULT_PREFERENCES.recentCommandIds,
+      moduleUsage: normaliseModuleUsage(parsed.moduleUsage),
       rosterPresentationMode: parsed.rosterPresentationMode === 'fit' || parsed.rosterPresentationMode === 'detailed'
         ? parsed.rosterPresentationMode
         : 'auto',
@@ -127,6 +134,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setMobileShortcuts: (shortcuts: string[]) => void;
   setDesktopRailOrder: (order: string[]) => void;
   setRecentCommandIds: (commandIds: string[]) => void;
+  setModuleUsage: (moduleUsage: ModuleUsage) => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
 };
@@ -184,6 +192,12 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       recentCommandIds: [...new Set(recentCommandIds.filter((value) => typeof value === 'string' && value.length <= 120))].slice(0, 6),
     }));
   }, []);
+  const setModuleUsage = useCallback((moduleUsage: ModuleUsage) => {
+    setPreferences((current) => ({
+      ...current,
+      moduleUsage: normaliseModuleUsage(moduleUsage),
+    }));
+  }, []);
   const setRosterPresentationMode = useCallback((rosterPresentationMode: RosterPresentationMode) => {
     setPreferences((current) => ({ ...current, rosterPresentationMode }));
   }, []);
@@ -200,9 +214,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setMobileShortcuts,
     setDesktopRailOrder,
     setRecentCommandIds,
+    setModuleUsage,
     setRosterPresentationMode,
     setDesktopNavigationMode,
-  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRecentCommandIds, setRosterPresentationMode]);
+  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setRecentCommandIds, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

@@ -35,6 +35,7 @@ import {
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import type { OrganisationPanelView } from '../components/organisation/OrganisationPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
+import { normaliseModuleUsage, recordModuleUsage } from '../components/navigation/module-usage';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
 import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOrderSettings';
@@ -968,6 +969,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setDesktopRailOrder,
     recentCommandIds,
     setRecentCommandIds,
+    moduleUsage,
+    setModuleUsage,
     rosterPresentationMode,
     setRosterPresentationMode,
     desktopNavigationMode,
@@ -1382,6 +1385,18 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       item('profile', t('dash.profile'), 'administration', <User className="h-5 w-5" />),
     ].filter(Boolean) as DashboardNavigationItem[];
   }, [activeTab, attentionCounts, canManageSessions, canUsePayrollPanel, canViewAssets, canViewAudit, canViewHiring, canViewLiveEmployees, canViewLocations, canViewOrganisation, canViewPerformance, lang, payrollAttentionCount, selectNavigationItem, showGrievancesPanel, showPayrollPanel, showResignationsPanel, t]);
+  const availableNavigationIds = useMemo(
+    () => new Set(navigationItems.map((item) => item.id)),
+    [navigationItems],
+  );
+  const recordModuleNavigation = useCallback((navigationId: string) => {
+    const nextUsage = recordModuleUsage(moduleUsage, navigationId, availableNavigationIds);
+    if (JSON.stringify(nextUsage) !== JSON.stringify(moduleUsage)) setModuleUsage(nextUsage);
+  }, [availableNavigationIds, moduleUsage, setModuleUsage]);
+  useEffect(() => {
+    const nextUsage = normaliseModuleUsage(moduleUsage, availableNavigationIds);
+    if (JSON.stringify(nextUsage) !== JSON.stringify(moduleUsage)) setModuleUsage(nextUsage);
+  }, [availableNavigationIds, moduleUsage, setModuleUsage]);
   const commandPaletteLabels = useMemo<CommandPaletteLabels>(() => {
     const arabic = lang === 'ar';
     return {
@@ -1775,8 +1790,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     commandPaletteReturnFocusRef.current = null;
     setRecentCommandIds(recordRecentCommand(recentCommandIds, command.id, availableCommandIds));
     command.execute();
+    if (command.type === 'navigation' && command.sourceNavigationId) {
+      recordModuleNavigation(command.sourceNavigationId);
+    }
     setShowCommandPalette(false);
-  }, [availableCommandIds, recentCommandIds, setRecentCommandIds]);
+  }, [availableCommandIds, recentCommandIds, recordModuleNavigation, setRecentCommandIds]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) => {
@@ -1835,6 +1853,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           view: reimbursementEvent ? 'reimbursements' : approvalEvent || navigation.view === 'approvals' ? 'approvals' : 'claims',
           claimId,
         });
+        recordModuleNavigation('expenses');
         return;
       }
       if (navigation.section !== 'roster') return;
@@ -1842,6 +1861,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         setActiveTab('roster');
         setRosterSubview('schedule');
         setLeaveDeepLink(null);
+        recordModuleNavigation('roster');
         return;
       }
       if (navigation.view !== 'leave') return;
@@ -1851,6 +1871,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       setActiveTab('roster');
       setRosterSubview('leave');
       setLeaveDeepLink({ view: requestedView, requestId });
+      recordModuleNavigation('roster');
     };
     const openFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
@@ -1873,7 +1894,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       window.removeEventListener('popstate', openFromUrl);
       window.removeEventListener('stanza:notification-deep-link', onNotificationNavigation);
     };
-  }, []);
+  }, [recordModuleNavigation]);
 
   const displayRole = (role: AuthUser['role']) => {
     if (role === 'hr_admin') return t('enum.hrAdmin');
@@ -4668,6 +4689,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <DashboardNavigation
         items={navigationItems}
+        moduleUsage={moduleUsage}
+        onModuleNavigate={recordModuleNavigation}
         desktopMode={desktopNavigationMode}
         railOrder={desktopRailOrder}
         onRailOrderChange={setDesktopRailOrder}
