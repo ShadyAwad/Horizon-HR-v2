@@ -87,6 +87,7 @@ assert.match(dashboard, /aria-valuetext/);
 assert.match(dashboard, /stanza-light-intensity-label/);
 assert.match(dashboard, /stanza-light-intensity-help/);
 assert.match(dashboard, /dash\.lightIntensityBright/);
+assert.match(dashboard, /dash\.appearance/);
 assert.match(dashboard, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.match(dashboard, /focus-visible:ring-2/);
 assert.match(dashboard, /stanza-dashboard h-screen/);
@@ -100,6 +101,7 @@ const settingsSource = dashboard.slice(
 assert.doesNotMatch(settingsSource, /hr_admin|manager|team_leader|delegation/);
 
 for (const key of [
+  'dash.appearance',
   'dash.lightIntensity',
   'dash.lightIntensityDescription',
   'dash.lightIntensityAppliesToLight',
@@ -109,6 +111,9 @@ for (const key of [
 ]) {
   assert.match(translations, new RegExp(`'${key}':`));
 }
+assert.match(translations, /'dash\.appearance': 'المظهر'/);
+assert.match(translations, /'dash\.lightIntensity': 'درجة سطوع الوضع الفاتح'/);
+assert.match(translations, /'dash\.lightIntensityDeep': 'داكن نسبيًا'/);
 
 assert.match(richTextEditor, /stanza-select/);
 assert.match(richTextEditor, /role="toolbar"/);

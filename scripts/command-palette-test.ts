@@ -163,6 +163,7 @@ const checks: Array<[string, boolean]> = [
   ['unsafe direct command IDs are absent', !/id: '(?:approve|reject|reimburse|logout|delete|revoke|archive|clock-in|clock-out)'/.test(dashboard)],
   ['command metadata does not index private record names', !/candidateName|employeeName|claimId.*keywords|applicantName/.test(registrySource)],
   ['preferences remain in the existing stanza preferences object', /STANZA_PREFERENCES_KEY = 'stanza\.preferences\.v1'/.test(preferences) && /recentCommandIds/.test(preferences)],
+  ['Arabic palette copy keeps the Stanza brand, natural mobile guidance, and an explicit all-commands action', /'البحث في Stanza\.\.\.'/.test(dashboard) && /'ابحث أو اضغط على أمر لفتحه\.'/.test(dashboard) && /عرض جميع الأوامر/.test(dashboard) && /'الأخيرة'/.test(dashboard) && /الأكثر استخدامًا/.test(navigation)],
 ];
 
 let failed = false;
