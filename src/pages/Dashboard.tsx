@@ -35,6 +35,7 @@ import {
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
+import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOrderSettings';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -943,6 +944,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setLightIntensity,
     mobileShortcuts,
     setMobileShortcuts,
+    desktopRailOrder,
+    setDesktopRailOrder,
     rosterPresentationMode,
     setRosterPresentationMode,
     desktopNavigationMode,
@@ -3978,6 +3981,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             </div>
           </div>}
 
+          {desktopNavigationMode === 'rail' && (
+            <DesktopRailOrderSettings items={navigationItems} order={desktopRailOrder} onChange={setDesktopRailOrder} />
+          )}
+
           <div className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.interfaceSize')}</p>
@@ -4203,6 +4210,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <DashboardNavigation
         items={navigationItems}
         desktopMode={desktopNavigationMode}
+        railOrder={desktopRailOrder}
+        onRailOrderChange={setDesktopRailOrder}
         mobileShortcuts={mobileShortcuts}
         onShortcutsChange={setMobileShortcuts}
         onOpenControlCenter={() => setShowControlCenter(true)}

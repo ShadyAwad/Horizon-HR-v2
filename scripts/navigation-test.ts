@@ -20,13 +20,14 @@ assert.deepEqual(restored.mobileShortcuts, ['unknown', 'roster', 'feed']);
 assert.equal(restored.rosterPresentationMode, 'fit');
 assert.equal(restored.desktopNavigationMode, 'rail');
 assert.equal(readStanzaPreferences(JSON.stringify({ desktopNavigationMode: 'unknown' })).desktopNavigationMode, 'launcher');
+assert.deepEqual(readStanzaPreferences(JSON.stringify({ desktopRailOrder: ['payroll', 'unknown', 'payroll'] })).desktopRailOrder, ['payroll', 'unknown']);
 
 const checks: Array<[string, boolean]> = [
   ['horizontal global strip is removed from the rendered dashboard', /<div className="hidden">[\s\S]*Tab Contents/.test(dashboard)],
   ['only the registry-backed desktop rail is live', (dashboard.match(/<DashboardNavigation\s/g) || []).length === 1 && /\{false && <aside/.test(dashboard)],
   ['launcher-only is the default desktop mode and has no permanent module rail', /desktopMode = 'launcher'/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
   ['launcher-only has one external command button and no external settings button', /desktopMode === 'rail' && <button[^>]*onClick=\{onOpenControlCenter\}/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
-  ['compact rail is an optional registry-backed presentation', /desktopMode === 'rail'/.test(nav) && /items\.map\(\(item\) => itemButton/.test(nav)],
+  ['compact rail is an optional registry-backed presentation', /desktopMode === 'rail'/.test(nav) && /orderedRailItems\.map/.test(nav)],
   ['desktop navigation preference persists and preserves the active route', /desktopNavigationMode/.test(dashboard) && /setDesktopNavigationMode\(mode\)/.test(dashboard) && /setActiveTab/.test(dashboard)],
   ['launcher-only dock stays fixed and does not reserve a rail layout column', /md:fixed md:start-4 md:top-4/.test(nav) && /desktopMode === 'rail'\s*\? 'md:static/.test(nav)],
   ['launcher-only header has a modest logical start safe inset without narrowing cards', /desktopNavigationMode === 'launcher' && "md:ps-16"/.test(dashboard) && /<main className="min-w-0 w-full max-w-full flex-1/.test(dashboard)],
@@ -43,14 +44,16 @@ const checks: Array<[string, boolean]> = [
   ['fit screen exposes accessible expandable day cards', /expandedRosterDate/.test(dashboard) && /aria-expanded=\{expanded\}/.test(dashboard) && /Read-only schedule/.test(dashboard)],
   ['shared native scrollbar treatment is theme-token based', /.stanza-scrollbar/.test(css) && /scrollbar-color/.test(css) && /::-webkit-scrollbar-thumb/.test(css)],
   ['one lazy lanyard remains anchored to the launcher without a layout column', (dashboard.match(/<StanzaDashboardLanyard/g) || []).length === 1 && /data-stanza-lanyard-anchor/.test(dashboard) && /pointer-events-none fixed inset-0/.test(read('src/components/lanyard/StanzaDashboardLanyard.tsx'))],
-  ['external lanyard hides while the complete navigation panel is open', /hidden=\{!isLanyardSceneReady \|\| isNavigationOpen \|\| showControlCenter\}/.test(dashboard) && /onOpenChange=\{setIsNavigationOpen\}/.test(dashboard) && /onOpenChange\?\.\(open\)/.test(nav)],
+  ['external lanyard remains mounted while the launcher panel is open', /hidden=\{!isLanyardSceneReady \|\| showControlCenter\}/.test(dashboard) && !/hidden=\{!isLanyardSceneReady \|\| isNavigationOpen/.test(dashboard)],
   ['launcher lanyard has a transparent centred short strap in the shared launcher wrapper', /<div data-stanza-lanyard-anchor className="relative shrink-0">[\s\S]*showLanyardDock/.test(nav) && /aria-hidden="true"/.test(nav) && /left-1\/2 top-full/.test(nav) && /h-7 w-px/.test(nav) && /pointer-events-none/.test(nav)],
   ['3D lanyard anchor begins at the shared launcher wrapper bottom edge', /querySelector<HTMLElement>\('\[data-stanza-lanyard-anchor\]'\)/.test(dashboard) && /y: -\(rect\.bottom \/ viewportHeight\) \* 2 \+ 1/.test(dashboard) && !/LANYARD_ANCHOR_VERTICAL_OFFSET_PX/.test(dashboard)],
-  ['lanyard hides when Settings opens and is absent when disabled', /showLanyardDock=\{shouldMountLanyard && isLanyardIdleReady && !showControlCenter\}/.test(dashboard) && /paused=\{!isDashboardVisible \|\| isNavigationOpen \|\| showControlCenter\}/.test(dashboard)],
+  ['lanyard hides when Settings opens, remains a Launcher-only presentation, and is absent when disabled', /shouldMountLanyard = lanyardEnabled && isLanyardCapable && desktopNavigationMode === 'launcher'/.test(dashboard) && /showLanyardDock=\{shouldMountLanyard && isLanyardIdleReady && !showControlCenter\}/.test(dashboard) && /paused=\{!isDashboardVisible \|\| showControlCenter\}/.test(dashboard)],
   ['Settings remains separate from launcher navigation and replaces visible Control Center copy', /onOpenControlCenter/.test(nav) && /<Settings/.test(nav) && !/Control Center/.test(nav) && /'dash\.controlCenterTitle': 'Stanza Settings'/.test(language) && /'dash\.controlCenterTitle': 'إعدادات Stanza'/.test(language) && !/onClick=\{onOpenControlCenter\}[^\n]*StanzaFingerprintMark/.test(nav)],
   ['mobile bottom navigation and More sheet remain intact', /md:hidden/.test(nav) && /MoreHorizontal/.test(nav) && /bottom-\[calc\(\.75rem\+env\(safe-area-inset-bottom\)\)\]/.test(nav)],
   ['navigation surface is RTL and theme safe', /isRtl/.test(nav) && /dark:bg/.test(nav) && /lang === 'ar'/.test(nav)],
-  ['preference control is keyboard-accessible and reduced-motion safe', /role="radiogroup"/.test(dashboard) && /role="radio"/.test(dashboard) && /motion-reduce:transition-none/.test(dashboard) && /motion-reduce:transition-none/.test(nav)],
+  ['preference controls are keyboard-accessible and reduced-motion safe', /type="range"/.test(dashboard) && /aria-valuetext/.test(dashboard) && /motion-reduce:transition-none/.test(dashboard) && /motion-reduce:transition-none/.test(nav)],
+  ['navigation groups resolve through translated internal keys and the RTL logout icon alone is mirrored', /nav\.group\.\$\{group\}/.test(nav) && /isRtl && '-scale-x-100'/.test(nav) && /'nav\.group\.workspace'/.test(language)],
+  ['rail ordering persists stable ids, filters unavailable ids, supports drag, and offers keyboard controls in Settings', /desktopRailOrder/.test(read('src/lib/StanzaPreferencesContext.tsx')) && /orderedRailItems/.test(nav) && /draggable=\{Boolean\(onRailOrderChange\)\}/.test(nav) && /DesktopRailOrderSettings/.test(dashboard) && /normaliseDesktopRailOrder/.test(read('src/components/navigation/DesktopRailOrderSettings.tsx'))],
   ['launcher uses restrained transform-only interaction polish with reduced-motion fallback', /transition-\[transform,box-shadow,background-color,border-color\]/.test(nav) && /hover:scale-\[1\.015\]/.test(nav) && /active:scale-\[\.97\]/.test(nav) && /scale-\[1\.025\]/.test(nav) && /motion-reduce:transform-none/.test(nav)],
   ['panel wordmark uses a structural accented initial without unsafe HTML', /lang === 'ar' \? <span>Stanza<\/span> : <>\s*<span className="text-emerald-600 dark:text-emerald-400">S<\/span><span>tanza<\/span>/.test(nav) && !/dangerouslySetInnerHTML/.test(nav)],
   ['selected navigation typography remains readable and stable', /font-extrabold tracking-normal text-emerald-700/.test(nav)],
