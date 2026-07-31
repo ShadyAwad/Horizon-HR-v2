@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { LogOut, Menu, MoreHorizontal, Search, Settings, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { LogOut, Menu, Plus, Search, Settings, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useLanguage } from '../../lib/LanguageContext';
 import { StanzaFingerprintMark } from '../StanzaFingerprintMark';
@@ -22,6 +22,8 @@ type Props = {
   onRailOrderChange?: (order: string[]) => void;
   mobileShortcuts: string[];
   onShortcutsChange: (value: string[]) => void;
+  onOpenMobileShortcutEditor: () => void;
+  mobileShortcutEditorTriggerRef: RefObject<HTMLButtonElement | null>;
   onOpenControlCenter: () => void;
   onOpenChange?: (open: boolean) => void;
   showLanyardDock?: boolean;
@@ -37,7 +39,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>;
 }
 
-export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang, t } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
@@ -89,7 +91,7 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
       'fixed inset-x-3 bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-1 rounded-2xl border border-emerald-500/15 bg-white/95 p-2 shadow-xl backdrop-blur-[6px] dark:bg-[#061411]/95',
       desktopMode === 'rail'
         ? 'md:static md:inset-auto md:z-20 md:m-3 md:flex-col md:self-start md:p-2'
-        : 'md:fixed md:start-4 md:top-4 md:bottom-auto md:inset-x-auto md:z-20 md:m-0 md:flex-row md:self-auto',
+        : 'md:fixed md:start-3 md:top-3 md:bottom-auto md:inset-x-auto md:z-20 md:m-0 md:flex-row md:self-auto',
       isRtl && desktopMode === 'rail' ? 'md:order-last' : '',
     )}>
       <div data-stanza-lanyard-anchor className="relative shrink-0">
@@ -98,8 +100,8 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
       </div>
       {desktopMode === 'rail' && <nav aria-label={text('Quick navigation', 'التنقل السريع')} className="hidden w-full flex-1 flex-col items-center gap-1 md:flex">{orderedRailItems.map((item) => <button key={item.id} type="button" draggable={Boolean(onRailOrderChange)} onDragStart={(event) => { setDraggedRailId(item.id); event.dataTransfer.effectAllowed = 'move'; }} onDragOver={(event) => { if (draggedRailId) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (draggedRailId) reorderRail(draggedRailId, item.id); suppressRailClickRef.current = true; setDraggedRailId(null); }} onDragEnd={() => { if (draggedRailId) suppressRailClickRef.current = true; setDraggedRailId(null); }} onClick={() => { if (suppressRailClickRef.current) { suppressRailClickRef.current = false; return; } choose(item); }} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('flex h-10 w-10 items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', draggedRailId === item.id && 'scale-95 opacity-45', item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</nav>}
       {desktopMode === 'rail' && <button type="button" onClick={onOpenControlCenter} aria-label={text('Settings', 'الإعدادات')} title={text('Settings', 'الإعدادات')} className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:flex"><Settings className="h-5 w-5" /></button>}
-      <div className="flex min-w-0 flex-1 items-center gap-1 md:hidden">{shortcutItems.slice(0, 5).map((item) => itemButton(item, 'flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg border transition', () => choose(item)))}</div>
-      <button type="button" onClick={() => setOpen(true)} aria-label={text('More navigation', 'المزيد من التنقل')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>
+      <div className="stanza-mobile-shortcuts flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => itemButton(item, 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition', () => choose(item)))}</div>
+      <button ref={mobileShortcutEditorTriggerRef} type="button" onClick={onOpenMobileShortcutEditor} aria-label={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} title={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><Plus className="h-5 w-5" /></button>
     </aside>
     {open && <div id="stanza-navigation-panel" ref={panelRef} role="dialog" aria-modal="true" aria-label={text('Stanza navigation', 'تنقل Stanza')} className={cn('fixed z-30 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-emerald-500/20 bg-white/98 shadow-2xl transition duration-200 ease-out motion-reduce:transition-none dark:bg-[#061411]/98 md:start-[5.5rem] md:top-4', 'inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-h-[76dvh] md:inset-x-auto md:bottom-auto md:max-h-[calc(100dvh-2rem)]')}>
       <div className="border-b border-emerald-500/15 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-base font-black tracking-normal text-slate-900 dark:text-emerald-50">{lang === 'ar' ? <span>Stanza</span> : <><span className="text-emerald-600 dark:text-emerald-400">S</span><span>tanza</span></>}</p><p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">{userName}</p><p className="text-xs text-slate-500 dark:text-emerald-100/45">{userEmail}</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-500/10" aria-label={text('Close navigation', 'إغلاق التنقل')}><X className="h-4 w-4" /></button></div>{lanyardSlot && <div className="mt-3 h-16 overflow-hidden rounded-lg border border-emerald-500/15">{lanyardSlot}</div>}<label className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-slate-500 focus-within:ring-2 focus-within:ring-emerald-400"><Search className="h-4 w-4" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text('Search modules', 'البحث في الوحدات')} className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none dark:text-emerald-50" /></label></div>

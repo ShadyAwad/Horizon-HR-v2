@@ -35,6 +35,7 @@ import {
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
+import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
 import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOrderSettings';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
@@ -897,6 +898,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
   const [showControlCenter, setShowControlCenter] = useState(false);
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const [isMobileNavigationLayout, setIsMobileNavigationLayout] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const [showMobileShortcutEditor, setShowMobileShortcutEditor] = useState(false);
+  const mobileShortcutEditorTriggerRef = useRef<HTMLButtonElement>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [profilePhotoSaving, setProfilePhotoSaving] = useState(false);
   const [profilePhotoMessage, setProfilePhotoMessage] = useState('');
@@ -954,6 +958,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const rosterDisplayMode = rosterPresentationMode === 'auto'
     ? (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'fit' : 'detailed')
     : rosterPresentationMode;
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobileNavigationLayout(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   const geo = useGeolocation();
 
@@ -4121,9 +4133,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             </div>
           </div>
         </div>
-        <div className="sm:col-span-2">
+        {isMobileNavigationLayout && <div className="sm:col-span-2">
           <MobileShortcutSettings items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} />
-        </div>
+        </div>}
       </div>
     </div>
     );
@@ -4214,6 +4226,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onRailOrderChange={setDesktopRailOrder}
         mobileShortcuts={mobileShortcuts}
         onShortcutsChange={setMobileShortcuts}
+        onOpenMobileShortcutEditor={() => setShowMobileShortcutEditor(true)}
+        mobileShortcutEditorTriggerRef={mobileShortcutEditorTriggerRef}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
         showLanyardDock={shouldMountLanyard && isLanyardIdleReady && !showControlCenter}
@@ -4221,6 +4235,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         userName={user.name}
         userEmail={user.email}
       />
+      {showMobileShortcutEditor && <MobileShortcutEditor items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} onClose={() => setShowMobileShortcutEditor(false)} returnFocusRef={mobileShortcutEditorTriggerRef} />}
 
       {/* Kept out of the render tree while the registry-backed rail replaces this retired navigation branch. */}
       {false && <aside
@@ -4557,7 +4572,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
-        <header className={cn("mb-4 min-w-0", desktopNavigationMode === 'launcher' && "md:ps-16")}>
+        <header className={cn("mb-4 min-w-0", desktopNavigationMode === 'launcher' && "md:ps-[4.5rem] md:pt-1")}>
           <div className="min-w-0">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
