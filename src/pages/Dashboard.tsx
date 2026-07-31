@@ -1774,6 +1774,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     }
   }, [availableCommandIds, recentCommandIds, setRecentCommandIds]);
   const activeCommandContext = navigationItems.find((item) => item.active)?.id || activeTab;
+  const openMobileShortcutEditor = useCallback(() => setShowMobileShortcutEditor(true), []);
+  const closeMobileShortcutEditor = useCallback(() => setShowMobileShortcutEditor(false), []);
   const openCommandPalette = useCallback((returnFocusTarget?: HTMLElement | null) => {
     commandPaletteReturnFocusRef.current = returnFocusTarget
       || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -4709,7 +4711,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onRailOrderChange={setDesktopRailOrder}
         mobileShortcuts={mobileShortcuts}
         onShortcutsChange={setMobileShortcuts}
-        onOpenMobileShortcutEditor={() => setShowMobileShortcutEditor(true)}
+        onOpenMobileShortcutEditor={openMobileShortcutEditor}
         mobileShortcutEditorTriggerRef={mobileShortcutEditorTriggerRef}
         onOpenCommandPalette={openCommandPalette}
         onOpenControlCenter={() => setShowControlCenter(true)}
@@ -4719,7 +4721,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         userName={user.name}
         userEmail={user.email}
       />
-      {showMobileShortcutEditor && <MobileShortcutEditor items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} onClose={() => setShowMobileShortcutEditor(false)} returnFocusRef={mobileShortcutEditorTriggerRef} />}
+      {showMobileShortcutEditor && <MobileShortcutEditor items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} onClose={closeMobileShortcutEditor} returnFocusRef={mobileShortcutEditorTriggerRef} />}
       {showCommandPalette && (
         <Suspense fallback={null}>
           <CommandPalette

@@ -182,7 +182,11 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setPreferences((current) => ({ ...current, lightIntensity: clampLightIntensity(lightIntensity) }));
   }, []);
   const setMobileShortcuts = useCallback((mobileShortcuts: string[]) => {
-    setPreferences((current) => ({ ...current, mobileShortcuts: [...new Set(mobileShortcuts)].slice(0, 20) }));
+    const next = [...new Set(mobileShortcuts)].slice(0, 20);
+    setPreferences((current) => current.mobileShortcuts.length === next.length
+      && current.mobileShortcuts.every((value, index) => value === next[index])
+      ? current
+      : { ...current, mobileShortcuts: next });
   }, []);
   const setDesktopRailOrder = useCallback((desktopRailOrder: string[]) => {
     setPreferences((current) => ({ ...current, desktopRailOrder: [...new Set(desktopRailOrder)].slice(0, 30) }));
