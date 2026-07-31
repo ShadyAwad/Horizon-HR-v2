@@ -25,6 +25,7 @@ export type StanzaPreferences = {
   lightIntensity: LightIntensity;
   mobileShortcuts: string[];
   desktopRailOrder: string[];
+  recentCommandIds: string[];
   rosterPresentationMode: RosterPresentationMode;
   desktopNavigationMode: DesktopNavigationMode;
 };
@@ -35,6 +36,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   lightIntensity: DEFAULT_LIGHT_INTENSITY,
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   desktopRailOrder: [],
+  recentCommandIds: [],
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
 };
@@ -85,6 +87,9 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       desktopRailOrder: Array.isArray(parsed.desktopRailOrder)
         ? [...new Set(parsed.desktopRailOrder.filter((value): value is string => typeof value === 'string'))].slice(0, 30)
         : DEFAULT_PREFERENCES.desktopRailOrder,
+      recentCommandIds: Array.isArray(parsed.recentCommandIds)
+        ? [...new Set(parsed.recentCommandIds.filter((value): value is string => typeof value === 'string' && value.length <= 120))].slice(0, 6)
+        : DEFAULT_PREFERENCES.recentCommandIds,
       rosterPresentationMode: parsed.rosterPresentationMode === 'fit' || parsed.rosterPresentationMode === 'detailed'
         ? parsed.rosterPresentationMode
         : 'auto',
@@ -121,6 +126,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setLightIntensity: (intensity: number) => void;
   setMobileShortcuts: (shortcuts: string[]) => void;
   setDesktopRailOrder: (order: string[]) => void;
+  setRecentCommandIds: (commandIds: string[]) => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
 };
@@ -172,6 +178,12 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setDesktopRailOrder = useCallback((desktopRailOrder: string[]) => {
     setPreferences((current) => ({ ...current, desktopRailOrder: [...new Set(desktopRailOrder)].slice(0, 30) }));
   }, []);
+  const setRecentCommandIds = useCallback((recentCommandIds: string[]) => {
+    setPreferences((current) => ({
+      ...current,
+      recentCommandIds: [...new Set(recentCommandIds.filter((value) => typeof value === 'string' && value.length <= 120))].slice(0, 6),
+    }));
+  }, []);
   const setRosterPresentationMode = useCallback((rosterPresentationMode: RosterPresentationMode) => {
     setPreferences((current) => ({ ...current, rosterPresentationMode }));
   }, []);
@@ -187,9 +199,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setLightIntensity,
     setMobileShortcuts,
     setDesktopRailOrder,
+    setRecentCommandIds,
     setRosterPresentationMode,
     setDesktopNavigationMode,
-  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRosterPresentationMode]);
+  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRecentCommandIds, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }
