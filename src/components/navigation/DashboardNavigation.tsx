@@ -44,8 +44,11 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
   const [draggedRailId, setDraggedRailId] = useState<string | null>(null);
+  const [draggedShortcutId, setDraggedShortcutId] = useState<string | null>(null);
   const launcherRef = useRef<HTMLButtonElement>(null); const panelRef = useRef<HTMLDivElement>(null);
   const suppressRailClickRef = useRef(false);
+  const suppressShortcutClickRef = useRef(false);
+  const shortcutHoldRef = useRef<number | null>(null);
   const allowedIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const validShortcuts = useMemo(() => {
     const valid = mobileShortcuts.filter((id, index, value) => allowedIds.has(id) && value.indexOf(id) === index);
@@ -60,7 +63,6 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
     window.addEventListener('mousedown', close); window.addEventListener('keydown', key);
     return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', key); };
   }, [open]);
-  useEffect(() => { if (open) panelRef.current?.querySelector<HTMLInputElement>('input')?.focus(); }, [open]);
   useEffect(() => { onOpenChange?.(open); }, [onOpenChange, open]);
   useEffect(() => {
     if (!open) return;
@@ -86,6 +88,13 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
     const next = [...ids]; const [moved] = next.splice(source, 1); next.splice(destination, 0, moved);
     onRailOrderChange(next);
   };
+  const clearShortcutHold = () => { if (shortcutHoldRef.current !== null) window.clearTimeout(shortcutHoldRef.current); shortcutHoldRef.current = null; };
+  const swapShortcuts = (sourceId: string, destinationId: string) => {
+    if (sourceId === destinationId) return;
+    const source = validShortcuts.indexOf(sourceId); const destination = validShortcuts.indexOf(destinationId);
+    if (source < 0 || destination < 0) return;
+    const next = [...validShortcuts]; [next[source], next[destination]] = [next[destination], next[source]]; onShortcutsChange(next);
+  };
   return <>
     <aside className={cn(
       'fixed inset-x-3 bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-1 rounded-2xl border border-emerald-500/15 bg-white/95 p-2 shadow-xl backdrop-blur-[6px] dark:bg-[#061411]/95',
@@ -100,7 +109,7 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', railOrder
       </div>
       {desktopMode === 'rail' && <nav aria-label={text('Quick navigation', 'التنقل السريع')} className="hidden w-full flex-1 flex-col items-center gap-1 md:flex">{orderedRailItems.map((item) => <button key={item.id} type="button" draggable={Boolean(onRailOrderChange)} onDragStart={(event) => { setDraggedRailId(item.id); event.dataTransfer.effectAllowed = 'move'; }} onDragOver={(event) => { if (draggedRailId) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (draggedRailId) reorderRail(draggedRailId, item.id); suppressRailClickRef.current = true; setDraggedRailId(null); }} onDragEnd={() => { if (draggedRailId) suppressRailClickRef.current = true; setDraggedRailId(null); }} onClick={() => { if (suppressRailClickRef.current) { suppressRailClickRef.current = false; return; } choose(item); }} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('flex h-10 w-10 items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', draggedRailId === item.id && 'scale-95 opacity-45', item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</nav>}
       {desktopMode === 'rail' && <button type="button" onClick={onOpenControlCenter} aria-label={text('Settings', 'الإعدادات')} title={text('Settings', 'الإعدادات')} className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:flex"><Settings className="h-5 w-5" /></button>}
-      <div className="stanza-mobile-shortcuts flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => itemButton(item, 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition', () => choose(item)))}</div>
+      <div className="stanza-mobile-shortcuts flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => <button key={item.id} data-mobile-shortcut-id={item.id} type="button" onPointerDown={(event) => { if (event.pointerType === 'mouse') return; clearShortcutHold(); shortcutHoldRef.current = window.setTimeout(() => { setDraggedShortcutId(item.id); suppressShortcutClickRef.current = true; }, 350); }} onPointerMove={(event) => { if (!draggedShortcutId) return; const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-mobile-shortcut-id]')?.dataset.mobileShortcutId; if (target) swapShortcuts(draggedShortcutId, target); }} onPointerUp={() => { clearShortcutHold(); setDraggedShortcutId(null); }} onPointerCancel={() => { clearShortcutHold(); setDraggedShortcutId(null); }} onClick={() => { if (suppressShortcutClickRef.current) { suppressShortcutClickRef.current = false; return; } choose(item); }} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', draggedShortcutId === item.id && 'scale-95 opacity-50 ring-2 ring-emerald-400', item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</div>
       <button ref={mobileShortcutEditorTriggerRef} type="button" onClick={onOpenMobileShortcutEditor} aria-label={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} title={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><Plus className="h-5 w-5" /></button>
     </aside>
     {open && <div id="stanza-navigation-panel" ref={panelRef} role="dialog" aria-modal="true" aria-label={text('Stanza navigation', 'تنقل Stanza')} className={cn('fixed z-30 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-emerald-500/20 bg-white/98 shadow-2xl transition duration-200 ease-out motion-reduce:transition-none dark:bg-[#061411]/98 md:start-[5.5rem] md:top-4', 'inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-h-[76dvh] md:inset-x-auto md:bottom-auto md:max-h-[calc(100dvh-2rem)]')}>
