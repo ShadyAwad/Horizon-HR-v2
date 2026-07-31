@@ -1411,6 +1411,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       keyboardHelp: arabic
         ? 'استخدم الأسهم للتنقل، وEnter للفتح، وEscape للإغلاق.'
         : 'Use arrow keys to navigate, Enter to open, and Escape to close.',
+      mobileHelp: arabic
+        ? 'ابحث أو اضغط على أمر لفتحه.'
+        : 'Search or tap a command to open it.',
+      viewAllCommands: (count) => arabic
+        ? `عرض جميع الأوامر (${count})`
+        : `View all ${count} commands`,
       groups: {
         recent: arabic ? 'الأخيرة' : 'Recent',
         workspace: arabic ? 'مساحة العمل' : 'Workspace',
@@ -4729,6 +4735,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             recentCommandIds={recentCommandIds}
             currentContextId={activeCommandContext}
             focusRequest={commandPaletteFocusRequest}
+            isMobileLayout={isMobileNavigationLayout}
             isRtl={isRtl}
             labels={commandPaletteLabels}
             onClose={closeCommandPalette}

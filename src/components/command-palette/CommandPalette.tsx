@@ -27,6 +27,8 @@ export type CommandPaletteLabels = {
   noResults: string;
   resultCount: (count: number) => string;
   keyboardHelp: string;
+  mobileHelp: string;
+  viewAllCommands: (count: number) => string;
   groups: Record<DisplayGroup, string>;
 };
 
@@ -35,6 +37,7 @@ type Props = {
   recentCommandIds: readonly string[];
   currentContextId?: string;
   focusRequest: number;
+  isMobileLayout: boolean;
   isRtl: boolean;
   labels: CommandPaletteLabels;
   onClose: () => void;
@@ -54,18 +57,28 @@ export function CommandPalette({
   recentCommandIds,
   currentContextId,
   focusRequest,
+  isMobileLayout,
   isRtl,
   labels,
   onClose,
   onExecute,
 }: Props) {
   const titleId = useId();
+  const helpId = useId();
+  const keyboardHelpId = useId();
   const resultsId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
   const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [keyboardModality, setKeyboardModality] = useState(!isMobileLayout);
+  const [visualViewport, setVisualViewport] = useState(() => ({
+    height: window.visualViewport?.height || window.innerHeight,
+    offsetTop: window.visualViewport?.offsetTop || 0,
+  }));
 
   const availableIds = useMemo(() => new Set(commands.map((command) => command.id)), [commands]);
   const validRecentIds = useMemo(
@@ -76,6 +89,21 @@ export function CommandPalette({
     () => searchCommands(commands, query, { recentCommandIds: validRecentIds, currentContextId }),
     [commands, currentContextId, query, validRecentIds],
   );
+  const suggestedIds = useMemo(() => {
+    const ids = new Set<string>(validRecentIds);
+    const quickActions = orderedResults.filter((command) => command.group === 'quickActions').slice(0, 4);
+    const contextual = currentContextId
+      ? orderedResults.filter((command) => (
+        command.contextId === currentContextId || command.sourceNavigationId === currentContextId
+      )).slice(0, 4)
+      : [];
+    for (const command of [...quickActions, ...contextual]) ids.add(command.id);
+    for (const command of orderedResults) {
+      if (ids.size >= 8) break;
+      ids.add(command.id);
+    }
+    return ids;
+  }, [currentContextId, orderedResults, validRecentIds]);
   const groupedResults = useMemo(() => {
     const groups: Array<{ id: DisplayGroup; commands: StanzaCommand[] }> = [];
     const recentSet = new Set(validRecentIds);
@@ -90,17 +118,20 @@ export function CommandPalette({
 
     for (const group of GROUP_ORDER) {
       const matches = orderedResults.filter((command) => (
-        command.group === group && (query.trim() || !recentSet.has(command.id))
+        command.group === group
+        && (query.trim() || !recentSet.has(command.id))
+        && (query.trim() || showAll || suggestedIds.has(command.id))
       ));
       if (matches.length) groups.push({ id: group, commands: matches });
     }
     return groups;
-  }, [commands, orderedResults, query, validRecentIds]);
+  }, [commands, orderedResults, query, showAll, suggestedIds, validRecentIds]);
   const flatResults = useMemo(
     () => groupedResults.flatMap((group) => group.commands),
     [groupedResults],
   );
   const selectedCommand = flatResults[Math.min(selectedIndex, Math.max(0, flatResults.length - 1))];
+  const offersViewAll = Boolean(query.trim()) || (!showAll && flatResults.length < commands.length);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -108,7 +139,7 @@ export function CommandPalette({
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query]);
+  }, [query, showAll]);
 
   useEffect(() => {
     if (selectedIndex < flatResults.length) return;
@@ -127,6 +158,37 @@ export function CommandPalette({
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = () => setKeyboardModality(true);
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') setKeyboardModality(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout) return;
+    const viewport = window.visualViewport;
+    const update = () => setVisualViewport({
+      height: viewport?.height || window.innerHeight,
+      offsetTop: viewport?.offsetTop || 0,
+    });
+    update();
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [isMobileLayout]);
 
   const moveSelection = (nextIndex: number) => {
     if (!flatResults.length) return;
@@ -172,9 +234,18 @@ export function CommandPalette({
     }
   };
 
+  const viewAllCommands = () => {
+    setQuery('');
+    setShowAll(true);
+    setSelectedIndex(0);
+    inputRef.current?.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => resultsRef.current?.scrollTo({ top: 0 }));
+  };
+
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 p-3 pt-[calc(env(safe-area-inset-top)+.75rem)] pb-[calc(env(safe-area-inset-bottom)+.75rem)] sm:items-start sm:pt-[10dvh]"
+      className="fixed inset-x-0 top-0 z-[80] flex h-[100dvh] items-end justify-center bg-black/55 p-3 pt-[calc(env(safe-area-inset-top)+.75rem)] pb-[calc(env(safe-area-inset-bottom)+.75rem)] sm:items-start sm:pt-[10dvh]"
+      style={isMobileLayout ? { height: visualViewport.height, top: visualViewport.offsetTop } : undefined}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -186,7 +257,7 @@ export function CommandPalette({
         aria-labelledby={titleId}
         dir={isRtl ? 'rtl' : 'ltr'}
         onKeyDown={trapFocus}
-        className="flex max-h-[min(82dvh,42rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-emerald-500/25 bg-white shadow-2xl shadow-black/35 dark:bg-[#061411]"
+        className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-emerald-500/25 bg-white shadow-2xl shadow-black/35 dark:bg-[#061411] sm:max-h-[min(82dvh,42rem)]"
       >
         <div className="border-b border-emerald-500/15 p-3 sm:p-4">
           <div className="flex items-center gap-2">
@@ -197,10 +268,14 @@ export function CommandPalette({
                 ref={inputRef}
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  if (!event.target.value) setShowAll(false);
+                }}
                 onKeyDown={handleSearchKeyDown}
                 placeholder={labels.searchPlaceholder}
                 aria-controls={resultsId}
+                aria-describedby={`${helpId}${isMobileLayout && keyboardModality ? ` ${keyboardHelpId}` : ''}`}
                 aria-activedescendant={selectedCommand ? `stanza-command-${selectedCommand.id}` : undefined}
                 autoComplete="off"
                 spellCheck={false}
@@ -212,6 +287,7 @@ export function CommandPalette({
                 type="button"
                 onClick={() => {
                   setQuery('');
+                  setShowAll(false);
                   inputRef.current?.focus();
                 }}
                 aria-label={labels.clearSearch}
@@ -229,12 +305,16 @@ export function CommandPalette({
               <X className="h-5 w-5" />
             </button>
           </div>
-          <p className="mt-1 px-7 text-[11px] text-slate-500 dark:text-emerald-100/45">
-            {labels.keyboardHelp}
+          <p id={helpId} className="mt-1 px-7 text-[11px] text-slate-500 dark:text-emerald-100/45">
+            {isMobileLayout ? labels.mobileHelp : labels.keyboardHelp}
           </p>
+          {isMobileLayout && keyboardModality && (
+            <p id={keyboardHelpId} className="sr-only">{labels.keyboardHelp}</p>
+          )}
         </div>
 
         <div
+          ref={resultsRef}
           id={resultsId}
           role="listbox"
           aria-label={labels.title}
@@ -307,12 +387,23 @@ export function CommandPalette({
           )}
         </div>
 
-        <div
-          role="status"
-          aria-live="polite"
-          className="border-t border-emerald-500/15 px-4 py-2 text-[11px] text-slate-500 dark:text-emerald-100/45"
-        >
-          {labels.resultCount(flatResults.length)}
+        <div className="flex min-h-11 items-center border-t border-emerald-500/15 px-3 py-1.5 text-[11px] text-slate-500 dark:text-emerald-100/45">
+          {offersViewAll ? (
+            <button
+              type="button"
+              onClick={viewAllCommands}
+              aria-controls={resultsId}
+              aria-expanded={showAll && !query.trim()}
+              className="min-h-9 rounded-lg px-2 font-bold text-emerald-700 underline decoration-emerald-500/45 underline-offset-4 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-300"
+            >
+              {labels.viewAllCommands(commands.length)}
+            </button>
+          ) : (
+            <span role="status" aria-live="polite">{labels.resultCount(flatResults.length)}</span>
+          )}
+          <span className="sr-only" role="status" aria-live="polite">
+            {labels.resultCount(flatResults.length)}
+          </span>
         </div>
       </section>
     </div>,
