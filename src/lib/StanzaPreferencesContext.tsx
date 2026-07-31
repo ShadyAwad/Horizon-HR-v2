@@ -16,6 +16,7 @@ export const LIGHT_INTENSITIES = ['bright', 'balanced', 'deep'] as const;
 
 export type LightIntensity = typeof LIGHT_INTENSITIES[number];
 export type RosterPresentationMode = 'auto' | 'fit' | 'detailed';
+export type DesktopNavigationMode = 'launcher' | 'rail';
 
 export type StanzaPreferences = {
   lanyardEnabled: boolean;
@@ -23,6 +24,7 @@ export type StanzaPreferences = {
   lightIntensity: LightIntensity;
   mobileShortcuts: string[];
   rosterPresentationMode: RosterPresentationMode;
+  desktopNavigationMode: DesktopNavigationMode;
 };
 
 const DEFAULT_PREFERENCES: StanzaPreferences = {
@@ -31,6 +33,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   lightIntensity: 'balanced',
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   rosterPresentationMode: 'auto',
+  desktopNavigationMode: 'launcher',
 };
 
 export function isLightIntensity(value: unknown): value is LightIntensity {
@@ -66,6 +69,9 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       rosterPresentationMode: parsed.rosterPresentationMode === 'fit' || parsed.rosterPresentationMode === 'detailed'
         ? parsed.rosterPresentationMode
         : 'auto',
+      desktopNavigationMode: parsed.desktopNavigationMode === 'rail'
+        ? 'rail'
+        : 'launcher',
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -98,6 +104,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setLightIntensity: (intensity: LightIntensity) => void;
   setMobileShortcuts: (shortcuts: string[]) => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
+  setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
 };
 
 const StanzaPreferencesContext = createContext<StanzaPreferencesContextValue | null>(null);
@@ -147,6 +154,9 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setRosterPresentationMode = useCallback((rosterPresentationMode: RosterPresentationMode) => {
     setPreferences((current) => ({ ...current, rosterPresentationMode }));
   }, []);
+  const setDesktopNavigationMode = useCallback((desktopNavigationMode: DesktopNavigationMode) => {
+    setPreferences((current) => ({ ...current, desktopNavigationMode }));
+  }, []);
 
   const value = useMemo<StanzaPreferencesContextValue>(() => ({
     ...preferences,
@@ -156,7 +166,8 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setLightIntensity,
     setMobileShortcuts,
     setRosterPresentationMode,
-  }), [preferences, resetInterfaceScale, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRosterPresentationMode]);
+    setDesktopNavigationMode,
+  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

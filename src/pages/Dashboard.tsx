@@ -947,6 +947,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setMobileShortcuts,
     rosterPresentationMode,
     setRosterPresentationMode,
+    desktopNavigationMode,
+    setDesktopNavigationMode,
   } = useStanzaPreferences();
   const rosterDisplayMode = rosterPresentationMode === 'auto'
     ? (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'fit' : 'detailed')
@@ -3908,6 +3910,38 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </p>
 
         <div className="mt-3 space-y-3">
+          <section className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{lang === 'ar' ? '\u0646\u0645\u0637 \u0627\u0644\u062a\u0646\u0642\u0644' : 'Navigation style'}</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
+                {desktopNavigationMode === 'launcher'
+                  ? (lang === 'ar' ? '\u064a\u0632\u064a\u062f \u0645\u0633\u0627\u062d\u0629 \u0627\u0644\u0639\u0645\u0644. \u0627\u0641\u062a\u062d \u0627\u0644\u062a\u0646\u0642\u0644 \u0645\u0646 \u0632\u0631 Stanza.' : 'Maximises workspace width. Open navigation from the Stanza button.')
+                  : (lang === 'ar' ? '\u064a\u0628\u0642\u064a \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0627\u0644\u0648\u062d\u062f\u0627\u062a \u0638\u0627\u0647\u0631\u0629 \u0639\u0644\u0649 \u0627\u0644\u062c\u0627\u0646\u0628.' : 'Keeps module shortcuts visible along the side.')}
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={lang === 'ar' ? '\u0646\u0645\u0637 \u0627\u0644\u062a\u0646\u0642\u0644' : 'Navigation style'}>
+              {([
+                ['launcher', lang === 'ar' ? '\u0632\u0631 Stanza \u0641\u0642\u0637' : 'Launcher only'],
+                ['rail', lang === 'ar' ? '\u0634\u0631\u064a\u0637 \u0645\u062e\u062a\u0635\u0631' : 'Compact rail'],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={desktopNavigationMode === mode}
+                  onClick={() => setDesktopNavigationMode(mode)}
+                  className={cn(
+                    'min-h-11 rounded-lg border px-3 py-2 text-sm font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]',
+                    desktopNavigationMode === mode
+                      ? 'border-emerald-400 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
+                      : 'border-emerald-500/20 text-neutral-600 hover:border-emerald-400 dark:text-emerald-100/65',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
           {isLanyardCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lanyardCard')}</p>
@@ -4159,6 +4193,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <DashboardNavigation
         items={navigationItems}
+        desktopMode={desktopNavigationMode}
         mobileShortcuts={mobileShortcuts}
         onShortcutsChange={setMobileShortcuts}
         onOpenControlCenter={() => setShowControlCenter(true)}
