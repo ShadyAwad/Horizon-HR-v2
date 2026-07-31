@@ -12,12 +12,19 @@ import {
   normaliseModuleUsage,
   recordModuleUsage,
 } from '../src/components/navigation/module-usage';
+import {
+  moveShortcutPosition,
+  swapShortcutPositions,
+} from '../src/components/navigation/mobile-shortcut-order';
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 const dashboard = read('src/pages/Dashboard.tsx');
 const nav = read('src/components/navigation/DashboardNavigation.tsx');
 const shortcuts = read('src/components/navigation/MobileShortcutSettings.tsx');
+const shortcutEditor = read('src/components/navigation/MobileShortcutEditor.tsx');
+const shortcutOrder = read('src/components/navigation/mobile-shortcut-order.ts');
+const preferences = read('src/lib/StanzaPreferencesContext.tsx');
 const css = read('src/index.css');
 const language = read('src/lib/LanguageContext.tsx');
 const moduleUsageSource = read('src/components/navigation/module-usage.ts');
@@ -84,6 +91,20 @@ const storedUsage = readStanzaPreferences(JSON.stringify({ moduleUsage: rankedUs
 assert.deepEqual(Object.keys(storedUsage), ['roster', 'feed', 'hiring', 'expenses', 'profile', 'geofence']);
 assert.equal(/label|query|recordId|employeeId|candidateId/.test(JSON.stringify(storedUsage)), false, 'usage stores no labels, queries, or record identifiers');
 
+const originalShortcutOrder = ['geofence', 'roster', 'expenses', 'hiring'];
+assert.deepEqual(
+  swapShortcutPositions(originalShortcutOrder, 'hiring', 'geofence'),
+  ['hiring', 'roster', 'expenses', 'geofence'],
+  'drop swaps only the source and target positions',
+);
+assert.deepEqual(originalShortcutOrder, ['geofence', 'roster', 'expenses', 'hiring'], 'swap does not mutate its input');
+assert.deepEqual(swapShortcutPositions(originalShortcutOrder, 'unknown', 'roster'), originalShortcutOrder, 'invalid drops preserve order');
+assert.deepEqual(moveShortcutPosition(originalShortcutOrder, 'expenses', 'up'), ['geofence', 'expenses', 'roster', 'hiring']);
+assert.deepEqual(moveShortcutPosition(originalShortcutOrder, 'expenses', 'down'), ['geofence', 'roster', 'hiring', 'expenses']);
+assert.deepEqual(moveShortcutPosition(originalShortcutOrder, 'expenses', 'start'), ['expenses', 'geofence', 'roster', 'hiring']);
+assert.deepEqual(moveShortcutPosition(originalShortcutOrder, 'roster', 'end'), ['geofence', 'expenses', 'hiring', 'roster']);
+assert.equal(new Set(swapShortcutPositions(originalShortcutOrder, 'hiring', 'geofence')).size, originalShortcutOrder.length, 'swap cannot duplicate or lose ids');
+
 const checks: Array<[string, boolean]> = [
   ['horizontal global strip is removed from the rendered dashboard', /<div className="hidden">[\s\S]*Tab Contents/.test(dashboard)],
   ['only the registry-backed desktop rail is live', (dashboard.match(/<DashboardNavigation\s/g) || []).length === 1 && /\{false && <aside/.test(dashboard)],
@@ -101,7 +122,7 @@ const checks: Array<[string, boolean]> = [
   ['launcher owns navigation and Settings stays separate', /onOpenControlCenter/.test(nav) && /Settings/.test(nav) && !/showControlCenter/.test(nav)],
   ['launcher supports Escape, outside click, and focus restoration', /event\.key === 'Escape'/.test(nav) && /launcherRef\.current\?\.focus/.test(nav) && /window\.addEventListener\('mousedown'/.test(nav)],
   ['mobile shortcuts use stable ids with a minimum and crowding warning', /mobileShortcuts/.test(dashboard) && /selected\.length <= 4/.test(shortcuts) && /selected\.length > 5/.test(shortcuts)],
-  ['shortcuts can be reordered by keyboard controls and reset to the recommended set safely', /move\(index, -1\)/.test(shortcuts) && /move\(index, 1\)/.test(shortcuts) && /Reset to recommended/.test(shortcuts)],
+  ['shortcuts offer immediate up, down, start, and end controls plus a safe recommended reset', ["'up'", "'down'", "'start'", "'end'"].every((move) => shortcuts.includes(move)) && /moveShortcutPosition/.test(shortcuts) && /Reset to recommended/.test(shortcuts)],
   ['permission-filtered registry drives desktop and mobile surfaces', /\.filter\(Boolean\)/.test(dashboard) && /allowedIds/.test(nav) && /validShortcuts/.test(nav)],
   ['module navigation records from launcher, rail, mobile shortcuts, palette navigation, and valid notification links', /onModuleNavigate\?\.\(item\.id\)/.test(nav) && /command\.type === 'navigation'/.test(dashboard) && /recordModuleNavigation\('expenses'\)/.test(dashboard) && /recordModuleNavigation\('roster'\)/.test(dashboard)],
   ['opening or searching the launcher does not record module use', /onClick=\{\(\) => setOpen\(\(value\) => !value\)\}/.test(nav) && /onOpenCommandPalette\(launcherRef\.current\)/.test(nav) && !/setOpen\(\(value\) => !value\)[\s\S]{0,100}onModuleNavigate/.test(nav)],
@@ -124,11 +145,16 @@ const checks: Array<[string, boolean]> = [
   ['navigation groups resolve through translated internal keys and the RTL logout icon alone is mirrored', /nav\.group\.\$\{group\}/.test(nav) && /isRtl && '-scale-x-100'/.test(nav) && /'nav\.group\.workspace'/.test(language)],
   ['rail ordering persists stable ids, filters unavailable ids, supports drag, and offers keyboard controls in Settings', /desktopRailOrder/.test(read('src/lib/StanzaPreferencesContext.tsx')) && /orderedRailItems/.test(nav) && /draggable=\{Boolean\(onRailOrderChange\)\}/.test(nav) && /DesktopRailOrderSettings/.test(dashboard) && /normaliseDesktopRailOrder/.test(read('src/components/navigation/DesktopRailOrderSettings.tsx'))],
   ['mobile settings editor follows the actual layout breakpoint and is absent from desktop render paths', /isMobileNavigationLayout && <div/.test(dashboard) && /matchMedia\('\(max-width: 767px\)'\)/.test(dashboard)],
-  ['focused mobile customiser reuses shortcut state, locks scrolling, restores focus, and supports Escape', /MobileShortcutEditor/.test(dashboard) && /document\.body\.style\.overflow = 'hidden'/.test(read('src/components/navigation/MobileShortcutEditor.tsx')) && /returnFocusRef\.current\?\.focus/.test(read('src/components/navigation/MobileShortcutEditor.tsx')) && /event\.key === 'Escape'/.test(read('src/components/navigation/MobileShortcutEditor.tsx'))],
+  ['focused mobile customiser reuses shortcut state, locks scrolling, restores focus, and supports Escape', /MobileShortcutEditor/.test(dashboard) && /document\.body\.style\.overflow = 'hidden'/.test(shortcutEditor) && /returnFocusRef\.current\?\.focus/.test(shortcutEditor) && /event\.key === 'Escape'/.test(shortcutEditor)],
+  ['shortcut selection cannot retrigger dialog teardown or focus restoration', /onCloseRef/.test(shortcutEditor) && /focus\(\{ preventScroll: true \}\)/.test(shortcutEditor) && /\}, \[returnFocusRef\]\);/.test(shortcutEditor) && /onClose=\{closeMobileShortcutEditor\}/.test(dashboard)],
+  ['available option rows keep stable registry order and selected shortcuts append without sorting the option list', /\{items\.map\(\(item\)/.test(shortcuts) && /onChange\(\[\.\.\.selected, id\]\)/.test(shortcuts) && !/items\.sort|sort\(.*selected/.test(shortcuts)],
+  ['one shortcut preference update avoids duplicate persistence writes', /current\.mobileShortcuts\.every/.test(preferences) && /\? current\s*: \{ \.\.\.current, mobileShortcuts: next \}/.test(preferences)],
   ['all selected mobile shortcuts render in a contained horizontal scroller without a five-item cap', /stanza-mobile-shortcuts/.test(nav) && /overflow-x-auto/.test(nav) && /shortcutItems\.map/.test(nav) && !/shortcutItems\.slice\(0, 5\)/.test(nav)],
-  ['mobile shortcuts use a long-press pointer swap while ordinary taps still select a route', /setTimeout\(\(\) => \{ setDraggedShortcutId/.test(nav) && /swapShortcuts/.test(nav) && /onClick=\{\(\) => \{ if \(suppressShortcutClickRef/.test(nav)],
+  ['mobile shortcuts use a cancellable long-press pointer swap while ordinary taps still select a route', /holdTimerRef/.test(shortcutOrder) && /MOVE_TOLERANCE_PX/.test(shortcutOrder) && /reset\(true, true\)/.test(shortcutOrder) && /reset\(false\)/.test(shortcutOrder) && /consumeSuppressedClick/.test(nav) && /choose\(item\)/.test(nav)],
+  ['drag movement highlights one target and commits only once on pointer release', /setTargetId\(candidate\)/.test(shortcutOrder) && /onPointerUp/.test(shortcutOrder) && /onSwapRef\.current/.test(shortcutOrder) && !/onPointerMove[\s\S]{0,900}onSwapRef\.current/.test(shortcutOrder)],
+  ['selected-only order rows expose long-press handles, logical RTL-safe controls, and polite announcements', /data-mobile-shortcut-order-id/.test(shortcuts) && /Long press to drag/.test(shortcuts) && /aria-live="polite"/.test(shortcuts) && /\\u0646\\u0642\\u0644/.test(shortcuts)],
   ['launcher search is not focused automatically when navigation opens', !/querySelector<HTMLInputElement>\('input'\)\?\.focus/.test(nav)],
-  ['mobile shortcut editor height is content-driven and scrolls only within its viewport cap', /max-h-full/.test(read('src/components/navigation/MobileShortcutEditor.tsx')) && !/flex h-full/.test(read('src/components/navigation/MobileShortcutEditor.tsx'))],
+  ['mobile shortcut editor height is content-driven with independently bounded option and selected regions', /max-h-full/.test(shortcutEditor) && /data-mobile-shortcut-options/.test(shortcuts) && /max-h-\[min\(34dvh,18rem\)\]/.test(shortcuts) && /data-mobile-shortcut-order/.test(shortcuts) && /max-h-56/.test(shortcuts) && !/flex h-full/.test(shortcutEditor)],
   ['launcher uses restrained transform-only interaction polish with reduced-motion fallback', /transition-\[transform,box-shadow,background-color,border-color\]/.test(nav) && /hover:scale-\[1\.015\]/.test(nav) && /active:scale-\[\.97\]/.test(nav) && /scale-\[1\.025\]/.test(nav) && /motion-reduce:transform-none/.test(nav)],
   ['panel wordmark uses a structural accented initial without unsafe HTML', /lang === 'ar' \? <span>Stanza<\/span> : <>\s*<span className="text-emerald-600 dark:text-emerald-400">S<\/span><span>tanza<\/span>/.test(nav) && !/dangerouslySetInnerHTML/.test(nav)],
   ['selected navigation typography remains readable and stable', /font-extrabold tracking-normal text-emerald-700/.test(nav)],
