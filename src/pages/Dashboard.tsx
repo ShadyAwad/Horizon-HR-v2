@@ -4537,7 +4537,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
-      <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
+      <main className={cn(
+        'min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden',
+        desktopNavigationMode === 'launcher' && 'md:ps-28',
+      )}>
         
         {/* Header Pipeline */}
         <header className="mb-4 min-w-0">
