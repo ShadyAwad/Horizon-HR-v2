@@ -26,7 +26,6 @@ type Props = {
   items: DashboardNavigationItem[];
   moduleUsage?: ModuleUsage;
   onModuleNavigate?: (navigationId: string) => void;
-  desktopLauncherTarget?: HTMLElement | null;
   isMobileLayout?: boolean;
   desktopMode?: 'launcher' | 'rail';
   railOrder?: string[];
@@ -51,7 +50,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'text-slate-700 hover:bg-emerald-500/10 dark:text-emerald-100/75')}><span className="relative shrink-0">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></button>;
 }
 
-export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, desktopLauncherTarget = null, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang, t } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false);
@@ -124,6 +123,17 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
       {showLanyardDock && !open && <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full hidden h-7 w-px -translate-x-1/2 bg-gradient-to-b from-emerald-400/75 via-emerald-500/40 to-transparent md:block"><span className="absolute -bottom-0.5 -left-1 h-2 w-2 rounded-full border border-emerald-300/60 bg-emerald-500/50" /></span>}
     </div>
   );
+  const launcherAssembly = desktopMode === 'launcher' && !isMobileLayout ? (
+    <div
+      data-stanza-launcher-assembly
+      className="pointer-events-none fixed inset-0 z-20 hidden overflow-visible md:block"
+    >
+      {lanyardSlot}
+      <div className="pointer-events-auto absolute start-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] z-20">
+        {launcherAnchor}
+      </div>
+    </div>
+  ) : null;
   return <>
     <aside className={cn(
       'fixed inset-x-3 bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-1 rounded-2xl border border-emerald-500/15 bg-white/95 p-2 shadow-xl backdrop-blur-[6px] dark:bg-[#061411]/95',
@@ -138,11 +148,11 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
       <div className="stanza-mobile-shortcuts flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => <button key={item.id} data-mobile-shortcut-id={item.id} type="button" {...shortcutDrag.bind(item.id)} onClick={() => { if (shortcutDrag.consumeSuppressedClick()) return; choose(item); }} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('flex h-10 w-10 shrink-0 touch-pan-x items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', shortcutDrag.draggedId === item.id && 'scale-95 opacity-50 ring-2 ring-emerald-400', shortcutDrag.targetId === item.id && shortcutDrag.draggedId !== item.id && 'bg-emerald-500/15 ring-2 ring-emerald-400/70', item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</div>
       <button ref={mobileShortcutEditorTriggerRef} type="button" onClick={onOpenMobileShortcutEditor} aria-label={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} title={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><Plus className="h-5 w-5" /></button>
     </aside>
-    {desktopMode === 'launcher' && !isMobileLayout && desktopLauncherTarget
-      ? createPortal(launcherAnchor, desktopLauncherTarget)
+    {launcherAssembly
+      ? createPortal(launcherAssembly, document.body)
       : null}
     {open && <div id="stanza-navigation-panel" ref={panelRef} role="dialog" aria-modal="true" aria-label={text('Stanza navigation', 'تنقل Stanza')} className={cn('fixed z-30 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-emerald-500/20 bg-white/98 shadow-2xl transition duration-200 ease-out motion-reduce:transition-none dark:bg-[#061411]/98 md:start-[5.5rem] md:top-4', 'inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-h-[76dvh] md:inset-x-auto md:bottom-auto md:max-h-[calc(100dvh-2rem)]')}>
-      <div className="border-b border-emerald-500/15 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-base font-black tracking-normal text-slate-900 dark:text-emerald-50">{lang === 'ar' ? <span>Stanza</span> : <><span className="text-emerald-600 dark:text-emerald-400">S</span><span>tanza</span></>}</p><p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">{userName}</p><p className="text-xs text-slate-500 dark:text-emerald-100/45">{userEmail}</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-500/10" aria-label={text('Close navigation', 'إغلاق التنقل')}><X className="h-4 w-4" /></button></div>{lanyardSlot && <div className="mt-3 h-16 overflow-hidden rounded-lg border border-emerald-500/15">{lanyardSlot}</div>}<button type="button" onClick={() => { setOpen(false); onOpenCommandPalette(launcherRef.current); }} className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-start text-slate-500 outline-none hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55" aria-label={text('Search Stanza', 'البحث في Stanza')}><Search className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 text-sm">{text('Search Stanza...', 'البحث في Stanza...')}</span><kbd className="hidden rounded border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold sm:inline">Ctrl K</kbd></button></div>
+      <div className="border-b border-emerald-500/15 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-base font-black tracking-normal text-slate-900 dark:text-emerald-50">{lang === 'ar' ? <span>Stanza</span> : <><span className="text-emerald-600 dark:text-emerald-400">S</span><span>tanza</span></>}</p><p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">{userName}</p><p className="text-xs text-slate-500 dark:text-emerald-100/45">{userEmail}</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-500/10" aria-label={text('Close navigation', 'إغلاق التنقل')}><X className="h-4 w-4" /></button></div><button type="button" onClick={() => { setOpen(false); onOpenCommandPalette(launcherRef.current); }} className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-start text-slate-500 outline-none hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55" aria-label={text('Search Stanza', 'البحث في Stanza')}><Search className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 text-sm">{text('Search Stanza...', 'البحث في Stanza...')}</span><kbd className="hidden rounded border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold sm:inline">Ctrl K</kbd></button></div>
       <nav className="stanza-scrollbar max-h-[48dvh] overflow-y-auto p-2" aria-label={text('All authorised modules', 'كل الوحدات المصرح بها')}>
         {recentItems.length > 0 && (
           <section data-launcher-section="recent" className="mb-3">

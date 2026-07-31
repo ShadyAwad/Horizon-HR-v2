@@ -916,7 +916,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [commandPaletteFocusRequest, setCommandPaletteFocusRequest] = useState(0);
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isMobileNavigationLayout, setIsMobileNavigationLayout] = useState(() => window.matchMedia('(max-width: 767px)').matches);
-  const [launcherHeaderTarget, setLauncherHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [showMobileShortcutEditor, setShowMobileShortcutEditor] = useState(false);
   const mobileShortcutEditorTriggerRef = useRef<HTMLButtonElement>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
@@ -4628,6 +4627,25 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     );
   };
 
+  const launcherLanyard = shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc ? (
+    <DashboardLanyardBoundary>
+      <Suspense fallback={null}>
+        <StanzaDashboardLanyard
+          anchorNdc={lanyardAnchorNdc}
+          eventSource={dashboardRootRef.current}
+          hidden={!isLanyardSceneReady}
+          interactionEnabled={!showControlCenter && isDashboardVisible}
+          paused={!isDashboardVisible}
+          language={lang}
+          direction={isRtl ? 'rtl' : 'ltr'}
+          anchorSide={lanyardAnchorSide}
+          onReady={() => setIsLanyardSceneReady(true)}
+          user={user}
+        />
+      </Suspense>
+    </DashboardLanyardBoundary>
+  ) : null;
+
   return (
 <div
   ref={dashboardRootRef}
@@ -4687,30 +4705,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
 </div>
 
-      {shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc && (
-        <DashboardLanyardBoundary>
-          <Suspense fallback={null}>
-            <StanzaDashboardLanyard
-              anchorNdc={lanyardAnchorNdc}
-              eventSource={dashboardRootRef.current}
-              hidden={!isLanyardSceneReady || showControlCenter}
-              interactionEnabled={!showControlCenter && isDashboardVisible}
-              paused={!isDashboardVisible || showControlCenter}
-              language={lang}
-              direction={isRtl ? 'rtl' : 'ltr'}
-              anchorSide={lanyardAnchorSide}
-              onReady={() => setIsLanyardSceneReady(true)}
-              user={user}
-            />
-          </Suspense>
-        </DashboardLanyardBoundary>
-      )}
-
       <DashboardNavigation
         items={navigationItems}
         moduleUsage={moduleUsage}
         onModuleNavigate={recordModuleNavigation}
-        desktopLauncherTarget={launcherHeaderTarget}
         isMobileLayout={isMobileNavigationLayout}
         desktopMode={desktopNavigationMode}
         railOrder={desktopRailOrder}
@@ -4722,10 +4720,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onOpenCommandPalette={openCommandPalette}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
-        showLanyardDock={shouldMountLanyard && isLanyardIdleReady && !showControlCenter}
+        showLanyardDock={Boolean(launcherLanyard)}
         onLogout={onLogout}
         userName={user.name}
         userEmail={user.email}
+        lanyardSlot={launcherLanyard}
       />
       {showMobileShortcutEditor && <MobileShortcutEditor items={navigationItems} shortcuts={mobileShortcuts} onChange={setMobileShortcuts} onClose={closeMobileShortcutEditor} returnFocusRef={mobileShortcutEditorTriggerRef} />}
       {showCommandPalette && (
@@ -5081,18 +5080,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         {/* Header Pipeline */}
         <header
           data-dashboard-context-header
-          className={cn(
-            "mb-4 min-w-0",
-            desktopNavigationMode === 'launcher' && "[--launcher-header-slot:3.75rem] md:grid md:grid-cols-[var(--launcher-header-slot)_minmax(0,1fr)] md:items-start md:gap-3",
-          )}
+          className="mb-4 min-w-0"
         >
-          {desktopNavigationMode === 'launcher' && (
-            <div
-              ref={setLauncherHeaderTarget}
-              data-launcher-header-slot
-              className="hidden min-h-11 w-full items-start justify-center md:flex"
-            />
-          )}
           <div data-dashboard-context-content className="min-w-0 md:pt-1">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
