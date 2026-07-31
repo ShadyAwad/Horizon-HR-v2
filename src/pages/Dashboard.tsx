@@ -73,8 +73,6 @@ type LanyardAnchorNdc = {
   y: number;
 };
 
-const LANYARD_ANCHOR_VERTICAL_OFFSET_PX = 44;
-
 const isValidLanyardTriggerMeasurement = (trigger: HTMLElement, rect: DOMRect) => (
   trigger.isConnected &&
   rect.width > 0 &&
@@ -1060,7 +1058,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
 
     const commitMeasurement = () => {
-      const trigger = document.getElementById('stanza-control-center-trigger');
+      const trigger = document.querySelector<HTMLElement>('[data-stanza-lanyard-anchor]');
       if (!trigger) {
         rejectMeasurement();
         return;
@@ -1088,7 +1086,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       const nextAnchor = {
           x: ((rect.left + rect.width / 2) / viewportWidth) * 2 - 1,
-          y: -((rect.bottom + LANYARD_ANCHOR_VERTICAL_OFFSET_PX) / viewportHeight) * 2 + 1,
+          y: -(rect.bottom / viewportHeight) * 2 + 1,
       };
       if (!isValidLanyardAnchorNdc(nextAnchor)) {
         rejectMeasurement();
