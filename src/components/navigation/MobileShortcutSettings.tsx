@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { ChevronsDown, ChevronsUp, ChevronDown, ChevronUp, GripVertical, RotateCcw } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import type { DashboardNavigationItem } from './DashboardNavigation';
+import { moveShortcutPosition, swapShortcutPositions, type ShortcutMove, useLongPressShortcutSwap } from './mobile-shortcut-order';
 import { useLanguage } from '../../lib/LanguageContext';
 
 type Props = {
@@ -13,6 +14,7 @@ const recommended = ['geofence', 'roster', 'feed', 'profile'];
 
 export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
   const { lang } = useLanguage();
+  const [announcement, setAnnouncement] = useState('');
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const selected = useMemo(() => {
@@ -45,13 +47,37 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
     onChange([...selected, id]);
   }, [onChange, selected, selectedSet]);
 
-  const move = useCallback((index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= selected.length) return;
-    const next = [...selected];
-    [next[index], next[target]] = [next[target], next[index]];
+  const announcePosition = useCallback((id: string, next: string[]) => {
+    const item = itemById.get(id);
+    const position = next.indexOf(id) + 1;
+    if (!item || position < 1) return;
+    setAnnouncement(text(
+      `${item.label} moved to position ${position} of ${next.length}.`,
+      `\u062a\u0645 \u0646\u0642\u0644 ${item.label} \u0625\u0644\u0649 \u0627\u0644\u0645\u0648\u0636\u0639 ${position} \u0645\u0646 ${next.length}.`,
+    ));
+  }, [itemById, lang]);
+
+  const move = useCallback((id: string, destination: ShortcutMove) => {
+    const next = moveShortcutPosition(selected, id, destination);
+    if (next.every((value, index) => value === selected[index])) return;
     onChange(next);
-  }, [onChange, selected]);
+    announcePosition(id, next);
+  }, [announcePosition, onChange, selected]);
+  const swap = useCallback((sourceId: string, targetId: string) => {
+    const next = swapShortcutPositions(selected, sourceId, targetId);
+    if (next.every((value, index) => value === selected[index])) return;
+    onChange(next);
+    announcePosition(sourceId, next);
+  }, [announcePosition, onChange, selected]);
+  const drag = useLongPressShortcutSwap({
+    attribute: 'data-mobile-shortcut-order-id',
+    onSwap: swap,
+  });
+  const activateMove = (event: React.MouseEvent<HTMLButtonElement>, id: string, destination: ShortcutMove) => {
+    event.preventDefault();
+    event.stopPropagation();
+    move(id, destination);
+  };
 
   return (
     <section className="rounded-xl border border-emerald-500/15 bg-black/5 p-3 dark:bg-black/20">
@@ -126,33 +152,62 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
           {selectedItems.map((item, index) => (
             <li
               key={item.id}
-              className="flex min-h-11 items-center gap-2 rounded-lg border border-emerald-500/10 px-2"
+              data-mobile-shortcut-order-id={item.id}
+              className={`flex min-h-11 items-center gap-1 rounded-lg border px-1.5 transition-colors ${drag.targetId === item.id && drag.draggedId !== item.id ? 'border-emerald-400 bg-emerald-500/15 ring-2 ring-emerald-400/50' : 'border-emerald-500/10'} ${drag.draggedId === item.id ? 'opacity-55' : ''}`}
             >
+              <button
+                type="button"
+                {...drag.bind(item.id)}
+                onClick={(event) => { event.preventDefault(); event.stopPropagation(); drag.consumeSuppressedClick(); }}
+                aria-label={text(`Long press to drag ${item.label}`, `\u0627\u0636\u063a\u0637 \u0645\u0637\u0648\u0644\u0627\u064b \u0644\u0633\u062d\u0628 ${item.label}`)}
+                className="grid h-10 w-8 shrink-0 touch-none place-items-center rounded-lg text-slate-400 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/45"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-emerald-500/10 text-xs font-black text-emerald-700 dark:text-emerald-200">
                 {index + 1}
               </span>
               <span className="min-w-0 flex-1 truncate text-xs font-bold">{item.label}</span>
               <button
                 type="button"
-                onClick={(event) => { event.stopPropagation(); move(index, -1); }}
+                onClick={(event) => activateMove(event, item.id, 'start')}
+                disabled={index === 0}
+                aria-label={text(`Move ${item.label} to start`, `\u0646\u0642\u0644 ${item.label} \u0625\u0644\u0649 \u0627\u0644\u0628\u062f\u0627\u064a\u0629`)}
+                className="grid h-10 w-8 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
+              >
+                <ChevronsUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => activateMove(event, item.id, 'up')}
                 disabled={index === 0}
                 aria-label={text(`Move ${item.label} up`, `\u0646\u0642\u0644 ${item.label} \u0644\u0623\u0639\u0644\u0649`)}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
+                className="grid h-10 w-8 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
               >
                 <ChevronUp className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                onClick={(event) => { event.stopPropagation(); move(index, 1); }}
+                onClick={(event) => activateMove(event, item.id, 'down')}
                 disabled={index === selected.length - 1}
                 aria-label={text(`Move ${item.label} down`, `\u0646\u0642\u0644 ${item.label} \u0644\u0623\u0633\u0641\u0644`)}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
+                className="grid h-10 w-8 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
               >
                 <ChevronDown className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => activateMove(event, item.id, 'end')}
+                disabled={index === selected.length - 1}
+                aria-label={text(`Move ${item.label} to end`, `\u0646\u0642\u0644 ${item.label} \u0625\u0644\u0649 \u0627\u0644\u0646\u0647\u0627\u064a\u0629`)}
+                className="grid h-10 w-8 shrink-0 place-items-center rounded-lg outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-30"
+              >
+                <ChevronsDown className="h-4 w-4" />
               </button>
             </li>
           ))}
         </ol>
+        <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
