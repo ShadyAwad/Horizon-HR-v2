@@ -4179,9 +4179,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <StanzaDashboardLanyard
               anchorNdc={lanyardAnchorNdc}
               eventSource={dashboardRootRef.current}
-              hidden={!isLanyardSceneReady || isNavigationOpen}
+              hidden={!isLanyardSceneReady || isNavigationOpen || showControlCenter}
               interactionEnabled={!showControlCenter && !isNavigationOpen && isDashboardVisible}
-              paused={!isDashboardVisible || isNavigationOpen}
+              paused={!isDashboardVisible || isNavigationOpen || showControlCenter}
               language={lang}
               direction={isRtl ? 'rtl' : 'ltr'}
               anchorSide={lanyardAnchorSide}
@@ -4199,6 +4199,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onShortcutsChange={setMobileShortcuts}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
+        showLanyardDock={shouldMountLanyard && isLanyardIdleReady && !showControlCenter}
         onLogout={onLogout}
         userName={user.name}
         userEmail={user.email}

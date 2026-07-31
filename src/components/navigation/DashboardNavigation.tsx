@@ -22,6 +22,7 @@ type Props = {
   onShortcutsChange: (value: string[]) => void;
   onOpenControlCenter: () => void;
   onOpenChange?: (open: boolean) => void;
+  showLanyardDock?: boolean;
   onLogout: () => void;
   userName: string;
   userEmail: string;
@@ -34,7 +35,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'border-transparent text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/65 dark:hover:text-emerald-100')}><span className="relative">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>;
 }
 
-export function DashboardNavigation({ items, desktopMode = 'launcher', mobileShortcuts, onShortcutsChange, onOpenControlCenter, onOpenChange, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, desktopMode = 'launcher', mobileShortcuts, onShortcutsChange, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
@@ -74,8 +75,9 @@ export function DashboardNavigation({ items, desktopMode = 'launcher', mobileSho
       isRtl && desktopMode === 'rail' ? 'md:order-last' : '',
     )}>
       <button ref={launcherRef} id="stanza-control-center-trigger" type="button" aria-label={text('Open Stanza navigation', 'فتح تنقل Stanza')} title={text('Open Stanza navigation', 'فتح تنقل Stanza')} aria-expanded={open} aria-controls="stanza-navigation-panel" onClick={() => setOpen((value) => !value)} className={cn('relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-[#020604] shadow-[0_0_18px_rgba(16,185,129,.24)] transition duration-200 ease-out hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 motion-reduce:transition-none', open && 'ring-2 ring-emerald-200')}><StanzaFingerprintMark size={24} /></button>
+      {showLanyardDock && !open && <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full hidden h-9 w-px -translate-x-1/2 bg-gradient-to-b from-emerald-400/75 via-emerald-500/40 to-transparent md:block"><span className="absolute -bottom-0.5 -left-1 h-2 w-2 rounded-full border border-emerald-300/60 bg-emerald-500/50" /></span>}
       {desktopMode === 'rail' && <nav aria-label={text('Quick navigation', 'التنقل السريع')} className="hidden w-full flex-1 flex-col items-center gap-1 md:flex">{items.map((item) => itemButton(item, 'flex h-10 w-10 items-center justify-center rounded-lg border transition', () => choose(item)))}</nav>}
-      <button type="button" onClick={onOpenControlCenter} aria-label={text('Control Center', 'مركز التحكم')} title={text('Control Center', 'مركز التحكم')} className={cn('hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:flex', desktopMode === 'rail' ? '' : 'border border-emerald-500/15')}><Settings className="h-5 w-5" /></button>
+      {desktopMode === 'rail' && <button type="button" onClick={onOpenControlCenter} aria-label={text('Control Center', 'مركز التحكم')} title={text('Control Center', 'مركز التحكم')} className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:flex"><Settings className="h-5 w-5" /></button>}
       <div className="flex min-w-0 flex-1 items-center gap-1 md:hidden">{shortcutItems.slice(0, 5).map((item) => itemButton(item, 'flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg border transition', () => choose(item)))}</div>
       <button type="button" onClick={() => setOpen(true)} aria-label={text('More navigation', 'المزيد من التنقل')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>
     </aside>
