@@ -135,6 +135,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setDesktopRailOrder: (order: string[]) => void;
   setRecentCommandIds: (commandIds: string[]) => void;
   setModuleUsage: (moduleUsage: ModuleUsage) => void;
+  resetModuleUsage: () => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
 };
@@ -198,6 +199,9 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       moduleUsage: normaliseModuleUsage(moduleUsage),
     }));
   }, []);
+  const resetModuleUsage = useCallback(() => {
+    setPreferences((current) => ({ ...current, moduleUsage: {} }));
+  }, []);
   const setRosterPresentationMode = useCallback((rosterPresentationMode: RosterPresentationMode) => {
     setPreferences((current) => ({ ...current, rosterPresentationMode }));
   }, []);
@@ -215,9 +219,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setDesktopRailOrder,
     setRecentCommandIds,
     setModuleUsage,
+    resetModuleUsage,
     setRosterPresentationMode,
     setDesktopNavigationMode,
-  }), [preferences, resetInterfaceScale, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setRecentCommandIds, setRosterPresentationMode]);
+  }), [preferences, resetInterfaceScale, resetModuleUsage, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setRecentCommandIds, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

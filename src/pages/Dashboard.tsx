@@ -971,6 +971,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setRecentCommandIds,
     moduleUsage,
     setModuleUsage,
+    resetModuleUsage,
     rosterPresentationMode,
     setRosterPresentationMode,
     desktopNavigationMode,
@@ -4422,6 +4423,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={resetModuleUsage}
+              disabled={Object.keys(moduleUsage).length === 0}
+              className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 outline-none transition-colors hover:border-emerald-400 hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:text-emerald-300 dark:focus-visible:ring-offset-[#061411]"
+            >
+              <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{lang === 'ar' ? '\u0625\u0639\u0627\u062f\u0629 \u062a\u0639\u064a\u064a\u0646 \u0627\u0644\u0648\u062d\u062f\u0627\u062a \u0627\u0644\u0623\u062e\u064a\u0631\u0629 \u0648\u0627\u0644\u0623\u0643\u062b\u0631 \u0627\u0633\u062a\u062e\u062f\u0627\u0645\u064b\u0627' : 'Reset recent and frequent modules'}</span>
+            </button>
           </section>
           {isLanyardCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
