@@ -4537,13 +4537,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
-      <main className={cn(
-        'min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden',
-        desktopNavigationMode === 'launcher' && 'md:ps-28',
-      )}>
+      <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
-        <header className="mb-4 min-w-0">
+        <header className={cn("mb-4 min-w-0", desktopNavigationMode === 'launcher' && "md:ps-16")}>
           <div className="min-w-0">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               <BrandWordmark />
