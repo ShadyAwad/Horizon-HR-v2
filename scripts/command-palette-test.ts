@@ -142,6 +142,16 @@ const restoredPreferences = readStanzaPreferences(JSON.stringify({
 }));
 assert.deepEqual(restoredPreferences.recentCommandIds, ['roster:leave', 'navigation:feed']);
 assert.equal('query' in restoredPreferences, false, 'query text is never persisted');
+const restoredPinnedPreferences = readStanzaPreferences(JSON.stringify({
+  pinnedQuickActionIds: ['leave:request', 'leave:request', 'unknown', 'expenses:new', 'roster:schedule', 'profile:digital-id', 'attendance:open-clock', 'assets:add', 'extra'],
+  pinnedQuickActionsCustomised: true,
+}));
+assert.deepEqual(
+  restoredPinnedPreferences.pinnedQuickActionIds,
+  ['leave:request', 'unknown', 'expenses:new', 'roster:schedule', 'profile:digital-id', 'attendance:open-clock'],
+  'preference storage keeps only bounded, stable ids; the live registry removes unavailable entries',
+);
+assert.equal(restoredPinnedPreferences.pinnedQuickActionsCustomised, true, 'explicit customisation preserves a deliberately empty list');
 
 const checks: Array<[string, boolean]> = [
   ['palette is lazy loaded', /const CommandPalette = lazy/.test(dashboard)],
@@ -179,6 +189,7 @@ const checks: Array<[string, boolean]> = [
   ['pinnable metadata is explicit and limited to safe workflow-opening commands', /pinnable: true/.test(dashboard) && /id: 'attendance:open-clock'[\s\S]{0,800}pinnable: true/.test(dashboard) && !/pinnable: true/.test(reimbursementCommand)],
   ['command metadata does not index private record names', !/candidateName|employeeName|claimId.*keywords|applicantName/.test(registrySource)],
   ['preferences remain in the existing stanza preferences object', /STANZA_PREFERENCES_KEY = 'stanza\.preferences\.v1'/.test(preferences) && /recentCommandIds/.test(preferences)],
+  ['pinned preferences derive recommendations only before customisation and retain no labels or permission evidence', /pinnedQuickActionIds/.test(preferences) && /pinnedQuickActionsCustomised/.test(preferences) && /getRecommendedPinnedQuickActionIds/.test(dashboard) && /normalisePinnedQuickActionIds/.test(dashboard) && !/permissionEvidence|permissionSnapshot/.test(preferences)],
   ['Arabic palette copy keeps the Stanza brand, natural mobile guidance, and an explicit all-commands action', /'البحث في Stanza\.\.\.'/.test(dashboard) && /'ابحث أو اضغط على أمر لفتحه\.'/.test(dashboard) && /عرض جميع الأوامر/.test(dashboard) && /'الأخيرة'/.test(dashboard) && /الأكثر استخدامًا/.test(navigation)],
 ];
 

@@ -28,6 +28,7 @@ const preferences = read('src/lib/StanzaPreferencesContext.tsx');
 const css = read('src/index.css');
 const language = read('src/lib/LanguageContext.tsx');
 const moduleUsageSource = read('src/components/navigation/module-usage.ts');
+const quickActions = read('src/components/navigation/QuickActionSettings.tsx');
 
 const defaults = readStanzaPreferences(null);
 assert.deepEqual(defaults.mobileShortcuts, ['geofence', 'roster', 'feed', 'profile']);
@@ -39,6 +40,8 @@ assert.equal(restored.rosterPresentationMode, 'fit');
 assert.equal(restored.desktopNavigationMode, 'rail');
 assert.equal(readStanzaPreferences(JSON.stringify({ desktopNavigationMode: 'unknown' })).desktopNavigationMode, 'launcher');
 assert.deepEqual(readStanzaPreferences(JSON.stringify({ desktopRailOrder: ['payroll', 'unknown', 'payroll'] })).desktopRailOrder, ['payroll', 'unknown']);
+assert.deepEqual(readStanzaPreferences(null).pinnedQuickActionIds, []);
+assert.equal(readStanzaPreferences(null).pinnedQuickActionsCustomised, false);
 
 const now = Date.now();
 const allowedModuleIds = new Set(['roster', 'feed', 'hiring', 'expenses', 'profile', 'geofence']);
@@ -131,6 +134,10 @@ const checks: Array<[string, boolean]> = [
   ['usage storage is bounded, validated, local-only, and contains stable navigation ids only', /MODULE_USAGE_LIMIT = 30/.test(moduleUsageSource) && /MODULE_USAGE_COUNT_LIMIT = 9_999/.test(moduleUsageSource) && /isStableNavigationId/.test(moduleUsageSource) && !/fetch|apiFetch|XMLHttpRequest/.test(moduleUsageSource)],
   ['permission loss prunes module usage against the authorised navigation registry', /normaliseModuleUsage\(moduleUsage, availableNavigationIds\)/.test(dashboard)],
   ['launcher shows compact translated recent and frequent sections above the complete groups', /data-launcher-section="recent"/.test(nav) && /data-launcher-section="frequent"/.test(nav) && /Recent/.test(nav) && /الأخيرة/.test(nav) && /Frequently used/.test(nav) && /الأكثر استخدامًا/.test(nav) && /groups\.map/.test(nav)],
+  ['launcher and mobile sheet render a registry-backed Quick Actions section only when actions exist', /data-launcher-section="quick-actions"/.test(nav) && /quickActions\.length > 0/.test(nav) && /quickActions=\{pinnedQuickActions\}/.test(dashboard) && /sm:grid-cols-2/.test(nav)],
+  ['quick actions execute through the existing command path and do not own workflow state', /executeRegisteredCommand/.test(dashboard) && /onExecuteQuickAction=\{executePinnedQuickAction\}/.test(dashboard) && /command\.execute\(\)/.test(dashboard) && !/setLeaveRequestSignal|setExpenseDeepLink/.test(nav)],
+  ['quick action settings preserve ordered ids, provide drag alternatives, and allow an intentional empty launcher section', /MAX_PINNED_QUICK_ACTIONS/.test(quickActions) && /data-quick-action-order-id/.test(quickActions) && /useLongPressShortcutSwap/.test(quickActions) && ['start', 'up', 'down', 'end'].every((move) => quickActions.includes(`'${move}'`)) && /Clear pinned actions/.test(quickActions) && /Reset to recommended/.test(quickActions)],
+  ['quick action settings use authorised registry commands with RTL-safe accessible controls', /getPinnableCommands/.test(quickActions) && /aria-live="polite"/.test(quickActions) && /focus-visible:ring-2/.test(quickActions) && /ثبّت ما يصل إلى ستة إجراءات/.test(quickActions)],
   ['usage reset clears only module usage and preserves every other preference', /resetModuleUsage/.test(dashboard) && /dash\.resetRecentFrequent/.test(dashboard) && /'dash\.resetRecentFrequent': 'إعادة تعيين الوحدات الأخيرة والأكثر استخدامًا'/.test(language) && /moduleUsage: \{\}/.test(read('src/lib/StanzaPreferencesContext.tsx'))],
   ['roster defaults by viewport and keeps detailed overflow local', /rosterPresentationMode === 'auto'/.test(dashboard) && /rosterDisplayMode === 'fit'/.test(dashboard) && /role="region"/.test(dashboard)],
   ['fit screen exposes accessible expandable day cards', /expandedRosterDate/.test(dashboard) && /aria-expanded=\{expanded\}/.test(dashboard) && /Read-only schedule/.test(dashboard)],

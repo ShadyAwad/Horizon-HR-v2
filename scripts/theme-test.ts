@@ -7,7 +7,7 @@ import {
   resolveLightIntensityStop,
 } from '../src/lib/StanzaPreferencesContext';
 
-const [preferences, css, dashboard, translations, indexHtml, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel] = await Promise.all([
+const [preferences, css, dashboard, translations, indexHtml, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
   readFile('src/index.css', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
@@ -17,6 +17,7 @@ const [preferences, css, dashboard, translations, indexHtml, richTextEditor, lea
   readFile('src/components/roster/LeaveWorkspace.tsx', 'utf8'),
   readFile('src/components/organisation/OrganisationPanel.tsx', 'utf8'),
   readFile('src/components/locations/LocationsPanel.tsx', 'utf8'),
+  readFile('src/components/navigation/QuickActionSettings.tsx', 'utf8'),
 ]);
 
 assert.deepEqual(LIGHT_INTENSITY_STOPS, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
@@ -121,5 +122,9 @@ assert.match(leaveWorkspace, /data-leave-workspace/);
 assert.match(leaveWorkspace, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.match(organisationPanel, /dir=\{isRtl/);
 assert.match(locationsPanel, /dir=\{isRtl/);
+assert.match(quickActionSettings, /bg-white\/75/);
+assert.match(quickActionSettings, /dark:bg-black\/40/);
+assert.match(quickActionSettings, /focus-visible:ring-2/);
+assert.match(quickActionSettings, /motion-reduce/);
 
 console.log('Light intensity preference, semantic surface token, accessibility, and cross-role contracts passed');

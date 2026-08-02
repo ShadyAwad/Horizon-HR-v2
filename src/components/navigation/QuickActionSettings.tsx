@@ -111,7 +111,7 @@ export function QuickActionSettings({ commands, selectedIds, onChange, onReset }
           {pinnableCommands.map((command) => {
             const checked = selectedSet.has(command.id);
             return (
-              <label key={command.id} htmlFor={`quick-action-${command.id}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-emerald-500/10 px-3 outline-none transition-colors hover:bg-emerald-500/5 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-400">
+              <label key={command.id} htmlFor={`quick-action-${command.id}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-emerald-500/10 px-3 outline-none transition-colors hover:bg-emerald-500/5 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-400 motion-reduce:transition-none">
                 <input id={`quick-action-${command.id}`} type="checkbox" checked={checked} onChange={() => toggle(command.id)} disabled={!checked && selected.length >= MAX_PINNED_QUICK_ACTIONS} className="h-5 w-5 shrink-0 accent-emerald-600" />
                 <span className="shrink-0 text-emerald-700 dark:text-emerald-300">{command.icon}</span>
                 <span className="min-w-0 flex-1 truncate text-xs font-bold">{command.label}</span>
