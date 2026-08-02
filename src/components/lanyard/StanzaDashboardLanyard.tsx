@@ -92,7 +92,7 @@ export default function StanzaDashboardLanyard({
       aria-hidden={hidden || !interactionEnabled}
       data-anchor-side={anchorSide}
       className="stanza-dashboard-lanyard pointer-events-none absolute inset-0 z-10 h-full w-full overflow-hidden bg-transparent transition-opacity duration-200"
-      style={{ opacity: hidden ? 0 : 1, transform: 'translateY(12px)' }}
+      style={{ opacity: hidden ? 0 : 1 }}
     >
       <LanyardRuntimeBoundary>
         <Lanyard

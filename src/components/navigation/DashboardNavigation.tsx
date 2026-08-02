@@ -37,7 +37,6 @@ type Props = {
   onOpenCommandPalette: (returnFocusTarget?: HTMLElement | null) => void;
   onOpenControlCenter: () => void;
   onOpenChange?: (open: boolean) => void;
-  showLanyardDock?: boolean;
   onLogout: () => void;
   userName: string;
   userEmail: string;
@@ -50,7 +49,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'text-slate-700 hover:bg-emerald-500/10 dark:text-emerald-100/75')}><span className="relative shrink-0">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></button>;
 }
 
-export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, onOpenControlCenter, onOpenChange, showLanyardDock = false, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, onOpenControlCenter, onOpenChange, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang, t } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false);
@@ -120,7 +119,6 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
   const launcherAnchor = (
     <div data-stanza-lanyard-anchor className="relative shrink-0">
       <button ref={launcherRef} id="stanza-control-center-trigger" type="button" aria-label={text('Open Stanza navigation', 'فتح تنقل Stanza')} title={text('Open Stanza navigation', 'فتح تنقل Stanza')} aria-expanded={open} aria-controls="stanza-navigation-panel" onClick={() => setOpen((value) => !value)} className={cn('relative flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/45 bg-emerald-500 text-[#020604] shadow-[0_0_18px_rgba(16,185,129,.24)] transition-[transform,box-shadow,background-color,border-color] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] hover:-translate-y-px hover:scale-[1.015] hover:shadow-[0_0_22px_rgba(16,185,129,.30)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 active:translate-y-0 active:scale-[.97] active:duration-100 motion-reduce:transform-none motion-reduce:transition-none', open && 'scale-[1.025] border-emerald-100/80 bg-emerald-400 shadow-[0_0_24px_rgba(16,185,129,.34)]')}><StanzaFingerprintMark size={24} /></button>
-      {showLanyardDock && !open && <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full hidden h-7 w-px -translate-x-1/2 bg-gradient-to-b from-emerald-400/75 via-emerald-500/40 to-transparent md:block"><span className="absolute -bottom-0.5 -left-1 h-2 w-2 rounded-full border border-emerald-300/60 bg-emerald-500/50" /></span>}
     </div>
   );
   const launcherAssembly = desktopMode === 'launcher' && !isMobileLayout ? (

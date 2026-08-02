@@ -48,6 +48,9 @@ const ROPE_SMOOTHING_RATE = 12;
 const ANCHOR_EPSILON = 0.001;
 const ROPE_COLLIDER_RADIUS = 0.1;
 const CLIP_CONNECTOR_COLLIDER_RADIUS = 0.04;
+// Render-only overlap prevents a subpixel seam where the live rope meets the
+// dynamic clip joint. It does not alter Rapier bodies, joints, or card motion.
+const CONNECTOR_ROPE_OVERLAP = 0.045;
 const IDLE_YAW_AMPLITUDE = THREE.MathUtils.degToRad(7);
 const IDLE_YAW_SPEED = 0.32;
 const IDLE_YAW_SMOOTHING_RATE = 4;
@@ -407,6 +410,7 @@ function Band({
 
   const vec = useMemo(() => new THREE.Vector3(), []);
   const dir = useMemo(() => new THREE.Vector3(), []);
+  const connectorDirection = useMemo(() => new THREE.Vector3(), []);
   const nextCardTranslation = useMemo(() => ({ x: 0, y: 0, z: 0 }), []);
 
   const segmentProps: RigidBodyProps = {
@@ -717,7 +721,14 @@ function Band({
     const shouldUpdateRope = !ropeInitialized.current || isDraggingRef.current || !bodiesSleeping;
 
     if (shouldUpdateRope) {
-      curve.points[0].copy(j4.current.translation());
+      const connector = j4.current.translation();
+      const priorSegment = j3.current.translation();
+      connectorDirection
+        .set(connector.x - priorSegment.x, connector.y - priorSegment.y, connector.z - priorSegment.z);
+      curve.points[0].set(connector.x, connector.y, connector.z);
+      if (connectorDirection.lengthSq() > 0.000001) {
+        curve.points[0].addScaledVector(connectorDirection.normalize(), CONNECTOR_ROPE_OVERLAP);
+      }
       curve.points[1].copy(getLerpedPoint(j3.current, smoothing));
       curve.points[2].copy(getLerpedPoint(j2.current, smoothing));
       curve.points[3].copy(getLerpedPoint(j1.current, smoothing));

@@ -4720,7 +4720,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onOpenCommandPalette={openCommandPalette}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
-        showLanyardDock={Boolean(launcherLanyard)}
         onLogout={onLogout}
         userName={user.name}
         userEmail={user.email}
