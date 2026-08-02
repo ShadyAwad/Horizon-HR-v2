@@ -39,6 +39,7 @@ import { normaliseModuleUsage, recordModuleUsage } from '../components/navigatio
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
 import { DesktopRailOrderSettings } from '../components/navigation/DesktopRailOrderSettings';
+import { QuickActionSettings } from '../components/navigation/QuickActionSettings';
 import { buildCommandRegistry } from '../components/command-palette/command-registry';
 import type { CommandPaletteLabels } from '../components/command-palette/CommandPalette';
 import type { StanzaCommand } from '../components/command-palette/command-palette-types';
@@ -973,6 +974,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setDesktopRailOrder,
     pinnedQuickActionIds,
     pinnedQuickActionsCustomised,
+    setPinnedQuickActionIds,
+    resetPinnedQuickActions,
     recentCommandIds,
     setRecentCommandIds,
     moduleUsage,
@@ -4543,6 +4546,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           {desktopNavigationMode === 'rail' && (
             <DesktopRailOrderSettings items={navigationItems} order={desktopRailOrder} onChange={setDesktopRailOrder} />
           )}
+
+          <QuickActionSettings
+            commands={commandPaletteCommands}
+            selectedIds={quickActionIds}
+            onChange={setPinnedQuickActionIds}
+            onReset={resetPinnedQuickActions}
+          />
 
           <div className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
             <div className="min-w-0">
