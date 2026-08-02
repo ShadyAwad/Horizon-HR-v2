@@ -11,6 +11,7 @@ import {
   type ModuleUsage,
 } from './module-usage';
 import { swapShortcutPositions, useLongPressShortcutSwap } from './mobile-shortcut-order';
+import type { StanzaCommand } from '../command-palette/command-palette-types';
 
 export type DashboardNavigationItem = {
   id: string;
@@ -35,6 +36,8 @@ type Props = {
   onOpenMobileShortcutEditor: () => void;
   mobileShortcutEditorTriggerRef: RefObject<HTMLButtonElement | null>;
   onOpenCommandPalette: (returnFocusTarget?: HTMLElement | null) => void;
+  quickActions?: readonly StanzaCommand[];
+  onExecuteQuickAction?: (command: StanzaCommand) => void;
   onOpenControlCenter: () => void;
   onOpenChange?: (open: boolean) => void;
   onLogout: () => void;
@@ -49,7 +52,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn(className, item.active ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-200' : 'text-slate-700 hover:bg-emerald-500/10 dark:text-emerald-100/75')}><span className="relative shrink-0">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></button>;
 }
 
-export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, onOpenControlCenter, onOpenChange, onLogout, userName, userEmail, lanyardSlot }: Props) {
+export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, quickActions = [], onExecuteQuickAction, onOpenControlCenter, onOpenChange, onLogout, userName, userEmail, lanyardSlot }: Props) {
   const { isRtl, lang, t } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpen] = useState(false);
@@ -78,6 +81,10 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
     return () => { document.body.style.overflow = previousOverflow; };
   }, [open]);
   const choose = (item: DashboardNavigationItem) => { item.onSelect(); onModuleNavigate?.(item.id); setOpen(false); launcherRef.current?.focus(); };
+  const runQuickAction = (command: StanzaCommand) => {
+    setOpen(false);
+    onExecuteQuickAction?.(command);
+  };
   const groups = [...new Set(items.map((item) => item.group))];
   const orderedItemIds = useMemo(() => items.map((item) => item.id), [items]);
   const currentNavigationId = items.find((item) => item.active)?.id;
@@ -152,6 +159,28 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
     {open && <div id="stanza-navigation-panel" ref={panelRef} role="dialog" aria-modal="true" aria-label={text('Stanza navigation', 'تنقل Stanza')} className={cn('fixed z-30 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-emerald-500/20 bg-white/98 shadow-2xl transition duration-200 ease-out motion-reduce:transition-none dark:bg-[#061411]/98 md:start-[5.5rem] md:top-4', 'inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-h-[76dvh] md:inset-x-auto md:bottom-auto md:max-h-[calc(100dvh-2rem)]')}>
       <div className="border-b border-emerald-500/15 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-base font-black tracking-normal text-slate-900 dark:text-emerald-50">{lang === 'ar' ? <span>Stanza</span> : <><span className="text-emerald-600 dark:text-emerald-400">S</span><span>tanza</span></>}</p><p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">{userName}</p><p className="text-xs text-slate-500 dark:text-emerald-100/45">{userEmail}</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-500/10" aria-label={text('Close navigation', 'إغلاق التنقل')}><X className="h-4 w-4" /></button></div><button type="button" onClick={() => { setOpen(false); onOpenCommandPalette(launcherRef.current); }} className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-start text-slate-500 outline-none hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/55" aria-label={text('Search Stanza', 'البحث في Stanza')}><Search className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 text-sm">{text('Search Stanza...', 'البحث في Stanza...')}</span><kbd className="hidden rounded border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold sm:inline">Ctrl K</kbd></button></div>
       <nav className="stanza-scrollbar max-h-[48dvh] overflow-y-auto p-2" aria-label={text('All authorised modules', 'كل الوحدات المصرح بها')}>
+        {quickActions.length > 0 && (
+          <section data-launcher-section="quick-actions" className="mb-3">
+            <h2 className="px-2 pb-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-emerald-100/45">
+              {text('Quick Actions', 'الإجراءات السريعة')}
+            </h2>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {quickActions.map((command) => (
+                <button
+                  key={command.id}
+                  type="button"
+                  onClick={() => runQuickAction(command)}
+                  className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg border border-emerald-500/15 px-3 py-2 text-start text-xs font-bold text-slate-700 transition hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/85 motion-reduce:transition-none"
+                  aria-label={command.label}
+                  title={command.description}
+                >
+                  <span className="shrink-0 text-emerald-700 dark:text-emerald-300">{command.icon}</span>
+                  <span className="min-w-0 truncate">{command.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {recentItems.length > 0 && (
           <section data-launcher-section="recent" className="mb-3">
             <h2 className="px-2 pb-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-emerald-100/45">

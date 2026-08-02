@@ -46,6 +46,10 @@ import {
   normaliseRecentCommandIds,
   recordRecentCommand,
 } from '../components/command-palette/command-palette-state';
+import {
+  getRecommendedPinnedQuickActionIds,
+  normalisePinnedQuickActionIds,
+} from '../components/command-palette/pinned-quick-actions';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
@@ -967,6 +971,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setMobileShortcuts,
     desktopRailOrder,
     setDesktopRailOrder,
+    pinnedQuickActionIds,
+    pinnedQuickActionsCustomised,
     recentCommandIds,
     setRecentCommandIds,
     moduleUsage,
@@ -1804,6 +1810,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     () => new Set(commandPaletteCommands.map((command) => command.id)),
     [commandPaletteCommands],
   );
+  const recommendedPinnedQuickActionIds = useMemo(
+    () => getRecommendedPinnedQuickActionIds(commandPaletteCommands),
+    [commandPaletteCommands],
+  );
+  const quickActionIds = useMemo(
+    () => normalisePinnedQuickActionIds(
+      pinnedQuickActionsCustomised ? pinnedQuickActionIds : recommendedPinnedQuickActionIds,
+      commandPaletteCommands,
+    ),
+    [commandPaletteCommands, pinnedQuickActionIds, pinnedQuickActionsCustomised, recommendedPinnedQuickActionIds],
+  );
+  const pinnedQuickActions = useMemo(() => {
+    const commandById = new globalThis.Map(commandPaletteCommands.map((command) => [command.id, command]));
+    return quickActionIds.map((commandId) => commandById.get(commandId)).filter(Boolean) as StanzaCommand[];
+  }, [commandPaletteCommands, quickActionIds]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
     if (nextRecentCommandIds.join('|') !== recentCommandIds.join('|')) {
@@ -1827,15 +1848,23 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
     });
   }, []);
-  const executeCommandPaletteCommand = useCallback((command: StanzaCommand) => {
-    commandPaletteReturnFocusRef.current = null;
+  const executeRegisteredCommand = useCallback((command: StanzaCommand) => {
     setRecentCommandIds(recordRecentCommand(recentCommandIds, command.id, availableCommandIds));
     command.execute();
     if (command.type === 'navigation' && command.sourceNavigationId) {
       recordModuleNavigation(command.sourceNavigationId);
     }
-    setShowCommandPalette(false);
   }, [availableCommandIds, recentCommandIds, recordModuleNavigation, setRecentCommandIds]);
+  const executeCommandPaletteCommand = useCallback((command: StanzaCommand) => {
+    commandPaletteReturnFocusRef.current = null;
+    executeRegisteredCommand(command);
+    setShowCommandPalette(false);
+  }, [executeRegisteredCommand]);
+  const executePinnedQuickAction = useCallback((command: StanzaCommand) => {
+    const current = commandPaletteCommands.find((candidate) => candidate.id === command.id);
+    if (!current?.pinnable) return;
+    executeRegisteredCommand(current);
+  }, [commandPaletteCommands, executeRegisteredCommand]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) => {
@@ -4750,6 +4779,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onOpenMobileShortcutEditor={openMobileShortcutEditor}
         mobileShortcutEditorTriggerRef={mobileShortcutEditorTriggerRef}
         onOpenCommandPalette={openCommandPalette}
+        quickActions={pinnedQuickActions}
+        onExecuteQuickAction={executePinnedQuickAction}
         onOpenControlCenter={() => setShowControlCenter(true)}
         onOpenChange={setIsNavigationOpen}
         onLogout={onLogout}

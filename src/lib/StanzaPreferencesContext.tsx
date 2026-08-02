@@ -29,6 +29,8 @@ export type StanzaPreferences = {
   lightIntensity: LightIntensity;
   mobileShortcuts: string[];
   desktopRailOrder: string[];
+  pinnedQuickActionIds: string[];
+  pinnedQuickActionsCustomised: boolean;
   recentCommandIds: string[];
   moduleUsage: ModuleUsage;
   rosterPresentationMode: RosterPresentationMode;
@@ -41,6 +43,8 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   lightIntensity: DEFAULT_LIGHT_INTENSITY,
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   desktopRailOrder: [],
+  pinnedQuickActionIds: [],
+  pinnedQuickActionsCustomised: false,
   recentCommandIds: [],
   moduleUsage: {},
   rosterPresentationMode: 'auto',
@@ -93,6 +97,10 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       desktopRailOrder: Array.isArray(parsed.desktopRailOrder)
         ? [...new Set(parsed.desktopRailOrder.filter((value): value is string => typeof value === 'string'))].slice(0, 30)
         : DEFAULT_PREFERENCES.desktopRailOrder,
+      pinnedQuickActionIds: Array.isArray(parsed.pinnedQuickActionIds)
+        ? [...new Set(parsed.pinnedQuickActionIds.filter((value): value is string => typeof value === 'string' && value.length <= 120))].slice(0, 6)
+        : DEFAULT_PREFERENCES.pinnedQuickActionIds,
+      pinnedQuickActionsCustomised: parsed.pinnedQuickActionsCustomised === true,
       recentCommandIds: Array.isArray(parsed.recentCommandIds)
         ? [...new Set(parsed.recentCommandIds.filter((value): value is string => typeof value === 'string' && value.length <= 120))].slice(0, 6)
         : DEFAULT_PREFERENCES.recentCommandIds,
@@ -133,6 +141,8 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setLightIntensity: (intensity: number) => void;
   setMobileShortcuts: (shortcuts: string[]) => void;
   setDesktopRailOrder: (order: string[]) => void;
+  setPinnedQuickActionIds: (commandIds: string[]) => void;
+  resetPinnedQuickActions: () => void;
   setRecentCommandIds: (commandIds: string[]) => void;
   setModuleUsage: (moduleUsage: ModuleUsage) => void;
   resetModuleUsage: () => void;
@@ -191,6 +201,21 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setDesktopRailOrder = useCallback((desktopRailOrder: string[]) => {
     setPreferences((current) => ({ ...current, desktopRailOrder: [...new Set(desktopRailOrder)].slice(0, 30) }));
   }, []);
+  const setPinnedQuickActionIds = useCallback((pinnedQuickActionIds: string[]) => {
+    const next = [...new Set(pinnedQuickActionIds.filter((value) => typeof value === 'string' && value.length <= 120))].slice(0, 6);
+    setPreferences((current) => current.pinnedQuickActionsCustomised
+      && current.pinnedQuickActionIds.length === next.length
+      && current.pinnedQuickActionIds.every((value, index) => value === next[index])
+      ? current
+      : { ...current, pinnedQuickActionIds: next, pinnedQuickActionsCustomised: true });
+  }, []);
+  const resetPinnedQuickActions = useCallback(() => {
+    setPreferences((current) => ({
+      ...current,
+      pinnedQuickActionIds: [],
+      pinnedQuickActionsCustomised: false,
+    }));
+  }, []);
   const setRecentCommandIds = useCallback((recentCommandIds: string[]) => {
     setPreferences((current) => ({
       ...current,
@@ -221,12 +246,14 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setLightIntensity,
     setMobileShortcuts,
     setDesktopRailOrder,
+    setPinnedQuickActionIds,
+    resetPinnedQuickActions,
     setRecentCommandIds,
     setModuleUsage,
     resetModuleUsage,
     setRosterPresentationMode,
     setDesktopNavigationMode,
-  }), [preferences, resetInterfaceScale, resetModuleUsage, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setRecentCommandIds, setRosterPresentationMode]);
+  }), [preferences, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }
