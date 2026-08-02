@@ -56,6 +56,7 @@ export function buildCommandRegistry({
     execute: item.onSelect,
     mobileAvailable: true,
     dangerous: false,
+    pinnable: false,
     contextId: item.id,
     sourceNavigationId: item.id,
   }));
@@ -66,6 +67,7 @@ export function buildCommandRegistry({
       ...input,
       mobileAvailable: input.mobileAvailable ?? true,
       dangerous: false,
+      pinnable: input.pinnable === true,
     });
   }
 

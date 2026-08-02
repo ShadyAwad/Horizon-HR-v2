@@ -1486,6 +1486,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <Calendar className="h-5 w-5" />,
           execute: () => openRosterView('schedule'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 3,
           contextId: 'roster',
         },
         {
@@ -1498,6 +1500,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <RotateCcw className="h-5 w-5" />,
           execute: () => openRosterView('swaps'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 4,
           contextId: 'roster',
         },
         {
@@ -1510,6 +1514,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <ShieldCheck className="h-5 w-5" />,
           execute: () => openRosterView('approvals'),
           allowed: canApproveShiftSwaps,
+          pinnable: true,
+          recommendedPriority: 2,
           contextId: 'roster',
         },
         {
@@ -1538,6 +1544,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setLeaveRequestSignal((current) => current + 1);
           },
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 1,
           contextId: 'roster',
         },
         {
@@ -1553,6 +1561,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setLeaveDeepLink({ view: 'approvals', requestId: null });
           },
           allowed: hasLeaveApproverAuthority,
+          pinnable: true,
+          recommendedPriority: 2,
           contextId: 'roster',
         },
         {
@@ -1565,6 +1575,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <ReceiptText className="h-5 w-5" />,
           execute: () => openExpenseView('claims'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 6,
           contextId: 'expenses',
         },
         {
@@ -1577,6 +1589,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <Plus className="h-5 w-5" />,
           execute: () => openExpenseView('new'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 2,
           contextId: 'expenses',
         },
         {
@@ -1589,6 +1603,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <ShieldCheck className="h-5 w-5" />,
           execute: () => openExpenseView('approvals'),
           allowed: canReviewExpenses,
+          pinnable: true,
+          recommendedPriority: 3,
           contextId: 'expenses',
         },
         {
@@ -1613,6 +1629,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <UsersRound className="h-5 w-5" />,
           execute: () => openOrganisationView('people'),
           allowed: canViewOrganisation,
+          pinnable: true,
+          recommendedPriority: 5,
           contextId: 'organisation',
         },
         {
@@ -1649,6 +1667,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <ShieldCheck className="h-5 w-5" />,
           execute: () => openOrganisationView('delegations'),
           allowed: canViewOrganisation && explicitCommandPermissions.has('delegations.manage'),
+          pinnable: true,
+          recommendedPriority: 6,
           contextId: 'organisation',
         },
         {
@@ -1661,6 +1681,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <BriefcaseBusiness className="h-5 w-5" />,
           execute: () => selectNavigationItem('hiring'),
           allowed: canViewHiring,
+          pinnable: true,
+          recommendedPriority: 6,
           contextId: 'hiring',
         },
         {
@@ -1676,6 +1698,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setHiringCreateSignal((current) => current + 1);
           },
           allowed: canViewHiring && explicitCommandPermissions.has('hiring.create'),
+          pinnable: true,
+          recommendedPriority: 4,
           contextId: 'hiring',
         },
         {
@@ -1688,6 +1712,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <Box className="h-5 w-5" />,
           execute: () => selectNavigationItem('assets'),
           allowed: canViewAssets,
+          pinnable: true,
+          recommendedPriority: 6,
           contextId: 'assets',
         },
         {
@@ -1703,6 +1729,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setAssetCreateSignal((current) => current + 1);
           },
           allowed: canViewAssets && explicitCommandPermissions.has('assets.manage'),
+          pinnable: true,
+          recommendedPriority: 5,
           contextId: 'assets',
         },
         {
@@ -1715,6 +1743,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <User className="h-5 w-5" />,
           execute: () => revealControl('profile', 'stanza-digital-id-panel'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 4,
           contextId: 'profile',
         },
         {
@@ -1727,6 +1757,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           icon: <Map className="h-5 w-5" />,
           execute: () => revealControl('geofence', 'stanza-attendance-control'),
           allowed: true,
+          pinnable: true,
+          recommendedPriority: 3,
           contextId: 'geofence',
         },
         {

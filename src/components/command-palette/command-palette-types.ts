@@ -25,14 +25,22 @@ export type StanzaCommand = {
   execute: () => void;
   mobileAvailable: boolean;
   dangerous: false;
+  /**
+   * Explicit opt-in for launcher quick actions. Commands remain unpinnable
+   * unless their existing action is safe to open without mutating data.
+   */
+  pinnable: boolean;
+  recommendedPriority?: number;
   contextId?: string;
   sourceNavigationId?: string;
 };
 
 export type StanzaCommandInput = Omit<
   StanzaCommand,
-  'dangerous' | 'mobileAvailable'
+  'dangerous' | 'mobileAvailable' | 'pinnable'
 > & {
   allowed: boolean;
   mobileAvailable?: boolean;
+  pinnable?: boolean;
+  recommendedPriority?: number;
 };

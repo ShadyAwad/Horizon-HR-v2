@@ -14,6 +14,10 @@ import {
 import type { StanzaCommandInput } from '../src/components/command-palette/command-palette-types';
 import type { DashboardNavigationItem } from '../src/components/navigation/DashboardNavigation';
 import { readStanzaPreferences } from '../src/lib/StanzaPreferencesContext';
+import {
+  getRecommendedPinnedQuickActionIds,
+  normalisePinnedQuickActionIds,
+} from '../src/components/command-palette/pinned-quick-actions';
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -23,6 +27,7 @@ const registrySource = read('src/components/command-palette/command-registry.ts'
 const searchSource = read('src/components/command-palette/command-search.ts');
 const navigation = read('src/components/navigation/DashboardNavigation.tsx');
 const preferences = read('src/lib/StanzaPreferencesContext.tsx');
+const reimbursementCommand = dashboard.split("id: 'expenses:reimbursements'")[1]?.split("id: 'organisation:people'")[0] || '';
 
 let executions = 0;
 const navigationItems: DashboardNavigationItem[] = [
@@ -54,6 +59,8 @@ const additionalCommands: StanzaCommandInput[] = [
     icon: null,
     execute: () => { executions += 1; },
     allowed: true,
+    pinnable: true,
+    recommendedPriority: 1,
     contextId: 'roster',
   },
   {
@@ -85,6 +92,14 @@ assert.equal(commands.every((command) => command.dangerous === false), true);
 assert.equal(commands.every((command) => !('permission' in command)), true, 'raw permission evidence is not exposed');
 assert.equal(commands[0].sourceNavigationId, 'roster', 'global module commands retain their stable navigation id');
 assert.equal(commands.find((command) => command.id === 'roster:leave')?.sourceNavigationId, undefined, 'internal workflows are not treated as global module navigation');
+assert.equal(commands.find((command) => command.id === 'roster:leave')?.pinnable, true, 'safe workflow opt-in is retained by the typed registry');
+assert.equal(commands.find((command) => command.id === 'navigation:roster')?.pinnable, false, 'navigation commands stay unpinnable until explicitly approved');
+assert.deepEqual(
+  normalisePinnedQuickActionIds(['roster:leave', 'navigation:roster', 'roster:leave', 'unknown'], commands),
+  ['roster:leave'],
+  'only known, safe pinnable command ids are kept',
+);
+assert.deepEqual(getRecommendedPinnedQuickActionIds(commands), ['roster:leave'], 'recommendations derive from approved registry metadata');
 commands[0].execute();
 assert.equal(executions, 1, 'navigation commands reuse the original navigation action');
 
@@ -161,6 +176,7 @@ const checks: Array<[string, boolean]> = [
   ['Open Clock In reveals but does not invoke attendance', /id: 'attendance:open-clock'/.test(dashboard) && /revealControl\('geofence'/.test(dashboard) && !/id: 'attendance:open-clock'[\s\S]{0,700}handleClockAction/.test(dashboard)],
   ['safe workflows open existing signals and deep links', /setLeaveRequestSignal/.test(dashboard) && /setExpenseDeepLink/.test(dashboard) && /setHiringCreateSignal/.test(dashboard) && /setAssetCreateSignal/.test(dashboard)],
   ['unsafe direct command IDs are absent', !/id: '(?:approve|reject|reimburse|logout|delete|revoke|archive|clock-in|clock-out)'/.test(dashboard)],
+  ['pinnable metadata is explicit and limited to safe workflow-opening commands', /pinnable: true/.test(dashboard) && /id: 'attendance:open-clock'[\s\S]{0,800}pinnable: true/.test(dashboard) && !/pinnable: true/.test(reimbursementCommand)],
   ['command metadata does not index private record names', !/candidateName|employeeName|claimId.*keywords|applicantName/.test(registrySource)],
   ['preferences remain in the existing stanza preferences object', /STANZA_PREFERENCES_KEY = 'stanza\.preferences\.v1'/.test(preferences) && /recentCommandIds/.test(preferences)],
   ['Arabic palette copy keeps the Stanza brand, natural mobile guidance, and an explicit all-commands action', /'البحث في Stanza\.\.\.'/.test(dashboard) && /'ابحث أو اضغط على أمر لفتحه\.'/.test(dashboard) && /عرض جميع الأوامر/.test(dashboard) && /'الأخيرة'/.test(dashboard) && /الأكثر استخدامًا/.test(navigation)],
