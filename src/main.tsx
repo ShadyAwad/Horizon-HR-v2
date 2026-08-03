@@ -17,8 +17,25 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    if (!import.meta.env.PROD) {
+      // A production worker can survive a later local Vite session on the same
+      // origin. Remove only Stanza's worker so development never serves cached
+      // production HTML or assets.
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          const scriptUrl = registration.active?.scriptURL
+            ?? registration.waiting?.scriptURL
+            ?? registration.installing?.scriptURL;
+          if (scriptUrl && new URL(scriptUrl).pathname === '/service-worker.js') {
+            void registration.unregister();
+          }
+        }
+      });
+      return;
+    }
+
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
         registration.addEventListener('updatefound', () => {

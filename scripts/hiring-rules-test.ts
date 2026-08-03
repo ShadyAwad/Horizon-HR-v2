@@ -90,6 +90,10 @@ const panelSource = await readFile('src/components/hiring/HiringPanel.tsx', 'utf
 const extractionSource = await readFile('src/components/hiring/CandidateDocumentExtraction.tsx', 'utf8');
 const languageSource = await readFile('src/lib/LanguageContext.tsx', 'utf8');
 assert.equal((panelSource.match(/function ApplicantForm\(/g) || []).length, 1);
+assert.match(panelSource, /data-hiring-review-counter/);
+assert.match(panelSource, /min-h-9/);
+assert.match(panelSource, /tabular-nums/);
+assert.match(panelSource, /aria-label=\{`\$\{stageLabel\(stage\)\}: \$\{count\}`\}/);
 assert.match(panelSource, /createHiringApplicant\(user, form\)/);
 assert.match(panelSource, /canUseCandidateDocumentExtraction\(user\.permissions\)/);
 assert.doesNotMatch(panelSource, /role === 'hr_admin'.{0,120}document_extraction/s);

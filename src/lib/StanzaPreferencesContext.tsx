@@ -11,6 +11,9 @@ import {
   normaliseModuleUsage,
   type ModuleUsage,
 } from '../components/navigation/module-usage';
+import { readTutorialProgress } from '../components/tutorials/tutorial-state';
+import type { TutorialProgress } from '../components/tutorials/tutorial-types';
+import { applyBackgroundPreset, normaliseBackgroundPreset, type BackgroundPresetId } from './background-presets';
 
 export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
 export const MIN_INTERFACE_SCALE = 0.85;
@@ -35,6 +38,11 @@ export type StanzaPreferences = {
   moduleUsage: ModuleUsage;
   rosterPresentationMode: RosterPresentationMode;
   desktopNavigationMode: DesktopNavigationMode;
+  backgroundPreset: BackgroundPresetId;
+  tutorialsEnabled: boolean;
+  tutorialsAutoStart: boolean;
+  completedTutorials: Record<string, number>;
+  dismissedTutorials: Record<string, number>;
 };
 
 const DEFAULT_PREFERENCES: StanzaPreferences = {
@@ -49,6 +57,11 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   moduleUsage: {},
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
+  backgroundPreset: 'default',
+  tutorialsEnabled: true,
+  tutorialsAutoStart: true,
+  completedTutorials: {},
+  dismissedTutorials: {},
 };
 
 export function clampLightIntensity(value: unknown): LightIntensity {
@@ -83,6 +96,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
     if (!stored) return DEFAULT_PREFERENCES;
 
     const parsed = JSON.parse(stored) as Partial<StanzaPreferences>;
+    const tutorials = readTutorialProgress(parsed);
     return {
       lanyardEnabled: typeof parsed.lanyardEnabled === 'boolean'
         ? parsed.lanyardEnabled
@@ -111,6 +125,8 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
       desktopNavigationMode: parsed.desktopNavigationMode === 'rail'
         ? 'rail'
         : 'launcher',
+      backgroundPreset: normaliseBackgroundPreset(parsed.backgroundPreset),
+      ...tutorials,
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -148,6 +164,8 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   resetModuleUsage: () => void;
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
+  setBackgroundPreset: (preset: BackgroundPresetId) => void;
+  updateTutorialProgress: (next: Partial<TutorialProgress>) => void;
 };
 
 const StanzaPreferencesContext = createContext<StanzaPreferencesContextValue | null>(null);
@@ -157,7 +175,8 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     applyInterfaceScale(preferences.interfaceScale);
-    applyLightIntensity(preferences.lightIntensity);
+  applyLightIntensity(preferences.lightIntensity);
+  applyBackgroundPreset(preferences.backgroundPreset);
     try {
       window.localStorage.setItem(STANZA_PREFERENCES_KEY, JSON.stringify(preferences));
     } catch {
@@ -171,6 +190,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       const nextPreferences = readStanzaPreferences(event.newValue);
       applyInterfaceScale(nextPreferences.interfaceScale);
       applyLightIntensity(nextPreferences.lightIntensity);
+      applyBackgroundPreset(nextPreferences.backgroundPreset);
       setPreferences(nextPreferences);
     };
 
@@ -237,6 +257,15 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setDesktopNavigationMode = useCallback((desktopNavigationMode: DesktopNavigationMode) => {
     setPreferences((current) => ({ ...current, desktopNavigationMode }));
   }, []);
+  const setBackgroundPreset = useCallback((backgroundPreset: BackgroundPresetId) => {
+    setPreferences((current) => ({ ...current, backgroundPreset: normaliseBackgroundPreset(backgroundPreset) }));
+  }, []);
+  const updateTutorialProgress = useCallback((next: Partial<TutorialProgress>) => {
+    setPreferences((current) => ({
+      ...current,
+      ...readTutorialProgress({ ...current, ...next }),
+    }));
+  }, []);
 
   const value = useMemo<StanzaPreferencesContextValue>(() => ({
     ...preferences,
@@ -253,7 +282,9 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     resetModuleUsage,
     setRosterPresentationMode,
     setDesktopNavigationMode,
-  }), [preferences, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode]);
+    setBackgroundPreset,
+    updateTutorialProgress,
+  }), [preferences, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

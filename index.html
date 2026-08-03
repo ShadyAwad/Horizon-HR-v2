@@ -62,39 +62,7 @@
         color: #143025;
       }
     </style>
-      <script>
-      try {
-        const theme = localStorage.getItem('horizon-theme');
-        let storedPreferences = {};
-        try {
-          storedPreferences = JSON.parse(localStorage.getItem('stanza.preferences.v1') || '{}');
-        } catch {
-          storedPreferences = {};
-        }
-        const legacyIntensity = { bright: 15, balanced: 50, deep: 85 };
-        const numericIntensity = typeof storedPreferences.lightIntensity === 'number'
-          ? storedPreferences.lightIntensity
-          : legacyIntensity[storedPreferences.lightIntensity];
-        const safeIntensity = Number.isFinite(numericIntensity)
-          ? Math.min(100, Math.max(0, Math.round(numericIntensity)))
-          : 50;
-        const lightIntensity = Math.round(safeIntensity / 10) * 10;
-        document.documentElement.dataset.lightIntensity = lightIntensity;
-        if (theme === 'light') {
-          document.documentElement.classList.remove('dark');
-          document.documentElement.dataset.theme = 'light';
-          document.documentElement.style.colorScheme = 'light';
-        } else {
-          document.documentElement.classList.add('dark');
-          document.documentElement.dataset.theme = 'dark';
-          document.documentElement.style.colorScheme = 'dark';
-        }
-      } catch {
-        document.documentElement.classList.add('dark');
-        document.documentElement.dataset.theme = 'dark';
-        document.documentElement.style.colorScheme = 'dark';
-      }
-    </script>
+    <script src="/stanza-bootstrap.js"></script>
     <meta
       name="description"
       content="Stanza is a modern workforce operations platform for attendance, geofencing, payroll, leave requests, grievances, and company communication."
@@ -109,7 +77,7 @@
     <link rel="icon" type="image/svg+xml" href="/icons/stanza-favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/stanza-favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/stanza-favicon-16.png" />
-    <link rel="apple-touch-icon" href="/icons/stanza-icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/stanza-apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <meta property="og:title" content="Stanza — Workforce Operations Platform" />

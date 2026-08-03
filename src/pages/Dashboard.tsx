@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
+import { detectPwaInstallPlatform, getPwaInstallMode } from '../lib/pwa-install';
 import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiFetch, apiUrl } from '../lib/api';
@@ -35,6 +36,8 @@ import {
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import type { OrganisationPanelView } from '../components/organisation/OrganisationPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
+import { backgroundPresets } from '../lib/background-presets';
+import { TutorialProvider, type TutorialController } from '../components/tutorials/TutorialProvider';
 import { normaliseModuleUsage, recordModuleUsage } from '../components/navigation/module-usage';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
@@ -942,7 +945,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     readiness: false,
     notifications: false,
     workspace: false,
+    tutorials: false,
   });
+  const [tutorialController, setTutorialController] = useState<TutorialController | null>(null);
   const [showTenantId, setShowTenantId] = useState(false);
   const [tenantIdCopied, setTenantIdCopied] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
@@ -985,10 +990,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setRosterPresentationMode,
     desktopNavigationMode,
     setDesktopNavigationMode,
+    backgroundPreset,
+    setBackgroundPreset,
+    tutorialsEnabled,
+    tutorialsAutoStart,
+    completedTutorials,
+    dismissedTutorials,
+    updateTutorialProgress,
   } = useStanzaPreferences();
-  const rosterDisplayMode = rosterPresentationMode === 'auto'
-    ? (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'fit' : 'detailed')
-    : rosterPresentationMode;
+  const rosterDisplayMode = isMobileNavigationLayout
+    ? (rosterPresentationMode === 'auto' ? 'fit' : rosterPresentationMode)
+    : 'detailed';
 
   useEffect(() => {
     const query = window.matchMedia('(max-width: 767px)');
@@ -1168,9 +1180,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
   }, [interfaceScale, isLanyardIdleReady, isRtl, shouldMountLanyard]);
 
-  const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+  const pwaInstallPlatform = detectPwaInstallPlatform(window.navigator);
+  const pwaInstallMode = getPwaInstallMode({
+    platform: pwaInstallPlatform,
+    hasDeferredPrompt: Boolean(installPrompt),
+    isStandalone,
+  });
   const canPromptInstall = Boolean(installPrompt && !installDismissed && !isStandalone);
-  const shouldShowIosInstallHint = isIos && !isStandalone;
+  const shouldShowInstallGuidance = !isStandalone && !canPromptInstall;
 
   useEffect(() => {
     const updateOnlineState = () => setIsOffline(!navigator.onLine);
@@ -1828,6 +1845,18 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     const commandById = new globalThis.Map(commandPaletteCommands.map((command) => [command.id, command]));
     return quickActionIds.map((commandId) => commandById.get(commandId)).filter(Boolean) as StanzaCommand[];
   }, [commandPaletteCommands, quickActionIds]);
+
+  const tutorialContext = useMemo(() => ({
+    permissions: user.permissions || [],
+    availableModules: navigationItems.map((item) => item.id),
+    isMobile: isMobileNavigationLayout,
+  }), [isMobileNavigationLayout, navigationItems, user.permissions]);
+  const tutorialProgress = useMemo(() => ({
+    tutorialsEnabled,
+    tutorialsAutoStart,
+    completedTutorials,
+    dismissedTutorials,
+  }), [completedTutorials, dismissedTutorials, tutorialsAutoStart, tutorialsEnabled]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
     if (nextRecentCommandIds.join('|') !== recentCommandIds.join('|')) {
@@ -4271,9 +4300,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </button>
       </div>
 
-      {shouldShowIosInstallHint && (
+      {shouldShowInstallGuidance && (
         <p className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-xs text-neutral-600 dark:text-emerald-100/55">
-          {t('dash.iosInstallHint')}
+          {pwaInstallMode === 'ios-manual'
+            ? t('dash.iosInstallHint')
+            : pwaInstallMode === 'firefox-manual'
+              ? t('dash.firefoxInstallHint')
+              : t('dash.browserInstallHint')}
         </p>
       )}
 
@@ -4630,6 +4663,29 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           {isDark ? <Sun className="h-4 w-4 text-emerald-500" /> : <Moon className="h-4 w-4 text-emerald-500" />}
         </button>
 
+        <fieldset className="min-w-0 rounded-lg border border-emerald-500/15 bg-white px-3 py-3 dark:border-emerald-500/20 dark:bg-black/40 sm:col-span-2">
+          <legend className="px-1 text-xs font-bold text-neutral-800 dark:text-emerald-50">{t('background.title')}</legend>
+          <p className="mb-3 text-[11px] leading-4 text-neutral-500 dark:text-emerald-100/50">{t('background.description')}</p>
+          <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label={t('background.title')}>
+            {backgroundPresets.map((preset) => {
+              const selected = backgroundPreset === preset.id;
+              return <button
+                key={preset.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={`${t(preset.labelKey as never)}. ${t(preset.descriptionKey as never)}${selected ? `. ${t('background.selected')}` : ''}`}
+                onClick={() => setBackgroundPreset(preset.id)}
+                className={cn('min-h-20 rounded-lg border p-2 text-start outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-400', selected ? 'border-emerald-500 bg-emerald-500/10' : 'border-emerald-500/15 hover:border-emerald-400/55')}
+              >
+                <span className="mb-2 flex h-7 overflow-hidden rounded border border-black/10" aria-hidden="true"><span className="flex-1" style={{ backgroundColor: preset.lightPreview }} /><span className="flex-1" style={{ backgroundColor: preset.darkPreview }} /></span>
+                <span className="flex items-center justify-between gap-2 text-xs font-bold text-neutral-800 dark:text-emerald-50"><span>{t(preset.labelKey as never)}</span>{selected && <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" aria-label={t('background.selected')} />}</span>
+                <span className="mt-1 block text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/50">{t(preset.descriptionKey as never)}</span>
+              </button>;
+            })}
+          </div>
+        </fieldset>
+
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
           <button
             type="button"
@@ -4698,6 +4754,36 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     );
   };
 
+  const renderTutorialSettings = () => (
+    <div className="space-y-3 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-800 dark:text-emerald-50">{t('tutorial.autoStart')}</p>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/55">{t('tutorial.autoStartDescription')}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={tutorialsAutoStart}
+          onClick={() => tutorialController?.setAutoStart(!tutorialsAutoStart)}
+          className="stanza-preference-control flex min-h-10 items-center gap-2 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300"
+        >
+          {tutorialsAutoStart ? t('dash.on') : t('dash.off')}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {tutorialController?.tutorials.map((tutorial) => (
+          <button key={tutorial.id} type="button" onClick={() => tutorialController.start(tutorial.id)} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300">
+            {t(tutorial.titleKey as never)}
+          </button>
+        ))}
+        <button type="button" onClick={() => tutorialController?.reset()} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-100">
+          {t('tutorial.reset')}
+        </button>
+      </div>
+    </div>
+  );
+
   const launcherLanyard = shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc ? (
     <DashboardLanyardBoundary>
       <Suspense fallback={null}>
@@ -4732,7 +4818,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />
 
   {/* Dark mode base */}
-  <div className="absolute inset-0 hidden dark:block bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_38%),linear-gradient(180deg,#020403_0%,#03100b_52%,#020403_100%)]" />
+  <div className="stanza-dark-atmosphere absolute inset-0 hidden dark:block" />
 
   {/* Light mode topography */}
   <div
@@ -4751,7 +4837,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   {/* Dark mode topography */}
   <div
-    className="absolute inset-0 hidden bg-emerald-400/20 opacity-35 dark:block"
+    className="stanza-dark-topography absolute inset-0 hidden dark:block"
     style={{
       WebkitMaskImage: "url('/topography.svg')",
       maskImage: "url('/topography.svg')",
@@ -4769,8 +4855,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   <div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" />
 
   {/* Dark mode soft glows */}
-  <div className="absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl dark:block" />
-  <div className="absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full bg-emerald-400/5 blur-3xl dark:block" />
+  <div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" />
+  <div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" />
 
   {/* Dark mode vignette only */}
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
@@ -5096,6 +5182,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 t('dash.settings'),
                 isDark ? t('dash.switchLight') : t('dash.switchDark'),
                 renderControlCenterSettings(),
+              )}
+              {renderControlCenterAccordion(
+                'tutorials',
+                t('tutorial.helpTitle'),
+                tutorialsAutoStart ? t('tutorial.autoStart') : t('tutorial.manualOnly'),
+                renderTutorialSettings(),
               )}
               {renderControlCenterAccordion(
                 'passkeys',
@@ -5437,7 +5529,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     <motion.div
                       initial={{opacity:0, y:5}}
                       animate={{opacity:1, y:0}}
-                      className="geo-operations-content relative mx-auto flex min-h-[calc(100dvh-145px)] w-full max-w-[72rem] flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
+                      className="geo-operations-content dashboard-workspace-content relative flex min-h-[calc(100dvh-145px)] w-full max-w-full flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
                     >
                        <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
@@ -5850,7 +5942,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}                
 
                 {activeTab === 'roster' && (
-                  <section className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/80 shadow-xl backdrop-blur-sm dark:bg-[#0a1a17]/55" dir={isRtl ? 'rtl' : 'ltr'}>
+                  <section data-tutorial-target="roster-tabs" className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/80 shadow-xl backdrop-blur-sm dark:bg-[#0a1a17]/55" dir={isRtl ? 'rtl' : 'ltr'}>
                     <div className="flex flex-col gap-3 border-b border-emerald-500/15 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-emerald-50"><Calendar className="h-5 w-5 text-emerald-500" />{t('dash.rosterHub')}</h2>
@@ -5940,7 +6032,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              </div>
                            </div>
                          )}
-                         <div className="mt-3 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Roster presentation">
+                         {isMobileNavigationLayout && <div data-roster-presentation-selector data-tutorial-target="roster-presentation-selector" className="mt-3 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Roster presentation">
                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{lang === 'ar' ? 'عرض الجدول' : 'Schedule view'}</span>
                            {(['fit', 'detailed'] as const).map((mode) => (
                              <button key={mode} type="button" role="radio" aria-checked={rosterDisplayMode === mode} onClick={() => setRosterPresentationMode(mode)} className={cn('min-h-10 rounded-lg border px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterDisplayMode === mode ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'border-emerald-500/15 text-slate-500 dark:text-emerald-100/60')}>
@@ -5948,7 +6040,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              </button>
                            ))}
                            {rosterDisplayMode === 'fit' && <span className="text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'اختر يوماً لتعديل الجدول الكامل.' : 'Select a day to edit the full schedule.'}</span>}
-                         </div>
+                         </div>}
                          {canViewAllRosters && (
                            <label className="mt-3 block max-w-sm">
                              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterEmployee')}</span>
@@ -7323,6 +7415,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </Suspense>
       )}
       {recognition && <RecognitionCelebration recognition={recognition} onClose={() => { setRecognition(null); onRecognitionDisplayed?.(); }} />}
+      <TutorialProvider
+        context={tutorialContext}
+        activeModule={activeTab === 'geofence' ? 'geofence' : activeTab}
+        progress={tutorialProgress}
+        updateProgress={updateTutorialProgress}
+        isBlocked={showControlCenter || showCommandPalette || showMobileShortcutEditor || Boolean(profilePhotoFile)}
+        onReady={setTutorialController}
+      />
     </div>
   );
 }

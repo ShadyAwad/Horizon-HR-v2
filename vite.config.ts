@@ -39,8 +39,11 @@ export default defineConfig(({ mode }) => {
       sourcemap: false,
       rollupOptions: {
         output: {
-          manualChunks: {
-            maplibre: ['maplibre-gl'],
+          onlyExplicitManualChunks: true,
+          manualChunks(id) {
+            if (id.includes('commonjsHelpers')) return 'vendor-interop';
+            if (id.includes('/node_modules/maplibre-gl/')) return 'maplibre';
+            return undefined;
           },
         },
       },

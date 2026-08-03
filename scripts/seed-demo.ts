@@ -204,6 +204,7 @@ async function seedDemo() {
   if (process.env.ALLOW_DEMO_DATA_MUTATION !== 'true') throw new Error('Set ALLOW_DEMO_DATA_MUTATION=true to seed demo data.');
   assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Demo seed', true, true);
   const demoPassword = process.env.DEMO_PASSWORD!.trim();
+  const organisationOnly = process.argv.includes('--organisation');
   const pool = getDbPool();
   const client = await pool.connect();
 
@@ -313,6 +314,18 @@ async function seedDemo() {
       [tenantId, DEMO.latitude, DEMO.longitude, DEMO.radiusMeters],
     );
 
+    const organisationSeed = await seedOrganisationDemoData(client, tenantId, {
+      adminId: admin.id,
+      managerId: manager.id,
+      employeeId: employee.id,
+    });
+
+    if (organisationOnly) {
+      await client.query('COMMIT');
+      console.log(`Organisation demo: ${organisationSeed.departments} departments, ${organisationSeed.teams} teams, ${organisationSeed.jobTitles} job titles, and ${organisationSeed.memberships} active memberships are ready.`);
+      return;
+    }
+
     await client.query(
       `INSERT INTO company_feed_posts (tenant_id, author_employee_id, title, post_type, content_text, content_json, status)
        SELECT $1, $2, 'Welcome to Stanza Demo', 'announcement',
@@ -358,6 +371,7 @@ async function seedDemo() {
 
     await client.query('COMMIT');
     console.log('Stanza demo seed completed.');
+    console.log(`Organisation demo: ${organisationSeed.departments} departments, ${organisationSeed.teams} teams, ${organisationSeed.jobTitles} job titles, and ${organisationSeed.memberships} active memberships are ready.`);
     console.log(`Hiring demo: ${hiringSeed.created} candidate record(s) created; ${hiringSeed.total} staged candidates available.`);
     console.log('Demo accounts seeded. Passwords are intentionally omitted from output.');
   } catch (error) {
@@ -367,6 +381,171 @@ async function seedDemo() {
     client.release();
     await pool.end();
   }
+}
+
+async function seedOrganisationDemoData(
+  client: PoolClient,
+  tenantId: string,
+  users: { adminId: string; managerId: string; employeeId: string },
+) {
+  const location = await client.query<{ id: string }>(
+    `SELECT id FROM company_locations
+     WHERE tenant_id = $1 AND name = 'Headquarters' AND is_active = true
+     LIMIT 1`,
+    [tenantId],
+  );
+  const locationId = location.rows[0]?.id ?? null;
+
+  const jobTitles = await Promise.all([
+    upsertOrganisationJobTitle(client, tenantId, 'HR Administrator', 'Leads people operations and workforce administration.', 5),
+    upsertOrganisationJobTitle(client, tenantId, 'Engineering Manager', 'Leads the Platform Engineering team.', 4),
+    upsertOrganisationJobTitle(client, tenantId, 'Software Engineer', 'Builds dependable workforce platform experiences.', 3),
+    upsertOrganisationJobTitle(client, tenantId, 'Talent Acquisition Partner', 'Supports candidate sourcing and hiring coordination.', 3),
+    upsertOrganisationJobTitle(client, tenantId, 'Finance Operations Specialist', 'Supports expense and payroll operations.', 3),
+  ]);
+  const titles = new Map(jobTitles.map((title) => [title.name, title.id]));
+
+  const people = await upsertOrganisationDepartment(client, tenantId, {
+    name: 'People & Operations',
+    code: 'PEOPLEOPS',
+    description: 'People operations, internal services, and workplace support.',
+    departmentHeadId: users.adminId,
+  });
+  const engineering = await upsertOrganisationDepartment(client, tenantId, {
+    name: 'Product & Engineering',
+    code: 'ENGINEERING',
+    description: 'Product delivery and engineering operations.',
+    departmentHeadId: users.managerId,
+  });
+  const finance = await upsertOrganisationDepartment(client, tenantId, {
+    name: 'Finance & Administration',
+    code: 'FINANCE',
+    description: 'Finance, administration, and reimbursement support.',
+    departmentHeadId: null,
+  });
+
+  const peopleOps = await upsertOrganisationTeam(client, tenantId, {
+    name: 'People Operations',
+    description: 'Employee experience, policies, and internal operations.',
+    departmentId: people.id,
+    teamLeadId: users.adminId,
+    locationId,
+  });
+  await upsertOrganisationTeam(client, tenantId, {
+    name: 'Talent Acquisition',
+    description: 'Candidate pipeline and recruitment coordination.',
+    departmentId: people.id,
+    teamLeadId: users.adminId,
+    locationId,
+  });
+  const platform = await upsertOrganisationTeam(client, tenantId, {
+    name: 'Platform Engineering',
+    description: 'Core product and platform delivery.',
+    departmentId: engineering.id,
+    teamLeadId: users.managerId,
+    locationId,
+  });
+  await upsertOrganisationTeam(client, tenantId, {
+    name: 'Finance Operations',
+    description: 'Expense, payroll, and administrative coordination.',
+    departmentId: finance.id,
+    teamLeadId: null,
+    locationId,
+  });
+
+  await client.query(
+    `UPDATE employees SET
+       department_id = CASE id WHEN $2 THEN $3 WHEN $4 THEN $5 WHEN $6 THEN $5 END,
+       team_id = CASE id WHEN $2 THEN $7 WHEN $4 THEN $8 WHEN $6 THEN $8 END,
+       job_title_id = CASE id WHEN $2 THEN $9 WHEN $4 THEN $10 WHEN $6 THEN $11 END,
+       manager_id = CASE id WHEN $2 THEN NULL WHEN $4 THEN $2 WHEN $6 THEN $4 END,
+       updated_at = NOW()
+     WHERE tenant_id = $1 AND id IN ($2, $4, $6)`,
+    [
+      tenantId,
+      users.adminId, people.id,
+      users.managerId, engineering.id,
+      users.employeeId,
+      peopleOps.id, platform.id,
+      titles.get('HR Administrator'), titles.get('Engineering Manager'), titles.get('Software Engineer'),
+    ],
+  );
+
+  await ensureActiveTeamMembership(client, tenantId, peopleOps.id, users.adminId, 'lead');
+  await ensureActiveTeamMembership(client, tenantId, platform.id, users.managerId, 'lead');
+  await ensureActiveTeamMembership(client, tenantId, platform.id, users.employeeId, 'member');
+
+  return { departments: 3, teams: 4, jobTitles: jobTitles.length, memberships: 3 };
+}
+
+async function upsertOrganisationJobTitle(client: PoolClient, tenantId: string, name: string, description: string, level: number) {
+  const result = await client.query<{ id: string; name: string }>(
+    `INSERT INTO organisation_job_titles (tenant_id, name, description, level, is_active)
+     VALUES ($1, $2, $3, $4, true)
+     ON CONFLICT (tenant_id, name) DO UPDATE SET
+       description = EXCLUDED.description, level = EXCLUDED.level, is_active = true, updated_at = NOW()
+     RETURNING id, name`,
+    [tenantId, name, description, level],
+  );
+  return result.rows[0];
+}
+
+async function upsertOrganisationDepartment(
+  client: PoolClient,
+  tenantId: string,
+  department: { name: string; code: string; description: string; departmentHeadId: string | null },
+) {
+  const result = await client.query<{ id: string }>(
+    `INSERT INTO organisation_departments (tenant_id, name, code, description, department_head_id, parent_department_id, is_active)
+     VALUES ($1, $2, $3, $4, $5, NULL, true)
+     ON CONFLICT (tenant_id, name) DO UPDATE SET
+       code = EXCLUDED.code, description = EXCLUDED.description, department_head_id = EXCLUDED.department_head_id,
+       parent_department_id = NULL, is_active = true, updated_at = NOW()
+     RETURNING id`,
+    [tenantId, department.name, department.code, department.description, department.departmentHeadId],
+  );
+  return result.rows[0];
+}
+
+async function upsertOrganisationTeam(
+  client: PoolClient,
+  tenantId: string,
+  team: { name: string; description: string; departmentId: string; teamLeadId: string | null; locationId: string | null },
+) {
+  const result = await client.query<{ id: string }>(
+    `INSERT INTO organisation_teams (tenant_id, name, description, department_id, team_lead_id, location_id, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, true)
+     ON CONFLICT (tenant_id, name) DO UPDATE SET
+       description = EXCLUDED.description, department_id = EXCLUDED.department_id, team_lead_id = EXCLUDED.team_lead_id,
+       location_id = EXCLUDED.location_id, is_active = true, updated_at = NOW()
+     RETURNING id`,
+    [tenantId, team.name, team.description, team.departmentId, team.teamLeadId, team.locationId],
+  );
+  return result.rows[0];
+}
+
+async function ensureActiveTeamMembership(
+  client: PoolClient,
+  tenantId: string,
+  teamId: string,
+  employeeId: string,
+  membershipType: 'lead' | 'member',
+) {
+  await client.query(
+    `UPDATE organisation_team_memberships
+     SET ends_at = CURRENT_DATE
+     WHERE tenant_id = $1 AND employee_id = $2 AND ends_at IS NULL AND team_id <> $3`,
+    [tenantId, employeeId, teamId],
+  );
+  await client.query(
+    `INSERT INTO organisation_team_memberships (tenant_id, team_id, employee_id, membership_type, starts_at)
+     SELECT $1, $2, $3, $4, CURRENT_DATE
+     WHERE NOT EXISTS (
+       SELECT 1 FROM organisation_team_memberships
+       WHERE tenant_id = $1 AND team_id = $2 AND employee_id = $3 AND ends_at IS NULL
+     )`,
+    [tenantId, teamId, employeeId, membershipType],
+  );
 }
 
 async function seedHiringDemoData(

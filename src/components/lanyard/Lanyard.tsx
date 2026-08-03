@@ -1,6 +1,6 @@
 /* eslint-disable react/no-unknown-property */
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Canvas, extend, useFrame, useThree, type ThreeElement, type ThreeEvent } from '@react-three/fiber';
 import { useGLTF, useTexture } from '@react-three/drei';
 import {
@@ -51,14 +51,15 @@ const CLIP_CONNECTOR_COLLIDER_RADIUS = 0.04;
 // Render-only overlap prevents a subpixel seam where the live rope meets the
 // dynamic clip joint. It does not alter Rapier bodies, joints, or card motion.
 const CONNECTOR_ROPE_OVERLAP = 0.045;
-const IDLE_YAW_AMPLITUDE = THREE.MathUtils.degToRad(7);
-const IDLE_YAW_SPEED = 0.32;
 const IDLE_YAW_SMOOTHING_RATE = 4;
 const SETTLED_SPEED_SQ = 0.0025;
+const SETTLED_STABLE_DURATION_SECONDS = 0.8;
 const CLICK_MOVE_THRESHOLD = 6;
 const CLICK_TIME_THRESHOLD_MS = 350;
 const FLIP_SMOOTHING_RATE = 10;
 const FLIP_SETTLED_EPSILON = 0.01;
+const ACTIVE_FRAME_RATE = 60;
+const PASSIVE_FRAME_RATE = 24;
 const BADGE_GROUP_Y = -1.2;
 const BADGE_MIN_Y = 0.02290511131286621;
 const BADGE_MAX_Y = 1.2293701171875;
@@ -180,6 +181,18 @@ interface LanyardProps {
   onReady?: () => void;
 }
 
+type LanyardFrameTier = 'active' | 'passive' | 'settled';
+
+type LanyardFrameRuntime = {
+  tier: LanyardFrameTier;
+  requestFrame: (tier?: LanyardFrameTier) => void;
+};
+
+const createFrameRuntime = (): LanyardFrameRuntime => ({
+  tier: 'passive',
+  requestFrame: () => undefined,
+});
+
 export default function Lanyard({
   position = [0, 0, 30],
   gravity = [0, -40, 0],
@@ -197,6 +210,7 @@ export default function Lanyard({
   artworkLanguage,
   onReady
 }: LanyardProps) {
+  const frameRuntime = useRef<LanyardFrameRuntime>(createFrameRuntime());
   const cameraConfig = useMemo(
     () => ({ position, fov }),
     [fov, position[0], position[1], position[2]],
@@ -213,12 +227,13 @@ export default function Lanyard({
         aria-label="Interactive employee identification badge"
         camera={cameraConfig}
         dpr={1}
+        frameloop="demand"
         eventSource={eventSource ?? undefined}
         eventPrefix="client"
         gl={glOptions}
         onCreated={({ gl }) => gl.setClearColor(CANVAS_CLEAR_COLOR, transparent ? 0 : 1)}
       >
-        <LanyardCanvasLifecycle paused={paused} />
+        <LanyardCanvasLifecycle frameRuntime={frameRuntime} paused={paused} />
         <ambientLight intensity={2.2} />
         <directionalLight intensity={2.4} position={[-3, 4, 8]} />
         <Physics gravity={gravity} timeStep={1 / 60} interpolate paused={paused}>
@@ -231,8 +246,8 @@ export default function Lanyard({
             anchorNdc={anchorNdc}
             interactionElement={eventSource}
             interactionEnabled={interactionEnabled}
-            idleVisualEnabled={!paused}
             artworkLanguage={artworkLanguage}
+            frameRuntime={frameRuntime}
             onReady={onReady}
           />
         </Physics>
@@ -241,14 +256,20 @@ export default function Lanyard({
   );
 }
 
-function LanyardCanvasLifecycle({ paused }: { paused: boolean }) {
+function LanyardCanvasLifecycle({
+  frameRuntime,
+  paused,
+}: {
+  frameRuntime: MutableRefObject<LanyardFrameRuntime>;
+  paused: boolean;
+}) {
   const { gl, invalidate } = useThree();
   const pausedRef = useRef(paused);
 
   useEffect(() => {
     pausedRef.current = paused;
-    if (!paused) invalidate();
-  }, [invalidate, paused]);
+    frameRuntime.current.requestFrame(paused ? 'settled' : 'passive');
+  }, [frameRuntime, paused]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -263,11 +284,11 @@ function LanyardCanvasLifecycle({ paused }: { paused: boolean }) {
     };
     const handleContextRestored = () => {
       if (import.meta.env.DEV) console.debug('[lanyard] webgl context restored');
-      invalidate();
+      frameRuntime.current.requestFrame('passive');
     };
     const handleVisibilityChange = () => {
       if (import.meta.env.DEV) console.debug('[lanyard] visibility', document.visibilityState);
-      if (document.visibilityState === 'visible') invalidate();
+      if (document.visibilityState === 'visible') frameRuntime.current.requestFrame('passive');
     };
 
     canvas.addEventListener('webglcontextlost', handleContextLost);
@@ -281,7 +302,41 @@ function LanyardCanvasLifecycle({ paused }: { paused: boolean }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (import.meta.env.DEV) console.debug('[lanyard] canvas unmounted');
     };
-  }, [gl, invalidate]);
+  }, [frameRuntime, gl]);
+
+  useEffect(() => {
+    let frameTimer: number | undefined;
+    let disposed = false;
+
+    const clearFrameTimer = () => {
+      if (frameTimer !== undefined) window.clearTimeout(frameTimer);
+      frameTimer = undefined;
+    };
+
+    const requestFrame = (requestedTier = frameRuntime.current.tier) => {
+      frameRuntime.current.tier = requestedTier;
+      clearFrameTimer();
+      if (disposed || pausedRef.current || requestedTier === 'settled' || document.visibilityState !== 'visible') return;
+
+      const frameRate = requestedTier === 'active'
+        ? ACTIVE_FRAME_RATE
+        : PASSIVE_FRAME_RATE;
+      frameTimer = window.setTimeout(() => {
+        frameTimer = undefined;
+        if (disposed || pausedRef.current || document.visibilityState !== 'visible') return;
+        invalidate();
+      }, 1000 / frameRate);
+    };
+
+    frameRuntime.current.requestFrame = requestFrame;
+    if (!paused) requestFrame('passive');
+
+    return () => {
+      disposed = true;
+      clearFrameTimer();
+      frameRuntime.current.requestFrame = () => undefined;
+    };
+  }, [frameRuntime, invalidate, paused]);
 
   return null;
 }
@@ -294,9 +349,9 @@ interface BandProps {
   lanyardWidth?: number;
   anchorNdc?: { x: number; y: number } | null;
   interactionElement?: HTMLElement | null;
-  idleVisualEnabled?: boolean;
   interactionEnabled?: boolean;
   artworkLanguage?: string;
+  frameRuntime: MutableRefObject<LanyardFrameRuntime>;
   onReady?: () => void;
 }
 
@@ -356,9 +411,9 @@ function Band({
   lanyardWidth = LANYARD_WIDTH,
   anchorNdc = null,
   interactionElement = null,
-  idleVisualEnabled = true,
   interactionEnabled = true,
   artworkLanguage,
+  frameRuntime,
   onReady
 }: BandProps) {
   const band = useRef<THREE.Mesh<InstanceType<typeof MeshLineGeometry>, InstanceType<typeof MeshLineMaterial>>>(null!);
@@ -379,7 +434,7 @@ function Band({
   const initializedLogged = useRef(false);
   const ropeInitialized = useRef(false);
   const lastRepeatX = useRef(-2.5);
-  const idleElapsed = useRef(0);
+  const settledElapsed = useRef(0);
   const lastAppliedAnchor = useRef<THREE.Vector3 | null>(null);
   const lastValidAnchorWorld = useRef(new THREE.Vector3(0, 4, 0));
   const onReadyRef = useRef(onReady);
@@ -519,6 +574,7 @@ function Band({
     visibleMaterial.map = cardMap;
     visibleMaterial.needsUpdate = true;
     activeCardMap.current = cardMap;
+    frameRuntime.current.requestFrame('passive');
     invalidate();
 
     if (import.meta.env.DEV) {
@@ -528,7 +584,7 @@ function Band({
     }
 
     if (previousMap !== cardMap && previousMap !== materials.base.map) previousMap.dispose();
-  }, [artworkLanguage, cardMap, faceMaterial, invalidate, materials.base.map]);
+  }, [artworkLanguage, cardMap, faceMaterial, frameRuntime, invalidate, materials.base.map]);
 
   useEffect(() => () => {
     const currentMap = activeCardMap.current;
@@ -556,8 +612,9 @@ function Band({
       .filter((map): map is THREE.Texture => Boolean(map))
       .forEach((map) => configureTexture(map, true));
     configureTexture(texture, false);
+    frameRuntime.current.requestFrame('passive');
     invalidate();
-  }, [backTex, cardMap, frontTex, gl, invalidate, texture]);
+  }, [backTex, cardMap, frameRuntime, frontTex, gl, invalidate, texture]);
   const [curve] = useState(
     () =>
       new THREE.CatmullRomCurve3([
@@ -589,7 +646,8 @@ function Band({
     document.documentElement.classList.remove('stanza-lanyard-dragging');
     interactionElement?.classList.remove('stanza-lanyard-interacting');
     drag(false);
-  }, [interactionElement]);
+    frameRuntime.current.requestFrame('passive');
+  }, [frameRuntime, interactionElement]);
 
   useEffect(() => {
     interactionEnabledRef.current = interactionEnabled;
@@ -642,7 +700,8 @@ function Band({
     if (!lastAppliedAnchor.current) lastAppliedAnchor.current = new THREE.Vector3();
     lastAppliedAnchor.current.copy(anchorWorld);
     [j1, j2, j3, j4, card].forEach(ref => ref.current?.wakeUp());
-  }, [anchorWorld]);
+    frameRuntime.current.requestFrame('passive');
+  }, [anchorWorld, frameRuntime]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -712,6 +771,7 @@ function Band({
       !card.current ||
       !band.current
     ) {
+      frameRuntime.current.requestFrame('passive');
       return;
     }
 
@@ -794,32 +854,49 @@ function Band({
       if (!isFlipActive) interactionPivot.current.rotation.y = flipTargetRef.current;
     }
 
+    const hasLowCardVelocity = (() => {
+      const linearVelocity = card.current.linvel();
+      const angularVelocity = card.current.angvel();
+      const linearSpeedSq =
+        linearVelocity.x * linearVelocity.x +
+        linearVelocity.y * linearVelocity.y +
+        linearVelocity.z * linearVelocity.z;
+      const angularSpeedSq =
+        angularVelocity.x * angularVelocity.x +
+        angularVelocity.y * angularVelocity.y +
+        angularVelocity.z * angularVelocity.z;
+      return linearSpeedSq < SETTLED_SPEED_SQ && angularSpeedSq < SETTLED_SPEED_SQ;
+    })();
+    const isSettlingCandidate =
+      bodiesSleeping && hasLowCardVelocity && !isDraggingRef.current && !isFlipActive;
+    settledElapsed.current = isSettlingCandidate
+      ? settledElapsed.current + safeDelta
+      : 0;
+
+    let idleVisualSettled = true;
     if (idleMotionPivot.current) {
-      let isSettled = card.current.isSleeping();
-      if (!isSettled) {
-        const linearVelocity = card.current.linvel();
-        const angularVelocity = card.current.angvel();
-        const linearSpeedSq =
-          linearVelocity.x * linearVelocity.x +
-          linearVelocity.y * linearVelocity.y +
-          linearVelocity.z * linearVelocity.z;
-        const angularSpeedSq =
-          angularVelocity.x * angularVelocity.x +
-          angularVelocity.y * angularVelocity.y +
-          angularVelocity.z * angularVelocity.z;
-        isSettled = linearSpeedSq < SETTLED_SPEED_SQ && angularSpeedSq < SETTLED_SPEED_SQ;
-      }
-      idleElapsed.current += safeDelta;
-      const targetYaw = idleVisualEnabled && !isDraggingRef.current && !isFlipActive && isSettled
-        ? Math.sin(idleElapsed.current * IDLE_YAW_SPEED) * IDLE_YAW_AMPLITUDE
-        : 0;
+      // Let the existing visual pivot return to rest before retaining the last
+      // canvas frame. No synthetic idle motion runs once physics is asleep.
+      const targetYaw = 0;
       const yawSmoothing = 1 - Math.exp(-IDLE_YAW_SMOOTHING_RATE * safeDelta);
       idleMotionPivot.current.rotation.y = THREE.MathUtils.lerp(
         idleMotionPivot.current.rotation.y,
         targetYaw,
         yawSmoothing
       );
+      idleVisualSettled = Math.abs(idleMotionPivot.current.rotation.y) <= 0.001;
     }
+
+    const sceneSettled = isSettlingCandidate &&
+      settledElapsed.current >= SETTLED_STABLE_DURATION_SECONDS &&
+      idleVisualSettled;
+    const nextFrameTier: LanyardFrameTier =
+      isDraggingRef.current || isFlipActive || !readyReported.current
+        ? 'active'
+        : sceneSettled
+          ? 'settled'
+          : 'passive';
+    frameRuntime.current.requestFrame(nextFrameTier);
 
   });
 
@@ -872,6 +949,7 @@ function Band({
               interactionElement?.classList.add('stanza-lanyard-interacting');
               [card, j1, j2, j3, j4].forEach(ref => ref.current?.wakeUp());
               drag(gesture.dragOffset);
+              frameRuntime.current.requestFrame('active');
             }}
             onPointerUp={(e: ThreeEvent<PointerEvent>) => {
               if (!interactionEnabledRef.current) {
@@ -889,6 +967,7 @@ function Band({
                   elapsed <= CLICK_TIME_THRESHOLD_MS;
                 if (isClick) {
                   flipTargetRef.current = flipTargetRef.current === 0 ? Math.PI : 0;
+                  frameRuntime.current.requestFrame('active');
                 }
               }
               const target = e.target as Element;
@@ -911,6 +990,7 @@ function Band({
                 moved: false,
                 dragOffset: new THREE.Vector3().copy(e.point).sub(vec.copy(card.current.translation()))
               };
+              frameRuntime.current.requestFrame('active');
             }}
           >
             <group ref={idleMotionPivot}>

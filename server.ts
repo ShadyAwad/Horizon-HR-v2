@@ -1,5 +1,6 @@
 import { config as loadDotenv } from 'dotenv';
 import express from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
@@ -2146,6 +2147,11 @@ async function startServer() {
       ? configuredProxyHops
       : 0);
   app.disable('x-powered-by');
+  app.use(compression({
+    threshold: 1024,
+    // compression's content-type guard keeps binary assets such as GLB and PNG
+    // out of the response transform while reducing HTML, JS, CSS, JSON, and SVG.
+  }));
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: isProduction()
@@ -9554,13 +9560,34 @@ app.patch(
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    const assetsPath = path.join(distPath, 'assets');
+    const indexPath = path.join(distPath, 'index.html');
     app.use((req, res, next) => {
-      if (req.path.endsWith('.map')) return res.sendStatus(404);
+      if (req.path.endsWith('.map')) return res.status(404).type('text/plain').send('Not found');
       next();
     });
-    app.use(express.static(distPath));
+    app.use('/assets', express.static(assetsPath, {
+      immutable: true,
+      maxAge: '1y',
+      fallthrough: true,
+    }));
+    app.use('/assets', (_req, res) => {
+      res.status(404).type('text/plain').send('Asset not found');
+    });
+    app.use(express.static(distPath, {
+      etag: true,
+      maxAge: '1h',
+      setHeaders: (res, filePath) => {
+        if (filePath === indexPath) res.setHeader('Cache-Control', 'no-cache');
+      },
+    }));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const acceptsHtml = Boolean(req.accepts('html'));
+      if (!acceptsHtml || path.extname(req.path)) {
+        return res.status(404).type('text/plain').send('Not found');
+      }
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(indexPath);
     });
   }
 

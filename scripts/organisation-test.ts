@@ -20,6 +20,8 @@ const approvalChain = await readFile('src/server/organisation/approval-chain.ts'
 const delegationsPanel = await readFile('src/components/organisation/DelegationsPanel.tsx', 'utf8');
 const hierarchyPanel = await readFile('src/components/organisation/HierarchyPanel.tsx', 'utf8');
 const selectStyles = await readFile('src/index.css', 'utf8');
+const demoSeed = await readFile('scripts/seed-demo.ts', 'utf8');
+const packageJson = await readFile('package.json', 'utf8');
 
 const permissionDefinitions = listPermissionDefinitions();
 assert.ok(getPermissionDefinition('roles.view'));
@@ -35,6 +37,15 @@ for (const permission of permissionDefinitions) {
 }
 assert.equal(getPermissionDefinition('roles.manage')?.protected, true);
 assert.equal(getPermissionDefinition('roles.manage')?.delegatable, false);
+assert.match(demoSeed, /seedOrganisationDemoData/);
+assert.match(demoSeed, /organisationOnly = process\.argv\.includes\('--organisation'\)/);
+assert.match(demoSeed, /STANZA_DEMO_ENV !== 'true'/);
+assert.match(demoSeed, /ALLOW_DEMO_DATA_MUTATION !== 'true'/);
+assert.match(demoSeed, /assertDatabaseMutationSafety\(process\.env\.DATABASE_URL, 'Demo seed', true, true\)/);
+for (const value of ['People & Operations', 'Product & Engineering', 'Finance & Administration', 'People Operations', 'Talent Acquisition', 'Platform Engineering', 'Finance Operations']) {
+  assert.match(demoSeed, new RegExp(value.replace(/[&]/g, '\\&')));
+}
+assert.match(packageJson, /"seed:demo:organisation": "tsx scripts\/seed-demo\.ts --organisation"/);
 
 for (const table of ['organisation_job_titles', 'organisation_departments', 'organisation_teams', 'organisation_team_memberships', 'permission_delegations']) {
   assert.match(migration, new RegExp(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`), `${table} must enable RLS`);

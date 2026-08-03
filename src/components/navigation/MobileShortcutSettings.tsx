@@ -1,5 +1,5 @@
 import { ChevronsDown, ChevronsUp, ChevronDown, ChevronUp, GripVertical, RotateCcw } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { DashboardNavigationItem } from './DashboardNavigation';
 import { moveShortcutPosition, swapShortcutPositions, type ShortcutMove, useLongPressShortcutSwap } from './mobile-shortcut-order';
 import { useLanguage } from '../../lib/LanguageContext';
@@ -37,6 +37,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
     () => selected.map((id) => itemById.get(id)).filter(Boolean) as DashboardNavigationItem[],
     [itemById, selected],
   );
+  const orderListRef = useRef<HTMLOListElement>(null);
 
   const toggle = useCallback((id: string) => {
     if (selectedSet.has(id)) {
@@ -72,6 +73,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
   const drag = useLongPressShortcutSwap({
     attribute: 'data-mobile-shortcut-order-id',
     onSwap: swap,
+    scrollContainerRef: orderListRef,
   });
   const activateMove = (event: React.MouseEvent<HTMLButtonElement>, id: string, destination: ShortcutMove) => {
     event.preventDefault();
@@ -80,7 +82,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-xl border border-emerald-500/15 bg-black/5 p-3 dark:bg-black/20">
+    <section className="flex flex-col rounded-xl border border-emerald-500/15 bg-black/5 p-3 dark:bg-black/20">
       <div>
         <h4 className="text-sm font-black">
           {text('Mobile shortcuts', '\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0627\u0644\u0647\u0627\u062a\u0641')}
@@ -105,7 +107,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
         </p>
       )}
 
-      <div className="mt-3">
+      <div className="order-2 mt-4">
         <h5 className="text-xs font-black text-slate-600 dark:text-emerald-100/70">
           {text('Available shortcuts', '\u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629')}
         </h5>
@@ -136,7 +138,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="order-1 mt-3">
         <div className="flex items-center justify-between gap-3">
           <h5 className="text-xs font-black text-slate-600 dark:text-emerald-100/70">
             {text('Shortcut order', '\u062a\u0631\u062a\u064a\u0628 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')}
@@ -146,21 +148,23 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
           </span>
         </div>
         <ol
+          ref={orderListRef}
           data-mobile-shortcut-order
-          className="stanza-scrollbar mt-2 max-h-56 space-y-2 overflow-y-auto overscroll-contain pe-1"
+          className="stanza-scrollbar mt-2 max-h-[min(30dvh,15rem)] space-y-2 overflow-y-auto overscroll-contain pe-1"
         >
           {selectedItems.map((item, index) => (
             <li
               key={item.id}
               data-mobile-shortcut-order-id={item.id}
-              className={`flex min-h-11 items-center gap-1 rounded-lg border px-1.5 transition-colors ${drag.targetId === item.id && drag.draggedId !== item.id ? 'border-emerald-400 bg-emerald-500/15 ring-2 ring-emerald-400/50' : 'border-emerald-500/10'} ${drag.draggedId === item.id ? 'opacity-55' : ''}`}
+              className={`flex min-h-11 items-center gap-1 rounded-lg border px-1.5 transition-[background-color,border-color,opacity,transform] duration-150 motion-reduce:transition-none ${drag.targetId === item.id && drag.draggedId !== item.id ? 'border-emerald-400 bg-emerald-500/15 ring-2 ring-emerald-400/50' : 'border-emerald-500/10'} ${drag.draggedId === item.id ? 'border-dashed opacity-55' : ''}`}
             >
               <button
                 type="button"
                 {...drag.bind(item.id)}
                 onClick={(event) => { event.preventDefault(); event.stopPropagation(); drag.consumeSuppressedClick(); }}
-                aria-label={text(`Long press to drag ${item.label}`, `\u0627\u0636\u063a\u0637 \u0645\u0637\u0648\u0644\u0627\u064b \u0644\u0633\u062d\u0628 ${item.label}`)}
-                className="grid h-10 w-8 shrink-0 touch-none place-items-center rounded-lg text-slate-400 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/45"
+                aria-label={text(`Reorder ${item.label}`, `\u0625\u0639\u0627\u062f\u0629 \u062a\u0631\u062a\u064a\u0628 ${item.label}`)}
+                aria-pressed={drag.draggedId === item.id}
+                className="grid h-11 w-10 shrink-0 touch-none place-items-center rounded-lg text-slate-400 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/45"
               >
                 <GripVertical className="h-4 w-4" />
               </button>
@@ -210,7 +214,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
         <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="order-3 mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => onChange(recommended.filter((id) => itemById.has(id)))}
@@ -227,6 +231,19 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
           {text('Add all', '\u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0643\u0644')}
         </button>
       </div>
+      {drag.draggedId && drag.previewPoint && (() => {
+        const item = itemById.get(drag.draggedId);
+        if (!item) return null;
+        return <div
+          aria-hidden="true"
+          data-mobile-shortcut-drag-preview
+          className="pointer-events-none fixed z-[60] flex min-h-11 max-w-[min(18rem,calc(100vw-2rem))] items-center gap-2 rounded-lg border border-emerald-300/60 bg-[#082a1e] px-3 text-xs font-bold text-emerald-50 shadow-xl shadow-black/35"
+          style={{ left: drag.previewPoint.x, top: drag.previewPoint.y - (drag.previewPoint.touch ? 48 : 18), transform: 'translate(-50%, -100%)' }}
+        >
+          <GripVertical className="h-4 w-4 shrink-0 text-emerald-200" />
+          <span className="truncate">{item.label}</span>
+        </div>;
+      })()}
     </section>
   );
 }

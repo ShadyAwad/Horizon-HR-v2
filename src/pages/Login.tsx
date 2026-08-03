@@ -527,14 +527,14 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
             )}
           </div>
 
-          <div className="rounded-xl border border-emerald-500/25 bg-[rgba(6,31,23,0.72)] p-1 shadow-[inset_0_1px_0_rgba(221,248,238,0.05)]">
+          <div className="isolate rounded-xl border border-emerald-500/25 bg-[#061f17] p-1 shadow-[inset_0_1px_0_rgba(221,248,238,0.05)]">
             <button
               type="button"
               onClick={() => setShowDemoAccounts((current) => !current)}
               aria-expanded={showDemoAccounts}
               aria-controls="demo-account-panel"
               aria-label={`${t('login.useDemoAccount')}. ${t('login.demoExploreRoles')}`}
-              className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-colors duration-200 hover:bg-[rgba(10,58,42,0.82)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 ${isRtl ? 'text-right' : ''}`}
+              className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-[background-color,transform] duration-150 active:scale-[.99] motion-reduce:transition-none hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 ${isRtl ? 'text-right' : ''}`}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-[inset_0_1px_0_rgba(221,248,238,0.08)]">
                 <UsersRound className="h-4 w-4" aria-hidden="true" />
@@ -551,7 +551,7 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
             <div
               id="demo-account-panel"
               aria-hidden={!showDemoAccounts}
-              className={`grid transition-[grid-template-rows] duration-[220ms] ease-out motion-reduce:transition-none ${showDemoAccounts ? '[grid-template-rows:1fr]' : '[grid-template-rows:0fr]'}`}
+              className={`grid bg-[#061f17] transition-[grid-template-rows,opacity] duration-[180ms] ease-out motion-reduce:transition-none ${showDemoAccounts ? '[grid-template-rows:1fr] opacity-100' : '[grid-template-rows:0fr] opacity-0'}`}
             >
               <div className="min-h-0 overflow-hidden">
                 <div className="space-y-2 px-1 pb-1 pt-3">

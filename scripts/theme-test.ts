@@ -6,13 +6,15 @@ import {
   readStanzaPreferences,
   resolveLightIntensityStop,
 } from '../src/lib/StanzaPreferencesContext';
+import { BACKGROUND_PRESET_IDS, backgroundPresets, normaliseBackgroundPreset } from '../src/lib/background-presets';
 
-const [preferences, css, dashboard, translations, indexHtml, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings] = await Promise.all([
+const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
   readFile('src/index.css', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
   readFile('src/lib/LanguageContext.tsx', 'utf8'),
   readFile('index.html', 'utf8'),
+  readFile('public/stanza-bootstrap.js', 'utf8'),
   readFile('src/components/RichTextEditor.tsx', 'utf8'),
   readFile('src/components/roster/LeaveWorkspace.tsx', 'utf8'),
   readFile('src/components/organisation/OrganisationPanel.tsx', 'utf8'),
@@ -29,14 +31,25 @@ assert.equal(readStanzaPreferences('{"lightIntensity":-4}').lightIntensity, 0);
 assert.equal(readStanzaPreferences('{"lightIntensity":104}').lightIntensity, 100);
 assert.equal(readStanzaPreferences('{"lightIntensity":"midnight"}').lightIntensity, DEFAULT_LIGHT_INTENSITY);
 assert.equal(readStanzaPreferences('{not-json').lightIntensity, DEFAULT_LIGHT_INTENSITY);
+assert.equal(readStanzaPreferences(null).backgroundPreset, 'default');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"midnight","mobileShortcuts":["roster"]}').backgroundPreset, 'midnight');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"unsafe"}').backgroundPreset, 'default');
+assert.equal(normaliseBackgroundPreset('warm_sand'), 'warm_sand');
+assert.equal(normaliseBackgroundPreset('Warm Sand'), 'default');
 assert.equal(resolveLightIntensityStop(16), 20);
 assert.match(preferences, /STANZA_PREFERENCES_KEY = 'stanza\.preferences\.v1'/);
 assert.match(preferences, /applyLightIntensity/);
 assert.match(preferences, /document\.documentElement\.dataset\.lightIntensity/);
 assert.match(preferences, /window\.localStorage\.setItem\(STANZA_PREFERENCES_KEY/);
-assert.match(indexHtml, /stanza\.preferences\.v1/);
+assert.match(indexHtml, /<script src="\/stanza-bootstrap\.js"><\/script>/);
 assert.match(indexHtml, /data-light-intensity/);
-assert.match(indexHtml, /legacyIntensity/);
+assert.match(themeBootstrap, /stanza\.preferences\.v1/);
+assert.match(themeBootstrap, /legacyIntensity/);
+assert.match(themeBootstrap, /dataset\.backgroundPreset/);
+assert.match(themeBootstrap, /backgroundPresets/);
+assert.deepEqual(BACKGROUND_PRESET_IDS, ['default', 'emerald', 'slate', 'midnight', 'graphite', 'warm_sand']);
+assert.equal(new Set(backgroundPresets.map((preset) => preset.id)).size, backgroundPresets.length);
+assert.equal(backgroundPresets.some((preset) => preset.id === 'default'), true);
 
 for (const intensity of LIGHT_INTENSITY_STOPS) {
   assert.match(css, new RegExp(`:root\\[data-theme="light"\\]\\[data-light-intensity="${intensity}"\\]`));
@@ -77,6 +90,10 @@ assert.doesNotMatch(css, /filter:\s*brightness/i);
 assert.doesNotMatch(css, /:root[^\{]*\{[^}]*opacity:/s);
 assert.doesNotMatch(css, /:root\[data-theme="dark"\]\[data-light-intensity/);
 assert.match(css, /\.dark \{/);
+for (const preset of BACKGROUND_PRESET_IDS.filter((preset) => preset !== 'default')) {
+  assert.match(css, new RegExp(`data-background-preset="${preset}"`));
+}
+assert.doesNotMatch(css, /data-background-preset="default"/);
 
 assert.match(dashboard, /useStanzaPreferences\(\)/);
 assert.match(dashboard, /lightIntensity/);
@@ -89,6 +106,19 @@ assert.match(dashboard, /stanza-light-intensity-label/);
 assert.match(dashboard, /stanza-light-intensity-help/);
 assert.match(dashboard, /dash\.lightIntensityBright/);
 assert.match(dashboard, /dash\.appearance/);
+assert.match(dashboard, /backgroundPresets\.map/);
+assert.match(dashboard, /role="radiogroup"/);
+assert.match(dashboard, /role="radio"/);
+assert.match(dashboard, /background\.selected/);
+assert.match(dashboard, /stanza-dark-atmosphere/);
+assert.match(dashboard, /stanza-dark-topography/);
+assert.match(dashboard, /stanza-dark-glow-strong/);
+assert.doesNotMatch(dashboard, /bg-\[radial-gradient\(circle_at_top_left,rgba\(16,185,129/);
+assert.match(css, /\.stanza-dark-atmosphere \{ background: var\(--stanza-dark-atmosphere\); \}/);
+assert.match(css, /\.stanza-dark-topography \{ background-color: var\(--stanza-topography-color\);/);
+assert.match(css, /--stanza-dark-atmosphere:/);
+assert.match(css, /--stanza-topography-color:/);
+assert.match(css, /--stanza-dark-glow-strong:/);
 assert.match(dashboard, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.match(dashboard, /focus-visible:ring-2/);
 assert.match(dashboard, /stanza-dashboard h-screen/);
@@ -109,6 +139,9 @@ for (const key of [
   'dash.lightIntensityBright',
   'dash.lightIntensityBalanced',
   'dash.lightIntensityDeep',
+  'background.title',
+  'background.default',
+  'background.warmSand',
 ]) {
   assert.match(translations, new RegExp(`'${key}':`));
 }

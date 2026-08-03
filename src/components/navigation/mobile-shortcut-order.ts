@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type RefObject,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
@@ -40,12 +41,14 @@ type Gesture = {
   startX: number;
   startY: number;
   targetId: string;
+  pointerType: string;
 };
 
 type LongPressSwapOptions = {
   attribute: `data-${string}`;
   onSwap: (sourceId: string, targetId: string) => void;
   holdMilliseconds?: number;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 const MOVE_TOLERANCE_PX = 9;
@@ -54,9 +57,11 @@ export function useLongPressShortcutSwap({
   attribute,
   onSwap,
   holdMilliseconds = 400,
+  scrollContainerRef,
 }: LongPressSwapOptions) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [targetId, setTargetId] = useState<string | null>(null);
+  const [previewPoint, setPreviewPoint] = useState<{ x: number; y: number; touch: boolean } | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
@@ -84,6 +89,7 @@ export function useLongPressShortcutSwap({
     gestureRef.current = null;
     setDraggedId(null);
     setTargetId(null);
+    setPreviewPoint(null);
     suppressClickRef.current = suppressClick;
     if (!gesture) return;
     releaseCapture(gesture);
@@ -113,6 +119,7 @@ export function useLongPressShortcutSwap({
       startX: event.clientX,
       startY: event.clientY,
       targetId: id,
+      pointerType: event.pointerType,
     };
     holdTimerRef.current = window.setTimeout(() => {
       const gesture = gestureRef.current;
@@ -122,6 +129,7 @@ export function useLongPressShortcutSwap({
       try { gesture.captureTarget.setPointerCapture(gesture.pointerId); } catch { /* optional */ }
       setDraggedId(gesture.sourceId);
       setTargetId(gesture.sourceId);
+      setPreviewPoint({ x: event.clientX, y: event.clientY, touch: gesture.pointerType === 'touch' });
       navigator.vibrate?.(12);
     }, holdMilliseconds);
   }, [holdMilliseconds, reset]);
@@ -136,6 +144,15 @@ export function useLongPressShortcutSwap({
     }
     event.preventDefault();
     event.stopPropagation();
+    setPreviewPoint({ x: event.clientX, y: event.clientY, touch: gesture.pointerType === 'touch' });
+    const scrollContainer = scrollContainerRef?.current;
+    if (scrollContainer) {
+      const rect = scrollContainer.getBoundingClientRect();
+      const edge = 36;
+      const step = 12;
+      if (event.clientY < rect.top + edge) scrollContainer.scrollTop -= step;
+      if (event.clientY > rect.bottom - edge) scrollContainer.scrollTop += step;
+    }
     const candidate = document
       .elementFromPoint(event.clientX, event.clientY)
       ?.closest<HTMLElement>(`[${attribute}]`)
@@ -143,7 +160,7 @@ export function useLongPressShortcutSwap({
     if (!candidate || candidate === gesture.targetId) return;
     gesture.targetId = candidate;
     setTargetId(candidate);
-  }, [attribute, reset]);
+  }, [attribute, reset, scrollContainerRef]);
 
   const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
@@ -175,5 +192,5 @@ export function useLongPressShortcutSwap({
     onLostPointerCapture,
   }), [onLostPointerCapture, onPointerCancel, onPointerDown, onPointerMove, onPointerUp]);
 
-  return { bind, consumeSuppressedClick, draggedId, targetId };
+  return { bind, consumeSuppressedClick, draggedId, targetId, previewPoint };
 }

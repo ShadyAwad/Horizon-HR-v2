@@ -234,10 +234,19 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
   const canEditNote = (note: HiringApplicantDetails['notes'][number]) => note.authorName === user.name || user.role === 'hr_admin';
 
   return (
-    <section className={cn('min-w-0 rounded-xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4', isRtl && 'text-right')}>
+    <section data-tutorial-target="hiring-workspace" className={cn('min-w-0 rounded-xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4', isRtl && 'text-right')}>
       <div className="mb-4 flex flex-col gap-3 border-b border-emerald-500/15 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div><div className="flex items-center gap-2"><BriefcaseBusiness className="h-5 w-5 text-emerald-500" /><h2 className="text-lg font-black text-slate-900 dark:text-emerald-50">{t('hiring.title')}</h2></div><p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('hiring.subtitle')}</p></div>
-        <div className="flex flex-wrap gap-2">{(['new', 'hr_review', 'final_review'] as HiringStage[]).map((stage) => <span key={stage} className="rounded-full border border-emerald-500/15 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-200">{stageLabel(stage)} <span dir="ltr">{applicants.filter((item) => item.stage === stage).length}</span></span>)}{can('hiring.create') && <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400"><FilePlus2 className="h-4 w-4" />{t('hiring.addApplicant')}</button>}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(['new', 'hr_review', 'final_review'] as HiringStage[]).map((stage) => {
+            const count = applicants.filter((item) => item.stage === stage).length;
+            return <span key={stage} data-hiring-review-counter aria-label={`${stageLabel(stage)}: ${count}`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs font-bold text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100">
+              <span className="whitespace-nowrap">{stageLabel(stage)}</span>
+              <span dir="ltr" className="grid h-5 min-w-5 place-items-center rounded-full bg-emerald-500/15 px-1 text-[11px] font-black tabular-nums text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-50">{count}</span>
+            </span>;
+          })}
+          {can('hiring.create') && <button type="button" onClick={openCreate} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400"><FilePlus2 className="h-4 w-4" />{t('hiring.addApplicant')}</button>}
+        </div>
       </div>
 
       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-7">

@@ -822,7 +822,7 @@ export function ExpensesPanel({
   );
 
   return (
-    <section dir={isRtl ? 'rtl' : 'ltr'} className="min-w-0 space-y-5 overflow-x-hidden">
+    <section data-tutorial-target="expenses-workspace" dir={isRtl ? 'rtl' : 'ltr'} className="min-w-0 space-y-5 overflow-x-hidden">
       <header className="flex flex-col gap-4 rounded-2xl border border-emerald-500/15 bg-white/80 p-5 shadow-sm dark:bg-white/[0.035] sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300">

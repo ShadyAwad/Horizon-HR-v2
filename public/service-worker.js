@@ -1,8 +1,8 @@
-const STATIC_CACHE = 'stanza-static-v7';
-const RUNTIME_CACHE = 'stanza-runtime-v7';
+const STATIC_CACHE = 'stanza-static-v8';
+const RUNTIME_CACHE = 'stanza-runtime-v8';
 const STATIC_ASSETS = [
-  '/',
   '/index.html',
+  '/stanza-bootstrap.js',
   '/manifest.webmanifest',
   '/offline.html',
   '/icons/stanza-favicon.svg',
@@ -99,7 +99,7 @@ async function navigationResponse(request) {
   const cache = await caches.open(STATIC_CACHE);
 
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-store' });
 
     if (response.ok) {
       cache.put('/index.html', response.clone());
