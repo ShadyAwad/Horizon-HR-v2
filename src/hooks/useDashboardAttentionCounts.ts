@@ -30,6 +30,17 @@ type AttentionUser = {
 
 const normalizeCount = (value: unknown) => Math.max(0, Math.trunc(Number(value) || 0));
 
+function areCountsEqual(left: DashboardAttentionCounts, right: DashboardAttentionCounts) {
+  return left.grievances === right.grievances
+    && left.resignations === right.resignations
+    && left.leaveRequests === right.leaveRequests
+    && left.breakRequests === right.breakRequests
+    && left.payroll === right.payroll
+    && left.loans === right.loans
+    && left.notifications === right.notifications
+    && left.hiring === right.hiring;
+}
+
 export function useDashboardAttentionCounts(user: AttentionUser, enabled = true) {
   const [counts, setCounts] = useState<DashboardAttentionCounts>(EMPTY_COUNTS);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +67,7 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
         throw new Error(data.error || 'Unable to load dashboard attention counts.');
       }
 
-      setCounts({
+      const nextCounts = {
         grievances: normalizeCount(data.counts?.grievances),
         resignations: normalizeCount(data.counts?.resignations),
         leaveRequests: normalizeCount(data.counts?.leaveRequests),
@@ -65,8 +76,9 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
         loans: normalizeCount(data.counts?.loans),
         notifications: normalizeCount(data.counts?.notifications),
         hiring: normalizeCount(data.counts?.hiring),
-      });
-      setError(null);
+      };
+      setCounts((current) => areCountsEqual(current, nextCounts) ? current : nextCounts);
+      setError((current) => current === null ? current : null);
     } catch (requestError) {
       if ((requestError as Error).name !== 'AbortError') {
         setError(requestError instanceof Error ? requestError.message : 'Unable to load dashboard attention counts.');

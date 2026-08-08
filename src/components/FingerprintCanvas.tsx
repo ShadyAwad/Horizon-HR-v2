@@ -90,7 +90,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     const themeObserver = new MutationObserver(scheduleStaticRedraw);
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+      attributeFilter: ['class', 'data-theme', 'data-background-preset'],
     });
 
     if (prefersReducedMotion) {
@@ -102,7 +102,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#020604' : '#f7fbf8';
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--stanza-auth-background').trim() || '#020604';
       ctx.fillRect(0, 0, width, height);
 
       return () => {
@@ -123,23 +123,27 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       // Clear the canvas buffer cleanly
       ctx.clearRect(0, 0, width, height);
 
+      const rootStyles = getComputedStyle(document.documentElement);
       const isDark = document.documentElement.classList.contains('dark');
+      const authBackground = rootStyles.getPropertyValue('--stanza-auth-background').trim() || (isDark ? '#020604' : '#f7fbf8');
+      const authRingRgb = rootStyles.getPropertyValue('--stanza-auth-ring-rgb').trim() || '16, 185, 129';
+      const authPulseRgb = rootStyles.getPropertyValue('--stanza-auth-pulse-rgb').trim() || '52, 211, 153';
       const cx = width / 2;
       const cy = height / 2;
 
       // Solid background filling to optimize canvas operations
-      ctx.fillStyle = isDark ? '#020604' : '#f7fbf8';
+      ctx.fillStyle = authBackground;
       ctx.fillRect(0, 0, width, height);
 
       const currentPulseState = pulseStateRef.current;
       const ambientBreath = 0.5 + 0.5 * Math.sin(time * 0.0026);
       const glow = ctx.createRadialGradient(cx, cy * 0.78, 0, cx, cy * 0.78, Math.max(width, height) * 0.46);
       glow.addColorStop(0, isDark
-        ? `rgba(16, 185, 129, ${0.075 + ambientBreath * 0.035})`
-        : `rgba(16, 185, 129, ${0.08 + ambientBreath * 0.03})`);
+        ? `rgba(${authRingRgb}, ${0.075 + ambientBreath * 0.035})`
+        : `rgba(${authRingRgb}, ${0.08 + ambientBreath * 0.03})`);
       glow.addColorStop(0.55, isDark
-        ? `rgba(6, 78, 59, ${0.028 + ambientBreath * 0.012})`
-        : `rgba(16, 185, 129, ${0.03 + ambientBreath * 0.01})`);
+        ? `rgba(${authRingRgb}, ${0.028 + ambientBreath * 0.012})`
+        : `rgba(${authRingRgb}, ${0.03 + ambientBreath * 0.01})`);
       glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
@@ -193,9 +197,11 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
         ctx.closePath();
 
         // Theme palette color mappings
-let rVal = 16;
-let gVal = 185;
-let bVal = 129;
+        const [baseRed = 16, baseGreen = 185, baseBlue = 129] = authRingRgb.split(',').map((value) => Number.parseInt(value.trim(), 10));
+        const [pulseRed = 52, pulseGreen = 211, pulseBlue = 153] = authPulseRgb.split(',').map((value) => Number.parseInt(value.trim(), 10));
+let rVal = baseRed;
+let gVal = baseGreen;
+let bVal = baseBlue;
 let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
 
         globalAlpha += ambientBreath * 0.012;
@@ -208,9 +214,9 @@ let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
             globalAlpha = globalAlpha + pulseFactor * 0.42;
 
             if (currentPulseState === 'success') {
-              rVal = Math.floor(rVal + pulseFactor * (52 - rVal));
-              gVal = Math.floor(gVal + pulseFactor * (211 - gVal));
-              bVal = Math.floor(bVal + pulseFactor * (153 - bVal));
+              rVal = Math.floor(rVal + pulseFactor * (pulseRed - rVal));
+              gVal = Math.floor(gVal + pulseFactor * (pulseGreen - gVal));
+              bVal = Math.floor(bVal + pulseFactor * (pulseBlue - bVal));
             } else if (currentPulseState === 'error') {
               rVal = Math.floor(rVal + pulseFactor * (239 - rVal));
               gVal = Math.floor(gVal + pulseFactor * (68 - gVal));

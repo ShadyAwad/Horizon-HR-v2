@@ -7,7 +7,7 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { useLanguage } from '../../lib/LanguageContext';
 import type { StanzaCommand } from '../command-palette/command-palette-types';
 import {
@@ -31,6 +31,8 @@ type Props = {
 export function QuickActionSettings({ commands, selectedIds, onChange, onReset }: Props) {
   const { lang } = useLanguage();
   const [announcement, setAnnouncement] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const pinnableCommands = useMemo(() => getPinnableCommands(commands), [commands]);
   const commandById = useMemo(
@@ -87,7 +89,13 @@ export function QuickActionSettings({ commands, selectedIds, onChange, onReset }
 
   return (
     <section className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full flex-wrap items-start justify-between gap-3 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+      >
         <div className="min-w-0">
           <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{text('Quick Actions', 'الإجراءات السريعة')}</p>
           <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
@@ -97,8 +105,11 @@ export function QuickActionSettings({ commands, selectedIds, onChange, onReset }
         <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
           {text(`${selected.length} pinned`, `${selected.length} مثبّت`)}
         </span>
-      </div>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-emerald-500 transition-transform duration-200 motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
 
+      <div id={contentId} className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${expanded ? 'mt-3 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+      <div className="min-h-0 overflow-hidden">
       {selected.length >= MAX_PINNED_QUICK_ACTIONS && (
         <p role="status" className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-100">
           {text('You can pin up to six quick actions.', 'يمكنك تثبيت ما يصل إلى ستة إجراءات سريعة.')}
@@ -145,6 +156,8 @@ export function QuickActionSettings({ commands, selectedIds, onChange, onReset }
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={onReset} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold text-emerald-700 outline-none hover:border-emerald-400 hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-300"><RotateCcw className="h-3.5 w-3.5" />{text('Reset to recommended', 'إعادة التعيين إلى المقترحة')}</button>
         <button type="button" onClick={() => onChange([])} disabled={selected.length === 0} className="min-h-10 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold text-slate-700 outline-none hover:border-emerald-400 hover:bg-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-35 dark:text-emerald-100/80">{text('Clear pinned actions', 'مسح الإجراءات المثبّتة')}</button>
+      </div>
+      </div>
       </div>
     </section>
   );

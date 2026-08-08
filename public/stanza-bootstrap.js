@@ -17,17 +17,20 @@
       : 50;
     document.documentElement.dataset.lightIntensity = String(Math.round(safeIntensity / 10) * 10);
 
-    const backgroundPresets = ['default', 'emerald', 'slate', 'midnight', 'graphite', 'warm_sand'];
-    document.documentElement.dataset.backgroundPreset = backgroundPresets.includes(storedPreferences.backgroundPreset)
-      ? storedPreferences.backgroundPreset
-      : 'default';
+    const backgroundPresets = ['emerald', 'slate', 'midnight', 'graphite', 'warm_sand', 'amethyst', 'ember'];
+    const savedPreset = storedPreferences.backgroundPreset === 'default'
+      ? 'emerald'
+      : storedPreferences.backgroundPreset;
+    document.documentElement.dataset.backgroundPreset = backgroundPresets.includes(savedPreset)
+      ? savedPreset
+      : 'emerald';
 
     const light = theme === 'light';
     document.documentElement.classList.toggle('dark', !light);
     document.documentElement.dataset.theme = light ? 'light' : 'dark';
     document.documentElement.style.colorScheme = light ? 'light' : 'dark';
   } catch {
-    document.documentElement.dataset.backgroundPreset = 'default';
+    document.documentElement.dataset.backgroundPreset = 'emerald';
     document.documentElement.classList.add('dark');
     document.documentElement.dataset.theme = 'dark';
     document.documentElement.style.colorScheme = 'dark';

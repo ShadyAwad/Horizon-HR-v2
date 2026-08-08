@@ -19,15 +19,15 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const selected = useMemo(() => {
     const valid = shortcuts.filter((id, index) => itemById.has(id) && shortcuts.indexOf(id) === index);
-    if (valid.length >= 4) return valid;
+    if (valid.length) return valid;
 
     const next = [...valid];
     for (const id of recommended) {
-      if (next.length >= 4) break;
+      if (next.length >= 1) break;
       if (itemById.has(id) && !next.includes(id)) next.push(id);
     }
     for (const item of items) {
-      if (next.length >= 4) break;
+      if (next.length >= 1) break;
       if (!next.includes(item.id)) next.push(item.id);
     }
     return next;
@@ -41,7 +41,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
 
   const toggle = useCallback((id: string) => {
     if (selectedSet.has(id)) {
-      if (selected.length <= 4) return;
+      if (selected.length <= 1) return;
       onChange(selected.filter((value) => value !== id));
       return;
     }
@@ -89,8 +89,8 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
         </h4>
         <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55">
           {text(
-            'Choose at least four shortcuts. Stanza and customise remain fixed.',
-            '\u0627\u062e\u062a\u0631 \u0623\u0631\u0628\u0639\u0629 \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644. \u064a\u0628\u0642\u0649 \u0632\u0631 Stanza \u0648\u062e\u064a\u0627\u0631 \u0627\u0644\u062a\u062e\u0635\u064a\u0635 \u062b\u0627\u0628\u062a\u064a\u0646.',
+            'Choose at least one shortcut. Stanza and customise remain fixed.',
+            '\u0627\u062e\u062a\u0631 \u0627\u062e\u062a\u0635\u0627\u0631\u0627\u064b \u0648\u0627\u062d\u062f\u0627\u064b \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644. \u064a\u0628\u0642\u0649 \u0632\u0631 Stanza \u0648\u062e\u064a\u0627\u0631 \u0627\u0644\u062a\u062e\u0635\u064a\u0635 \u062b\u0627\u0628\u062a\u064a\u0646.',
           )}
         </p>
       </div>
@@ -128,7 +128,7 @@ export function MobileShortcutSettings({ items, shortcuts, onChange }: Props) {
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(item.id)}
-                  disabled={checked && selected.length <= 4}
+                  disabled={checked && selected.length <= 1}
                   className="h-5 w-5 shrink-0 accent-emerald-600"
                 />
                 <span className="min-w-0 flex-1 text-xs font-bold">{item.label}</span>

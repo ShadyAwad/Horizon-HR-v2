@@ -6,10 +6,11 @@ import sharp from 'sharp';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const iconDirectory = path.join(root, 'public', 'icons');
 const appIconSource = path.join(iconDirectory, 'stanza-app-icon.svg');
+const standardIconSource = path.join(iconDirectory, 'stanza-standard-icon.svg');
 const faviconSource = path.join(iconDirectory, 'stanza-favicon.svg');
 const outputs = [
-  ['stanza-192.png', 192, appIconSource],
-  ['stanza-512.png', 512, appIconSource],
+  ['stanza-192.png', 192, standardIconSource],
+  ['stanza-512.png', 512, standardIconSource],
   ['stanza-maskable-192.png', 192, appIconSource],
   ['stanza-maskable-512.png', 512, appIconSource],
   ['stanza-apple-touch-icon.png', 180, appIconSource],

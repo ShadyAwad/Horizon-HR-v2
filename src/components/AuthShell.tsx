@@ -13,7 +13,7 @@ export function AuthShell({ children, pulseState, onPulseComplete }: AuthShellPr
   return (
     <section
       data-auth-state={pulseState}
-      className="relative isolate min-h-[100dvh] w-full overflow-x-hidden bg-[#020604] text-emerald-50"
+      className="stanza-auth-shell relative isolate min-h-[100dvh] w-full overflow-x-hidden text-[color:var(--stanza-auth-text)]"
     >
       <div className="fixed inset-0 z-0 pointer-events-none" aria-hidden="true">
         <FingerprintCanvas pulseState={pulseState} onPulseComplete={onPulseComplete} />

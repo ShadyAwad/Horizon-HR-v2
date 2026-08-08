@@ -258,6 +258,19 @@ export function LocationsPanel() {
   const updateMap = useCallback((latitude: string, longitude: string) => {
     setForm((current) => ({ ...current, latitude, longitude }));
   }, []);
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setFormError(tr('Location services are not available in this browser.', 'خدمات الموقع غير متاحة في هذا المتصفح.'));
+      return;
+    }
+    setFormError('');
+    navigator.geolocation.getCurrentPosition(
+      (position) => updateMap(position.coords.latitude.toFixed(6), position.coords.longitude.toFixed(6)),
+      () => setFormError(tr('Unable to get your current location. Enter coordinates manually.', 'تعذر الحصول على موقعك الحالي. أدخل الإحداثيات يدوياً.')),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
+  };
+  const hasCoordinatePreview = Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude));
 
   return (
     <section dir={isRtl ? 'rtl' : 'ltr'} className="min-w-0 space-y-4 text-left dark:text-emerald-50">
@@ -441,8 +454,21 @@ export function LocationsPanel() {
                   <input required min="25" max="5000" type="number" value={form.radius} onChange={(event) => setForm((current) => ({ ...current, radius: event.target.value }))} className={inputClass} />
                 </label>
               </div>
-              {Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude)) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={useCurrentLocation} disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-500/25 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  <MapPin className="h-4 w-4" />
+                  {tr('Use my current location', 'استخدم موقعي الحالي')}
+                </button>
+                <p className="text-xs text-neutral-500 dark:text-emerald-100/55">
+                  {tr('Location permission is requested only after you choose this action.', 'يتم طلب إذن الموقع فقط بعد اختيار هذا الإجراء.')}
+                </p>
+              </div>
+              {hasCoordinatePreview ? (
                 <MapPreview latitude={form.latitude} longitude={form.longitude} radius={form.radius} onChange={updateMap} />
+              ) : (
+                <p data-location-preview-empty className="mt-3 rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-3 text-xs leading-5 text-neutral-600 dark:text-emerald-100/60">
+                  {tr('Enter coordinates or use your current location to preview the geofence.', 'أدخل الإحداثيات أو استخدم موقعك الحالي لمعاينة النطاق الجغرافي.')}
+                </p>
               )}
             </div>
 

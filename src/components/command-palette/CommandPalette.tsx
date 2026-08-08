@@ -257,7 +257,7 @@ export function CommandPalette({
         aria-labelledby={titleId}
         dir={isRtl ? 'rtl' : 'ltr'}
         onKeyDown={trapFocus}
-        className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-emerald-500/25 bg-white shadow-2xl shadow-black/35 dark:bg-[#061411] sm:max-h-[min(82dvh,42rem)]"
+        className="stanza-command-palette flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-emerald-500/25 bg-white shadow-2xl shadow-black/35 dark:bg-[#061411] sm:max-h-[min(82dvh,42rem)]"
       >
         <div className="border-b border-emerald-500/15 p-3 sm:p-4">
           <div className="flex items-center gap-2">

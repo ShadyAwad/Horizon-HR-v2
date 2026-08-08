@@ -1,4 +1,4 @@
-export type PwaInstallPlatform = 'android' | 'ios' | 'chromium' | 'firefox' | 'other';
+export type PwaInstallPlatform = 'android' | 'ios' | 'chromium' | 'edge' | 'firefox' | 'other';
 export type PwaInstallMode = 'installed' | 'direct' | 'ios-manual' | 'firefox-manual' | 'browser-manual';
 
 type NavigatorLike = Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'>;
@@ -11,7 +11,8 @@ export function detectPwaInstallPlatform(navigatorLike: NavigatorLike): PwaInsta
   if (isIos) return 'ios';
   if (/android/i.test(userAgent)) return 'android';
   if (/firefox\//i.test(userAgent)) return 'firefox';
-  if (/(chrome|chromium|edg)\//i.test(userAgent)) return 'chromium';
+  if (/edg\//i.test(userAgent)) return 'edge';
+  if (/(chrome|chromium)\//i.test(userAgent)) return 'chromium';
   return 'other';
 }
 

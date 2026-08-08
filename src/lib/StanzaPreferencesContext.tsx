@@ -57,7 +57,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   moduleUsage: {},
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
-  backgroundPreset: 'default',
+  backgroundPreset: 'emerald',
   tutorialsEnabled: true,
   tutorialsAutoStart: true,
   completedTutorials: {},

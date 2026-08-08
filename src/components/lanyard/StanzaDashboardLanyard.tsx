@@ -32,24 +32,20 @@ class LanyardRuntimeBoundary extends Component<{ children: ReactNode }, { failed
 export default function StanzaDashboardLanyard({
   anchorNdc,
   eventSource,
-  hidden,
   interactionEnabled,
   paused,
   language,
   direction,
   anchorSide,
-  onReady,
   user,
 }: {
   anchorNdc: { x: number; y: number };
   eventSource?: HTMLElement | null;
-  hidden: boolean;
   interactionEnabled: boolean;
   paused: boolean;
   language: StanzaBadgeLanguage;
   direction: 'ltr' | 'rtl';
   anchorSide: 'left' | 'right';
-  onReady?: () => void;
   user: AuthUser;
 }) {
   const [profileImageDataUrl, setProfileImageDataUrl] = useState<string | null>(null);
@@ -89,10 +85,9 @@ export default function StanzaDashboardLanyard({
     <div
       aria-label="Flip employee identification badge"
       role="group"
-      aria-hidden={hidden || !interactionEnabled}
+      aria-hidden={!interactionEnabled}
       data-anchor-side={anchorSide}
-      className="stanza-dashboard-lanyard pointer-events-none absolute inset-0 z-10 h-full w-full overflow-hidden bg-transparent transition-opacity duration-200"
-      style={{ opacity: hidden ? 0 : 1 }}
+      className="stanza-dashboard-lanyard pointer-events-none absolute inset-0 z-10 h-full w-full overflow-hidden bg-transparent"
     >
       <LanyardRuntimeBoundary>
         <Lanyard
@@ -101,13 +96,12 @@ export default function StanzaDashboardLanyard({
           fov={20}
           anchorNdc={anchorNdc}
           eventSource={eventSource}
-          paused={hidden || paused}
+          paused={paused}
           interactionEnabled={interactionEnabled}
           artworkLanguage={language}
           frontImage={stanzaFrontImage}
           backImage={stanzaBackImage}
           imageFit="cover"
-          onReady={onReady}
           transparent
         />
       </LanyardRuntimeBoundary>

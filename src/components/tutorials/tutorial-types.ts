@@ -1,5 +1,6 @@
-export type TutorialModule = 'dashboard' | 'geofence' | 'roster' | 'expenses' | 'hiring' | 'organisation';
+export type TutorialModule = string;
 export type TutorialPlacement = 'top' | 'bottom' | 'start' | 'end' | 'center';
+export type TutorialAdvanceAction = 'click' | 'module-change' | 'tab-change' | 'accordion-open';
 
 export type TutorialContext = {
   permissions: readonly string[];
@@ -14,6 +15,11 @@ export type TutorialStep = {
   titleKey: string;
   bodyKey: string;
   when?: (context: TutorialContext) => boolean;
+  advanceOn?: {
+    type: TutorialAdvanceAction;
+    target?: string;
+    value?: string;
+  };
 };
 
 export type TutorialDefinition = {
@@ -21,6 +27,7 @@ export type TutorialDefinition = {
   version: number;
   module: TutorialModule;
   titleKey: string;
+  descriptionKey: string;
   automatic: boolean;
   replayable: boolean;
   eligible: (context: TutorialContext) => boolean;

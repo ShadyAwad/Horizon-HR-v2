@@ -1,5 +1,4 @@
 import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
   Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText, Settings
@@ -21,6 +20,7 @@ import {
 const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
+import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
 import type { AuthUser } from '../App';
 import { UserAvatar } from '../components/UserAvatar';
 import { AttentionBadge } from '../components/AttentionBadge';
@@ -38,6 +38,8 @@ import type { OrganisationPanelView } from '../components/organisation/Organisat
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { backgroundPresets } from '../lib/background-presets';
 import { TutorialProvider, type TutorialController } from '../components/tutorials/TutorialProvider';
+import type { TutorialDefinition } from '../components/tutorials/tutorial-types';
+import { getTutorialModuleTarget } from '../components/tutorials/tutorial-registry';
 import { normaliseModuleUsage, recordModuleUsage } from '../components/navigation/module-usage';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
 import { MobileShortcutEditor } from '../components/navigation/MobileShortcutEditor';
@@ -933,14 +935,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [isLanyardCapable, setIsLanyardCapable] = useState(false);
   const [isDashboardVisible, setIsDashboardVisible] = useState(() => document.visibilityState === 'visible');
   const [isLanyardIdleReady, setIsLanyardIdleReady] = useState(false);
-  const [isLanyardSceneReady, setIsLanyardSceneReady] = useState(false);
   const [lanyardAnchorNdc, setLanyardAnchorNdc] = useState<LanyardAnchorNdc | null>(null);
   const lanyardMountGeneration = useRef(0);
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [controlCenterSections, setControlCenterSections] = useState({
-    personalization: true,
-    settings: true,
+    personalization: false,
+    settings: false,
     passkeys: false,
     readiness: false,
     notifications: false,
@@ -1018,7 +1019,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const desktopInputQuery = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+    const desktopInputQuery = window.matchMedia('(min-width: 1024px)');
     const connection = (navigator as Navigator & { connection?: DashboardNetworkInformation }).connection;
     const updateVisibility = () => setIsDashboardVisible(document.visibilityState === 'visible');
     const updateCapability = () => {
@@ -1027,16 +1028,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         return;
       }
 
-      const effectiveType = connection?.effectiveType?.toLowerCase();
       const canvas = document.createElement('canvas');
       const hasWebGl = Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
       setIsLanyardCapable(
         desktopInputQuery.matches &&
         hasWebGl &&
         !reducedMotionQuery.matches &&
-        connection?.saveData !== true &&
-        effectiveType !== 'slow-2g' &&
-        effectiveType !== '2g',
+        connection?.saveData !== true,
       );
     };
     updateVisibility();
@@ -1061,7 +1059,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     const generation = ++lanyardMountGeneration.current;
     if (!shouldMountLanyard) {
       setIsLanyardIdleReady(false);
-      setIsLanyardSceneReady(false);
       return;
     }
 
@@ -1857,6 +1854,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     completedTutorials,
     dismissedTutorials,
   }), [completedTutorials, dismissedTutorials, tutorialsAutoStart, tutorialsEnabled]);
+  const prepareTutorial = useCallback((tutorial: TutorialDefinition) => {
+    if (tutorial.module === 'dashboard') return;
+    if (tutorial.module === 'settings') { setShowControlCenter(true); return; }
+    selectNavigationItem(tutorial.module);
+  }, [selectNavigationItem]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
     if (nextRecentCommandIds.join('|') !== recentCommandIds.join('|')) {
@@ -3640,11 +3642,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   }, [showControlCenter]);
 
   useEffect(() => {
-    if (showControlCenter && hasAuthenticatedDashboardUser) {
-      loadNotificationSettings(false);
-      loadPasskeys(false);
-    }
-  }, [showControlCenter, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
+    if (!showControlCenter || !hasAuthenticatedDashboardUser) return;
+    if (controlCenterSections.notifications) loadNotificationSettings(false);
+    if (controlCenterSections.passkeys) loadPasskeys(false);
+  }, [showControlCenter, controlCenterSections.notifications, controlCenterSections.passkeys, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
 
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
@@ -3996,7 +3997,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     section: keyof typeof controlCenterSections,
     title: string,
     summary: string,
-    content: ReactNode,
+    renderContent: () => ReactNode,
     badge?: ReactNode,
   ) => {
     const isOpen = controlCenterSections[section];
@@ -4009,7 +4010,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           aria-expanded={isOpen}
           aria-controls={contentId}
           aria-label={`${isOpen ? t('dash.collapse') : t('dash.expand')} ${title}`}
-          onClick={() => setControlCenterSections((current) => ({ ...current, [section]: !current[section] }))}
+          onClick={() => setControlCenterSections((current) => {
+            const nextOpen = !current[section];
+            if (nextOpen) {
+              window.dispatchEvent(new CustomEvent('stanza-tutorial-action', {
+                detail: { type: 'accordion-open', target: `settings-${section}` },
+              }));
+            }
+            return { ...current, [section]: nextOpen };
+          })}
           className={cn(
             "flex w-full items-center justify-between gap-3 px-1 py-3 text-left outline-none transition-colors hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061411] dark:hover:text-emerald-300",
             isRtl && "text-right"
@@ -4032,7 +4041,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           )}
         >
           <div className="overflow-hidden">
-            <div className="pb-3 pt-1">{content}</div>
+            {isOpen && <div className="stanza-accordion-content pb-3 pt-1">{renderContent()}</div>}
           </div>
         </div>
       </section>
@@ -4492,11 +4501,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     return (
       <div className="stanza-preference-surface rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-        <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-          {t('dash.personalization')}
-        </p>
-
-        <div className="mt-3 space-y-3">
+        <div className="space-y-3">
           <section className="stanza-preference-surface min-w-0 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40">
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.navigationStyle')}</p>
@@ -4652,8 +4657,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     return (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-      <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.appearance')}</p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={toggleTheme}
@@ -4755,7 +4759,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   };
 
   const renderTutorialSettings = () => (
-    <div className="space-y-3 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
+    <div data-tutorial-target="settings-help" className="space-y-3 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
+      <div className="rounded-lg border border-emerald-500/15 bg-white/60 p-3 dark:bg-black/25">
+        <p className="text-sm font-bold text-slate-800 dark:text-emerald-50">{t('login.installStanza')}</p>
+        <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-emerald-100/55">{t('login.installDescription')}</p>
+        <div className="mt-2"><PwaInstallPrompt /></div>
+        <div className="mt-3 border-t border-[var(--stanza-border-subtle)] pt-3">
+          <h3 className="text-xs font-bold text-[color:var(--stanza-text-primary)]">{t('login.installHelpTitle')}</h3>
+          <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-emerald-100/55">{t('login.installHelpDetails')}</p>
+          <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-emerald-100/55">{t('login.installTroubleshooting')}</p>
+        </div>
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-bold text-slate-800 dark:text-emerald-50">{t('tutorial.autoStart')}</p>
@@ -4771,11 +4785,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           {tutorialsAutoStart ? t('dash.on') : t('dash.off')}
         </button>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-slate-800 dark:text-emerald-50">{t('tutorial.available')}</p>
         {tutorialController?.tutorials.map((tutorial) => (
-          <button key={tutorial.id} type="button" onClick={() => tutorialController.start(tutorial.id)} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300">
-            {t(tutorial.titleKey as never)}
-          </button>
+          <div key={tutorial.id} className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-white/60 p-3 dark:bg-black/25 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-800 dark:text-emerald-50">{t(tutorial.titleKey as never)}</p>
+              <p className="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-emerald-100/55">{t(tutorial.descriptionKey as never)}</p>
+              {completedTutorials[tutorial.id] === tutorial.version && <p className="mt-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('tutorial.completed')}</p>}
+              {completedTutorials[tutorial.id] && completedTutorials[tutorial.id] !== tutorial.version && <p className="mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-200">{t('tutorial.updated')}</p>}
+            </div>
+            <button type="button" onClick={() => { if (tutorial.module !== 'settings') setShowControlCenter(false); window.setTimeout(() => tutorialController.start(tutorial.id), tutorial.module === 'settings' ? 0 : 220); }} className="stanza-preference-control min-h-10 shrink-0 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300">
+              {completedTutorials[tutorial.id] ? t('tutorial.replay') : t('tutorial.start')}
+            </button>
+          </div>
         ))}
         <button type="button" onClick={() => tutorialController?.reset()} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-100">
           {t('tutorial.reset')}
@@ -4790,13 +4813,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         <StanzaDashboardLanyard
           anchorNdc={lanyardAnchorNdc}
           eventSource={dashboardRootRef.current}
-          hidden={!isLanyardSceneReady}
           interactionEnabled={!showControlCenter && isDashboardVisible}
           paused={!isDashboardVisible}
           language={lang}
           direction={isRtl ? 'rtl' : 'ltr'}
           anchorSide={lanyardAnchorSide}
-          onReady={() => setIsLanyardSceneReady(true)}
           user={user}
         />
       </Suspense>
@@ -5136,16 +5157,17 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       {showControlCenter && (
         <div
-          className="stanza-control-center-backdrop fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px] md:bg-black/20"
+          className="stanza-settings-overlay fixed inset-0 z-40"
           onClick={() => setShowControlCenter(false)}
         >
+          <div className="stanza-modal-backdrop absolute inset-0" aria-hidden="true" />
           <section
             id="stanza-control-center"
             role="dialog"
             aria-modal="true"
             aria-labelledby="stanza-control-center-title"
             className={cn(
-              "fixed inset-x-auto left-[calc(0.75rem+env(safe-area-inset-left))] right-[calc(0.75rem+env(safe-area-inset-right))] bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-h-[88dvh] overflow-y-auto overscroll-contain rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
+              "stanza-control-center-panel stanza-settings-drawer stanza-scrollbar fixed inset-x-auto left-[calc(0.75rem+env(safe-area-inset-left))] right-[calc(0.75rem+env(safe-area-inset-right))] bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 max-h-[88dvh] overflow-y-auto overscroll-contain rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
               "md:bottom-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]",
               isRtl ? "md:right-24 md:left-auto text-right" : "md:left-24 md:right-auto text-left"
             )}
@@ -5175,32 +5197,32 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 'personalization',
                 t('dash.personalization'),
                 `${t('dash.interfaceSize')} ${Math.round(interfaceScale * 100)}% - ${lanyardEnabled ? t('dash.on') : t('dash.off')}`,
-                renderPersonalizationPanel(),
+                () => renderPersonalizationPanel(),
               )}
               {renderControlCenterAccordion(
                 'settings',
                 t('dash.settings'),
                 isDark ? t('dash.switchLight') : t('dash.switchDark'),
-                renderControlCenterSettings(),
+                () => renderControlCenterSettings(),
               )}
               {renderControlCenterAccordion(
                 'tutorials',
                 t('tutorial.helpTitle'),
-                tutorialsAutoStart ? t('tutorial.autoStart') : t('tutorial.manualOnly'),
-                renderTutorialSettings(),
+                t('tutorial.helpSummary'),
+                () => renderTutorialSettings(),
               )}
               {renderControlCenterAccordion(
                 'passkeys',
                 t('dash.passkeys'),
                 t('dash.passkeyDescription'),
-                renderPasskeyPanel(),
+                () => renderPasskeyPanel(),
                 <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"><span dir="ltr">{passkeys.length}</span> {t('dash.registered')}</span>,
               )}
               {renderControlCenterAccordion(
                 'readiness',
                 t('dash.appReadiness'),
                 `${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`,
-                renderPwaReadinessPanel(),
+                () => renderPwaReadinessPanel(),
                 <span className={cn(
                   "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
                   isOffline ? "border-amber-300/30 text-amber-600 dark:text-amber-200" : "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
@@ -5210,14 +5232,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 'notifications',
                 t('dash.notificationSettings'),
                 t('dash.emailPushPreferences'),
-                renderNotificationSettingsPanel(),
+                () => renderNotificationSettingsPanel(),
                 <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('dash.default')}</span>,
               )}
               {renderControlCenterAccordion(
                 'workspace',
                 t('dash.workspaceStatus'),
                 `${companyLocations.length} ${t('dash.locationsConfigured').toLowerCase()}`,
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                () => <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   {renderLocationsCard()}
                   {renderSystemStatusCard()}
                 </div>,
@@ -5239,7 +5261,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
-      <main className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
+      <main data-tutorial-target={getTutorialModuleTarget(showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab)} className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         
         {/* Header Pipeline */}
         <header
@@ -5517,7 +5539,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
                 {activeTab === 'sessionCenter' && canManageSessions && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <SessionCenterPanel />
+                    <div className="stanza-generic-surface rounded-2xl border p-4 shadow-xl">
+                      <SessionCenterPanel />
+                    </div>
                   </Suspense>
                 )}
                 {activeTab === 'assets' && canViewAssets && (
@@ -5526,10 +5550,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   </Suspense>
                 )}
                 {activeTab === 'geofence' && (
-                    <motion.div
-                      initial={{opacity:0, y:5}}
-                      animate={{opacity:1, y:0}}
-                      className="geo-operations-content dashboard-workspace-content relative flex min-h-[calc(100dvh-145px)] w-full max-w-full flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
+                    <div
+                      className="stanza-workspace-enter geo-operations-content dashboard-workspace-content relative flex min-h-[calc(100dvh-145px)] w-full max-w-full flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
                     >
                        <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
@@ -5552,57 +5574,51 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                className={cn(
                                    "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95 md:h-36 md:min-h-36 md:w-36 md:min-w-36",
                                    clockInState === 'idle' && hasActiveShift ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
-                                   clockInState === 'idle' ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 text-slate-950 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
+                                   clockInState === 'idle' ? "stanza-theme-primary" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
                                    clockInState === 'success' || clockInState === 'clocked_out' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'open_shift_conflict' ? "bg-amber-500 text-slate-950 shadow-[0_0_40px_rgba(245,158,11,0.42)]" :
                                    "bg-red-500 text-white shadow-[0_0_40px_rgba(239,68,68,0.6)]"
                                )}
                              >
-                              <AnimatePresence mode="wait" initial={false}>
                                  {clockInState === 'idle' && (
-                                     <motion.div key="idle" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div key="idle" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
                                          <span className="whitespace-nowrap text-[10px] sm:text-xs tracking-widest">{hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')}</span>
-                                     </motion.div>
+                                     </div>
                                  )}
                                  {(clockInState === 'locating' || clockInState === 'verifying') && (
-                                     <motion.div key="loading" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div key="loading" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
                                          <Navigation className="w-8 h-8 mb-2 animate-spin-slow" />
                                          <span className="whitespace-nowrap font-bold text-[10px] uppercase tracking-widest">{clockInState === 'locating' ? t('dash.locating') : t('dash.verifying')}</span>
-                                     </motion.div>
+                                     </div>
                                  )}
                                  {(clockInState === 'success' || clockInState === 'clocked_out') && (
-                                     <motion.div key="success" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div key="success" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
                                          <CheckCircle2 className="w-10 h-10 mb-1 opacity-90" />
                                          <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.verified')}</span>
-                                     </motion.div>
+                                     </div>
                                  )}
                                  {clockInState === 'open_shift_conflict' && (
-                                     <motion.div key="conflict" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div key="conflict" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
                                          <AlertTriangle className="w-10 h-10 mb-1" />
                                          <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.openShiftConflictLabel')}</span>
-                                     </motion.div>
+                                     </div>
                                  )}
                                  {(clockInState === 'failed' || clockInState === 'outside_geofence') && (
-                                     <motion.div key="failed" initial={{opacity:0, scale:0.92}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.92}} className="absolute inset-0 flex flex-col items-center justify-center">
+                                     <div key="failed" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
                                          <AlertTriangle className="w-10 h-10 mb-1" />
                                          <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{clockInState === 'outside_geofence' ? t('dash.outsideGeofenceLabel') : t('dash.attendanceErrorLabel')}</span>
-                                     </motion.div>
+                                     </div>
                                  )}
-                              </AnimatePresence>
                              </button>
                            </div>
 
                            {/* Dynamic Status Display */}
                            <div className="relative mt-3 h-16 w-full max-w-[320px] overflow-hidden px-1">
-                            <AnimatePresence mode="wait" initial={false}>
                                 {clockMessage ? (
-                                    <motion.div 
+                                    <div
                                         key="msg"
-                                        initial={{opacity: 0, y: 4}} 
-                                        animate={{opacity: 1, y: 0}}
-                                        exit={{opacity: 0, y: -4}}
-                                        className="absolute inset-0 flex items-center justify-center gap-2 text-center"
+                                        className="stanza-status-enter absolute inset-0 flex items-center justify-center gap-2 text-center"
                                     >
                                         <span className={cn(
                                           "flex h-2 w-2 shrink-0 rounded-full",
@@ -5622,18 +5638,16 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                         )}>
                                             {t('dash.sysMsg')} {clockMessage}
                                         </span>
-                                    </motion.div>
+                                    </div>
                                 ) : (
-                                    <motion.div 
+                                    <div
                                         key="idle"
-                                        initial={{opacity: 0, y: 4}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -4}}
-                                        className="absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
+                                        className="stanza-status-enter absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
                                     >
                                         <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 animate-pulse"></span>
                                         <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</span>
-                                    </motion.div>
+                                    </div>
                                 )}
-                            </AnimatePresence>
                            </div>
 
                            <div className="mt-2 flex h-16 w-full max-w-[360px] flex-col items-center justify-start gap-1 overflow-hidden px-1">
@@ -5737,7 +5751,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                  type="button"
                                  onClick={submitBreakRequest}
                                  disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
+                                 className="stanza-theme-primary rounded-lg px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-55"
                                >
                                  {breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}
                                </button>
@@ -5938,7 +5952,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            )}
                          </div>
                        </div>
-                    </motion.div>
+                    </div>
                 )}                
 
                 {activeTab === 'roster' && (
@@ -5992,7 +6006,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 )}
 
                 {activeTab === 'roster' && rosterSubview === 'schedule' && (
-                    <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
+                    <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/40 border border-emerald-500/15 dark:border-emerald-500/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm shadow-xl min-h-[320px]">
                        <div className="border-b border-emerald-500/15 p-4 dark:border-emerald-500/10">
                          <div className="flex flex-wrap items-center justify-end gap-2">
                            <div className="flex flex-wrap items-center gap-2">
@@ -6189,7 +6203,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        )}
                        </>
                        )}
-                    </motion.div>
+                    </div>
                 )}
 
                 {pendingRosterSave && (
@@ -6217,7 +6231,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
                 {activeTab === 'feed' && (
                   <CompanyFeedBoundary onDiscardLocal={feedDraft.clearLocal}>
-                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                   <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
@@ -6448,12 +6462,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                           </div>
                         </div>
                       )}
-                   </motion.div>
+                   </div>
                   </CompanyFeedBoundary>
                 )}
 
                 {(activeTab === 'profile' || activeTab === 'resignations') && (
-                   <motion.div initial={{opacity:0, y:5}} animate={{opacity:1, y:0}} className="bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
+                   <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex items-center gap-3 mb-5">
                           <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />
                           <div>
@@ -7216,9 +7230,11 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </div>
 
                          <div className="md:col-span-2">
-                           <Suspense fallback={<div className="min-h-24 animate-pulse border-t border-emerald-500/15" />}>
-                             <SessionManagementPanel />
-                           </Suspense>
+                          <Suspense fallback={<div className="min-h-24 animate-pulse border-t border-emerald-500/15" />}>
+                             <div className="stanza-generic-surface rounded-xl border p-4">
+                               <SessionManagementPanel />
+                             </div>
+                          </Suspense>
                          </div>
 
                          {canManageRoles && (
@@ -7391,7 +7407,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </div>
                       </div>
                       )}
-                   </motion.div>
+                   </div>
                 )}
 
             </div>
@@ -7421,6 +7437,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         progress={tutorialProgress}
         updateProgress={updateTutorialProgress}
         isBlocked={showControlCenter || showCommandPalette || showMobileShortcutEditor || Boolean(profilePhotoFile)}
+        prepareTutorial={prepareTutorial}
         onReady={setTutorialController}
       />
     </div>

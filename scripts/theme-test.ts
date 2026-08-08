@@ -8,7 +8,7 @@ import {
 } from '../src/lib/StanzaPreferencesContext';
 import { BACKGROUND_PRESET_IDS, backgroundPresets, normaliseBackgroundPreset } from '../src/lib/background-presets';
 
-const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings] = await Promise.all([
+const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings, authShell, fingerprintCanvas] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
   readFile('src/index.css', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
@@ -20,6 +20,8 @@ const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, ric
   readFile('src/components/organisation/OrganisationPanel.tsx', 'utf8'),
   readFile('src/components/locations/LocationsPanel.tsx', 'utf8'),
   readFile('src/components/navigation/QuickActionSettings.tsx', 'utf8'),
+  readFile('src/components/AuthShell.tsx', 'utf8'),
+  readFile('src/components/FingerprintCanvas.tsx', 'utf8'),
 ]);
 
 assert.deepEqual(LIGHT_INTENSITY_STOPS, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
@@ -31,11 +33,12 @@ assert.equal(readStanzaPreferences('{"lightIntensity":-4}').lightIntensity, 0);
 assert.equal(readStanzaPreferences('{"lightIntensity":104}').lightIntensity, 100);
 assert.equal(readStanzaPreferences('{"lightIntensity":"midnight"}').lightIntensity, DEFAULT_LIGHT_INTENSITY);
 assert.equal(readStanzaPreferences('{not-json').lightIntensity, DEFAULT_LIGHT_INTENSITY);
-assert.equal(readStanzaPreferences(null).backgroundPreset, 'default');
+assert.equal(readStanzaPreferences(null).backgroundPreset, 'emerald');
 assert.equal(readStanzaPreferences('{"backgroundPreset":"midnight","mobileShortcuts":["roster"]}').backgroundPreset, 'midnight');
-assert.equal(readStanzaPreferences('{"backgroundPreset":"unsafe"}').backgroundPreset, 'default');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"unsafe"}').backgroundPreset, 'emerald');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"default"}').backgroundPreset, 'emerald');
 assert.equal(normaliseBackgroundPreset('warm_sand'), 'warm_sand');
-assert.equal(normaliseBackgroundPreset('Warm Sand'), 'default');
+assert.equal(normaliseBackgroundPreset('Warm Sand'), 'emerald');
 assert.equal(resolveLightIntensityStop(16), 20);
 assert.match(preferences, /STANZA_PREFERENCES_KEY = 'stanza\.preferences\.v1'/);
 assert.match(preferences, /applyLightIntensity/);
@@ -47,9 +50,9 @@ assert.match(themeBootstrap, /stanza\.preferences\.v1/);
 assert.match(themeBootstrap, /legacyIntensity/);
 assert.match(themeBootstrap, /dataset\.backgroundPreset/);
 assert.match(themeBootstrap, /backgroundPresets/);
-assert.deepEqual(BACKGROUND_PRESET_IDS, ['default', 'emerald', 'slate', 'midnight', 'graphite', 'warm_sand']);
+assert.deepEqual(BACKGROUND_PRESET_IDS, ['emerald', 'slate', 'midnight', 'graphite', 'warm_sand', 'amethyst', 'ember']);
 assert.equal(new Set(backgroundPresets.map((preset) => preset.id)).size, backgroundPresets.length);
-assert.equal(backgroundPresets.some((preset) => preset.id === 'default'), true);
+assert.equal((backgroundPresets as readonly { id: string }[]).some((preset) => preset.id === 'default'), false);
 
 for (const intensity of LIGHT_INTENSITY_STOPS) {
   assert.match(css, new RegExp(`:root\\[data-theme="light"\\]\\[data-light-intensity="${intensity}"\\]`));
@@ -90,7 +93,7 @@ assert.doesNotMatch(css, /filter:\s*brightness/i);
 assert.doesNotMatch(css, /:root[^\{]*\{[^}]*opacity:/s);
 assert.doesNotMatch(css, /:root\[data-theme="dark"\]\[data-light-intensity/);
 assert.match(css, /\.dark \{/);
-for (const preset of BACKGROUND_PRESET_IDS.filter((preset) => preset !== 'default')) {
+for (const preset of BACKGROUND_PRESET_IDS) {
   assert.match(css, new RegExp(`data-background-preset="${preset}"`));
 }
 assert.doesNotMatch(css, /data-background-preset="default"/);
@@ -105,7 +108,7 @@ assert.match(dashboard, /aria-valuetext/);
 assert.match(dashboard, /stanza-light-intensity-label/);
 assert.match(dashboard, /stanza-light-intensity-help/);
 assert.match(dashboard, /dash\.lightIntensityBright/);
-assert.match(dashboard, /dash\.appearance/);
+assert.match(dashboard, /renderControlCenterSettings/);
 assert.match(dashboard, /backgroundPresets\.map/);
 assert.match(dashboard, /role="radiogroup"/);
 assert.match(dashboard, /role="radio"/);
@@ -142,9 +145,36 @@ for (const key of [
   'background.title',
   'background.default',
   'background.warmSand',
+  'background.amethyst',
+  'background.ember',
 ]) {
   assert.match(translations, new RegExp(`'${key}':`));
 }
+for (const token of ['stanza-accent-active', 'stanza-accent-soft', 'stanza-accent-foreground', 'stanza-surface-panel', 'stanza-surface-raised', 'stanza-border-accent', 'stanza-nav-active-bg', 'stanza-control-track']) {
+  assert.match(css, new RegExp(`--${token}:`));
+}
+assert.match(css, /data-background-preset="amethyst"/);
+assert.match(css, /data-background-preset="ember"/);
+assert.match(css, /\.stanza-generic-surface/);
+assert.match(css, /\.stanza-generic-control/);
+assert.match(css, /--stanza-accent: #a95749/);
+assert.doesNotMatch(css, /--stanza-accent: #ef4444/);
+assert.match(css, /\.stanza-auth-shell/);
+assert.match(css, /--stanza-auth-ring-rgb:/);
+assert.match(authShell, /stanza-auth-shell/);
+assert.doesNotMatch(authShell, /bg-\[#020604\]/);
+assert.match(fingerprintCanvas, /data-background-preset/);
+assert.match(fingerprintCanvas, /--stanza-auth-ring-rgb/);
+assert.match(dashboard, /stanza-settings-overlay fixed inset-0 z-40/);
+assert.match(dashboard, /stanza-modal-backdrop absolute inset-0/);
+assert.match(dashboard, /stanza-settings-drawer/);
+assert.doesNotMatch(dashboard, /stanza-settings-overlay fixed inset-0 z-40[^"`]*\bbg-(?:white|black|\[#)/);
+assert.doesNotMatch(dashboard, /stanza-modal-backdrop absolute inset-0[^"`]*\bbg-(?:white|black|\[#)/);
+assert.match(css, /\.stanza-settings-overlay\s*\{\s*background: transparent;/);
+assert.match(css, /\.stanza-modal-backdrop\s*\{\s*background-color: rgb\(0 0 0 \/ 0\.35\)/);
+assert.match(css, /\.stanza-settings-drawer\s*\{\s*background-color: var\(--stanza-surface-panel\) !important;/);
+assert.doesNotMatch(css, /\.stanza-settings-overlay\s*\{[^}]*stanza-surface-panel/s);
+assert.doesNotMatch(css, /transition:\s*all/);
 assert.match(translations, /'dash\.appearance': 'المظهر'/);
 assert.match(translations, /'dash\.lightIntensity': 'درجة سطوع الوضع الفاتح'/);
 assert.match(translations, /'dash\.lightIntensityDeep': 'داكن نسبيًا'/);

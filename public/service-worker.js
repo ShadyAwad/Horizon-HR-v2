@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'stanza-static-v8';
-const RUNTIME_CACHE = 'stanza-runtime-v8';
+const STATIC_CACHE = 'stanza-static-v9';
+const RUNTIME_CACHE = 'stanza-runtime-v9';
 const STATIC_ASSETS = [
   '/index.html',
   '/stanza-bootstrap.js',

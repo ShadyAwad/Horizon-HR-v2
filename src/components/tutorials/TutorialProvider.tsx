@@ -17,12 +17,13 @@ type Props = {
   progress: TutorialProgress;
   updateProgress: (next: Partial<TutorialProgress>) => void;
   isBlocked: boolean;
+  prepareTutorial: (tutorial: TutorialDefinition) => void;
   onReady: (controller: TutorialController) => void;
 };
 
 type ActiveTutorial = { tutorial: TutorialDefinition; steps: readonly TutorialStep[]; index: number; automatic: boolean };
 
-export function TutorialProvider({ context, activeModule, progress, updateProgress, isBlocked, onReady }: Props) {
+export function TutorialProvider({ context, activeModule, progress, updateProgress, isBlocked, prepareTutorial, onReady }: Props) {
   const [active, setActive] = useState<ActiveTutorial | null>(null);
   const automaticStarted = useRef(false);
   const eligible = useMemo(() => getEligibleTutorials(context), [context]);
@@ -30,13 +31,16 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
   const start = useCallback((id: string, automatic = false) => {
     const tutorial = eligible.find((item) => item.id === id);
     if (!tutorial) return;
-    const steps = tutorial.steps.filter((step) => (
-      (!step.when || step.when(context))
-      && (!step.target || document.querySelector(`[data-tutorial-target="${step.target}"]`))
-    ));
-    if (!steps.length) return;
-    setActive({ tutorial, steps, index: 0, automatic });
-  }, [context, eligible]);
+    prepareTutorial(tutorial);
+    window.setTimeout(() => {
+      const steps = tutorial.steps.filter((step) => (
+        (!step.when || step.when(context))
+        && (!step.target || document.querySelector(`[data-tutorial-target="${step.target}"]`))
+      ));
+      if (!steps.length) return;
+      setActive({ tutorial, steps, index: 0, automatic });
+    }, id === 'welcome' ? 180 : 140);
+  }, [context, eligible, prepareTutorial]);
 
   const finish = useCallback((completed: boolean, disableAutomatic = false) => {
     if (!active) return;
@@ -56,6 +60,21 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
   }, [active, finish]);
 
   const back = useCallback(() => setActive((current) => current && current.index > 0 ? { ...current, index: current.index - 1 } : current), []);
+
+  useEffect(() => {
+    if (!active) return;
+    const contract = active.steps[active.index]?.advanceOn;
+    if (!contract) return;
+    const advanceFromSafeAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string; target?: string; value?: string }>).detail;
+      if (!detail || detail.type !== contract.type) return;
+      if (contract.target && detail.target !== contract.target) return;
+      if (contract.value && detail.value !== contract.value) return;
+      next();
+    };
+    window.addEventListener('stanza-tutorial-action', advanceFromSafeAction);
+    return () => window.removeEventListener('stanza-tutorial-action', advanceFromSafeAction);
+  }, [active, next]);
 
   useEffect(() => {
     if (automaticStarted.current || active || isBlocked || !progress.tutorialsEnabled || !progress.tutorialsAutoStart) return;
