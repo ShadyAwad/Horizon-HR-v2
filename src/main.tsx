@@ -6,7 +6,9 @@ import {
   initializeStanzaPreferences,
   StanzaPreferencesProvider,
 } from './lib/StanzaPreferencesContext';
+import { markDevPerformance } from './lib/dev-performance';
 
+markDevPerformance('startup:react-bootstrap-start', undefined, true);
 initializeStanzaPreferences();
 
 createRoot(document.getElementById('root')!).render(
@@ -16,9 +18,11 @@ createRoot(document.getElementById('root')!).render(
     </StanzaPreferencesProvider>
   </StrictMode>,
 );
+markDevPerformance('startup:react-render-queued', undefined, true);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    markDevPerformance('startup:service-worker-initialization', { production: import.meta.env.PROD }, true);
     if (!import.meta.env.PROD) {
       // A production worker can survive a later local Vite session on the same
       // origin. Remove only Stanza's worker so development never serves cached
@@ -32,12 +36,14 @@ if ('serviceWorker' in navigator) {
             void registration.unregister();
           }
         }
+        markDevPerformance('startup:service-worker-complete', { production: false }, true);
       });
       return;
     }
 
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
+        markDevPerformance('startup:service-worker-complete', { production: true }, true);
         registration.addEventListener('updatefound', () => {
           const installingWorker = registration.installing;
           if (!installingWorker) return;

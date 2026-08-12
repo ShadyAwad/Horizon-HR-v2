@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { recordDevInteraction } from './dev-performance';
 
 type Theme = 'light' | 'dark';
 
@@ -32,13 +33,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const value = useMemo<ThemeContextType>(() => {
-    const setTheme = (nextTheme: Theme) => setThemeState(nextTheme);
+    const setTheme = (nextTheme: Theme) => recordDevInteraction('theme-change', () => setThemeState(nextTheme));
 
     return {
       theme,
       isDark: theme === 'dark',
       setTheme,
-      toggleTheme: () => setThemeState((current) => (current === 'dark' ? 'light' : 'dark')),
+      toggleTheme: () => recordDevInteraction('theme-change', () => setThemeState((current) => (current === 'dark' ? 'light' : 'dark'))),
     };
   }, [theme]);
 

@@ -7,8 +7,9 @@ import { AuthShell, type AuthVisualState } from './components/AuthShell';
 import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
 import { apiFetch, apiUrl } from './lib/api';
 import type { RecognitionCelebrationPayload } from './components/performance/RecognitionCelebration';
+import { loadDevMeasured, markDevPerformance } from './lib/dev-performance';
 
-const loadDashboard = () => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard }));
+const loadDashboard = () => loadDevMeasured('startup:dashboard-import', () => import('./pages/Dashboard')).then((module) => ({ default: module.Dashboard }));
 const loadSignup = () => import('./pages/Signup').then((module) => ({ default: module.Signup }));
 const loadResetPassword = () => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword }));
 const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
@@ -103,6 +104,7 @@ export default function App() {
       return () => { cancelled = true; };
     }
 
+    markDevPerformance('startup:auth-session-start', undefined, true);
     void apiFetch(apiUrl('/api/auth/session'))
       .then(async (response) => {
         if (!response.ok) throw new Error('No active session.');
@@ -117,6 +119,7 @@ export default function App() {
         if (!cancelled) window.localStorage.removeItem('horizon-auth-user');
       })
       .finally(() => {
+        markDevPerformance('startup:auth-session-complete', undefined, true);
         if (!cancelled) setSessionChecked(true);
       });
 

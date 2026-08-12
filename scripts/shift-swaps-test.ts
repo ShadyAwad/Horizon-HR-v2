@@ -64,7 +64,7 @@ assert.match(routes, /notification\.shift_swap_applied/);
 assert.match(routes, /status='pending_approval'/);
 assert.match(dashboard, /const \[rosterSubview, setRosterSubview\]/);
 assert.match(dashboard, /role="tablist" aria-label=\{t\('dash\.rosterHub'\)\}/);
-assert.match(dashboard, /\['schedule', 'swaps', 'approvals', 'leave'\]/);
+assert.match(dashboard, /\['schedule', 'swaps', 'approvals', 'leave', 'goals'\]/);
 assert.match(dashboard, /rosterSubview === 'swaps'/);
 assert.match(dashboard, /rosterSubview === 'approvals' && canApproveShiftSwaps/);
 assert.match(dashboard, /rosterSubview === 'leave'/);

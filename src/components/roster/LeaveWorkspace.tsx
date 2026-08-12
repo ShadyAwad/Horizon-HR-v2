@@ -922,8 +922,8 @@ export function LeaveWorkspace({
               setPage(1);
             }}
             className={cn(
-              'min-h-10 shrink-0 rounded-md px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
-              view === value ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-100' : 'text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/55',
+              'stanza-interactive-control min-h-10 shrink-0 rounded-md border border-transparent px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+              view === value ? 'font-extrabold' : 'text-slate-500 dark:text-emerald-100/55',
             )}
           >
             {label}

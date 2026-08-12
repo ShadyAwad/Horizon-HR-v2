@@ -11,7 +11,7 @@ export type BackgroundPreset = {
 };
 
 export const backgroundPresets: readonly BackgroundPreset[] = [
-  { id: 'emerald', labelKey: 'background.emerald', descriptionKey: 'background.emeraldDescription', lightPreview: '#e8f5ed', darkPreview: '#082219' },
+  { id: 'emerald', labelKey: 'background.emerald', descriptionKey: 'background.emeraldDescription', lightPreview: '#f4faf6', darkPreview: '#020403' },
   { id: 'slate', labelKey: 'background.slate', descriptionKey: 'background.slateDescription', lightPreview: '#eef3f7', darkPreview: '#101923' },
   { id: 'midnight', labelKey: 'background.midnight', descriptionKey: 'background.midnightDescription', lightPreview: '#eef2f8', darkPreview: '#0a1325' },
   { id: 'graphite', labelKey: 'background.graphite', descriptionKey: 'background.graphiteDescription', lightPreview: '#f2f3f3', darkPreview: '#171a1c' },

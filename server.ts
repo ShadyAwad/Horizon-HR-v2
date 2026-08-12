@@ -54,6 +54,7 @@ import { registerAssetRoutes } from './src/server/assets/asset-routes';
 import { registerPerformanceRoutes } from './src/server/performance/performance-routes';
 import { registerOrganisationRoutes } from './src/server/organisation/organisation-routes';
 import { registerShiftSwapRoutes } from './src/server/roster/shift-swap-routes';
+import { registerRosterGoalRoutes } from './src/server/roster/roster-goal-routes';
 import { registerLocationRoutes } from './src/server/locations/location-routes';
 import { registerLeaveRoutes } from './src/server/leave/leave-routes';
 import { registerDocumentExtractionRoutes } from './src/server/document-extraction/extraction-routes';
@@ -1254,6 +1255,10 @@ async function seedTenantRolesAndPermissions(
         ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
         ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
         ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
+        ('roster.goals.view_self', 'View own roster goals', 'View personal weekly roster goals and tasks.'),
+        ('roster.goals.view_scoped', 'View scoped roster goals', 'View weekly roster goals for employees in an authorised scope.'),
+        ('roster.goals.manage', 'Manage roster goals', 'Assign and manage weekly roster goals within an authorised scope.'),
+        ('roster.goals.complete_self', 'Complete own roster goals', 'Update progress and complete personal weekly roster goals.'),
         ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
         ('payroll.view_all', 'View all payroll', 'View tenant payroll records.'),
         ('payroll.run', 'Run payroll', 'Generate tenant payroll.'),
@@ -1315,6 +1320,8 @@ async function seedTenantRolesAndPermissions(
           ('employee', 'resignations.create'),
           ('employee', 'resignations.view_own'),
           ('employee', 'feed.read'),
+          ('employee', 'roster.goals.view_self'),
+          ('employee', 'roster.goals.complete_self'),
           ('manager', 'locations.read'),
           ('manager', 'attendance.view'),
           ('manager', 'break_requests.create'),
@@ -1327,6 +1334,10 @@ async function seedTenantRolesAndPermissions(
           ('manager', 'leave.cancel.self'),
           ('manager', 'roster.view_all'),
           ('manager', 'roster.manage'),
+          ('manager', 'roster.goals.view_self'),
+          ('manager', 'roster.goals.complete_self'),
+          ('manager', 'roster.goals.view_scoped'),
+          ('manager', 'roster.goals.manage'),
           ('manager', 'payroll.view_self'),
           ('manager', 'payroll.export_pdf'),
           ('manager', 'loans.view_self'),
@@ -2224,6 +2235,7 @@ async function startServer() {
     rateLimiter: organisationMutationRateLimiter,
   });
   registerShiftSwapRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
+  registerRosterGoalRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerLocationRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerLeaveRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerDocumentExtractionRoutes(app, {

@@ -4,11 +4,13 @@ const hasModule = (context: TutorialContext, module: string) => context.availabl
 const hasPermission = (context: TutorialContext, permission: string) => context.permissions.includes(permission);
 export const getTutorialModuleTarget = (module: string) => `module-${module.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`)}`;
 
-type ModuleTutorialConfig = Pick<TutorialDefinition, 'id' | 'module' | 'titleKey' | 'descriptionKey'>;
+type ModuleTutorialConfig = Pick<TutorialDefinition, 'id' | 'module' | 'titleKey' | 'descriptionKey'> & { helpArticleId: string };
 
-const moduleTutorial = ({ id, module, titleKey, descriptionKey }: ModuleTutorialConfig): TutorialDefinition => ({
+const moduleTutorial = ({ id, module, titleKey, descriptionKey, helpArticleId }: ModuleTutorialConfig): TutorialDefinition => {
+  const prefix = titleKey.replace(/\.title$/, '');
+  return ({
   id,
-  version: 1,
+  version: 2,
   module,
   titleKey,
   descriptionKey,
@@ -16,11 +18,12 @@ const moduleTutorial = ({ id, module, titleKey, descriptionKey }: ModuleTutorial
   replayable: true,
   eligible: (context) => hasModule(context, module),
   steps: [
-    { id: 'overview', target: getTutorialModuleTarget(module), placement: 'bottom', titleKey: 'tutorial.shared.overview.title', bodyKey: 'tutorial.shared.overview.body' },
-    { id: 'controls', target: getTutorialModuleTarget(module), placement: 'bottom', titleKey: 'tutorial.shared.controls.title', bodyKey: 'tutorial.shared.controls.body' },
-    { id: 'safe-guide', target: getTutorialModuleTarget(module), placement: 'top', titleKey: 'tutorial.shared.safeGuide.title', bodyKey: 'tutorial.shared.safeGuide.body' },
+    { id: 'purpose', target: getTutorialModuleTarget(module), placement: 'bottom', titleKey: 'tutorial.shared.purpose.title', bodyKey: `${prefix}.step.purpose.body` },
+    { id: 'workflow', target: getTutorialModuleTarget(module), placement: 'bottom', titleKey: 'tutorial.shared.workflow.title', bodyKey: `${prefix}.step.workflow.body` },
+    { id: 'boundaries', target: getTutorialModuleTarget(module), placement: 'top', titleKey: 'tutorial.shared.boundaries.title', bodyKey: `${prefix}.step.boundaries.body`, helpAction: { labelKey: 'tutorial.learnMore', action: { type: 'open-article', articleId: helpArticleId } } },
   ],
-});
+  });
+};
 
 export const tutorialRegistry: readonly TutorialDefinition[] = [
   {
@@ -35,7 +38,7 @@ export const tutorialRegistry: readonly TutorialDefinition[] = [
     ],
   },
   {
-    id: 'geo-operations', version: 1, module: 'geofence', titleKey: 'tutorial.geo.title', descriptionKey: 'tutorial.geo.description', automatic: true, replayable: true,
+    id: 'geo-operations', version: 2, module: 'geofence', titleKey: 'tutorial.geo.title', descriptionKey: 'tutorial.geo.description', automatic: true, replayable: true,
     eligible: (context) => hasModule(context, 'geofence'),
     steps: [
       { id: 'perimeter', target: 'geo-clock', placement: 'bottom', titleKey: 'tutorial.geo.step.perimeter.title', bodyKey: 'tutorial.geo.step.perimeter.body' },
@@ -44,18 +47,22 @@ export const tutorialRegistry: readonly TutorialDefinition[] = [
       { id: 'breaks', target: 'geo-breaks', placement: 'top', titleKey: 'tutorial.geo.step.breaks.title', bodyKey: 'tutorial.geo.step.breaks.body' },
       { id: 'break-status', target: 'geo-breaks', placement: 'top', titleKey: 'tutorial.geo.step.breakStatus.title', bodyKey: 'tutorial.geo.step.breakStatus.body' },
       { id: 'approvals', target: 'geo-break-approvals', placement: 'top', titleKey: 'tutorial.geo.step.approvals.title', bodyKey: 'tutorial.geo.step.approvals.body', when: (context) => hasPermission(context, 'break_requests.review') },
+      { id: 'locations', target: 'geo-clock', placement: 'top', titleKey: 'tutorial.geo.step.locations.title', bodyKey: 'tutorial.geo.step.locations.body', helpAction: { labelKey: 'tutorial.learnMore', action: { type: 'open-article', articleId: 'geo-operations' } } },
     ],
   },
   {
-    id: 'roster', version: 1, module: 'roster', titleKey: 'tutorial.roster.title', descriptionKey: 'tutorial.roster.description', automatic: true, replayable: true,
+    id: 'roster', version: 2, module: 'roster', titleKey: 'tutorial.roster.title', descriptionKey: 'tutorial.roster.description', automatic: true, replayable: true,
     eligible: (context) => hasModule(context, 'roster'),
     steps: [
       { id: 'week-navigation', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.weekNavigation.title', bodyKey: 'tutorial.roster.step.weekNavigation.body' },
       { id: 'tabs', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.tabs.title', bodyKey: 'tutorial.roster.step.tabs.body' },
       { id: 'employee', target: 'roster-employee-selector', placement: 'bottom', titleKey: 'tutorial.roster.step.employee.title', bodyKey: 'tutorial.roster.step.employee.body', when: (context) => hasPermission(context, 'roster.manage_scoped') || hasPermission(context, 'roster.manage') },
       { id: 'swaps', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.swaps.title', bodyKey: 'tutorial.roster.step.swaps.body' },
-      { id: 'approvals', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.approvals.title', bodyKey: 'tutorial.roster.step.approvals.body', when: (context) => hasPermission(context, 'shift_swaps.approve') || hasPermission(context, 'roster.manage') },
+      { id: 'approvals', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.approvals.title', bodyKey: 'tutorial.roster.step.approvals.body', when: (context) => hasPermission(context, 'roster.swap.approve') || hasPermission(context, 'roster.swap.manage') },
       { id: 'leave', target: 'roster-tabs', placement: 'bottom', titleKey: 'tutorial.roster.step.leave.title', bodyKey: 'tutorial.roster.step.leave.body' },
+      { id: 'goals', target: 'roster-goals', placement: 'top', titleKey: 'tutorial.roster.step.goals.title', bodyKey: 'tutorial.roster.step.goals.body' },
+      { id: 'assign-goals', target: 'roster-goals', placement: 'top', titleKey: 'tutorial.roster.step.assignGoals.title', bodyKey: 'tutorial.roster.step.assignGoals.body', when: (context) => hasPermission(context, 'roster.goals.manage') },
+      { id: 'complete-goals', target: 'roster-goals', placement: 'top', titleKey: 'tutorial.roster.step.completeGoals.title', bodyKey: 'tutorial.roster.step.completeGoals.body', helpAction: { labelKey: 'tutorial.learnMore', action: { type: 'open-article', articleId: 'weekly-roster' } } },
       { id: 'mobile-view', target: 'roster-presentation-selector', placement: 'top', titleKey: 'tutorial.roster.step.mobileView.title', bodyKey: 'tutorial.roster.step.mobileView.body', when: (context) => context.isMobile },
     ],
   },
@@ -94,24 +101,30 @@ export const tutorialRegistry: readonly TutorialDefinition[] = [
       { id: 'delegations', target: 'organisation-workspace', placement: 'bottom', titleKey: 'tutorial.organisation.step.delegations.title', bodyKey: 'tutorial.organisation.step.delegations.body', when: (context) => hasPermission(context, 'delegations.manage') },
     ],
   },
-  moduleTutorial({ id: 'locations', module: 'locations', titleKey: 'tutorial.locations.title', descriptionKey: 'tutorial.locations.description' }),
-  moduleTutorial({ id: 'employees', module: 'liveEmployees', titleKey: 'tutorial.employees.title', descriptionKey: 'tutorial.employees.description' }),
-  moduleTutorial({ id: 'company-feed', module: 'feed', titleKey: 'tutorial.feed.title', descriptionKey: 'tutorial.feed.description' }),
-  moduleTutorial({ id: 'payroll', module: 'payroll', titleKey: 'tutorial.payroll.title', descriptionKey: 'tutorial.payroll.description' }),
-  moduleTutorial({ id: 'grievances', module: 'grievances', titleKey: 'tutorial.grievances.title', descriptionKey: 'tutorial.grievances.description' }),
-  moduleTutorial({ id: 'resignations', module: 'resignations', titleKey: 'tutorial.resignations.title', descriptionKey: 'tutorial.resignations.description' }),
-  moduleTutorial({ id: 'assets', module: 'assets', titleKey: 'tutorial.assets.title', descriptionKey: 'tutorial.assets.description' }),
-  moduleTutorial({ id: 'performance', module: 'performance', titleKey: 'tutorial.performance.title', descriptionKey: 'tutorial.performance.description' }),
-  moduleTutorial({ id: 'audit-trail', module: 'audit', titleKey: 'tutorial.audit.title', descriptionKey: 'tutorial.audit.description' }),
-  moduleTutorial({ id: 'session-center', module: 'sessionCenter', titleKey: 'tutorial.sessions.title', descriptionKey: 'tutorial.sessions.description' }),
-  moduleTutorial({ id: 'profile', module: 'profile', titleKey: 'tutorial.profile.title', descriptionKey: 'tutorial.profile.description' }),
+  moduleTutorial({ id: 'locations', module: 'locations', titleKey: 'tutorial.locations.title', descriptionKey: 'tutorial.locations.description', helpArticleId: 'locations' }),
+  moduleTutorial({ id: 'employees', module: 'liveEmployees', titleKey: 'tutorial.employees.title', descriptionKey: 'tutorial.employees.description', helpArticleId: 'employees' }),
+  moduleTutorial({ id: 'company-feed', module: 'feed', titleKey: 'tutorial.feed.title', descriptionKey: 'tutorial.feed.description', helpArticleId: 'company-feed' }),
+  moduleTutorial({ id: 'payroll', module: 'payroll', titleKey: 'tutorial.payroll.title', descriptionKey: 'tutorial.payroll.description', helpArticleId: 'payroll' }),
+  moduleTutorial({ id: 'grievances', module: 'grievances', titleKey: 'tutorial.grievances.title', descriptionKey: 'tutorial.grievances.description', helpArticleId: 'grievances' }),
+  moduleTutorial({ id: 'resignations', module: 'resignations', titleKey: 'tutorial.resignations.title', descriptionKey: 'tutorial.resignations.description', helpArticleId: 'resignations' }),
+  moduleTutorial({ id: 'assets', module: 'assets', titleKey: 'tutorial.assets.title', descriptionKey: 'tutorial.assets.description', helpArticleId: 'assets' }),
+  moduleTutorial({ id: 'performance', module: 'performance', titleKey: 'tutorial.performance.title', descriptionKey: 'tutorial.performance.description', helpArticleId: 'performance' }),
+  moduleTutorial({ id: 'audit-trail', module: 'audit', titleKey: 'tutorial.audit.title', descriptionKey: 'tutorial.audit.description', helpArticleId: 'audit-trail' }),
+  moduleTutorial({ id: 'session-center', module: 'sessionCenter', titleKey: 'tutorial.sessions.title', descriptionKey: 'tutorial.sessions.description', helpArticleId: 'session-center' }),
+  moduleTutorial({ id: 'profile', module: 'profile', titleKey: 'tutorial.profile.title', descriptionKey: 'tutorial.profile.description', helpArticleId: 'profile' }),
   {
-    ...moduleTutorial({ id: 'settings', module: 'settings', titleKey: 'tutorial.settings.title', descriptionKey: 'tutorial.settings.description' }),
+    ...moduleTutorial({ id: 'settings', module: 'settings', titleKey: 'tutorial.settings.title', descriptionKey: 'tutorial.settings.description', helpArticleId: 'themes-settings' }),
     automatic: false,
     eligible: () => true,
     steps: [
-      { id: 'settings-overview', target: 'settings-help', placement: 'bottom', titleKey: 'tutorial.settings.step.overview.title', bodyKey: 'tutorial.settings.step.overview.body' },
-      { id: 'settings-help', target: 'settings-help', placement: 'top', titleKey: 'tutorial.settings.step.help.title', bodyKey: 'tutorial.settings.step.help.body' },
+      { id: 'settings-overview', target: 'settings-personalization', placement: 'bottom', titleKey: 'tutorial.settings.step.overview.title', bodyKey: 'tutorial.settings.step.overview.body' },
+      { id: 'navigation', target: 'settings-personalization', placement: 'bottom', titleKey: 'tutorial.settings.step.navigation.title', bodyKey: 'tutorial.settings.step.navigation.body' },
+      { id: 'appearance', target: 'settings-settings', placement: 'bottom', titleKey: 'tutorial.settings.step.appearance.title', bodyKey: 'tutorial.settings.step.appearance.body' },
+      { id: 'settings-help', target: 'settings-tutorials', placement: 'top', titleKey: 'tutorial.settings.step.help.title', bodyKey: 'tutorial.settings.step.help.body', helpAction: { labelKey: 'tutorial.openHelp', action: { type: 'open-article', articleId: 'themes-settings' } } },
+      { id: 'passkeys', target: 'settings-passkeys', placement: 'top', titleKey: 'tutorial.settings.step.passkeys.title', bodyKey: 'tutorial.settings.step.passkeys.body' },
+      { id: 'readiness', target: 'settings-readiness', placement: 'top', titleKey: 'tutorial.settings.step.readiness.title', bodyKey: 'tutorial.settings.step.readiness.body' },
+      { id: 'notifications', target: 'settings-notifications', placement: 'top', titleKey: 'tutorial.settings.step.notifications.title', bodyKey: 'tutorial.settings.step.notifications.body' },
+      { id: 'workspace', target: 'settings-workspace', placement: 'top', titleKey: 'tutorial.settings.step.workspace.title', bodyKey: 'tutorial.settings.step.workspace.body' },
     ],
   },
 ];

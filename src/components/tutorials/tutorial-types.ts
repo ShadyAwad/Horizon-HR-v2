@@ -1,6 +1,10 @@
 export type TutorialModule = string;
 export type TutorialPlacement = 'top' | 'bottom' | 'start' | 'end' | 'center';
 export type TutorialAdvanceAction = 'click' | 'module-change' | 'tab-change' | 'accordion-open';
+export type HelpAction =
+  | { type: 'open-article'; articleId: string }
+  | { type: 'start-tutorial'; tutorialId: string }
+  | { type: 'open-module'; moduleId: string };
 
 export type TutorialContext = {
   permissions: readonly string[];
@@ -20,6 +24,7 @@ export type TutorialStep = {
     target?: string;
     value?: string;
   };
+  helpAction?: { labelKey: string; action: HelpAction };
 };
 
 export type TutorialDefinition = {

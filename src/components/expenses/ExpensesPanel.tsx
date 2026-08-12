@@ -870,8 +870,8 @@ export function ExpensesPanel({
               tabIndex={activeView === tab.id ? 0 : -1}
               onClick={() => tab.id === 'new' ? openFlow() : setActiveView(tab.id)}
               className={cn(
-                'inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500',
-                activeView === tab.id ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5',
+                'stanza-interactive-control inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                activeView === tab.id ? 'font-extrabold' : 'text-slate-500',
               )}
             >
               {tab.icon}{tab.label}

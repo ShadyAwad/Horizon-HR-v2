@@ -27,6 +27,7 @@
     "test:company-feed": "tsx scripts/company-feed-draft-test.ts",
     "test:organisation": "tsx scripts/organisation-test.ts",
     "test:shift-swaps": "tsx scripts/shift-swaps-test.ts",
+    "test:roster-goals": "tsx scripts/roster-goals-test.ts",
     "test:leave": "tsx scripts/leave-test.ts",
     "test:theme": "tsx scripts/theme-test.ts",
     "test:locations": "tsx scripts/locations-test.ts",

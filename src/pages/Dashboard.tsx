@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { 
   Fingerprint, LogOut, MapPin, Map, Navigation, 
   Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText, Settings
@@ -37,8 +37,11 @@ import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import type { OrganisationPanelView } from '../components/organisation/OrganisationPanel';
 import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
 import { backgroundPresets } from '../lib/background-presets';
+import { defaultPerformanceIsolation, normalisePerformanceIsolation, PERFORMANCE_ISOLATION_STORAGE_KEY, type PerformanceIsolation } from '../lib/performance-isolation';
+import { recordDevRender } from '../lib/render-diagnostics';
+import { loadDevMeasured, markDevPerformance, recordDevInteraction } from '../lib/dev-performance';
 import { TutorialProvider, type TutorialController } from '../components/tutorials/TutorialProvider';
-import type { TutorialDefinition } from '../components/tutorials/tutorial-types';
+import type { HelpAction, TutorialDefinition } from '../components/tutorials/tutorial-types';
 import { getTutorialModuleTarget } from '../components/tutorials/tutorial-registry';
 import { normaliseModuleUsage, recordModuleUsage } from '../components/navigation/module-usage';
 import { MobileShortcutSettings } from '../components/navigation/MobileShortcutSettings';
@@ -58,9 +61,9 @@ import {
 } from '../components/command-palette/pinned-quick-actions';
 
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
-const StanzaDashboardLanyard = lazy(() => import('../components/lanyard/StanzaDashboardLanyard'));
+const StanzaDashboardLanyard = lazy(() => loadDevMeasured('startup:lanyard-dynamic-import', () => import('../components/lanyard/StanzaDashboardLanyard')));
 const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCropDialog').then((module) => ({ default: module.ProfilePhotoCropDialog })));
-const HiringPanel = lazy(() => import('../components/hiring/HiringPanel').then((module) => ({ default: module.HiringPanel })));
+const HiringPanel = lazy(() => loadDevMeasured('lazy-module:hiring:import', () => import('../components/hiring/HiringPanel')).then((module) => ({ default: module.HiringPanel })));
 const LiveEmployeesPanel = lazy(() => import('../components/live-employees/LiveEmployeesPanel').then((module) => ({ default: module.LiveEmployeesPanel })));
 const AuditTrailPanel = lazy(() => import('../components/audit/AuditTrailPanel').then((module) => ({ default: module.AuditTrailPanel })));
 const SessionManagementPanel = lazy(() => import('../components/sessions/SessionManagementPanel').then((module) => ({ default: module.SessionManagementPanel })));
@@ -69,13 +72,16 @@ const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
 const DigitalBadgePanel = lazy(() => import('../components/qr/DigitalBadgePanel').then((module) => ({ default: module.DigitalBadgePanel })));
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
-const OrganisationPanel = lazy(() => import('../components/organisation/OrganisationPanel').then((module) => ({ default: module.OrganisationPanel })));
+const OrganisationPanel = lazy(() => loadDevMeasured('lazy-module:organisation:import', () => import('../components/organisation/OrganisationPanel')).then((module) => ({ default: module.OrganisationPanel })));
 const ShiftSwapsPanel = lazy(() => import('../components/roster/ShiftSwapsPanel').then((module) => ({ default: module.ShiftSwapsPanel })));
 const ShiftSwapApprovalsPanel = lazy(() => import('../components/roster/ShiftSwapApprovalsPanel').then((module) => ({ default: module.ShiftSwapApprovalsPanel })));
 const LeaveWorkspace = lazy(() => import('../components/roster/LeaveWorkspace').then((module) => ({ default: module.LeaveWorkspace })));
-const LocationsPanel = lazy(() => import('../components/locations/LocationsPanel').then((module) => ({ default: module.LocationsPanel })));
-const ExpensesPanel = lazy(() => import('../components/expenses/ExpensesPanel').then((module) => ({ default: module.ExpensesPanel })));
+const RosterGoalsPanel = lazy(() => import('../components/roster/RosterGoalsPanel').then((module) => ({ default: module.RosterGoalsPanel })));
+const LocationsPanel = lazy(() => loadDevMeasured('lazy-module:locations:import', () => import('../components/locations/LocationsPanel')).then((module) => ({ default: module.LocationsPanel })));
+const ExpensesPanel = lazy(() => loadDevMeasured('lazy-module:expenses:import', () => import('../components/expenses/ExpensesPanel')).then((module) => ({ default: module.ExpensesPanel })));
 const CommandPalette = lazy(() => import('../components/command-palette/CommandPalette').then((module) => ({ default: module.CommandPalette })));
+const PerformanceIsolationPanel = import.meta.env.DEV ? lazy(() => import('../components/dev/PerformanceIsolationPanel')) : null;
+const HelpCenter = lazy(() => loadDevMeasured('lazy-module:help-center:import', () => import('../components/tutorials/HelpCenter')).then((module) => ({ default: module.HelpCenter })));
 
 type DashboardNetworkInformation = {
   saveData?: boolean;
@@ -93,6 +99,99 @@ type LanyardAnchorNdc = {
   x: number;
   y: number;
 };
+
+function SettingsRenderProbe({ snapshot }: { snapshot: Record<string, string | number | boolean> }) {
+  if (import.meta.env.DEV) recordDevRender('Settings', snapshot);
+  return null;
+}
+
+function ActiveModuleRenderProbe({ module }: { module: string }) {
+  if (import.meta.env.DEV) recordDevRender('ActiveModule', { module });
+  return null;
+}
+
+type ControlCenterAccordionProps = {
+  section: string;
+  title: string;
+  summary: string;
+  renderContent: () => ReactNode;
+  badge?: ReactNode;
+  isRtl: boolean;
+  expandLabel: string;
+  collapseLabel: string;
+  onOpen?: () => void;
+  openSignal?: number;
+};
+
+function ControlCenterAccordion({
+  section,
+  title,
+  summary,
+  renderContent,
+  badge,
+  isRtl,
+  expandLabel,
+  collapseLabel,
+  onOpen,
+  openSignal = 0,
+}: ControlCenterAccordionProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const contentId = `stanza-control-center-${section}`;
+
+  useEffect(() => {
+    if (openSignal > 0) setIsOpen(true);
+  }, [openSignal]);
+
+  const toggle = () => {
+    const nextOpen = !isOpen;
+    recordDevInteraction(section === 'tutorials' ? `help-center:${nextOpen ? 'open' : 'close'}` : `settings-accordion:${section}:${nextOpen ? 'open' : 'close'}`, () => {
+      setIsOpen(nextOpen);
+      if (nextOpen) {
+        window.dispatchEvent(new CustomEvent('stanza-tutorial-action', {
+          detail: { type: 'accordion-open', target: `settings-${section}` },
+        }));
+        onOpen?.();
+      }
+    });
+  };
+
+  return (
+    <section className="border-b border-emerald-500/15 last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        aria-label={`${isOpen ? collapseLabel : expandLabel} ${title}`}
+        data-tutorial-target={`settings-${section}`}
+        onClick={toggle}
+        className={cn(
+          'flex w-full items-center justify-between gap-3 px-1 py-3 text-left outline-none transition-colors hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061411] dark:hover:text-emerald-300',
+          isRtl && 'text-right',
+        )}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{title}</span>
+          <span className="mt-1 block truncate text-xs font-normal normal-case tracking-normal text-neutral-500 dark:text-emerald-100/50">{summary}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {badge}
+          <ChevronDown className={cn('h-4 w-4 text-emerald-500 transition-transform duration-200 motion-reduce:transition-none', isOpen && 'rotate-180')} />
+        </span>
+      </button>
+      <div
+        id={contentId}
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="overflow-hidden">
+          {isOpen && <div className="stanza-accordion-content pb-3 pt-1">{renderContent()}</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 const isValidLanyardTriggerMeasurement = (trigger: HTMLElement, rect: DOMRect) => (
   trigger.isConnected &&
@@ -805,7 +904,17 @@ function useGeolocation() {
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
   const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>(initialTab || 'geofence');
-  const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave'>('schedule');
+  useEffect(() => {
+    markDevPerformance('startup:dashboard-mounted', undefined, true);
+  }, []);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      markDevPerformance(`module:${activeTab}:mount-committed`, { module: activeTab }, true);
+      markDevPerformance('startup:first-active-module-mounted', { module: activeTab }, true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab]);
+  const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave' | 'goals'>('schedule');
   const [expandedRosterDate, setExpandedRosterDate] = useState<string | null>(null);
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
@@ -920,8 +1029,20 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [roleMessageType, setRoleMessageType] = useState<'success' | 'error'>('success');
   const [roleForm, setRoleForm] = useState<RoleFormState>(defaultRoleForm);
   const [titleDrafts, setTitleDrafts] = useState<TitleDrafts>({});
-  const [showControlCenter, setShowControlCenter] = useState(false);
-  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const [showControlCenter, setShowControlCenterState] = useState(false);
+  const setShowControlCenter = useCallback((next: SetStateAction<boolean>) => {
+    const name = typeof next === 'boolean' ? `settings:${next ? 'open' : 'close'}` : 'settings:toggle';
+    recordDevInteraction(name, () => setShowControlCenterState(next));
+  }, []);
+  const [performanceIsolation, setPerformanceIsolation] = useState<PerformanceIsolation>(defaultPerformanceIsolation);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    try { setPerformanceIsolation(normalisePerformanceIsolation(JSON.parse(window.sessionStorage.getItem(PERFORMANCE_ISOLATION_STORAGE_KEY) ?? 'null'))); } catch { setPerformanceIsolation(defaultPerformanceIsolation); }
+  }, []);
+  const updatePerformanceIsolation = useCallback((next: PerformanceIsolation) => {
+    setPerformanceIsolation(next);
+    if (import.meta.env.DEV) window.sessionStorage.setItem(PERFORMANCE_ISOLATION_STORAGE_KEY, JSON.stringify(next));
+  }, []);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandPaletteFocusRequest, setCommandPaletteFocusRequest] = useState(0);
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -939,16 +1060,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const lanyardMountGeneration = useRef(0);
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [controlCenterSections, setControlCenterSections] = useState({
-    personalization: false,
-    settings: false,
-    passkeys: false,
-    readiness: false,
-    notifications: false,
-    workspace: false,
-    tutorials: false,
-  });
   const [tutorialController, setTutorialController] = useState<TutorialController | null>(null);
+  const [requestedHelpArticleId, setRequestedHelpArticleId] = useState<string | null>(null);
+  const [helpOpenSignal, setHelpOpenSignal] = useState(0);
   const [showTenantId, setShowTenantId] = useState(false);
   const [tenantIdCopied, setTenantIdCopied] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
@@ -1053,7 +1167,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
   }, []);
 
-  const shouldMountLanyard = lanyardEnabled && isLanyardCapable && desktopNavigationMode === 'launcher';
+  const shouldMountLanyard = lanyardEnabled && performanceIsolation.lanyard && isLanyardCapable && desktopNavigationMode === 'launcher';
 
   useEffect(() => {
     const generation = ++lanyardMountGeneration.current;
@@ -1068,6 +1182,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     const markIdleReady = () => {
       if (lanyardMountGeneration.current !== generation) return;
+      markDevPerformance('startup:lanyard-idle-slot-ready', undefined, true);
       setIsLanyardIdleReady(true);
     };
 
@@ -1295,6 +1410,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const rosterEndDate = rosterRangeWeeks === 'custom'
     ? rosterCustomEndDate
     : toRosterDateKey(addRosterDays(fromRosterDateKey(rosterStartDate) || getWeekStart(new Date()), rosterRangeWeeks * 7 - 1));
+  const rosterGoalWeekStart = toRosterDateKey(getWeekStart(fromRosterDateKey(rosterStartDate) || new Date()));
   const rosterRange = getRosterDateRange(rosterStartDate, rosterEndDate);
   const rosterDays = rosterRange.dates;
   const visibleSchedule = rosterDays.map((date) => {
@@ -1372,18 +1488,50 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const hasAuthenticatedDashboardUser = isUuidString(user.id) && isUuidString(user.tenantId);
   const { counts: attentionCounts, refresh: refreshAttentionCounts } = useDashboardAttentionCounts(
     user,
-    hasAuthenticatedDashboardUser,
+    hasAuthenticatedDashboardUser && performanceIsolation.attentionPolling,
   );
   const payrollAttentionCount = attentionCounts.payroll + attentionCounts.loans;
+  if (import.meta.env.DEV) {
+    recordDevRender('Dashboard', {
+      activeModule: activeTab,
+      rosterSubview,
+      settingsOpen: showControlCenter,
+      commandPaletteOpen: showCommandPalette,
+      mobileEditorOpen: showMobileShortcutEditor,
+      mobileLayout: isMobileNavigationLayout,
+      visible: isDashboardVisible,
+      offline: isOffline,
+      theme: isDark ? 'dark' : 'light',
+      language: lang,
+      attention: Object.values(attentionCounts).join('|'),
+      lanyard: `${isLanyardCapable}:${isLanyardIdleReady}:${Boolean(lanyardAnchorNdc)}`,
+      clock: `${clockInState}:${isClockedIn}:${Boolean(activeTimeLogId)}`,
+      breaks: `${breakRequestsLoading}:${breakRequestSubmitting}:${breakRequests.length}:${pendingBreakRequests.length}`,
+      roster: `${rosterLoading}:${rosterLoaded}:${schedule.length}:${selectedRosterEmployeeId}`,
+      notifications: `${notificationLoading}:${notificationSaving}:${notificationSettings.length}`,
+      passkeys: `${passkeysLoading}:${passkeySaving}:${passkeys.length}`,
+      payroll: `${payrollLoading}:${payrollSubmitting}:${payrollRecords.length}`,
+      grievances: `${grievanceLoading}:${tenantGrievanceLoading}:${myGrievances.length}:${tenantGrievances.length}`,
+      resignations: `${resignationsLoading}:${resignationSubmitting}:${myResignations.length}:${tenantResignations.length}`,
+      feed: `${feedLoading}:${adminFeedLoading}:${feedSubmitting}:${feedPosts.length}:${adminFeedPosts.length}`,
+      roles: `${rolesLoading}:${roleSaving}:${tenantRoles.length}:${roleEmployees.length}`,
+      profilePhoto: `${Boolean(profilePhotoFile)}:${profilePhotoSaving}`,
+      pwa: `${Boolean(installPrompt)}:${installDismissed}:${isStandalone}:${notificationPermission}`,
+      preferences: `${desktopNavigationMode}:${backgroundPreset}:${interfaceScale}:${lightIntensity}:${tutorialsEnabled}:${tutorialsAutoStart}`,
+      tutorialReady: Boolean(tutorialController),
+    });
+  }
   const attentionAriaLabel = (label: string, count: number) => (
     count > 0 ? `${label}: ${count} ${t('dash.actionItems')}` : label
   );
   const selectNavigationItem = useCallback((id: string) => {
-    setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
-    if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
-    if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); return; }
-    if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
-    setActiveTab(id as typeof activeTab);
+    recordDevInteraction(`module-switch:${id}`, () => {
+      setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
+      if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
+      if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); return; }
+      if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
+      setActiveTab(id as typeof activeTab);
+    });
   }, []);
   const navigationItems = useMemo<DashboardNavigationItem[]>(() => {
     const item = (id: string, label: string, group: string, icon: ReactNode, allowed = true, badge = 0): DashboardNavigationItem | null => allowed ? {
@@ -1409,6 +1557,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       item('profile', t('dash.profile'), 'administration', <User className="h-5 w-5" />),
     ].filter(Boolean) as DashboardNavigationItem[];
   }, [activeTab, attentionCounts, canManageSessions, canUsePayrollPanel, canViewAssets, canViewAudit, canViewHiring, canViewLiveEmployees, canViewLocations, canViewOrganisation, canViewPerformance, lang, payrollAttentionCount, selectNavigationItem, showGrievancesPanel, showPayrollPanel, showResignationsPanel, t]);
+  useEffect(() => {
+    markDevPerformance('startup:navigation-registry-ready', { itemCount: navigationItems.length }, true);
+  }, [navigationItems.length]);
   const availableNavigationIds = useMemo(
     () => new Set(navigationItems.map((item) => item.id)),
     [navigationItems],
@@ -1843,11 +1994,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     return quickActionIds.map((commandId) => commandById.get(commandId)).filter(Boolean) as StanzaCommand[];
   }, [commandPaletteCommands, quickActionIds]);
 
+  const tutorialAvailableModulesKey = navigationItems.map((item) => item.id).join('|');
   const tutorialContext = useMemo(() => ({
     permissions: user.permissions || [],
-    availableModules: navigationItems.map((item) => item.id),
+    availableModules: tutorialAvailableModulesKey ? tutorialAvailableModulesKey.split('|') : [],
     isMobile: isMobileNavigationLayout,
-  }), [isMobileNavigationLayout, navigationItems, user.permissions]);
+  }), [isMobileNavigationLayout, tutorialAvailableModulesKey, user.permissions]);
   const tutorialProgress = useMemo(() => ({
     tutorialsEnabled,
     tutorialsAutoStart,
@@ -1858,6 +2010,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     if (tutorial.module === 'dashboard') return;
     if (tutorial.module === 'settings') { setShowControlCenter(true); return; }
     selectNavigationItem(tutorial.module);
+  }, [selectNavigationItem]);
+  const handleTutorialHelpAction = useCallback((action: HelpAction) => {
+    if (action.type === 'open-article') {
+      setRequestedHelpArticleId(action.articleId);
+      setHelpOpenSignal((current) => current + 1);
+      setShowControlCenter(true);
+      return;
+    }
+    if (action.type === 'open-module') selectNavigationItem(action.moduleId);
   }, [selectNavigationItem]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
@@ -3641,12 +3802,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [showControlCenter]);
 
-  useEffect(() => {
-    if (!showControlCenter || !hasAuthenticatedDashboardUser) return;
-    if (controlCenterSections.notifications) loadNotificationSettings(false);
-    if (controlCenterSections.passkeys) loadPasskeys(false);
-  }, [showControlCenter, controlCenterSections.notifications, controlCenterSections.passkeys, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
-
   const loadGrievances = async (clearMessage = true) => {
     setGrievanceLoading(true);
     setTenantGrievanceLoading(false);
@@ -3992,61 +4147,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     loadCompanyLocations();
   }, [user.id, user.tenantId]);
-
-  const renderControlCenterAccordion = (
-    section: keyof typeof controlCenterSections,
-    title: string,
-    summary: string,
-    renderContent: () => ReactNode,
-    badge?: ReactNode,
-  ) => {
-    const isOpen = controlCenterSections[section];
-    const contentId = `stanza-control-center-${section}`;
-
-    return (
-      <section className="border-b border-emerald-500/15 last:border-b-0">
-        <button
-          type="button"
-          aria-expanded={isOpen}
-          aria-controls={contentId}
-          aria-label={`${isOpen ? t('dash.collapse') : t('dash.expand')} ${title}`}
-          onClick={() => setControlCenterSections((current) => {
-            const nextOpen = !current[section];
-            if (nextOpen) {
-              window.dispatchEvent(new CustomEvent('stanza-tutorial-action', {
-                detail: { type: 'accordion-open', target: `settings-${section}` },
-              }));
-            }
-            return { ...current, [section]: nextOpen };
-          })}
-          className={cn(
-            "flex w-full items-center justify-between gap-3 px-1 py-3 text-left outline-none transition-colors hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#061411] dark:hover:text-emerald-300",
-            isRtl && "text-right"
-          )}
-        >
-          <span className="min-w-0">
-            <span className="block text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{title}</span>
-            <span className="mt-1 block truncate text-xs font-normal normal-case tracking-normal text-neutral-500 dark:text-emerald-100/50">{summary}</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            {badge}
-            <ChevronDown className={cn("h-4 w-4 text-emerald-500 transition-transform duration-200 motion-reduce:transition-none", isOpen && "rotate-180")} />
-          </span>
-        </button>
-        <div
-          id={contentId}
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
-            isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-          )}
-        >
-          <div className="overflow-hidden">
-            {isOpen && <div className="stanza-accordion-content pb-3 pt-1">{renderContent()}</div>}
-          </div>
-        </div>
-      </section>
-    );
-  };
 
   const renderNotificationSettingsPanel = () => (
     <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
@@ -4523,10 +4623,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   aria-checked={desktopNavigationMode === mode}
                   onClick={() => setDesktopNavigationMode(mode)}
                   className={cn(
-                    'min-h-11 rounded-lg border px-3 py-2 text-sm font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]',
+                    'stanza-interactive-control min-h-11 rounded-lg border border-transparent px-3 py-2 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]',
                     desktopNavigationMode === mode
-                      ? 'border-emerald-400 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
-                      : 'border-emerald-500/20 text-neutral-600 hover:border-emerald-400 dark:text-emerald-100/65',
+                      ? 'font-extrabold'
+                      : 'border-[var(--stanza-border-subtle)] text-neutral-600 dark:text-emerald-100/65',
                   )}
                 >
                   {label}
@@ -4566,12 +4666,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 aria-checked={lanyardEnabled}
                 aria-label={t('dash.lanyardCard')}
                 onClick={() => setLanyardEnabled(!lanyardEnabled)}
-                className={cn(
-                  "relative h-7 w-12 shrink-0 rounded-full border p-0.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]",
-                  lanyardEnabled
-                    ? "border-emerald-400 bg-emerald-500"
-                    : "border-emerald-500/20 bg-neutral-200 dark:bg-black/60",
-                )}
+                className="stanza-interactive-control stanza-toggle-track relative h-7 w-12 shrink-0 rounded-full border p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]"
               >
                 <span className={cn(
                   "block h-5 w-5 rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none",
@@ -4680,11 +4775,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 aria-checked={selected}
                 aria-label={`${t(preset.labelKey as never)}. ${t(preset.descriptionKey as never)}${selected ? `. ${t('background.selected')}` : ''}`}
                 onClick={() => setBackgroundPreset(preset.id)}
-                className={cn('min-h-20 rounded-lg border p-2 text-start outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-400', selected ? 'border-emerald-500 bg-emerald-500/10' : 'border-emerald-500/15 hover:border-emerald-400/55')}
+                className={cn(
+                  'stanza-interactive-control min-h-20 rounded-lg border border-transparent p-2 text-start outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+                  selected ? 'font-extrabold' : 'border-[var(--stanza-border-subtle)]',
+                )}
               >
                 <span className="mb-2 flex h-7 overflow-hidden rounded border border-black/10" aria-hidden="true"><span className="flex-1" style={{ backgroundColor: preset.lightPreview }} /><span className="flex-1" style={{ backgroundColor: preset.darkPreview }} /></span>
-                <span className="flex items-center justify-between gap-2 text-xs font-bold text-neutral-800 dark:text-emerald-50"><span>{t(preset.labelKey as never)}</span>{selected && <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" aria-label={t('background.selected')} />}</span>
-                <span className="mt-1 block text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/50">{t(preset.descriptionKey as never)}</span>
+                <span className="flex items-center justify-between gap-2 text-xs font-bold"><span>{t(preset.labelKey as never)}</span>{selected && <CheckCircle2 className="h-4 w-4 text-[var(--stanza-accent-hover)]" aria-label={t('background.selected')} />}</span>
+                <span className="mt-1 block text-[10px] leading-4 text-[var(--stanza-text-muted)]">{t(preset.descriptionKey as never)}</span>
               </button>;
             })}
           </div>
@@ -4693,24 +4791,26 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
           <button
             type="button"
+            aria-pressed={lang === 'en'}
             onClick={() => setLang('en')}
             className={cn(
-              "flex-1 rounded px-2 py-1 text-xs font-black uppercase tracking-widest transition",
+              "stanza-interactive-control flex-1 rounded border border-transparent px-2 py-1 text-xs font-black uppercase tracking-widest",
               lang === 'en'
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : "text-neutral-500 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-300"
+                ? "font-extrabold"
+                : "text-neutral-500 dark:text-emerald-100/45"
             )}
           >
             EN-US
           </button>
           <button
             type="button"
+            aria-pressed={lang === 'ar'}
             onClick={() => setLang('ar')}
             className={cn(
-              "flex-1 rounded px-2 py-1 text-xs font-black uppercase tracking-widest transition",
+              "stanza-interactive-control flex-1 rounded border border-transparent px-2 py-1 text-xs font-black uppercase tracking-widest",
               lang === 'ar'
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : "text-neutral-500 hover:text-emerald-600 dark:text-emerald-100/45 dark:hover:text-emerald-300"
+                ? "font-extrabold"
+                : "text-neutral-500 dark:text-emerald-100/45"
             )}
           >
             AR-AE
@@ -4780,33 +4880,37 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           role="switch"
           aria-checked={tutorialsAutoStart}
           onClick={() => tutorialController?.setAutoStart(!tutorialsAutoStart)}
-          className="stanza-preference-control flex min-h-10 items-center gap-2 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300"
+          className="stanza-interactive-control flex min-h-10 items-center gap-2 border border-[var(--stanza-border-default)] bg-[var(--stanza-surface-muted)] px-3 text-xs font-bold text-[var(--stanza-text-primary)] outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
         >
           {tutorialsAutoStart ? t('dash.on') : t('dash.off')}
         </button>
       </div>
-      <div className="space-y-2">
-        <p className="text-xs font-bold text-slate-800 dark:text-emerald-50">{t('tutorial.available')}</p>
-        {tutorialController?.tutorials.map((tutorial) => (
-          <div key={tutorial.id} className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-white/60 p-3 dark:bg-black/25 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800 dark:text-emerald-50">{t(tutorial.titleKey as never)}</p>
-              <p className="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-emerald-100/55">{t(tutorial.descriptionKey as never)}</p>
-              {completedTutorials[tutorial.id] === tutorial.version && <p className="mt-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('tutorial.completed')}</p>}
-              {completedTutorials[tutorial.id] && completedTutorials[tutorial.id] !== tutorial.version && <p className="mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-200">{t('tutorial.updated')}</p>}
-            </div>
-            <button type="button" onClick={() => { if (tutorial.module !== 'settings') setShowControlCenter(false); window.setTimeout(() => tutorialController.start(tutorial.id), tutorial.module === 'settings' ? 0 : 220); }} className="stanza-preference-control min-h-10 shrink-0 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-emerald-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-300">
-              {completedTutorials[tutorial.id] ? t('tutorial.replay') : t('tutorial.start')}
-            </button>
-          </div>
-        ))}
-        <button type="button" onClick={() => tutorialController?.reset()} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-100">
-          {t('tutorial.reset')}
-        </button>
-      </div>
+      {tutorialController && <Suspense fallback={<div className="min-h-48 rounded-lg bg-emerald-500/5" />}>
+        <HelpCenter
+          context={tutorialContext}
+          tutorials={tutorialController.tutorials}
+          completedTutorials={completedTutorials}
+          requestedArticleId={requestedHelpArticleId}
+          requestVersion={helpOpenSignal}
+          onStartTutorial={(tutorialId) => {
+            setShowControlCenter(false);
+            window.setTimeout(() => tutorialController.start(tutorialId), 220);
+          }}
+          onOpenModule={(moduleId) => {
+            setShowControlCenter(false);
+            selectNavigationItem(moduleId);
+          }}
+        />
+      </Suspense>}
+      <button type="button" onClick={() => tutorialController?.reset()} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-100">
+        {t('tutorial.reset')}
+      </button>
     </div>
   );
 
+  // Keep the mounted scene intact beneath modal Settings, but stop its scheduler
+  // until the overlay closes. Readiness and mount eligibility remain independent.
+  const isLanyardSchedulerPaused = !isDashboardVisible || showControlCenter;
   const launcherLanyard = shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc ? (
     <DashboardLanyardBoundary>
       <Suspense fallback={null}>
@@ -4814,7 +4918,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           anchorNdc={lanyardAnchorNdc}
           eventSource={dashboardRootRef.current}
           interactionEnabled={!showControlCenter && isDashboardVisible}
-          paused={!isDashboardVisible}
+          paused={isLanyardSchedulerPaused}
           language={lang}
           direction={isRtl ? 'rtl' : 'ltr'}
           anchorSide={lanyardAnchorSide}
@@ -4832,17 +4936,21 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     "stanza-dashboard h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[var(--stanza-page-bg)] text-[color:var(--stanza-text-primary)] font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
     isRtl ? "text-right" : "text-left"
   )}
+  data-perf-no-shadows={!performanceIsolation.shadows || !performanceIsolation.visualAtmosphere ? 'true' : undefined}
+  data-perf-flat-surfaces={!performanceIsolation.translucentSurfaces ? 'true' : undefined}
+  data-perf-hide-badges={!performanceIsolation.badges ? 'true' : undefined}
+  data-perf-no-transitions={!performanceIsolation.transitions ? 'true' : undefined}
 >
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
-  <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />}
 
   {/* Dark mode base */}
-  <div className="stanza-dark-atmosphere absolute inset-0 hidden dark:block" />
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <div className="stanza-dark-atmosphere absolute inset-0 hidden dark:block" />}
 
   {/* Light mode topography */}
-  <div
+  {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div
     className="stanza-light-topography absolute inset-0 dark:hidden"
     style={{
       WebkitMaskImage: "url('/topography.svg')",
@@ -4854,10 +4962,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       WebkitMaskPosition: 'center',
       maskPosition: 'center',
     }}
-  />
+  />}
 
   {/* Dark mode topography */}
-  <div
+  {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div
     className="stanza-dark-topography absolute inset-0 hidden dark:block"
     style={{
       WebkitMaskImage: "url('/topography.svg')",
@@ -4869,15 +4977,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       WebkitMaskPosition: 'center',
       maskPosition: 'center',
     }}
-  />
+  />}
 
   {/* Light mode soft glows */}
-  <div className="stanza-light-glow stanza-light-glow-top absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full blur-3xl dark:hidden" />
-  <div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" />
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <><div className="stanza-light-glow stanza-light-glow-top absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full blur-3xl dark:hidden" /><div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" /></>}
 
   {/* Dark mode soft glows */}
-  <div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" />
-  <div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" />
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <><div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" /><div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" /></>}
 
   {/* Dark mode vignette only */}
   <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
@@ -4899,7 +5005,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         quickActions={pinnedQuickActions}
         onExecuteQuickAction={executePinnedQuickAction}
         onOpenControlCenter={() => setShowControlCenter(true)}
-        onOpenChange={setIsNavigationOpen}
+        showUsageSections={performanceIsolation.recentFrequent}
+        showMobileNavigation={performanceIsolation.mobileNavigation}
         onLogout={onLogout}
         userName={user.name}
         userEmail={user.email}
@@ -5160,14 +5267,23 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           className="stanza-settings-overlay fixed inset-0 z-40"
           onClick={() => setShowControlCenter(false)}
         >
-          <div className="stanza-modal-backdrop absolute inset-0" aria-hidden="true" />
+          <SettingsRenderProbe snapshot={{
+            notificationLoading,
+            notificationSaving,
+            passkeysLoading,
+            passkeySaving,
+            offline: isOffline,
+            standalone: isStandalone,
+            tutorialReady: Boolean(tutorialController),
+          }} />
+          {performanceIsolation.settingsBackdrop && <div className="stanza-modal-backdrop absolute inset-0" aria-hidden="true" />}
           <section
             id="stanza-control-center"
             role="dialog"
             aria-modal="true"
             aria-labelledby="stanza-control-center-title"
             className={cn(
-              "stanza-control-center-panel stanza-settings-drawer stanza-scrollbar fixed inset-x-auto left-[calc(0.75rem+env(safe-area-inset-left))] right-[calc(0.75rem+env(safe-area-inset-right))] bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 max-h-[88dvh] overflow-y-auto overscroll-contain rounded-2xl border border-emerald-500/20 bg-white/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl dark:bg-[#061411]/95",
+              "stanza-control-center-panel stanza-settings-drawer stanza-scrollbar fixed inset-x-auto left-[calc(0.75rem+env(safe-area-inset-left))] right-[calc(0.75rem+env(safe-area-inset-right))] bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 max-h-[88dvh] overflow-y-auto overscroll-contain rounded-2xl border border-emerald-500/20 bg-white p-4 shadow-2xl shadow-black/30 dark:bg-[#061411]",
               "md:bottom-auto md:top-4 md:w-[min(760px,calc(100vw-8rem))] md:max-h-[calc(100dvh-2rem)]",
               isRtl ? "md:right-24 md:left-auto text-right" : "md:left-24 md:right-auto text-left"
             )}
@@ -5193,58 +5309,86 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
             <div className="divide-y divide-emerald-500/15">
               {renderControlCenterAccount()}
-              {renderControlCenterAccordion(
-                'personalization',
-                t('dash.personalization'),
-                `${t('dash.interfaceSize')} ${Math.round(interfaceScale * 100)}% - ${lanyardEnabled ? t('dash.on') : t('dash.off')}`,
-                () => renderPersonalizationPanel(),
-              )}
-              {renderControlCenterAccordion(
-                'settings',
-                t('dash.settings'),
-                isDark ? t('dash.switchLight') : t('dash.switchDark'),
-                () => renderControlCenterSettings(),
-              )}
-              {renderControlCenterAccordion(
-                'tutorials',
-                t('tutorial.helpTitle'),
-                t('tutorial.helpSummary'),
-                () => renderTutorialSettings(),
-              )}
-              {renderControlCenterAccordion(
-                'passkeys',
-                t('dash.passkeys'),
-                t('dash.passkeyDescription'),
-                () => renderPasskeyPanel(),
-                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"><span dir="ltr">{passkeys.length}</span> {t('dash.registered')}</span>,
-              )}
-              {renderControlCenterAccordion(
-                'readiness',
-                t('dash.appReadiness'),
-                `${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`,
-                () => renderPwaReadinessPanel(),
-                <span className={cn(
+              <ControlCenterAccordion
+                section="personalization"
+                title={t('dash.personalization')}
+                summary={`${t('dash.interfaceSize')} ${Math.round(interfaceScale * 100)}% - ${lanyardEnabled ? t('dash.on') : t('dash.off')}`}
+                renderContent={renderPersonalizationPanel}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+              />
+              <ControlCenterAccordion
+                section="settings"
+                title={t('dash.settings')}
+                summary={isDark ? t('dash.switchLight') : t('dash.switchDark')}
+                renderContent={renderControlCenterSettings}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+              />
+              <ControlCenterAccordion
+                section="tutorials"
+                title={t('tutorial.helpTitle')}
+                summary={t('tutorial.helpSummary')}
+                renderContent={renderTutorialSettings}
+                openSignal={helpOpenSignal}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+              />
+              <ControlCenterAccordion
+                section="passkeys"
+                title={t('dash.passkeys')}
+                summary={t('dash.passkeyDescription')}
+                renderContent={renderPasskeyPanel}
+                badge={<span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"><span dir="ltr">{passkeys.length}</span> {t('dash.registered')}</span>}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+                onOpen={() => {
+                  if (hasAuthenticatedDashboardUser) void loadPasskeys(false);
+                }}
+              />
+              <ControlCenterAccordion
+                section="readiness"
+                title={t('dash.appReadiness')}
+                summary={`${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`}
+                renderContent={renderPwaReadinessPanel}
+                badge={<span className={cn(
                   "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
                   isOffline ? "border-amber-300/30 text-amber-600 dark:text-amber-200" : "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
-                )}>{isOffline ? t('dash.offline') : t('dash.online')}</span>,
-              )}
-              {renderControlCenterAccordion(
-                'notifications',
-                t('dash.notificationSettings'),
-                t('dash.emailPushPreferences'),
-                () => renderNotificationSettingsPanel(),
-                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('dash.default')}</span>,
-              )}
-              {renderControlCenterAccordion(
-                'workspace',
-                t('dash.workspaceStatus'),
-                `${companyLocations.length} ${t('dash.locationsConfigured').toLowerCase()}`,
-                () => <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                )}>{isOffline ? t('dash.offline') : t('dash.online')}</span>}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+              />
+              <ControlCenterAccordion
+                section="notifications"
+                title={t('dash.notificationSettings')}
+                summary={t('dash.emailPushPreferences')}
+                renderContent={renderNotificationSettingsPanel}
+                badge={<span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('dash.default')}</span>}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+                onOpen={() => {
+                  if (hasAuthenticatedDashboardUser) void loadNotificationSettings(false);
+                }}
+              />
+              <ControlCenterAccordion
+                section="workspace"
+                title={t('dash.workspaceStatus')}
+                summary={`${companyLocations.length} ${t('dash.locationsConfigured').toLowerCase()}`}
+                renderContent={() => <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   {renderLocationsCard()}
                   {renderSystemStatusCard()}
-                </div>,
-                <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{companyLocations.length}</span>,
-              )}
+                </div>}
+                badge={<span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{companyLocations.length}</span>}
+                isRtl={isRtl}
+                expandLabel={t('dash.expand')}
+                collapseLabel={t('dash.collapse')}
+              />
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-emerald-500/15 pt-4">
               <button type="button" onClick={() => setShowPrivacyPolicy(true)} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 dark:text-emerald-100/50 dark:hover:text-emerald-300">
@@ -5262,6 +5406,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
       <main data-tutorial-target={getTutorialModuleTarget(showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab)} className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
+        <ActiveModuleRenderProbe module={showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab} />
         
         {/* Header Pipeline */}
         <header
@@ -5299,7 +5444,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
                 
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
-                <div className="hidden">
+                {false && <div className="hidden">
                     <button 
                        onClick={() => {
                          setActiveTab('geofence');
@@ -5487,7 +5632,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        {t('dash.resignations')}
                        <AttentionBadge count={attentionCounts.resignations} ariaLabel={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)} />
                     </button>
-                </div>
+                </div>}
 
                 {/* Tab Contents */}
                 {activeTab === 'hiring' && canViewHiring && (
@@ -5564,7 +5709,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
                        
-                       <div className="relative z-10 flex min-h-[calc(100dvh-260px)] w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-0 md:h-[360px] md:px-6 md:py-8">
+                       <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-[calc(100dvh-260px)] w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-0 md:h-[360px] md:px-6 md:py-8">
                            <div className="relative mb-5 flex h-48 min-h-48 w-48 min-w-48 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-40 md:min-h-40 md:w-40 md:min-w-40">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
@@ -5644,7 +5789,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                         key="idle"
                                         className="stanza-status-enter absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
                                     >
-                                        <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 animate-pulse"></span>
+                                        <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 ring-2 ring-emerald-500/15"></span>
                                         <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</span>
                                     </div>
                                 )}
@@ -5673,7 +5818,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
                        <div className={cn("geo-operations-summary-grid relative z-10 mt-4 grid w-full grid-cols-1 gap-3", canCreateBreakRequests && "md:grid-cols-2", isRtl ? "text-right" : "text-left")}>
                          {canCreateBreakRequests && (
-                           <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
+                           <div data-tutorial-target="geo-breaks" className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                <div>
                                  <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -5837,7 +5982,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        </div>
 
                        {canReviewBreakRequests && (
-                         <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
+                         <div data-tutorial-target="geo-break-approvals" className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                              <div>
                                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
@@ -5968,7 +6113,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       </div>
                     </div>
                     <div role="tablist" aria-label={t('dash.rosterHub')} className="flex max-w-full gap-1 overflow-x-auto p-2" onKeyDown={(event) => {
-                      const views = canApproveShiftSwaps ? ['schedule', 'swaps', 'approvals', 'leave'] as const : ['schedule', 'swaps', 'leave'] as const;
+                      const views = canApproveShiftSwaps ? ['schedule', 'swaps', 'approvals', 'leave', 'goals'] as const : ['schedule', 'swaps', 'leave', 'goals'] as const;
                       const current = views.indexOf(rosterSubview as never);
                       if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
                       event.preventDefault();
@@ -5981,7 +6126,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         ['swaps', lang === 'ar' ? 'تبديل المناوبات' : 'My Swaps'],
                         ...(canApproveShiftSwaps ? [['approvals', lang === 'ar' ? 'الموافقات' : 'Approvals']] : []),
                         ['leave', t('dash.applyLeave')],
-                      ] as Array<[typeof rosterSubview, string]>).map(([view, label]) => <button key={view} type="button" role="tab" aria-selected={rosterSubview === view} tabIndex={rosterSubview === view ? 0 : -1} onClick={() => setRosterSubview(view)} className={cn('min-h-10 shrink-0 rounded px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterSubview === view ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-100/60 dark:hover:text-emerald-100')}>{label}</button>)}
+                        ['goals', t('rosterGoals.title')],
+                      ] as Array<[typeof rosterSubview, string]>).map(([view, label]) => <button key={view} type="button" role="tab" aria-selected={rosterSubview === view} data-selected={rosterSubview === view} tabIndex={rosterSubview === view ? 0 : -1} onClick={() => recordDevInteraction(view === 'goals' ? 'roster-goals-tab' : `roster-tab:${view}`, () => setRosterSubview(view))} className={cn('stanza-interactive-control min-h-10 shrink-0 rounded border border-transparent px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterSubview !== view && 'text-slate-500 dark:text-emerald-100/60')}>{label}</button>)}
                     </div>
                     {rosterSubview === 'leave' && (
                       <div role="tabpanel">
@@ -6002,6 +6148,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     )}
                     {rosterSubview === 'swaps' && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapsPanel employeeId={user.id} /></Suspense></div>}
                     {rosterSubview === 'approvals' && canApproveShiftSwaps && <div role="tabpanel"><Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}><ShiftSwapApprovalsPanel /></Suspense></div>}
+                    {rosterSubview === 'goals' && <div role="tabpanel" data-tutorial-target="roster-goals"><Suspense fallback={<div className="min-h-72 bg-emerald-500/5" />}><RosterGoalsPanel employeeId={selectedRosterEmployeeId} weekStart={rosterGoalWeekStart} /></Suspense></div>}
                   </section>
                 )}
 
@@ -6049,14 +6196,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          {isMobileNavigationLayout && <div data-roster-presentation-selector data-tutorial-target="roster-presentation-selector" className="mt-3 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Roster presentation">
                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{lang === 'ar' ? 'عرض الجدول' : 'Schedule view'}</span>
                            {(['fit', 'detailed'] as const).map((mode) => (
-                             <button key={mode} type="button" role="radio" aria-checked={rosterDisplayMode === mode} onClick={() => setRosterPresentationMode(mode)} className={cn('min-h-10 rounded-lg border px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterDisplayMode === mode ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200' : 'border-emerald-500/15 text-slate-500 dark:text-emerald-100/60')}>
+                             <button key={mode} type="button" role="radio" aria-checked={rosterDisplayMode === mode} onClick={() => setRosterPresentationMode(mode)} className={cn('stanza-interactive-control min-h-10 rounded-lg border border-transparent px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400', rosterDisplayMode === mode ? 'font-extrabold' : 'border-[var(--stanza-border-subtle)] text-slate-500 dark:text-emerald-100/60')}>
                                {mode === 'fit' ? (lang === 'ar' ? 'ملاءمة الشاشة' : 'Fit screen') : (lang === 'ar' ? 'شبكة تفصيلية' : 'Detailed grid')}
                              </button>
                            ))}
                            {rosterDisplayMode === 'fit' && <span className="text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'اختر يوماً لتعديل الجدول الكامل.' : 'Select a day to edit the full schedule.'}</span>}
                          </div>}
                          {canViewAllRosters && (
-                           <label className="mt-3 block max-w-sm">
+                           <label data-tutorial-target="roster-employee-selector" className="mt-3 block max-w-sm">
                              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.rosterEmployee')}</span>
                              <select
                                value={selectedRosterEmployeeId}
@@ -6201,6 +6348,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </table>
                        </div>
                        )}
+                       <Suspense fallback={<div className="mx-4 mb-4 min-h-24 rounded-lg bg-emerald-500/5" />}>
+                         <RosterGoalsPanel
+                           employeeId={selectedRosterEmployeeId}
+                           weekStart={rosterGoalWeekStart}
+                           compact
+                           onOpenFull={() => setRosterSubview('goals')}
+                         />
+                       </Suspense>
                        </>
                        )}
                     </div>
@@ -7431,7 +7586,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </Suspense>
       )}
       {recognition && <RecognitionCelebration recognition={recognition} onClose={() => { setRecognition(null); onRecognitionDisplayed?.(); }} />}
-      <TutorialProvider
+      {tutorialsEnabled && performanceIsolation.tutorials && <TutorialProvider
         context={tutorialContext}
         activeModule={activeTab === 'geofence' ? 'geofence' : activeTab}
         progress={tutorialProgress}
@@ -7439,7 +7594,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         isBlocked={showControlCenter || showCommandPalette || showMobileShortcutEditor || Boolean(profilePhotoFile)}
         prepareTutorial={prepareTutorial}
         onReady={setTutorialController}
-      />
+        onHelpAction={handleTutorialHelpAction}
+      />}
+      {PerformanceIsolationPanel && <Suspense fallback={null}><PerformanceIsolationPanel value={performanceIsolation} onChange={updatePerformanceIsolation} activePreset={backgroundPreset} module={activeTab} settingsOpen={showControlCenter} lanyardMounted={Boolean(launcherLanyard)} /></Suspense>}
     </div>
   );
 }

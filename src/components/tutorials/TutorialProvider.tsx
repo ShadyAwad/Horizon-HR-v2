@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TutorialOverlay } from './TutorialOverlay';
 import { getEligibleTutorials } from './tutorial-registry';
 import { isTutorialCurrent } from './tutorial-state';
-import type { TutorialContext, TutorialDefinition, TutorialProgress, TutorialStep } from './tutorial-types';
+import type { HelpAction, TutorialContext, TutorialDefinition, TutorialProgress, TutorialStep } from './tutorial-types';
+import { recordDevRender } from '../../lib/render-diagnostics';
+import { beginDevSpan, markDevPerformance, recordDevInteraction } from '../../lib/dev-performance';
 
 export type TutorialController = {
   tutorials: readonly TutorialDefinition[];
@@ -19,20 +21,52 @@ type Props = {
   isBlocked: boolean;
   prepareTutorial: (tutorial: TutorialDefinition) => void;
   onReady: (controller: TutorialController) => void;
+  onHelpAction: (action: HelpAction) => void;
 };
 
 type ActiveTutorial = { tutorial: TutorialDefinition; steps: readonly TutorialStep[]; index: number; automatic: boolean };
 
-export function TutorialProvider({ context, activeModule, progress, updateProgress, isBlocked, prepareTutorial, onReady }: Props) {
+export function TutorialProvider({ context, activeModule, progress, updateProgress, isBlocked, prepareTutorial, onReady, onHelpAction }: Props) {
   const [active, setActive] = useState<ActiveTutorial | null>(null);
   const automaticStarted = useRef(false);
-  const eligible = useMemo(() => getEligibleTutorials(context), [context]);
+  const pendingStartTimer = useRef<number | null>(null);
+  const pendingStartWasAutomatic = useRef(false);
+  const blockedRef = useRef(isBlocked);
+  blockedRef.current = isBlocked;
+  const eligible = useMemo(() => {
+    const finish = beginDevSpan('startup:tutorial-eligibility-calculation');
+    const result = getEligibleTutorials(context);
+    finish({ eligibleCount: result.length });
+    return result;
+  }, [context]);
+  if (import.meta.env.DEV) {
+    recordDevRender('TutorialProvider', {
+      activeTutorial: active?.tutorial.id || 'none',
+      activeStep: active?.index ?? -1,
+      activeModule,
+      blocked: isBlocked,
+      eligible: eligible.map((tutorial) => tutorial.id).join('|'),
+      autoStart: progress.tutorialsAutoStart,
+    });
+  }
+
+  const clearPendingStart = useCallback((allowAutomaticRetry = false) => {
+    if (pendingStartTimer.current !== null) window.clearTimeout(pendingStartTimer.current);
+    if (allowAutomaticRetry && pendingStartWasAutomatic.current) automaticStarted.current = false;
+    pendingStartTimer.current = null;
+    pendingStartWasAutomatic.current = false;
+  }, []);
 
   const start = useCallback((id: string, automatic = false) => {
     const tutorial = eligible.find((item) => item.id === id);
     if (!tutorial) return;
+    clearPendingStart(true);
     prepareTutorial(tutorial);
-    window.setTimeout(() => {
+    pendingStartWasAutomatic.current = automatic;
+    pendingStartTimer.current = window.setTimeout(() => {
+      pendingStartTimer.current = null;
+      pendingStartWasAutomatic.current = false;
+      if (automatic && blockedRef.current) return;
       const steps = tutorial.steps.filter((step) => (
         (!step.when || step.when(context))
         && (!step.target || document.querySelector(`[data-tutorial-target="${step.target}"]`))
@@ -40,7 +74,19 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
       if (!steps.length) return;
       setActive({ tutorial, steps, index: 0, automatic });
     }, id === 'welcome' ? 180 : 140);
-  }, [context, eligible, prepareTutorial]);
+  }, [clearPendingStart, context, eligible, prepareTutorial]);
+
+  useEffect(() => {
+    if (!isBlocked) return;
+    clearPendingStart(true);
+    setActive((current) => {
+      if (!current?.automatic) return current;
+      automaticStarted.current = false;
+      return null;
+    });
+  }, [clearPendingStart, isBlocked]);
+
+  useEffect(() => () => clearPendingStart(), [clearPendingStart]);
 
   const finish = useCallback((completed: boolean, disableAutomatic = false) => {
     if (!active) return;
@@ -52,14 +98,27 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
     setActive(null);
   }, [active, progress, updateProgress]);
 
-  const next = useCallback(() => {
+  const advance = useCallback(() => {
     if (!active) return;
     const nextIndex = active.index + 1;
     if (nextIndex >= active.steps.length) { finish(true); return; }
     setActive((current) => current ? { ...current, index: nextIndex } : null);
   }, [active, finish]);
 
+  const next = useCallback(() => {
+    recordDevInteraction('tutorial-next', advance);
+  }, [advance]);
+
   const back = useCallback(() => setActive((current) => current && current.index > 0 ? { ...current, index: current.index - 1 } : current), []);
+
+  const runHelpAction = useCallback((action: HelpAction) => {
+    setActive(null);
+    if (action.type === 'start-tutorial') {
+      start(action.tutorialId);
+      return;
+    }
+    onHelpAction(action);
+  }, [onHelpAction, start]);
 
   useEffect(() => {
     if (!active) return;
@@ -70,17 +129,22 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
       if (!detail || detail.type !== contract.type) return;
       if (contract.target && detail.target !== contract.target) return;
       if (contract.value && detail.value !== contract.value) return;
-      next();
+      recordDevInteraction('tutorial-interaction-advance', advance);
     };
     window.addEventListener('stanza-tutorial-action', advanceFromSafeAction);
     return () => window.removeEventListener('stanza-tutorial-action', advanceFromSafeAction);
-  }, [active, next]);
+  }, [active, advance]);
 
   useEffect(() => {
-    if (automaticStarted.current || active || isBlocked || !progress.tutorialsEnabled || !progress.tutorialsAutoStart) return;
     const isUnseen = (tutorial: TutorialDefinition) => !isTutorialCurrent(progress.completedTutorials, tutorial.id, tutorial.version) && !isTutorialCurrent(progress.dismissedTutorials, tutorial.id, tutorial.version);
     const candidate = eligible.find((tutorial) => tutorial.id === 'welcome' && isUnseen(tutorial))
       || eligible.find((tutorial) => tutorial.automatic && tutorial.module === activeModule && isUnseen(tutorial));
+    markDevPerformance('startup:automatic-tutorial-decision', {
+      blocked: isBlocked,
+      candidate: candidate?.id || 'none',
+      enabled: progress.tutorialsEnabled && progress.tutorialsAutoStart,
+    }, true);
+    if (automaticStarted.current || active || isBlocked || !progress.tutorialsEnabled || !progress.tutorialsAutoStart) return;
     if (!candidate) return;
     const timer = window.setTimeout(() => { automaticStarted.current = true; start(candidate.id, true); }, 450);
     return () => window.clearTimeout(timer);
@@ -105,5 +169,6 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
     onNext={next}
     onSkip={(disableAutomatic) => finish(false, disableAutomatic)}
     onClose={() => finish(false)}
+    onHelpAction={runHelpAction}
   />;
 }

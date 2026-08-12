@@ -348,10 +348,10 @@ export function CommandPalette({
                         onMouseMove={() => setSelectedIndex(resultIndex)}
                         onClick={() => onExecute(command)}
                         className={cn(
-                          'grid min-h-14 w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2 text-start outline-none transition-colors motion-reduce:transition-none sm:gap-3 sm:px-3',
+                          'stanza-interactive-control grid min-h-14 w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent px-2.5 py-2 text-start text-[var(--stanza-menu-text)] outline-none motion-reduce:transition-none sm:gap-3 sm:px-3',
                           selected
-                            ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-800 ring-1 ring-emerald-500/15 dark:text-emerald-100'
-                            : 'border-transparent text-slate-700 hover:bg-emerald-500/7 focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/80',
+                            ? 'font-extrabold'
+                            : 'font-normal',
                         )}
                       >
                         <span className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">

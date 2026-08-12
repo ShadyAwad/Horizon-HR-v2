@@ -8,7 +8,7 @@ import {
 } from '../src/lib/StanzaPreferencesContext';
 import { BACKGROUND_PRESET_IDS, backgroundPresets, normaliseBackgroundPreset } from '../src/lib/background-presets';
 
-const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings, authShell, fingerprintCanvas] = await Promise.all([
+const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings, authShell, fingerprintCanvas, expensesPanel, shiftSwapsPanel, commandPalette] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
   readFile('src/index.css', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
@@ -22,6 +22,9 @@ const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, ric
   readFile('src/components/navigation/QuickActionSettings.tsx', 'utf8'),
   readFile('src/components/AuthShell.tsx', 'utf8'),
   readFile('src/components/FingerprintCanvas.tsx', 'utf8'),
+  readFile('src/components/expenses/ExpensesPanel.tsx', 'utf8'),
+  readFile('src/components/roster/ShiftSwapsPanel.tsx', 'utf8'),
+  readFile('src/components/command-palette/CommandPalette.tsx', 'utf8'),
 ]);
 
 assert.deepEqual(LIGHT_INTENSITY_STOPS, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
@@ -95,8 +98,31 @@ assert.doesNotMatch(css, /:root\[data-theme="dark"\]\[data-light-intensity/);
 assert.match(css, /\.dark \{/);
 for (const preset of BACKGROUND_PRESET_IDS) {
   assert.match(css, new RegExp(`data-background-preset="${preset}"`));
+  const escapedPreset = preset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const lightRule = [...css.matchAll(new RegExp(`:root\\[data-background-preset="${escapedPreset}"\\]\\[data-theme="light"\\] \\{([^}]*)\\}`, 'g'))]
+    .map((match) => match[1])
+    .join('\n');
+  const darkRule = [...css.matchAll(new RegExp(`:root\\[data-background-preset="${escapedPreset}"\\]:not\\(\\[data-theme="light"\\]\\) \\{([^}]*)\\}`, 'g'))]
+    .map((match) => match[1])
+    .join('\n');
+  const unscopedRules = [...css.matchAll(new RegExp(`:root\\[data-background-preset="${escapedPreset}"\\] \\{([^}]*)\\}`, 'g'))]
+    .map((match) => match[1]);
+  assert.match(lightRule, /--stanza-hover-surface:/, `${preset} light hover surface is explicit`);
+  assert.match(lightRule, /--stanza-selected-surface:/, `${preset} light selected surface is explicit`);
+  assert.match(darkRule, /--stanza-hover-surface:/, `${preset} dark hover surface is explicit`);
+  assert.match(darkRule, /--stanza-selected-surface:/, `${preset} dark selected surface is explicit`);
+  assert.equal(
+    unscopedRules.some((rule) => /--stanza-surface-(?:hover|selected):/.test(rule)),
+    false,
+    `${preset} accent rules do not override mode-aware surface aliases`,
+  );
 }
 assert.doesNotMatch(css, /data-background-preset="default"/);
+assert.equal(backgroundPresets.find((preset) => preset.id === 'emerald')?.lightPreview, '#f4faf6');
+assert.equal(backgroundPresets.find((preset) => preset.id === 'emerald')?.darkPreview, '#020403');
+assert.match(css, /data-background-preset="emerald"\]:not\(\[data-theme="light"\]\) \{ --stanza-page-bg: #020403;/);
+assert.match(css, /--stanza-surface: #04110d; --stanza-surface-elevated: #061811; --stanza-surface-muted: #03100b;/);
+assert.match(css, /data-background-preset="emerald"\] \{ --stanza-auth-background: #020604; --stanza-auth-text: #ecfdf5;/);
 
 assert.match(dashboard, /useStanzaPreferences\(\)/);
 assert.match(dashboard, /lightIntensity/);
@@ -157,6 +183,37 @@ assert.match(css, /data-background-preset="amethyst"/);
 assert.match(css, /data-background-preset="ember"/);
 assert.match(css, /\.stanza-generic-surface/);
 assert.match(css, /\.stanza-generic-control/);
+assert.match(css, /--stanza-surface-hover: var\(--stanza-hover-surface\)/);
+assert.match(css, /--stanza-surface-selected: var\(--stanza-selected-surface\)/);
+assert.match(css, /--stanza-nav-active-foreground: color-mix\(in srgb, var\(--stanza-accent-hover\) 40%, var\(--stanza-text-primary\) 60%\)/);
+assert.match(css, /:root\[data-background-preset\]\[data-theme="light"\] \{\s*--stanza-nav-active-foreground: color-mix\(in srgb, var\(--stanza-accent\) 40%, var\(--stanza-text-primary\) 60%\);\s*\}/);
+assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/);
+assert.match(css, /\.stanza-navigation-item\[data-selected="true"\]/);
+assert.match(css, /color-mix\(in srgb, var\(--stanza-surface-selected\) 82%, var\(--stanza-accent\) 18%\)/);
+assert.match(css, /transform: scale\(\.98\)/);
+assert.match(css, /outline: 2px solid var\(--stanza-focus-ring\)/);
+assert.match(css, /:not\(:disabled\):not\(\[aria-disabled="true"\]\)[\s\S]*cursor: pointer;/);
+assert.match(css, /\.stanza-destructive-action:not\(:disabled\):hover/);
+assert.match(css, /\.stanza-toggle-track\s*\{\s*background-color: var\(--stanza-control-track\);/);
+assert.match(css, /\.stanza-toggle-track\[aria-checked="true"\]\s*\{\s*background-color: var\(--stanza-control-selected\);/);
+assert.match(css, /:not\(\.stanza-toggle-track\):hover/);
+assert.match(dashboard, /role="radio"[\s\S]{0,240}stanza-interactive-control/);
+assert.match(dashboard, /text-\[var\(--stanza-text-muted\)\]/);
+assert.doesNotMatch(dashboard, /flex items-center justify-between gap-2 text-xs font-bold text-neutral-800 dark:text-emerald-50/);
+assert.match(dashboard, /aria-pressed=\{lang === 'en'\}[\s\S]{0,180}stanza-interactive-control/);
+assert.match(dashboard, /aria-pressed=\{lang === 'ar'\}[\s\S]{0,180}stanza-interactive-control/);
+assert.match(dashboard, /stanza-interactive-control stanza-toggle-track/);
+assert.doesNotMatch(dashboard, /selected \? 'border-emerald-500 bg-emerald-500\/10'/);
+assert.doesNotMatch(dashboard, /desktopNavigationMode === mode[\s\S]{0,120}bg-emerald/);
+assert.doesNotMatch(dashboard, /rosterDisplayMode === mode[\s\S]{0,140}bg-emerald/);
+assert.match(expensesPanel, /role="tab"[\s\S]{0,300}stanza-interactive-control/);
+assert.doesNotMatch(expensesPanel, /activeView === tab\.id \? 'bg-emerald/);
+assert.match(leaveWorkspace, /role="tab"[\s\S]{0,340}stanza-interactive-control/);
+assert.doesNotMatch(leaveWorkspace, /view === value \? 'bg-emerald/);
+assert.match(shiftSwapsPanel, /aria-pressed=\{role === value\}[\s\S]{0,180}stanza-interactive-control/);
+assert.doesNotMatch(shiftSwapsPanel, /role === value \? 'border-emerald/);
+assert.match(commandPalette, /role="option"[\s\S]{0,300}stanza-interactive-control/);
+assert.doesNotMatch(commandPalette, /selected\s*\? 'border-emerald-500\/30 bg-emerald/);
 assert.match(css, /--stanza-accent: #a95749/);
 assert.doesNotMatch(css, /--stanza-accent: #ef4444/);
 assert.match(css, /\.stanza-auth-shell/);
@@ -171,8 +228,9 @@ assert.match(dashboard, /stanza-settings-drawer/);
 assert.doesNotMatch(dashboard, /stanza-settings-overlay fixed inset-0 z-40[^"`]*\bbg-(?:white|black|\[#)/);
 assert.doesNotMatch(dashboard, /stanza-modal-backdrop absolute inset-0[^"`]*\bbg-(?:white|black|\[#)/);
 assert.match(css, /\.stanza-settings-overlay\s*\{\s*background: transparent;/);
-assert.match(css, /\.stanza-modal-backdrop\s*\{\s*background-color: rgb\(0 0 0 \/ 0\.35\)/);
+assert.match(css, /\.stanza-modal-backdrop\s*\{\s*background-color: rgb\(0 0 0 \/ 0\.52\)/);
 assert.match(css, /\.stanza-settings-drawer\s*\{\s*background-color: var\(--stanza-surface-panel\) !important;/);
+assert.doesNotMatch(css, /\.stanza-modal-backdrop\s*\{[^}]*backdrop-filter/s);
 assert.doesNotMatch(css, /\.stanza-settings-overlay\s*\{[^}]*stanza-surface-panel/s);
 assert.doesNotMatch(css, /transition:\s*all/);
 assert.match(translations, /'dash\.appearance': 'المظهر'/);

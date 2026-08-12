@@ -15,9 +15,12 @@ import {
 } from '@react-three/rapier';
 import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import * as THREE from 'three';
+import { markDevPerformance, recordDevResource, setDevLanyardFrameTier } from '../../lib/dev-performance';
 
 import cardGLB from './card.glb';
 import { STANZA_LANYARD_TEXTURE } from './stanzaLanyardArtwork';
+
+markDevPerformance('startup:lanyard-runtime-module-evaluated', undefined, true);
 
 extend({ MeshLineGeometry, MeshLineMaterial });
 
@@ -295,12 +298,14 @@ function LanyardCanvasLifecycle({
     canvas.addEventListener('webglcontextrestored', handleContextRestored);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     if (import.meta.env.DEV) console.debug('[lanyard] canvas mounted');
+    markDevPerformance('startup:three-rapier-initialized', undefined, true);
 
     return () => {
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (import.meta.env.DEV) console.debug('[lanyard] canvas unmounted');
+      setDevLanyardFrameTier('unmounted');
     };
   }, [frameRuntime, gl]);
 
@@ -315,6 +320,7 @@ function LanyardCanvasLifecycle({
 
     const requestFrame = (requestedTier = frameRuntime.current.tier) => {
       frameRuntime.current.tier = requestedTier;
+      setDevLanyardFrameTier(requestedTier);
       clearFrameTimer();
       if (disposed || pausedRef.current || requestedTier === 'settled' || document.visibilityState !== 'visible') return;
 
@@ -435,6 +441,8 @@ function Band({
   const ropeInitialized = useRef(false);
   const lastRepeatX = useRef(-2.5);
   const settledElapsed = useRef(0);
+  const firstFrameReported = useRef(false);
+  const settledReported = useRef(false);
   const lastAppliedAnchor = useRef<THREE.Vector3 | null>(null);
   const lastValidAnchorWorld = useRef(new THREE.Vector3(0, 4, 0));
   const onReadyRef = useRef(onReady);
@@ -480,8 +488,13 @@ function Band({
     angularDamping: 6
   };
 
+  markDevPerformance('startup:lanyard-glb-request-start', undefined, true);
   const { nodes, materials } = useGLTF(cardGLB) as any;
+  markDevPerformance('startup:lanyard-glb-parse-decode-complete', undefined, true);
   const texture = useTexture(lanyardImage || STANZA_LANYARD_TEXTURE);
+  useEffect(() => {
+    recordDevResource('startup:lanyard-glb-request', 'card.glb');
+  }, []);
   // Rasterize self-contained SVG artwork before it reaches WebGL. This avoids
   // browser-specific SVG texture decoding differences, notably in Firefox.
   const frontTex = useRasterizedBadgeArtwork(frontImage, gl, invalidate);
@@ -753,6 +766,10 @@ function Band({
   }, [anchorNdc, anchorWorld, size.height, size.width]);
 
   useFrame((state, delta) => {
+    if (!firstFrameReported.current) {
+      firstFrameReported.current = true;
+      markDevPerformance('startup:lanyard-first-frame', undefined, true);
+    }
     if (isDraggingRef.current && dragged && typeof dragged !== 'boolean') {
       vec.set(state.pointer.x, state.pointer.y, 0.5).unproject(state.camera);
       dir.copy(vec).sub(state.camera.position).normalize();
@@ -896,6 +913,10 @@ function Band({
         : sceneSettled
           ? 'settled'
           : 'passive';
+    if (nextFrameTier === 'settled' && !settledReported.current) {
+      settledReported.current = true;
+      markDevPerformance('startup:lanyard-settled', undefined, true);
+    }
     frameRuntime.current.requestFrame(nextFrameTier);
 
   });

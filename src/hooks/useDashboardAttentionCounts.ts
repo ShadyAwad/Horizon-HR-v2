@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, apiUrl } from '../lib/api';
+import { beginDevSpan, markDevPerformance } from '../lib/dev-performance';
 
 export type DashboardAttentionCounts = {
   grievances: number;
@@ -52,6 +53,8 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
+    const finishDiagnostic = beginDevSpan('startup:attention-count-request');
+    markDevPerformance('startup:attention-count-request-start', undefined, true);
 
     try {
       const response = await apiFetch(apiUrl('/api/dashboard/attention-counts'), {
@@ -84,6 +87,8 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
         setError(requestError instanceof Error ? requestError.message : 'Unable to load dashboard attention counts.');
       }
     } finally {
+      finishDiagnostic({ aborted: controller.signal.aborted });
+      markDevPerformance('startup:attention-count-request-complete', undefined, true);
       if (requestRef.current === controller) requestRef.current = null;
     }
   }, [enabled, user.id, user.tenantId]);
