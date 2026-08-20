@@ -38,6 +38,7 @@
     "test:navigation": "tsx scripts/navigation-test.ts",
     "test:tutorials": "tsx scripts/tutorials-test.ts",
     "test:command-palette": "tsx scripts/command-palette-test.ts",
+    "test:architecture": "tsx scripts/architecture-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "seed:demo:organisation": "tsx scripts/seed-demo.ts --organisation",

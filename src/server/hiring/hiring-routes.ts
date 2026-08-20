@@ -2,6 +2,7 @@ import type express from 'express';
 import type { PoolClient } from 'pg';
 import { validateEmail } from '../../lib/validation';
 import { withTenant } from '../../lib/hr-background';
+import { hasPermissionClaim } from '../auth/permission-claims';
 import { recordAuditEvent } from '../audit/audit-events';
 import {
   HIRING_NOTE_TYPES,
@@ -23,7 +24,9 @@ type HiringRouteDependencies = {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^[+()\d\s.-]{3,40}$/;
 const asText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
-const hasPermission = (req: express.Request, permission: string) => req.authUser?.role === 'hr_admin' || Boolean(req.authUser?.permissions?.includes(permission));
+const hasPermission = (req: express.Request, permission: string) => (
+  hasPermissionClaim(req.authUser, permission)
+);
 const fail = (status: number, code: string, error: string) => Object.assign(new Error(error), { statusCode: status, code });
 const validatedText = (value: unknown, max: number, field: string, required = false) => {
   if (value === undefined || value === null || value === '') {

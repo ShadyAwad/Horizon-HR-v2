@@ -62,6 +62,8 @@ import { registerExpenseRoutes } from './src/server/expenses/expense-routes';
 import { registerQrTokenRoutes } from './src/server/qr/qr-token-routes';
 import { registerEmployeeBadgeRoutes } from './src/server/qr/employee-badge-routes';
 import { registerAssetQrLabelRoutes } from './src/server/qr/asset-qr-label-routes';
+import { registerResignationRoutes } from './src/server/resignations/resignation-routes';
+import { hasPermissionClaim } from './src/server/auth/permission-claims';
 import { assertHrAdminAssignmentTimingIsSafe, assertHrAdminAssignmentsMayBeRevoked, HR_ADMIN_SYSTEM_KEY, lockFinalHrAdminAuthority } from './src/server/organisation/final-hr-admin';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
@@ -193,20 +195,6 @@ type CreateGrievanceBody = {
 type UpdateGrievanceStatusBody = {
   status?: GrievanceStatus;
   assignedTo?: string | null;
-};
-
-type ResignationType = 'voluntary' | 'personal_reasons' | 'career_change' | 'other';
-type ResignationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'processed';
-
-type CreateResignationBody = {
-  resignationType?: ResignationType;
-  requestedLastWorkingDay?: string;
-  reason?: string | null;
-};
-
-type ReviewResignationBody = {
-  status?: 'approved' | 'rejected';
-  reviewNote?: string | null;
 };
 
 type FeedVisibilityInput = {
@@ -870,8 +858,6 @@ function isNonNegativeAmount(value: unknown): value is number {
 
 const grievancePriorities: GrievancePriority[] = ['low', 'normal', 'high', 'urgent'];
 const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
-const resignationTypes: ResignationType[] = ['voluntary', 'personal_reasons', 'career_change', 'other'];
-const resignationStatuses: ResignationStatus[] = ['pending', 'approved', 'rejected', 'withdrawn', 'processed'];
 const companyLocationTypes: CompanyLocationType[] = ['headquarters', 'branch', 'warehouse', 'remote_site', 'other'];
 const payrollStatuses: PayrollStatus[] = ['draft', 'approved', 'paid', 'cancelled'];
 const dashboardAttentionStatuses = {
@@ -912,14 +898,6 @@ function isGrievancePriority(value: unknown): value is GrievancePriority {
 
 function isGrievanceStatus(value: unknown): value is GrievanceStatus {
   return typeof value === 'string' && grievanceStatuses.includes(value as GrievanceStatus);
-}
-
-function isResignationType(value: unknown): value is ResignationType {
-  return typeof value === 'string' && resignationTypes.includes(value as ResignationType);
-}
-
-function isResignationStatus(value: unknown): value is ResignationStatus {
-  return typeof value === 'string' && resignationStatuses.includes(value as ResignationStatus);
 }
 
 function isCompanyLocationType(value: unknown): value is CompanyLocationType {
@@ -1611,7 +1589,7 @@ function requirePermission(permissionKey: string) {
       });
     }
 
-    if (req.authUser.role === 'hr_admin' || req.authUser.permissions?.includes(permissionKey)) {
+    if (hasPermissionClaim(req.authUser, permissionKey)) {
       return next();
     }
 
@@ -1628,7 +1606,7 @@ function requireHrAdminSessionCenter(
   next: express.NextFunction,
 ) {
   if (!req.authUser) return res.status(401).json({ success: false, error: 'Authentication required.' });
-  if (req.authUser.role !== 'hr_admin' || !authUserHasPermission(req.authUser, 'sessions.manage')) {
+  if (req.authUser.role !== 'hr_admin' || !hasPermissionClaim(req.authUser, 'sessions.manage')) {
     return res.status(403).json({ success: false, error: 'You do not have permission to manage tenant sessions.' });
   }
   return next();
@@ -1641,10 +1619,6 @@ function requireResignationPermission(permissionKey: string, fallbackRoles: Empl
     if (user.role === 'hr_admin' || fallbackRoles.includes(user.role) || user.permissions?.includes(permissionKey)) return next();
     return res.status(403).json({ success: false, error: 'You do not have permission to perform this action.' });
   };
-}
-
-function authUserHasPermission(authUser: AuthenticatedUser, permissionKey: string) {
-  return authUser.role === 'hr_admin' || Boolean(authUser.permissions?.includes(permissionKey));
 }
 
 function privilegeLevel(systemKey: string | null | undefined, permissions: string[] = []) {
@@ -2293,7 +2267,7 @@ async function startServer() {
       const report = await withTenant(authUser.tenantId, async (client) => {
         const asset = await client.query<{ id: string; asset_tag: string; status: string }>('SELECT id, asset_tag, status FROM assets WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [authUser.tenantId, assetId]);
         if (!asset.rows[0]) throw Object.assign(new Error('Asset not found.'), { statusCode: 404 });
-        const canManage = authUserHasPermission(authUser, 'assets.manage');
+        const canManage = hasPermissionClaim(authUser, 'assets.manage');
         const assignment = await client.query<{ id: string }>(`SELECT id FROM asset_assignments WHERE tenant_id=$1 AND asset_id=$2 AND employee_id=$3 AND status='active' FOR UPDATE`, [authUser.tenantId, assetId, authUser.employeeId]);
         if (!canManage && !assignment.rows[0]) throw Object.assign(new Error('Active asset assignment not found.'), { statusCode: 404 });
         if (asset.rows[0].status === 'lost' || asset.rows[0].status === 'retired') throw Object.assign(new Error('Evidence cannot be added for this asset state.'), { statusCode: 409 });
@@ -2317,7 +2291,7 @@ async function startServer() {
     const authUser = req.authUser!;
     try {
       const report = await withTenant(authUser.tenantId, async (client) => {
-        const canView = authUserHasPermission(authUser, 'assets.view');
+        const canView = hasPermissionClaim(authUser, 'assets.view');
         const result = await client.query<{ evidence_url: string }>(`SELECT evidence_url FROM asset_condition_reports WHERE tenant_id=$1 AND id=$2 AND evidence_url IS NOT NULL AND ($3::boolean OR reported_by=$4 OR EXISTS(SELECT 1 FROM asset_assignments WHERE tenant_id=asset_condition_reports.tenant_id AND asset_id=asset_condition_reports.asset_id AND employee_id=$4 AND status='active'))`, [authUser.tenantId, req.params.reportId, canView, authUser.employeeId]);
         return result.rows[0] || null;
       });
@@ -3954,18 +3928,18 @@ app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
 
   // These booleans mirror the mutation routes. Modules without a pending state or
   // per-user read model intentionally remain zero instead of inferring unread work.
-  const canReviewBreakRequests = authUserHasPermission(authUser, 'break_requests.review')
-    || authUserHasPermission(authUser, 'break_requests.view_all');
+  const canReviewBreakRequests = hasPermissionClaim(authUser, 'break_requests.review')
+    || hasPermissionClaim(authUser, 'break_requests.view_all');
   const canReviewGrievances = authUser.role === 'manager' || authUser.role === 'hr_admin';
   const canReviewLeaveRequests = authUser.role === 'manager' || authUser.role === 'hr_admin';
   const canReviewResignations = authUser.role === 'manager'
-    || authUserHasPermission(authUser, 'resignations.review');
-  const canProcessResignations = authUserHasPermission(authUser, 'resignations.process');
-  const canApprovePayroll = authUserHasPermission(authUser, 'payroll.approve');
-  const canMarkPayrollPaid = authUserHasPermission(authUser, 'payroll.mark_paid');
-  const canViewHiring = authUserHasPermission(authUser, 'hiring.view');
-  const canManageHiring = authUserHasPermission(authUser, 'hiring.create') || authUserHasPermission(authUser, 'hiring.edit');
-  const canMakeHiringDecision = authUserHasPermission(authUser, 'hiring.make_final_decision');
+    || hasPermissionClaim(authUser, 'resignations.review');
+  const canProcessResignations = hasPermissionClaim(authUser, 'resignations.process');
+  const canApprovePayroll = hasPermissionClaim(authUser, 'payroll.approve');
+  const canMarkPayrollPaid = hasPermissionClaim(authUser, 'payroll.mark_paid');
+  const canViewHiring = hasPermissionClaim(authUser, 'hiring.view');
+  const canManageHiring = hasPermissionClaim(authUser, 'hiring.create') || hasPermissionClaim(authUser, 'hiring.edit');
+  const canMakeHiringDecision = hasPermissionClaim(authUser, 'hiring.make_final_decision');
 
   try {
     const counts = await withTenant(tenantId, async (client) => {
@@ -4062,162 +4036,9 @@ app.get('/api/dashboard/attention-counts', demoAuth, async (req, res) => {
   }
 });
 
-app.get('/api/resignations/me', demoAuth, requireResignationPermission('resignations.view_own', ['employee', 'manager', 'hr_admin']), async (req, res) => {
-  const { tenantId, employeeId } = req.authUser!;
-  if (!hasDatabaseConfig()) return res.status(503).json({ success: false, error: 'DATABASE_URL is required for resignations' });
-  try {
-    const resignations = await withTenant(tenantId, async (client) => (await client.query(
-      `SELECT id, employee_id, resignation_type, requested_last_working_day, reason, status, reviewed_by, reviewed_at, review_note, created_at, updated_at
-       FROM resignation_requests WHERE tenant_id = $1 AND employee_id = $2 ORDER BY created_at DESC LIMIT 50`,
-      [tenantId, employeeId],
-    )).rows);
-    res.json({ success: true, resignations });
-  } catch (error) {
-    console.error('[Resignations] Failed to load employee requests:', error);
-    res.status(500).json({ success: false, error: 'Unable to load resignation requests' });
-  }
-});
-
-app.post('/api/resignations', demoAuth, requireResignationPermission('resignations.create', ['employee', 'manager', 'hr_admin']), async (req, res) => {
-  const { resignationType = 'voluntary', requestedLastWorkingDay, reason } = req.body as CreateResignationBody;
-  const { tenantId, employeeId } = req.authUser!;
-  const normalizedReason = reason?.trim() || null;
-  const today = new Date().toISOString().slice(0, 10);
-  if (!isResignationType(resignationType) || !isValidDateInput(requestedLastWorkingDay) || requestedLastWorkingDay < today || (normalizedReason && normalizedReason.length > 2000)) {
-    return res.status(400).json({ success: false, error: 'Provide a valid future last working day, resignation type, and reason.' });
-  }
-  if (!hasDatabaseConfig()) return res.status(503).json({ success: false, error: 'DATABASE_URL is required for resignations' });
-  try {
-    const resignation = await withTenant(tenantId, async (client) => {
-      const existing = await client.query('SELECT id FROM resignation_requests WHERE tenant_id = $1 AND employee_id = $2 AND status = $3 LIMIT 1', [tenantId, employeeId, 'pending']);
-      if (existing.rowCount) throw Object.assign(new Error('You already have a pending resignation request.'), { statusCode: 409 });
-      const created = await client.query(
-        `INSERT INTO resignation_requests (tenant_id, employee_id, resignation_type, requested_last_working_day, reason)
-         VALUES ($1, $2, $3, $4::date, $5::text)
-         RETURNING id, employee_id, resignation_type, requested_last_working_day, reason, status, reviewed_by, reviewed_at, review_note, created_at, updated_at`,
-        [tenantId, employeeId, resignationType, requestedLastWorkingDay, normalizedReason],
-      );
-      const row = created.rows[0];
-      await client.query(
-        `INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata)
-         VALUES ($1, $2, 'resignation.created', 'resignation_request', $3, $4::jsonb)`,
-        [tenantId, employeeId, row.id, JSON.stringify({ requestedLastWorkingDay, resignationType })],
-      );
-      await client.query(
-        `INSERT INTO outbox_events (tenant_id, event_type, payload)
-         VALUES ($1, 'resignation.submitted', $2::jsonb)`,
-        [tenantId, JSON.stringify({ resignationId: row.id, employeeId, notificationKey: 'system_alerts', title: 'Resignation request submitted' })],
-      );
-      return row;
-    });
-    res.status(201).json({ success: true, resignation });
-  } catch (error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    if (statusCode === 409) return res.status(409).json({ success: false, error: (error as Error).message });
-    console.error('[Resignations] Failed to create request:', error);
-    res.status(500).json({ success: false, error: 'Unable to submit resignation request' });
-  }
-});
-
-app.get('/api/resignations', demoAuth, requireResignationPermission('resignations.view_all', ['manager', 'hr_admin']), async (req, res) => {
-  const { tenantId } = req.authUser!;
-  if (!hasDatabaseConfig()) return res.status(503).json({ success: false, error: 'DATABASE_URL is required for resignations' });
-  try {
-    const resignations = await withTenant(tenantId, async (client) => (await client.query(
-      `SELECT r.id, r.employee_id, e.full_name, e.email, r.resignation_type, r.requested_last_working_day, r.reason, r.status,
-              r.reviewed_by, reviewer.full_name AS reviewer_name, r.reviewed_at, r.review_note, r.created_at, r.updated_at,
-              outstanding_assets.outstanding_asset_count
-       FROM resignation_requests r
-       INNER JOIN employees e ON e.id = r.employee_id AND e.tenant_id = r.tenant_id
-       LEFT JOIN employees reviewer ON reviewer.id = r.reviewed_by AND reviewer.tenant_id = r.tenant_id
-       LEFT JOIN LATERAL (
-         SELECT COUNT(*)::integer AS outstanding_asset_count
-         FROM asset_assignments asset_assignment
-         WHERE asset_assignment.tenant_id = r.tenant_id
-           AND asset_assignment.employee_id = r.employee_id
-           AND asset_assignment.status = 'active'
-       ) outstanding_assets ON true
-       WHERE r.tenant_id = $1 ORDER BY r.created_at DESC LIMIT 100`, [tenantId],
-    )).rows);
-    res.json({ success: true, resignations });
-  } catch (error) {
-    console.error('[Resignations] Failed to load tenant requests:', error);
-    res.status(500).json({ success: false, error: 'Unable to load resignation requests' });
-  }
-});
-
-app.patch('/api/resignations/:id/review', demoAuth, requireResignationPermission('resignations.review', ['manager', 'hr_admin']), async (req, res) => {
-  const { id } = req.params;
-  const { status, reviewNote } = req.body as ReviewResignationBody;
-  const { tenantId, employeeId } = req.authUser!;
-  const note = reviewNote?.trim() || null;
-  if (!isUuid(id) || (status !== 'approved' && status !== 'rejected') || (note && note.length > 2000)) return res.status(400).json({ success: false, error: 'Provide a valid request, review status, and note.' });
-  try {
-    const resignation = await withTenant(tenantId, async (client) => {
-      const result = await client.query(
-        `UPDATE resignation_requests SET status = $3::varchar, reviewed_by = $4::uuid, reviewed_at = NOW(), review_note = $5::text, updated_at = NOW()
-         WHERE tenant_id = $1 AND id = $2 AND status = 'pending'
-         RETURNING id, employee_id, resignation_type, requested_last_working_day, reason, status, reviewed_by, reviewed_at, review_note, created_at, updated_at`,
-        [tenantId, id, status, employeeId, note],
-      );
-      if (!result.rowCount) throw Object.assign(new Error('Pending resignation request not found.'), { statusCode: 404 });
-      const row = result.rows[0];
-      await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, $3, 'resignation_request', $4, $5::jsonb)`, [tenantId, employeeId, `resignation.${status}`, id, JSON.stringify({ reviewNote: note })]);
-      await client.query(`INSERT INTO outbox_events (tenant_id, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [tenantId, `resignation.${status}`, JSON.stringify({ resignationId: id, employeeId: row.employee_id, notificationKey: 'system_alerts', title: `Resignation request ${status}` })]);
-      return row;
-    });
-    res.json({ success: true, resignation });
-  } catch (error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    if (statusCode === 404) return res.status(404).json({ success: false, error: (error as Error).message });
-    console.error('[Resignations] Failed to review request:', error);
-    res.status(500).json({ success: false, error: 'Unable to review resignation request' });
-  }
-});
-
-app.patch('/api/resignations/:id/withdraw', demoAuth, requireResignationPermission('resignations.create', ['employee', 'manager', 'hr_admin']), async (req, res) => {
-  const { id } = req.params;
-  const { tenantId, employeeId } = req.authUser!;
-  if (!isUuid(id)) return res.status(400).json({ success: false, error: 'Resignation request id must be a valid UUID.' });
-  try {
-    const resignation = await withTenant(tenantId, async (client) => {
-      const result = await client.query(`UPDATE resignation_requests SET status = 'withdrawn', updated_at = NOW() WHERE tenant_id = $1 AND id = $2 AND employee_id = $3 AND status = 'pending' RETURNING id, status, employee_id, updated_at`, [tenantId, id, employeeId]);
-      if (!result.rowCount) throw Object.assign(new Error('Pending resignation request not found.'), { statusCode: 404 });
-      await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'resignation.withdrawn', 'resignation_request', $3, '{}'::jsonb)`, [tenantId, employeeId, id]);
-      return result.rows[0];
-    });
-    res.json({ success: true, resignation });
-  } catch (error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    if (statusCode === 404) return res.status(404).json({ success: false, error: (error as Error).message });
-    console.error('[Resignations] Failed to withdraw request:', error);
-    res.status(500).json({ success: false, error: 'Unable to withdraw resignation request' });
-  }
-});
-
-app.patch('/api/resignations/:id/process', demoAuth, requireResignationPermission('resignations.process', ['hr_admin']), async (req, res) => {
-  const { id } = req.params;
-  const { tenantId, employeeId } = req.authUser!;
-  if (!isUuid(id)) return res.status(400).json({ success: false, error: 'Resignation request id must be a valid UUID.' });
-  try {
-    const resignation = await withTenant(tenantId, async (client) => {
-      const result = await client.query(`UPDATE resignation_requests SET status = 'processed', updated_at = NOW() WHERE tenant_id = $1 AND id = $2 AND status = 'approved' RETURNING id, employee_id, status, updated_at`, [tenantId, id]);
-      if (!result.rowCount) throw Object.assign(new Error('Approved resignation request not found.'), { statusCode: 404 });
-      await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'resignation.processed', 'resignation_request', $3, '{}'::jsonb)`, [tenantId, employeeId, id]);
-      const outstandingAssets = await client.query<{ count: number }>(`SELECT COUNT(*)::integer AS count FROM asset_assignments WHERE tenant_id=$1 AND employee_id=$2 AND status='active'`, [tenantId, result.rows[0].employee_id]);
-      if (outstandingAssets.rows[0].count > 0) {
-        await client.query(`INSERT INTO audit_logs (tenant_id, actor_employee_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'offboarding.completed_with_assets', 'resignation_request', $3, $4::jsonb)`, [tenantId, employeeId, id, JSON.stringify({ outstandingAssetCount: outstandingAssets.rows[0].count })]);
-      }
-      await client.query(`INSERT INTO outbox_events (tenant_id, event_type, payload) VALUES ($1, 'resignation.processed', $2::jsonb)`, [tenantId, JSON.stringify({ resignationId: id, employeeId: result.rows[0].employee_id, notificationKey: 'system_alerts', title: 'Resignation request processed' })]);
-      return result.rows[0];
-    });
-    res.json({ success: true, resignation });
-  } catch (error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    if (statusCode === 404) return res.status(404).json({ success: false, error: (error as Error).message });
-    console.error('[Resignations] Failed to process request:', error);
-    res.status(500).json({ success: false, error: 'Unable to process resignation request' });
-  }
+registerResignationRoutes(app, {
+  standardAuth: demoAuth,
+  requireResignationPermission,
 });
 
 app.post(
@@ -4342,7 +4163,7 @@ app.put(
     const { permissionKeys = [] } = req.body as { permissionKeys?: string[] };
     const normalizedPermissionKeys = [...new Set(Array.isArray(permissionKeys) ? permissionKeys : [])];
 
-    if (normalizedPermissionKeys.includes('roles.assign_privileged') && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+    if (normalizedPermissionKeys.includes('roles.assign_privileged') && !hasPermissionClaim(req.authUser!, 'roles.assign_privileged')) {
       return res.status(403).json({ success: false, error: 'Privileged permission assignment requires an authorized administrator.' });
     }
 
@@ -4569,7 +4390,7 @@ app.post(
         if (employeeId === actorEmployeeId && targetLevel > actorLevel) {
           throw Object.assign(new Error('You cannot elevate your own privileges.'), { statusCode: 403 });
         }
-        if (privilegedTarget && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+        if (privilegedTarget && !hasPermissionClaim(req.authUser!, 'roles.assign_privileged')) {
           throw Object.assign(new Error('Privileged role assignment requires roles.assign_privileged.'), { statusCode: 403 });
         }
         if (tenantRole.system_key === HR_ADMIN_SYSTEM_KEY) {
@@ -4703,7 +4524,7 @@ app.delete(
         if (privilegedRemoval && tenantRole?.system_key !== HR_ADMIN_SYSTEM_KEY && employeeId === actorEmployeeId) {
           throw Object.assign(new Error('You cannot remove your own privileged role.'), { statusCode: 403 });
         }
-        if (privilegedRemoval && !authUserHasPermission(req.authUser!, 'roles.assign_privileged')) {
+        if (privilegedRemoval && !hasPermissionClaim(req.authUser!, 'roles.assign_privileged')) {
           throw Object.assign(new Error('Privileged role removal requires roles.assign_privileged.'), { statusCode: 403 });
         }
         if (tenantRole?.system_key === HR_ADMIN_SYSTEM_KEY) {
@@ -5386,7 +5207,7 @@ app.get(
   async (req, res) => {
     const tenantId = req.authUser!.tenantId;
     const canViewPreciseLocations = req.authUser!.role !== 'employee'
-      || authUserHasPermission(req.authUser!, 'locations.read');
+      || hasPermissionClaim(req.authUser!, 'locations.read');
 
     if (!hasDatabaseConfig()) {
       return res.status(503).json({ success: false, error: 'DATABASE_URL is required for company locations' });
@@ -8629,7 +8450,7 @@ app.get(
     const authUser = req.authUser!;
     try {
       const image = await withTenant(authUser.tenantId, async (client) => {
-        const canPublish = authUserHasPermission(authUser, 'feed.publish');
+        const canPublish = hasPermissionClaim(authUser, 'feed.publish');
         const result = await client.query<{ storage_key: string }>(
           `SELECT image.storage_key
            FROM company_feed_images image

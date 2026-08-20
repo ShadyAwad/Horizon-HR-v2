@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, ChevronLeft, ChevronRight, ClipboardList, LoaderCircle, Pencil, Plus, RefreshCw, Search } from 'lucide-react';
-import type { AuthUser } from '../../App';
+import type { AuthUser } from '../../auth/auth-contract';
 import { apiFetch } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 import { AssetFormDialog, type AssetFormRecord } from './AssetFormDialog';

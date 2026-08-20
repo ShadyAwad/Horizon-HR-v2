@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
@@ -24,6 +25,36 @@ const devPerformance = read('src/lib/dev-performance.ts');
 const styles = read('src/index.css');
 const lanyard = read('src/components/lanyard/Lanyard.tsx');
 const dashboardLanyard = read('src/components/lanyard/StanzaDashboardLanyard.tsx');
+const lanyardAssetExperiment = read('scripts/lanyard-asset-experiment.mjs');
+const lanyardAssetReport = JSON.parse(read('src/components/lanyard/candidates/asset-report.json')) as {
+  production: { bytes: number; sha256: string };
+  candidates: Array<{
+    path: string;
+    bytes: number;
+    sha256: string;
+    extensionsRequired: string[];
+    images: Array<{ mimeType: string; width: number; height: number }>;
+    contract: {
+      requiredNodes: Record<string, { present: boolean; transformMatches: boolean; meshPresent: boolean }>;
+      requiredMaterials: Record<string, boolean>;
+      nodeCountMatches: boolean;
+      meshCountMatches: boolean;
+      materialCountMatches: boolean;
+      primitiveCountMatches: boolean;
+      triangleCountMatches: boolean;
+    };
+    decodedGeometry: Record<string, {
+      attributesMatch: boolean;
+      topologyMatches: boolean;
+      maxAbsoluteDifference: number;
+    }>;
+  }>;
+};
+const promotedLanyardCandidate = lanyardAssetReport.candidates.find((candidate) => candidate.path.endsWith('card.meshopt-webp-1024.glb'));
+const liveLanyardAssetPath = resolve(root, 'src/components/lanyard/card.glb');
+const originalLanyardAssetPath = resolve(root, 'src/components/lanyard/card.original.glb');
+const hashFile = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
+const builtGlbAssets = readdirSync(resolve(root, 'dist/assets')).filter((file) => file.endsWith('.glb'));
 const serviceWorker = read('public/service-worker.js');
 const indexHtml = read('index.html');
 const main = read('src/main.tsx');
@@ -161,6 +192,54 @@ check('Dashboard local entry transitions do not eagerly load Motion', !dashboard
 check('interaction polish respects reduced motion', styles.includes('.stanza-accordion-content { animation: none; }') && styles.includes('.stanza-workspace-enter,') && styles.includes('transition-duration: 1ms'));
 check('MapLibre manual chunk does not capture entry dependencies', viteConfig.includes('onlyExplicitManualChunks: true'));
 check('lanyard uses one demand-driven Canvas', (lanyard.match(/<Canvas/g) || []).length === 1 && lanyard.includes('frameloop="demand"'));
+check('live lanyard imports the promoted production GLB without candidate branching',
+  lanyard.includes("import cardGLB from './card.glb'") &&
+  !lanyard.includes('card.meshopt-webp') &&
+  !lanyard.includes('card.original.glb'));
+check('preserved original and promoted production asset have explicit provenance',
+  existsSync(originalLanyardAssetPath) &&
+  statSync(originalLanyardAssetPath).size === lanyardAssetReport.production.bytes &&
+  hashFile(originalLanyardAssetPath) === lanyardAssetReport.production.sha256 &&
+  Boolean(promotedLanyardCandidate) &&
+  statSync(liveLanyardAssetPath).size === promotedLanyardCandidate?.bytes &&
+  hashFile(liveLanyardAssetPath) === promotedLanyardCandidate?.sha256);
+check('validated candidate contract preserves the production runtime graph and decoded geometry',
+  lanyardAssetReport.candidates.length === 3 &&
+  lanyardAssetReport.candidates.every((candidate) => (
+    ['card', 'clip', 'clamp'].every((name) => (
+      candidate.contract.requiredNodes[name]?.present &&
+      candidate.contract.requiredNodes[name]?.meshPresent &&
+      candidate.contract.requiredNodes[name]?.transformMatches
+    )) &&
+    ['base', 'metal'].every((name) => candidate.contract.requiredMaterials[name]) &&
+    candidate.contract.nodeCountMatches &&
+    candidate.contract.meshCountMatches &&
+    candidate.contract.materialCountMatches &&
+    candidate.contract.primitiveCountMatches &&
+    candidate.contract.triangleCountMatches &&
+    Object.values(candidate.decodedGeometry).every((geometry) => (
+      geometry.attributesMatch && geometry.topologyMatches && geometry.maxAbsoluteDifference === 0
+    ))
+  )));
+check('asset provenance records the requested WebP resolution ladder and transfer reduction',
+  lanyardAssetReport.candidates.map((candidate) => [candidate.images[0]?.width, candidate.images[0]?.height])
+    .every(([width, height], index) => (
+      [[1678, 1677], [1280, 1279], [1024, 1023]][index]?.[0] === width &&
+      [[1678, 1677], [1280, 1279], [1024, 1023]][index]?.[1] === height
+  )) &&
+  lanyardAssetReport.candidates.every((candidate) => (
+    candidate.images.length === 1 &&
+    candidate.images[0]?.mimeType === 'image/webp' &&
+    candidate.extensionsRequired.includes('EXT_meshopt_compression') &&
+    candidate.extensionsRequired.includes('EXT_texture_webp') &&
+    candidate.bytes < lanyardAssetReport.production.bytes * 0.2
+  )));
+check('asset experiment avoids graph-destructive and geometry-quantizing transforms',
+  !lanyardAssetExperiment.includes('@gltf-transform/functions') &&
+  !lanyardAssetExperiment.includes('.transform('));
+check('temporary lanyard comparison UI is removed from the application source',
+  !existsSync(resolve(root, 'src/components/dev/LanyardAssetComparison.tsx')) &&
+  !read('src/App.tsx').includes('LanyardAssetComparison'));
 check('lanyard caps device pixel ratio', lanyard.includes('dpr={1}'));
 check('lanyard uses a settled-scene scheduler with visibility cleanup',
 lanyard.includes("document.visibilityState !== 'visible'") &&
@@ -258,6 +337,13 @@ check('development render diagnostics are absent from every production JavaScrip
   !builtJavaScript.includes('__STANZA_RENDER_DIAGNOSTICS__') &&
   !builtJavaScript.includes('__STANZA_PERFORMANCE_DIAGNOSTICS__') &&
   !builtJavaScript.includes('Performance isolation (DEV)'));
+check('production bundle ships only the promoted lanyard asset, not the original or lab candidates',
+  builtGlbAssets.length === 1 &&
+  statSync(resolve(root, 'dist/assets', builtGlbAssets[0]!)).size === promotedLanyardCandidate?.bytes &&
+  !builtJavaScript.includes('Lanyard asset comparison') &&
+  !builtJavaScript.includes('card.meshopt-webp-original') &&
+  !builtJavaScript.includes('card.meshopt-webp-1280') &&
+  !builtJavaScript.includes('card.meshopt-webp-1024'));
 check('development performance diagnostics cover startup, lazy modules, interactions, and settle snapshots',
   devPerformance.includes('performance.mark') &&
   devPerformance.includes('performance.measure') &&
@@ -293,6 +379,23 @@ check('lanyard lifecycle diagnostics report resource, first frame, and settled t
 check('performance diagnostics use session-only state', performanceIsolationState.includes('sessionStorage') === false && performanceIsolationState.includes('PERFORMANCE_ISOLATION_STORAGE_KEY') && dashboard.includes('window.sessionStorage.setItem') && !performanceIsolation.includes('localStorage'));
 check('performance diagnostics have no closed-panel background timer', !performanceIsolation.includes('setInterval') && performanceIsolation.includes('if (!open) return') && performanceIsolation.includes('cancelAnimationFrame'));
 check('performance sampler stops after ten seconds', performanceIsolation.includes('now - start >= 10000') && performanceIsolation.includes('raf.current = undefined'));
+check('development interaction benchmark is explicitly armed and remains development-only',
+  devPerformance.includes('export function armDevInteractionBenchmark') &&
+  devPerformance.includes("if (!import.meta.env.DEV || typeof window === 'undefined') return;") &&
+  performanceIsolation.includes('Arm next action') &&
+  performanceIsolation.includes('interactionScenarios'));
+check('interaction diagnostics bound observers and frame sampling to the short settle window',
+  devPerformance.includes('const isBenchmarkSample = Boolean(benchmark);') &&
+  devPerformance.includes('isBenchmarkSample ? collectInteractionWindow(start) : null') &&
+  devPerformance.includes('windowMetrics?.finish()') &&
+  devPerformance.includes('cancelAnimationFrame(frameHandle)') &&
+  devPerformance.includes('mutations.disconnect()'));
+check('interaction diagnostics record browser work categories without a persistent application loop',
+  devPerformance.includes("observeEntries('longtask'") &&
+  devPerformance.includes("observeEntries('event'") &&
+  devPerformance.includes('domMutationCount') &&
+  devPerformance.includes('heapDeltaBytes') &&
+  !devPerformance.includes('setInterval('));
 check('lanyard isolation removes its mount condition without changing saved preferences', dashboard.includes('lanyardEnabled && performanceIsolation.lanyard') && !dashboard.includes('setLanyardEnabled(false)'));
 check('atmosphere isolation gates only atmosphere and topography layers', dashboard.includes('performanceIsolation.atmosphere') && dashboard.includes('performanceIsolation.topography'));
 check('disabled tutorials unmount their provider instead of retaining idle eligibility work', dashboard.includes('{tutorialsEnabled && performanceIsolation.tutorials && <TutorialProvider'));

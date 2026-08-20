@@ -10,8 +10,7 @@ import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
-import type { AuthUser } from '../App';
-import type { AuthVisualState } from '../components/AuthShell';
+import type { AuthUser, AuthVisualState } from '../auth/auth-contract';
 import { validateEmail } from '../lib/validation';
 import type { RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
 

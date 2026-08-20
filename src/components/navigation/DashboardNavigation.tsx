@@ -14,16 +14,9 @@ import {
 } from './module-usage';
 import { swapShortcutPositions, useLongPressShortcutSwap } from './mobile-shortcut-order';
 import type { StanzaCommand } from '../command-palette/command-palette-types';
+import type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 
-export type DashboardNavigationItem = {
-  id: string;
-  label: string;
-  group: string;
-  icon: ReactNode;
-  badge?: number;
-  active: boolean;
-  onSelect: () => void;
-};
+export type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 
 type Props = {
   items: DashboardNavigationItem[];

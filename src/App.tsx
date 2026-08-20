@@ -3,7 +3,8 @@ import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
 import { DemoNoticeModal } from './components/DemoNoticeModal';
-import { AuthShell, type AuthVisualState } from './components/AuthShell';
+import { AuthShell } from './components/AuthShell';
+import type { AuthUser, AuthVisualState } from './auth/auth-contract';
 import { AuthTransitionLoader, type AuthTransition } from './components/AuthTransitionLoader';
 import { apiFetch, apiUrl } from './lib/api';
 import type { RecognitionCelebrationPayload } from './components/performance/RecognitionCelebration';
@@ -22,19 +23,6 @@ const PublicAssetVerification = lazy(loadPublicAssetVerification);
 const AUTH_TRANSITION_MINIMUM_MS = 280;
 
 const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
-
-export type AuthUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: 'hr_admin' | 'manager' | 'employee';
-  jobTitle?: string | null;
-  roleNames?: string[];
-  permissions?: string[];
-  tenantId: string;
-  tenant?: string | { id: string; slug: string; companyName: string };
-  profileImageUrl?: string | null;
-};
 
 const fallbackUser: AuthUser = {
   id: 'demo-employee',

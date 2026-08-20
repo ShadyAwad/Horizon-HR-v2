@@ -31,7 +31,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { AuthUser } from '../../App';
+import type { AuthUser } from '../../auth/auth-contract';
 import { apiFetch, apiUrl } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 import { cn } from '../../lib/utils';

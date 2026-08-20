@@ -1,4 +1,4 @@
-import type { AuthUser } from '../App';
+import type { AuthUser } from '../auth/auth-contract';
 import { apiFetch, apiUrl } from '../lib/api';
 
 export const HIRING_STAGES = ['new', 'screening', 'hr_review', 'hiring_manager_review', 'interview', 'final_review', 'offer', 'hired', 'rejected', 'withdrawn'] as const;

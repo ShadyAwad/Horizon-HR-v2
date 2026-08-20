@@ -76,7 +76,7 @@ assert.equal(requestFingerprint(fingerprintInput), requestFingerprint({ ...finge
 assert.notEqual(requestFingerprint(fingerprintInput), requestFingerprint({ ...fingerprintInput, amount: '125.51' }));
 pass('Create retries use deterministic request fingerprints without floating-point arithmetic');
 
-const [migration, routes, registry, resolver, scopedPermissions, server, packageJson, panel, dashboard, language, uiContract] = await Promise.all([
+const [migration, routes, registry, resolver, scopedPermissions, server, packageJson, panel, dashboard, workspaceRegistry, language, uiContract] = await Promise.all([
   readFile('src/db/migrations/20260729_add_expense_claims.sql', 'utf8'),
   readFile('src/server/expenses/expense-routes.ts', 'utf8'),
   readFile('src/server/organisation/permission-registry.ts', 'utf8'),
@@ -86,6 +86,7 @@ const [migration, routes, registry, resolver, scopedPermissions, server, package
   readFile('package.json', 'utf8'),
   readFile('src/components/expenses/ExpensesPanel.tsx', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
+  readFile('src/navigation/workspace-registry.ts', 'utf8'),
   readFile('src/lib/LanguageContext.tsx', 'utf8'),
   readFile('src/components/expenses/expense-ui-contract.ts', 'utf8'),
 ]);
@@ -265,7 +266,8 @@ assert.match(dashboard, /const ExpensesPanel = lazy/);
 assert((dashboard.match(/t\('dash\.expenses'\)/g) || []).length >= 3);
 assert.match(dashboard, /activeTab === 'expenses'/);
 assert.match(dashboard, /<ExpensesPanel[\s\S]*deepLink=\{expenseDeepLink\}/);
-assert.doesNotMatch(dashboard, /My Expenses|Expense Approvals/);
+assert.equal((workspaceRegistry.match(/id: 'expenses'/g) || []).length, 1);
+assert.doesNotMatch(workspaceRegistry, /id: '(?:myExpenses|expenseApprovals)'/);
 pass('Dashboard exposes one lazy Expenses workspace without duplicate top-level Finance entries');
 
 for (const view of ['claims', 'new', 'history', 'approvals', 'reimbursements']) {

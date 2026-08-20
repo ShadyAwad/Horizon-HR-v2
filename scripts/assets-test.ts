@@ -15,6 +15,8 @@ const migration = read('src/db/migrations/20260725_add_assets.sql');
 const serialMigration = read('src/db/migrations/20260729_add_asset_serial_uniqueness.sql');
 const routes = read('src/server/assets/asset-routes.ts');
 const dashboard = read('src/pages/Dashboard.tsx');
+const resignationsPanel = read('src/components/resignations/ResignationsPanel.tsx');
+const resignationRoutes = read('src/server/resignations/resignation-routes.ts');
 const assetsPanel = read('src/components/assets/AssetsPanel.tsx');
 const equipmentPanel = read('src/components/assets/MyEquipmentPanel.tsx');
 const server = read('server.ts');
@@ -81,9 +83,9 @@ const checks: Array<[string, boolean]> = [
   ['evidence validates decoded image data and re-encodes WebP', /sharp\(file\.buffer/.test(server) && /\['jpeg', 'png', 'webp'\]/.test(server) && /\.webp\(/.test(server)],
   ['evidence storage is UUID-owned and isolated from Company Feed', /uploads\/assets/.test(evidenceStorage) && !/company-feed/.test(evidenceStorage)],
   ['evidence retrieval is private and nosniff', /\/api\/assets\/evidence\/:reportId/.test(server) && /X-Content-Type-Options/.test(server)],
-  ['offboarding count is derived from active tenant assignments', /outstanding_asset_count/.test(server) && /asset_assignment\.status = 'active'/.test(server)],
-  ['offboarding warning is visible and opens assets', /assets-warning-/.test(dashboard) && /setActiveTab\('assets'\)/.test(dashboard)],
-  ['offboarding completion audits retained assets safely', /offboarding\.completed_with_assets/.test(server) && /outstandingAssetCount/.test(server)],
+  ['offboarding count is derived from active tenant assignments', /outstanding_asset_count/.test(resignationRoutes) && /asset_assignment\.status = 'active'/.test(resignationRoutes)],
+  ['offboarding warning is visible and opens assets', /assets-warning-/.test(resignationsPanel) && /onViewAssets/.test(resignationsPanel) && /setActiveTab\('assets'\)/.test(dashboard)],
+  ['offboarding completion audits retained assets safely', /offboarding\.completed_with_assets/.test(resignationRoutes) && /outstandingAssetCount/.test(resignationRoutes)],
   ['asset label extraction is permission based rather than role named', /canUseAssetLabelExtraction\(user\.permissions\)/.test(assetsPanel) && !/hr_admin/.test(assetForm)],
   ['asset form remains explicit save authority', /method: asset \? 'PATCH' : 'POST'/.test(assetForm) && /type="submit"/.test(assetForm)],
   ['asset extraction accepts only image formats and not PDF', /image\/jpeg,image\/png,image\/webp/.test(extractionUi) && !/application\/pdf|\.pdf/i.test(extractionUi)],

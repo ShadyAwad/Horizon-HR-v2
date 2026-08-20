@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-import type { AuthVisualState } from './AuthShell';
+import type { AuthVisualState } from '../auth/auth-contract';
 import { STANZA_FINGERPRINT_GROOVES, STANZA_FINGERPRINT_VIEW_BOX } from './stanzaFingerprintGeometry';
 
 export type StanzaFingerprintState = AuthVisualState;

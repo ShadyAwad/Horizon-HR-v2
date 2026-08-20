@@ -1,0 +1,1106 @@
+{
+  "generatedAt": "2026-08-12T12:29:29.949Z",
+  "production": {
+    "path": "src/components/lanyard/card.original.glb",
+    "bytes": 2457784,
+    "sha256": "fd540ead33cf3f86651a13c45790d0b3e9bde868cf69ac8c2307fb3dc2b3d591",
+    "generator": "THREE.GLTFExporter r174",
+    "extensionsUsed": [],
+    "extensionsRequired": [],
+    "scenes": [
+      {
+        "name": "AuxScene",
+        "nodes": [
+          4
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "index": 0,
+        "name": "card",
+        "mesh": 0,
+        "children": [],
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -0.17412595450878143,
+          -0.03145722672343254,
+          0.4368237555027008,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 1,
+        "name": "clip",
+        "mesh": 1,
+        "children": [],
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -0.17412595450878143,
+          -0.03145722672343254,
+          0.4368237555027008,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 2,
+        "name": "clamp",
+        "mesh": 2,
+        "children": [],
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -0.17412595450878143,
+          -0.03145722672343254,
+          0.4368237555027008,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 3,
+        "name": "Scene",
+        "mesh": null,
+        "children": [
+          0,
+          1,
+          2
+        ],
+        "matrix": null,
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 4,
+        "name": "AuxScene",
+        "mesh": null,
+        "children": [
+          3
+        ],
+        "matrix": null,
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    ],
+    "meshes": [
+      {
+        "index": 0,
+        "name": null,
+        "primitiveCount": 1,
+        "triangles": 1369,
+        "materials": [
+          0
+        ]
+      },
+      {
+        "index": 1,
+        "name": null,
+        "primitiveCount": 1,
+        "triangles": 1192,
+        "materials": [
+          1
+        ]
+      },
+      {
+        "index": 2,
+        "name": null,
+        "primitiveCount": 1,
+        "triangles": 2388,
+        "materials": [
+          1
+        ]
+      }
+    ],
+    "materials": [
+      {
+        "index": 0,
+        "name": "base"
+      },
+      {
+        "index": 1,
+        "name": "metal"
+      }
+    ],
+    "images": [
+      {
+        "index": 0,
+        "name": null,
+        "mimeType": "image/png",
+        "width": 1678,
+        "height": 1677,
+        "channels": 4,
+        "bytes": 2294832,
+        "space": "srgb"
+      }
+    ],
+    "totalTriangles": 4949
+  },
+  "runtimeContract": {
+    "nodes": [
+      "card",
+      "clip",
+      "clamp"
+    ],
+    "materials": [
+      "base",
+      "metal"
+    ],
+    "cardGeometryRequiresUvs": true,
+    "cardGeometryIsSplitAtRuntime": true,
+    "clampGeometryIsRenderedDirectly": true,
+    "physicsAttachmentUsesNamedMeshTransforms": false,
+    "note": "Rigid-body attachment uses CARD_ATTACHMENT constants; named mesh transforms and orientation must nevertheless remain unchanged for visual alignment."
+  },
+  "candidates": [
+    {
+      "path": "src/components/lanyard/candidates/card.meshopt-webp-original.glb",
+      "bytes": 442440,
+      "sha256": "3b456d2fe819b726c8f0fc00b5a2cbaa355bcd320f12dd1c81f36f91ec620a61",
+      "generator": "glTF-Transform v4.2.1",
+      "extensionsUsed": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "extensionsRequired": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "scenes": [
+        {
+          "name": "AuxScene",
+          "nodes": [
+            4
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "index": 0,
+          "name": "card",
+          "mesh": 0,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "name": "clip",
+          "mesh": 1,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": "clamp",
+          "mesh": 2,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Scene",
+          "mesh": null,
+          "children": [
+            0,
+            1,
+            2
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "name": "AuxScene",
+          "mesh": null,
+          "children": [
+            3
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ],
+      "meshes": [
+        {
+          "index": 0,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1369,
+          "materials": [
+            0
+          ]
+        },
+        {
+          "index": 1,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1192,
+          "materials": [
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 2388,
+          "materials": [
+            1
+          ]
+        }
+      ],
+      "materials": [
+        {
+          "index": 0,
+          "name": "base"
+        },
+        {
+          "index": 1,
+          "name": "metal"
+        }
+      ],
+      "images": [
+        {
+          "index": 0,
+          "name": null,
+          "mimeType": "image/webp",
+          "width": 1678,
+          "height": 1677,
+          "channels": 4,
+          "bytes": 328968,
+          "space": "srgb"
+        }
+      ],
+      "totalTriangles": 4949,
+      "contract": {
+        "requiredNodes": {
+          "card": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clip": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clamp": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          }
+        },
+        "requiredMaterials": {
+          "base": true,
+          "metal": true
+        },
+        "nodeCountMatches": true,
+        "meshCountMatches": true,
+        "materialCountMatches": true,
+        "primitiveCountMatches": true,
+        "triangleCountMatches": true
+      },
+      "decodedGeometry": {
+        "card": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clip": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clamp": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        }
+      },
+      "textureComparison": {
+        "comparedAt": {
+          "width": 1678,
+          "height": 1677
+        },
+        "candidate": {
+          "width": 1678,
+          "height": 1677
+        },
+        "meanAbsoluteDifference": 0.9188137836237734,
+        "meanAlphaDifference": 0,
+        "rootMeanSquareError": 1.4217070798117086,
+        "peakSignalToNoiseRatio": 45.074601086228725,
+        "maxChannelDifference": 13
+      }
+    },
+    {
+      "path": "src/components/lanyard/candidates/card.meshopt-webp-1280.glb",
+      "bytes": 333880,
+      "sha256": "9afa5cb607f72436f193713cbf4b7b73836c05bc01675d7de5486a1439cc62ce",
+      "generator": "glTF-Transform v4.2.1",
+      "extensionsUsed": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "extensionsRequired": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "scenes": [
+        {
+          "name": "AuxScene",
+          "nodes": [
+            4
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "index": 0,
+          "name": "card",
+          "mesh": 0,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "name": "clip",
+          "mesh": 1,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": "clamp",
+          "mesh": 2,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Scene",
+          "mesh": null,
+          "children": [
+            0,
+            1,
+            2
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "name": "AuxScene",
+          "mesh": null,
+          "children": [
+            3
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ],
+      "meshes": [
+        {
+          "index": 0,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1369,
+          "materials": [
+            0
+          ]
+        },
+        {
+          "index": 1,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1192,
+          "materials": [
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 2388,
+          "materials": [
+            1
+          ]
+        }
+      ],
+      "materials": [
+        {
+          "index": 0,
+          "name": "base"
+        },
+        {
+          "index": 1,
+          "name": "metal"
+        }
+      ],
+      "images": [
+        {
+          "index": 0,
+          "name": null,
+          "mimeType": "image/webp",
+          "width": 1280,
+          "height": 1279,
+          "channels": 4,
+          "bytes": 220408,
+          "space": "srgb"
+        }
+      ],
+      "totalTriangles": 4949,
+      "contract": {
+        "requiredNodes": {
+          "card": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clip": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clamp": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          }
+        },
+        "requiredMaterials": {
+          "base": true,
+          "metal": true
+        },
+        "nodeCountMatches": true,
+        "meshCountMatches": true,
+        "materialCountMatches": true,
+        "primitiveCountMatches": true,
+        "triangleCountMatches": true
+      },
+      "decodedGeometry": {
+        "card": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clip": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clamp": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        }
+      },
+      "textureComparison": {
+        "comparedAt": {
+          "width": 1678,
+          "height": 1677
+        },
+        "candidate": {
+          "width": 1280,
+          "height": 1279
+        },
+        "meanAbsoluteDifference": 2.044497151036636,
+        "meanAlphaDifference": 0.11500650673808087,
+        "rootMeanSquareError": 5.730142970799493,
+        "peakSignalToNoiseRatio": 32.96749444802353,
+        "maxChannelDifference": 163
+      }
+    },
+    {
+      "path": "src/components/lanyard/candidates/card.meshopt-webp-1024.glb",
+      "bytes": 273568,
+      "sha256": "1ae1ee29bdf9410d6ad2a636b36ca5add55e49e0e3398c93ef4bb9d6cb8b4b58",
+      "generator": "glTF-Transform v4.2.1",
+      "extensionsUsed": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "extensionsRequired": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ],
+      "scenes": [
+        {
+          "name": "AuxScene",
+          "nodes": [
+            4
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "index": 0,
+          "name": "card",
+          "mesh": 0,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "name": "clip",
+          "mesh": 1,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": "clamp",
+          "mesh": 2,
+          "children": [],
+          "matrix": null,
+          "translation": [
+            -0.17412595450878143,
+            -0.03145722672343254,
+            0.4368237555027008
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Scene",
+          "mesh": null,
+          "children": [
+            0,
+            1,
+            2
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "name": "AuxScene",
+          "mesh": null,
+          "children": [
+            3
+          ],
+          "matrix": null,
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ],
+      "meshes": [
+        {
+          "index": 0,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1369,
+          "materials": [
+            0
+          ]
+        },
+        {
+          "index": 1,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 1192,
+          "materials": [
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "name": null,
+          "primitiveCount": 1,
+          "triangles": 2388,
+          "materials": [
+            1
+          ]
+        }
+      ],
+      "materials": [
+        {
+          "index": 0,
+          "name": "base"
+        },
+        {
+          "index": 1,
+          "name": "metal"
+        }
+      ],
+      "images": [
+        {
+          "index": 0,
+          "name": null,
+          "mimeType": "image/webp",
+          "width": 1024,
+          "height": 1023,
+          "channels": 4,
+          "bytes": 160092,
+          "space": "srgb"
+        }
+      ],
+      "totalTriangles": 4949,
+      "contract": {
+        "requiredNodes": {
+          "card": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clip": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          },
+          "clamp": {
+            "present": true,
+            "transformMatches": true,
+            "meshPresent": true
+          }
+        },
+        "requiredMaterials": {
+          "base": true,
+          "metal": true
+        },
+        "nodeCountMatches": true,
+        "meshCountMatches": true,
+        "materialCountMatches": true,
+        "primitiveCountMatches": true,
+        "triangleCountMatches": true
+      },
+      "decodedGeometry": {
+        "card": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clip": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        },
+        "clamp": {
+          "primitiveCount": 1,
+          "semantics": [
+            "NORMAL",
+            "POSITION",
+            "TEXCOORD_0"
+          ],
+          "arraysMatch": true,
+          "attributesMatch": true,
+          "indexSequenceMatches": false,
+          "topologyMatches": true,
+          "maxAbsoluteDifference": 0
+        }
+      },
+      "textureComparison": {
+        "comparedAt": {
+          "width": 1678,
+          "height": 1677
+        },
+        "candidate": {
+          "width": 1024,
+          "height": 1023
+        },
+        "meanAbsoluteDifference": 2.170071154787872,
+        "meanAlphaDifference": 0.16324201156642879,
+        "rootMeanSquareError": 5.901772024513099,
+        "peakSignalToNoiseRatio": 32.71115502016888,
+        "maxChannelDifference": 160
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
+import { hasPermissionClaim } from '../auth/permission-claims';
 import { recordAuditEvent } from '../audit/audit-events';
 import { claimPendingRecognitionDelivery } from './recognition-delivery';
 
@@ -18,7 +19,7 @@ type AssignmentType = 'self' | 'manager' | 'peer';
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const clean = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const routeError = (status: number, code: string, error: string) => Object.assign(new Error(error), { status, code });
-const hasPermission = (req: express.Request, key: string) => req.authUser?.role === 'hr_admin' || Boolean(req.authUser?.permissions?.includes(key));
+const hasPermission = (req: express.Request, key: string) => hasPermissionClaim(req.authUser, key);
 const isManagerOf = async (client: PoolClient, tenantId: string, managerId: string, employeeId: string) => Boolean((await client.query(
   `SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2 AND manager_id=$3 AND is_active=true AND employment_status='active'`,
   [tenantId, employeeId, managerId],

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, BriefcaseBusiness, ChevronLeft, ChevronRight, FilePlus2, Forward, Loader2, MessageSquarePlus, Pencil, RefreshCw, ShieldAlert, UserCheck, X } from 'lucide-react';
-import type { AuthUser } from '../../App';
+import type { AuthUser } from '../../auth/auth-contract';
 import {
   HIRING_NOTE_TYPES, HIRING_STAGES, HiringApiError, type HiringApplicantDetails, type HiringApplicantFilters,
   type HiringApplicantInput, type HiringApplicantListItem, type HiringHandoff, type HiringNoteType,

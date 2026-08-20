@@ -21,7 +21,7 @@ const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
-import type { AuthUser } from '../App';
+import type { AuthUser } from '../auth/auth-contract';
 import { UserAvatar } from '../components/UserAvatar';
 import { AttentionBadge } from '../components/AttentionBadge';
 import { RecognitionCelebration, type RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
@@ -35,7 +35,15 @@ import {
 } from '../lib/StanzaPreferencesContext';
 import type { ExpenseDeepLink } from '../components/expenses/ExpensesPanel';
 import type { OrganisationPanelView } from '../components/organisation/OrganisationPanel';
-import { DashboardNavigation, type DashboardNavigationItem } from '../components/navigation/DashboardNavigation';
+import { DashboardNavigation } from '../components/navigation/DashboardNavigation';
+import { useDashboardWorkspaceNavigation } from '../components/navigation/useDashboardWorkspaceNavigation';
+import {
+  getWorkspaceDescriptor,
+  isDashboardWorkspaceId,
+  type DashboardTabId,
+  type DashboardWorkspaceId,
+  type WorkspaceVisibilityKey,
+} from '../navigation/workspace-registry';
 import { backgroundPresets } from '../lib/background-presets';
 import { defaultPerformanceIsolation, normalisePerformanceIsolation, PERFORMANCE_ISOLATION_STORAGE_KEY, type PerformanceIsolation } from '../lib/performance-isolation';
 import { recordDevRender } from '../lib/render-diagnostics';
@@ -79,6 +87,7 @@ const LeaveWorkspace = lazy(() => import('../components/roster/LeaveWorkspace').
 const RosterGoalsPanel = lazy(() => import('../components/roster/RosterGoalsPanel').then((module) => ({ default: module.RosterGoalsPanel })));
 const LocationsPanel = lazy(() => loadDevMeasured('lazy-module:locations:import', () => import('../components/locations/LocationsPanel')).then((module) => ({ default: module.LocationsPanel })));
 const ExpensesPanel = lazy(() => loadDevMeasured('lazy-module:expenses:import', () => import('../components/expenses/ExpensesPanel')).then((module) => ({ default: module.ExpensesPanel })));
+const ResignationsPanel = lazy(() => import('../components/resignations/ResignationsPanel').then((module) => ({ default: module.ResignationsPanel })));
 const CommandPalette = lazy(() => import('../components/command-palette/CommandPalette').then((module) => ({ default: module.CommandPalette })));
 const PerformanceIsolationPanel = import.meta.env.DEV ? lazy(() => import('../components/dev/PerformanceIsolationPanel')) : null;
 const HelpCenter = lazy(() => loadDevMeasured('lazy-module:help-center:import', () => import('../components/tutorials/HelpCenter')).then((module) => ({ default: module.HelpCenter })));
@@ -366,24 +375,6 @@ type BreakRequestFormState = {
   durationMinutes: string;
   customDuration: string;
   reason: string;
-};
-
-type ResignationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'processed';
-type ResignationRequest = {
-  id: string;
-  employee_id: string;
-  full_name?: string;
-  email?: string;
-  resignation_type: string;
-  requested_last_working_day: string;
-  reason?: string | null;
-  status: ResignationStatus;
-  reviewed_by?: string | null;
-  reviewer_name?: string | null;
-  reviewed_at?: string | null;
-  review_note?: string | null;
-  outstanding_asset_count?: number;
-  created_at: string;
 };
 
 type PayrollRecord = {
@@ -903,7 +894,7 @@ function useGeolocation() {
 }
 
 export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
-  const [activeTab, setActiveTab] = useState<'geofence' | 'roster' | 'expenses' | 'feed' | 'profile' | 'resignations' | 'hiring' | 'liveEmployees' | 'audit' | 'sessionCenter' | 'assets' | 'performance' | 'organisation' | 'locations'>(initialTab || 'geofence');
+  const [activeTab, setActiveTab] = useState<DashboardTabId>(initialTab || 'geofence');
   useEffect(() => {
     markDevPerformance('startup:dashboard-mounted', undefined, true);
   }, []);
@@ -984,14 +975,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
   const [showResignationsPanel, setShowResignationsPanel] = useState(false);
-  const [myResignations, setMyResignations] = useState<ResignationRequest[]>([]);
-  const [tenantResignations, setTenantResignations] = useState<ResignationRequest[]>([]);
-  const [resignationsLoading, setResignationsLoading] = useState(false);
-  const [resignationSubmitting, setResignationSubmitting] = useState(false);
-  const [resignationUpdatingId, setResignationUpdatingId] = useState<string | null>(null);
-  const [resignationMessage, setResignationMessage] = useState('');
-  const [resignationMessageType, setResignationMessageType] = useState<'success' | 'error'>('success');
-  const [resignationForm, setResignationForm] = useState({ requestedLastWorkingDay: '', resignationType: 'voluntary', reason: '' });
   const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
   const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
   const [grievanceLoading, setGrievanceLoading] = useState(false);
@@ -1474,8 +1457,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       nextStatus === 'paid' ? canMarkPayrollPaid : canApprovePayroll
     ))
   );
-  const canReviewResignations = user.role === 'hr_admin' || user.role === 'manager' || Boolean(user.permissions?.includes('resignations.review'));
-  const canProcessResignations = user.role === 'hr_admin' || Boolean(user.permissions?.includes('resignations.process'));
   const profilePanelHeading = showPayrollPanel ? t('profile.payroll') : showGrievancesPanel ? t('dash.grievances') : showResignationsPanel ? t('dash.resignations') : t('profile.title');
   const profilePanelSubtitle = showPayrollPanel
     ? t('dash.payrollSubtitleFull')
@@ -1512,7 +1493,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       passkeys: `${passkeysLoading}:${passkeySaving}:${passkeys.length}`,
       payroll: `${payrollLoading}:${payrollSubmitting}:${payrollRecords.length}`,
       grievances: `${grievanceLoading}:${tenantGrievanceLoading}:${myGrievances.length}:${tenantGrievances.length}`,
-      resignations: `${resignationsLoading}:${resignationSubmitting}:${myResignations.length}:${tenantResignations.length}`,
       feed: `${feedLoading}:${adminFeedLoading}:${feedSubmitting}:${feedPosts.length}:${adminFeedPosts.length}`,
       roles: `${rolesLoading}:${roleSaving}:${tenantRoles.length}:${roleEmployees.length}`,
       profilePhoto: `${Boolean(profilePhotoFile)}:${profilePhotoSaving}`,
@@ -1524,39 +1504,45 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const attentionAriaLabel = (label: string, count: number) => (
     count > 0 ? `${label}: ${count} ${t('dash.actionItems')}` : label
   );
-  const selectNavigationItem = useCallback((id: string) => {
+  const selectNavigationItem = useCallback((id: DashboardWorkspaceId) => {
     recordDevInteraction(`module-switch:${id}`, () => {
       setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
       if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
       if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); return; }
       if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
-      setActiveTab(id as typeof activeTab);
+      const workspace = getWorkspaceDescriptor(id);
+      if (workspace) setActiveTab(workspace.targetTab);
     });
   }, []);
-  const navigationItems = useMemo<DashboardNavigationItem[]>(() => {
-    const item = (id: string, label: string, group: string, icon: ReactNode, allowed = true, badge = 0): DashboardNavigationItem | null => allowed ? {
-      id, label, group, icon, badge, active: id === 'payroll' ? activeTab === 'profile' && showPayrollPanel : id === 'grievances' ? activeTab === 'profile' && showGrievancesPanel : id === 'resignations' ? activeTab === 'resignations' : id === 'profile' ? activeTab === 'profile' && !showPayrollPanel && !showGrievancesPanel && !showResignationsPanel : activeTab === id,
-      onSelect: () => selectNavigationItem(id),
-    } : null;
-    return [
-      item('geofence', t('dash.geoOp'), 'workspace', <Map className="h-5 w-5" />, true, attentionCounts.breakRequests),
-      item('roster', t('dash.roster'), 'workspace', <Calendar className="h-5 w-5" />, true, attentionCounts.leaveRequests),
-      item('expenses', t('dash.expenses'), 'workspace', <ReceiptText className="h-5 w-5" />, true),
-      item('hiring', t('hiring.title'), 'workspace', <BriefcaseBusiness className="h-5 w-5" />, canViewHiring, attentionCounts.hiring),
-      item('performance', t('performance.title'), 'workspace', <BarChart3 className="h-5 w-5" />, canViewPerformance),
-      item('organisation', t('organisation.title'), 'peopleOperations', <Network className="h-5 w-5" />, canViewOrganisation),
-      item('locations', lang === 'ar' ? 'المواقع' : 'Locations', 'peopleOperations', <MapPin className="h-5 w-5" />, canViewLocations),
-      item('liveEmployees', t('liveEmployees.title'), 'peopleOperations', <UsersRound className="h-5 w-5" />, canViewLiveEmployees),
-      item('assets', t('assets.title'), 'peopleOperations', <Box className="h-5 w-5" />, canViewAssets),
-      item('feed', t('dash.companyFeed'), 'administration', <Newspaper className="h-5 w-5" />, true),
-      item('payroll', t('profile.payroll'), 'administration', <DollarSign className="h-5 w-5" />, canUsePayrollPanel, payrollAttentionCount),
-      item('grievances', t('dash.grievances'), 'administration', <MessageSquare className="h-5 w-5" />, true, attentionCounts.grievances),
-      item('resignations', t('dash.resignations'), 'administration', <FileText className="h-5 w-5" />, true, attentionCounts.resignations),
-      item('audit', t('audit.title'), 'administration', <ScrollText className="h-5 w-5" />, canViewAudit),
-      item('sessionCenter', t('sessions.sessionCenter'), 'administration', <ShieldCheck className="h-5 w-5" />, canManageSessions),
-      item('profile', t('dash.profile'), 'administration', <User className="h-5 w-5" />),
-    ].filter(Boolean) as DashboardNavigationItem[];
-  }, [activeTab, attentionCounts, canManageSessions, canUsePayrollPanel, canViewAssets, canViewAudit, canViewHiring, canViewLiveEmployees, canViewLocations, canViewOrganisation, canViewPerformance, lang, payrollAttentionCount, selectNavigationItem, showGrievancesPanel, showPayrollPanel, showResignationsPanel, t]);
+  const workspaceCapabilities = useMemo<Record<WorkspaceVisibilityKey, boolean>>(() => ({
+    hiring: canViewHiring,
+    performance: canViewPerformance,
+    organisation: canViewOrganisation,
+    locations: canViewLocations,
+    liveEmployees: canViewLiveEmployees,
+    assets: canViewAssets,
+    payroll: canUsePayrollPanel,
+    audit: canViewAudit,
+    sessionCenter: canManageSessions,
+  }), [
+    canManageSessions,
+    canUsePayrollPanel,
+    canViewAssets,
+    canViewAudit,
+    canViewHiring,
+    canViewLiveEmployees,
+    canViewLocations,
+    canViewOrganisation,
+    canViewPerformance,
+  ]);
+  const navigationItems = useDashboardWorkspaceNavigation({
+    activeTab,
+    activeProfilePanel: showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : null,
+    capabilities: workspaceCapabilities,
+    attentionCounts,
+    translate: t,
+    onSelect: selectNavigationItem,
+  });
   useEffect(() => {
     markDevPerformance('startup:navigation-registry-ready', { itemCount: navigationItems.length }, true);
   }, [navigationItems.length]);
@@ -2009,7 +1995,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const prepareTutorial = useCallback((tutorial: TutorialDefinition) => {
     if (tutorial.module === 'dashboard') return;
     if (tutorial.module === 'settings') { setShowControlCenter(true); return; }
-    selectNavigationItem(tutorial.module);
+    if (isDashboardWorkspaceId(tutorial.module)) selectNavigationItem(tutorial.module);
   }, [selectNavigationItem]);
   const handleTutorialHelpAction = useCallback((action: HelpAction) => {
     if (action.type === 'open-article') {
@@ -2018,7 +2004,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       setShowControlCenter(true);
       return;
     }
-    if (action.type === 'open-module') selectNavigationItem(action.moduleId);
+    if (action.type === 'open-module' && isDashboardWorkspaceId(action.moduleId)) {
+      selectNavigationItem(action.moduleId);
+    }
   }, [selectNavigationItem]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
@@ -2767,84 +2755,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setRosterStartDate(toRosterDateKey(start));
     setRosterRangeWeeks(1);
     setRosterCustomEndDate(toRosterDateKey(addRosterDays(start, 6)));
-  };
-
-  const resignationHeaders = (): Record<string, string> => ({
-    'Content-Type': 'application/json',
-    'x-employee-id': user.id,
-    'x-tenant-id': user.tenantId,
-  });
-
-  const loadResignations = async () => {
-    if (!hasAuthenticatedDashboardUser) return;
-    setResignationsLoading(true);
-    try {
-      const ownResponse = await fetch(apiUrl('/api/resignations/me'), { headers: resignationHeaders() });
-      const ownData = await ownResponse.json();
-      if (!ownResponse.ok) throw new Error(ownData.error || t('dash.resignationLoadError'));
-      setMyResignations(ownData.resignations || []);
-      if (canReviewResignations) {
-        const tenantResponse = await fetch(apiUrl('/api/resignations'), { headers: resignationHeaders() });
-        const tenantData = await tenantResponse.json();
-        if (!tenantResponse.ok) throw new Error(tenantData.error || t('dash.resignationLoadError'));
-        setTenantResignations(tenantData.resignations || []);
-      }
-    } catch (error) {
-      setResignationMessageType('error');
-      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationLoadError'));
-    } finally {
-      setResignationsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'resignations' && showResignationsPanel) void loadResignations();
-  }, [activeTab, showResignationsPanel, user.id, user.tenantId]);
-
-  const submitResignation = async () => {
-    if (!resignationForm.requestedLastWorkingDay) {
-      setResignationMessageType('error');
-      setResignationMessage(t('dash.lastWorkingDayRequired'));
-      return;
-    }
-    setResignationSubmitting(true);
-    try {
-      const response = await fetch(apiUrl('/api/resignations'), {
-        method: 'POST', headers: resignationHeaders(), body: JSON.stringify(resignationForm),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || t('dash.resignationSubmitError'));
-      setResignationMessageType('success');
-      setResignationMessage(t('dash.resignationSubmitted'));
-      setResignationForm({ requestedLastWorkingDay: '', resignationType: 'voluntary', reason: '' });
-      await loadResignations();
-      await refreshAttentionCounts();
-    } catch (error) {
-      setResignationMessageType('error');
-      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationSubmitError'));
-    } finally {
-      setResignationSubmitting(false);
-    }
-  };
-
-  const updateResignation = async (id: string, path: 'withdraw' | 'review' | 'process', body?: Record<string, string>) => {
-    setResignationUpdatingId(id);
-    try {
-      const response = await fetch(apiUrl(`/api/resignations/${id}/${path}`), {
-        method: 'PATCH', headers: resignationHeaders(), body: body ? JSON.stringify(body) : undefined,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || t('dash.resignationUpdateError'));
-      setResignationMessageType('success');
-      setResignationMessage(path === 'withdraw' ? t('dash.resignationWithdrawn') : path === 'process' ? t('dash.resignationProcessed') : body?.status === 'approved' ? t('dash.resignationApproved') : t('dash.resignationRejected'));
-      await loadResignations();
-      await refreshAttentionCounts();
-    } catch (error) {
-      setResignationMessageType('error');
-      setResignationMessage(error instanceof Error ? error.message : t('dash.resignationUpdateError'));
-    } finally {
-      setResignationUpdatingId(null);
-    }
   };
 
   const payrollHeaders: Record<string, string> = {
@@ -4898,7 +4808,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           }}
           onOpenModule={(moduleId) => {
             setShowControlCenter(false);
-            selectNavigationItem(moduleId);
+            if (isDashboardWorkspaceId(moduleId)) selectNavigationItem(moduleId);
           }}
         />
       </Suspense>}
@@ -5244,7 +5154,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
            )}
                      <button
                         type="button"
-                        onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+                        onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); }}
             className={cn("relative h-10 min-w-0 flex-1 md:flex-none md:w-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer", activeTab === 'resignations' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "hover:bg-emerald-500/5 text-slate-500")}
             title={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
             aria-label={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
@@ -5624,7 +5534,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     </button>
                     <button
                        type="button"
-                       onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); loadResignations(); }}
+                       onClick={() => { setActiveTab('resignations'); setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(true); }}
                        className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all flex items-center gap-2 border", activeTab === 'resignations' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300")}
                        aria-label={attentionAriaLabel(t('dash.resignations'), attentionCounts.resignations)}
                      >
@@ -7105,26 +7015,19 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                           </div>
                         </div>
                       ) : activeTab === 'resignations' && showResignationsPanel ? (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200"><FileText className="h-4 w-4 text-emerald-500" />{t('dash.resignations')}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('dash.resignationsHelp')}</p></div><button type="button" onClick={() => setShowResignationsPanel(false)} className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 dark:text-emerald-100/60">{t('dash.back')}</button></div>
-                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35">
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                              <label><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}</span><input type="date" value={resignationForm.requestedLastWorkingDay} onChange={(event) => setResignationForm((current) => ({ ...current, requestedLastWorkingDay: event.target.value }))} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50" /></label>
-                              <label><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.resignationType')}</span><select value={resignationForm.resignationType} onChange={(event) => setResignationForm((current) => ({ ...current, resignationType: event.target.value }))} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50"><option value="voluntary">{t('dash.voluntary')}</option><option value="personal_reasons">{t('dash.personalReasons')}</option><option value="career_change">{t('dash.careerChange')}</option><option value="other">{t('dash.other')}</option></select></label>
-                              <label className="md:col-span-2"><span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">{t('dash.reason')}</span><textarea value={resignationForm.reason} maxLength={2000} onChange={(event) => setResignationForm((current) => ({ ...current, reason: event.target.value }))} rows={2} className="mt-1 w-full rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 dark:bg-black/40 dark:text-emerald-50" /></label>
-                              <button type="button" onClick={submitResignation} disabled={isOffline || resignationSubmitting} className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 disabled:opacity-60 md:col-span-4">{resignationSubmitting ? t('dash.submitting') : t('dash.submitResignation')}</button>
-                            </div>
-                          </div>
-                          {resignationMessage && <p className={cn("rounded-lg border px-3 py-2 text-xs font-semibold", resignationMessageType === 'success' ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300")}>{resignationMessage}</p>}
-                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.myResignations')}</h4><button type="button" onClick={loadResignations} className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">{t('dash.refresh')}</button></div><div className="space-y-2">{myResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold text-slate-800 dark:text-slate-100">{displayEnum(request.resignation_type)}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span></p>{request.reason && <p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{request.reason}</p>}</div><div className="flex items-center gap-2"><span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{displayEnum(request.status)}</span>{request.status === 'pending' && <button type="button" onClick={() => updateResignation(request.id, 'withdraw')} disabled={resignationUpdatingId === request.id} className="text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.withdraw')}</button>}</div></div>{request.review_note && <p className="mt-2 text-[11px] text-neutral-500 dark:text-emerald-100/45">{request.review_note}</p>}</div>)}{!resignationsLoading && myResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>
-                          {canReviewResignations && <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/30"><h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.tenantResignations')}</h4><div className="space-y-2">{tenantResignations.map((request) => <div key={request.id} className="rounded-lg border border-emerald-500/15 p-3 text-xs"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.employee_id}</p><p className="text-[10px] text-neutral-500 dark:text-emerald-100/45" dir="ltr">{request.email}</p><p className="mt-1 text-neutral-500 dark:text-emerald-100/45">{t('dash.lastWorkingDay')}: <span dir="ltr">{request.requested_last_working_day}</span> · {request.reason}</p></div><div className="flex flex-wrap gap-2">{request.status === 'pending' && <><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'approved' })} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.approve')}</button><button type="button" onClick={() => updateResignation(request.id, 'review', { status: 'rejected' })} className="rounded border border-red-500/20 px-2 py-1 text-[10px] font-bold uppercase text-red-600 dark:text-red-300">{t('dash.reject')}</button></>}{request.status === 'approved' && canProcessResignations && <button type="button" onClick={() => updateResignation(request.id, 'process')} className="rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{t('dash.markProcessed')}</button>}</div></div></div>)}{!resignationsLoading && tenantResignations.length === 0 && <p className="p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">{t('dash.noResignationRequests')}</p>}</div></div>}
-                          {canReviewResignations && tenantResignations.filter((request) => (request.outstanding_asset_count || 0) > 0).map((request) => (
-                            <div key={`assets-warning-${request.id}`} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                              <span><AlertTriangle className="me-1 inline h-3.5 w-3.5" />{request.full_name || t('dash.employee')}: {t('assets.outstandingAssets').replace('{{count}}', String(request.outstanding_asset_count || 0))}</span>
-                              {canViewAssets && <button type="button" onClick={() => { setActiveTab('assets'); setShowResignationsPanel(false); }} className="font-bold text-emerald-700 underline dark:text-emerald-300">{t('assets.viewAssets')}</button>}
-                            </div>
-                          ))}
-                        </div>
+                        <Suspense fallback={<div className="min-h-72 animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
+                          <ResignationsPanel
+                            user={user}
+                            isOffline={isOffline}
+                            canViewAssets={canViewAssets}
+                            onBack={() => setShowResignationsPanel(false)}
+                            onViewAssets={() => {
+                              setActiveTab('assets');
+                              setShowResignationsPanel(false);
+                            }}
+                            onChanged={refreshAttentionCounts}
+                          />
+                        </Suspense>
                       ) : activeTab === 'profile' && showGrievancesPanel ? (
                         <div className="space-y-5">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

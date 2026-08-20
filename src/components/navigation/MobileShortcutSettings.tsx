@@ -1,6 +1,6 @@
 import { ChevronsDown, ChevronsUp, ChevronDown, ChevronUp, GripVertical, RotateCcw } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { DashboardNavigationItem } from './DashboardNavigation';
+import type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 import { moveShortcutPosition, swapShortcutPositions, type ShortcutMove, useLongPressShortcutSwap } from './mobile-shortcut-order';
 import { useLanguage } from '../../lib/LanguageContext';
 

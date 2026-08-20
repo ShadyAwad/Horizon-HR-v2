@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { FingerprintCanvas } from './FingerprintCanvas';
+import type { AuthVisualState } from '../auth/auth-contract';
 
-export type AuthVisualState = 'idle' | 'loading' | 'success' | 'error';
+export type { AuthVisualState } from '../auth/auth-contract';
 
 type AuthShellProps = {
   children: ReactNode;

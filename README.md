@@ -1,5 +1,10 @@
 ## Demo workspace
 
+Architecture references:
+
+- [`docs/architecture.md`](docs/architecture.md) maps runtime and domain ownership.
+- [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md) follows real Stanza requests from React through RLS-backed SQL.
+
 Create or refresh the safe local demo workspace:
 
 ```powershell

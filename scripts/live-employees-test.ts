@@ -102,9 +102,11 @@ test('public contract minimizes employee and location data', () => {
   }
 });
 
-test('dashboard exposes the panel only to HR admins with the permission boundary', () => {
-  assert.match(dashboardSource, /user\.role === 'hr_admin' && hasPermission\(user, 'attendance\.view_live'\)/);
+test('dashboard uses permission visibility while the server retains role and permission authority', () => {
+  assert.match(dashboardSource, /canViewLiveEmployees = hasPermission\(user, 'attendance\.view_live'\)/);
   assert.match(dashboardSource, /activeTab === 'liveEmployees' && canViewLiveEmployees/);
+  assert.match(routeSource, /requireRole\(\['hr_admin'\]\)/);
+  assert.match(routeSource, /requirePermission\('attendance\.view_live'\)/);
 });
 
 test('polling pauses while hidden, refreshes on visibility, and aborts on cleanup', () => {

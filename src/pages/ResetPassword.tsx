@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch, apiUrl } from '../lib/api';
 
 const fetch = apiFetch;
-import type { AuthVisualState } from '../components/AuthShell';
+import type { AuthVisualState } from '../auth/auth-contract';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { useLanguage } from '../lib/LanguageContext';
 import { validatePasswordStrength } from '../lib/validation';

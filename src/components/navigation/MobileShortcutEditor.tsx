@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
-import type { DashboardNavigationItem } from './DashboardNavigation';
+import type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 import { MobileShortcutSettings } from './MobileShortcutSettings';
 import { useLanguage } from '../../lib/LanguageContext';
 

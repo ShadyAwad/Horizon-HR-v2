@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, RotateCcw } from 'lucide-react';
-import type { DashboardNavigationItem } from './DashboardNavigation';
+import type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 import { useLanguage } from '../../lib/LanguageContext';
 
 type Props = {

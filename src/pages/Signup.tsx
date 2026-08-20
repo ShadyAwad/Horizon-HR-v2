@@ -6,11 +6,10 @@ import { cn } from '../lib/utils';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { AuthTransitionLoader } from '../components/AuthTransitionLoader';
-import type { AuthVisualState } from '../components/AuthShell';
+import type { AuthUser, AuthVisualState } from '../auth/auth-contract';
 import { apiFetch, apiUrl } from '../lib/api';
 
 const fetch = apiFetch;
-import type { AuthUser } from '../App';
 import {
   validateEmail,
   validatePasswordStrength,

@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
-import type { AuthUser } from '../../App';
+import type { AuthUser } from '../../auth/auth-contract';
 import { apiFetch, apiUrl } from '../../lib/api';
 import Lanyard from './Lanyard';
 import { buildStanzaBackBadgeSvg, buildStanzaFrontBadgeSvg, type StanzaBadgeLanguage } from './stanzaBadgeArtwork';

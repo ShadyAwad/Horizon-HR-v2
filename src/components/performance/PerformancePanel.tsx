@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Award, BarChart3, CheckCircle2, ClipboardCheck, Goal, LoaderCircle, Plus, RefreshCw, Users } from 'lucide-react';
-import type { AuthUser } from '../../App';
+import type { AuthUser } from '../../auth/auth-contract';
 import { apiFetch } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
 

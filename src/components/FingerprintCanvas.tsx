@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { AuthVisualState } from './AuthShell';
+import type { AuthVisualState } from '../auth/auth-contract';
 
 interface FingerprintCanvasProps {
   pulseState: AuthVisualState;
