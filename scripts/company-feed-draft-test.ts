@@ -26,6 +26,7 @@ const root = (text: string) => ({
 
 const migration = readFileSync(new URL('../src/db/migrations/20260726_add_company_feed_drafts.sql', import.meta.url), 'utf8');
 const server = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+const feedRoutes = readFileSync(new URL('../src/server/feed/company-feed-routes.ts', import.meta.url), 'utf8');
 const hook = readFileSync(new URL('../src/hooks/useCompanyFeedDraft.ts', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('../src/pages/Dashboard.tsx', import.meta.url), 'utf8');
 
@@ -39,24 +40,25 @@ test('draft table is tenant-scoped, author-owned, versioned, and RLS protected',
 });
 
 test('draft APIs are self-service and use same-origin cookie mutation protection', () => {
-  assert.match(server, /'\/api\/me\/company-feed\/draft'/);
-  assert.match(server, /author_employee_id = \$2/);
-  assert.match(server, /requirePermission\('feed\.publish'\),\s+isSameOriginSessionMutation/);
-  assert.doesNotMatch(server, /\/api\/hr\/company-feed\/draft/);
+  assert.match(server, /registerCompanyFeedRoutes\(app/);
+  assert.match(feedRoutes, /'\/api\/me\/company-feed\/draft'/);
+  assert.match(feedRoutes, /author_employee_id = \$2/);
+  assert.match(feedRoutes, /requirePermission\('feed\.publish'\),\s+isSameOriginSessionMutation/);
+  assert.doesNotMatch(feedRoutes, /\/api\/hr\/company-feed\/draft/);
 });
 
 test('stale versions return a conflict instead of overwriting the newer draft', () => {
-  assert.match(server, /DRAFT_VERSION_CONFLICT/);
-  assert.match(server, /Number\(current\.version\) !== expectedVersion/);
-  assert.match(server, /LIMIT 1 FOR UPDATE/);
-  assert.match(server, /pg_advisory_xact_lock/);
+  assert.match(feedRoutes, /DRAFT_VERSION_CONFLICT/);
+  assert.match(feedRoutes, /Number\(current\.version\) !== expectedVersion/);
+  assert.match(feedRoutes, /LIMIT 1 FOR UPDATE/);
+  assert.match(feedRoutes, /pg_advisory_xact_lock/);
 });
 
 test('drafts preserve the lexical-v1 contract and reject unsafe documents', () => {
   assert.equal(validateFeedEditorDocument(root('Private draft'), 'Private draft').ok, true);
   assert.equal(validateFeedEditorDocument({ root: { type: 'root', children: [{ type: 'script', children: [] }] } }).ok, false);
-  assert.match(server, /serializedContentJson\.length > 50000/);
-  assert.match(server, /validateFeedEditorDocument\(body\.contentJson, contentText\)/);
+  assert.match(feedRoutes, /serializedContentJson\.length > 50000/);
+  assert.match(feedRoutes, /validateFeedEditorDocument\(body\.contentJson, contentText\)/);
 });
 
 test('restoration normalises undefined and null text fields without calling trim on them', () => {
@@ -78,9 +80,9 @@ test('missing or malformed restored documents are ignored while valid titleless 
 });
 
 test('attachments stay as internal UUID references and are checked against the author', () => {
-  assert.match(server, /const imageIds = collectFeedImageIds\(body\.contentJson\)/);
-  assert.match(server, /uploaded_by = \$2 AND status = 'pending' AND post_id IS NULL/);
-  assert.match(server, /attachment_references @> jsonb_build_object/);
+  assert.match(feedRoutes, /const imageIds = collectFeedImageIds\(body\.contentJson\)/);
+  assert.match(feedRoutes, /uploaded_by = \$2 AND status = 'pending' AND post_id IS NULL/);
+  assert.match(feedRoutes, /attachment_references @> jsonb_build_object/);
   assert.doesNotMatch(hook, /data:image/);
 });
 
@@ -94,9 +96,9 @@ test('autosave is debounced, aborts obsolete requests, and keeps a bounded local
 });
 
 test('server draft finalization makes a retried publish return the existing post', () => {
-  assert.match(server, /draft\.status === 'published' && draft\.published_post_id/);
-  assert.match(server, /SET status = 'published', published_post_id = \$4/);
-  assert.match(server, /company_feed\.draft\.published/);
+  assert.match(feedRoutes, /draft\.status === 'published' && draft\.published_post_id/);
+  assert.match(feedRoutes, /SET status = 'published', published_post_id = \$4/);
+  assert.match(feedRoutes, /company_feed\.draft\.published/);
 });
 
 test('dashboard exposes stable accessible draft status and recovery controls', () => {
@@ -112,9 +114,9 @@ test('dashboard exposes stable accessible draft status and recovery controls', (
 });
 
 test('server returns one restored-draft shape with derived lexical text', () => {
-  assert.match(server, /function presentCompanyFeedDraft/);
-  assert.match(server, /contentText: validation\.extractedText/);
-  assert.match(server, /draft: presentCompanyFeedDraft\(draft\)/);
+  assert.match(feedRoutes, /function presentCompanyFeedDraft/);
+  assert.match(feedRoutes, /contentText: validation\.extractedText/);
+  assert.match(feedRoutes, /draft: presentCompanyFeedDraft\(draft\)/);
   assert.match(hook, /normaliseCompanyFeedDraft\(body\.draft\)/);
   assert.doesNotMatch(hook, /storage\?\.removeItem\(key\)/);
 });

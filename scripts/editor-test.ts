@@ -229,7 +229,7 @@ test('read-only renderer avoids raw HTML and scales across 50 validated posts', 
 });
 
 test('server image boundary is permissioned, decoded, re-encoded, and private', () => {
-  const source = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/server/feed/company-feed-routes.ts', import.meta.url), 'utf8');
   assert.match(source, /'\/api\/company-feed\/images'/);
   assert.match(source, /requirePermission\('feed\.publish'\)/);
   assert.match(source, /limitInputPixels: FEED_IMAGE_MAX_INPUT_PIXELS/);

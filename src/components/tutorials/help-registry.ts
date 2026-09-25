@@ -1,4 +1,4 @@
-import type { TutorialContext } from './tutorial-types';
+import type { HelpAction, TutorialContext } from './tutorial-types';
 
 export type HelpLocale = 'en' | 'ar';
 export type HelpGroup = 'getting_started' | 'workspaces' | 'account_app';
@@ -13,6 +13,8 @@ export type HelpArticle = {
   summary: LocalisedText;
   keywords: readonly string[];
   sections: readonly HelpSection[];
+  eligible?: (context: TutorialContext) => boolean;
+  action?: { label: LocalisedText; value: HelpAction };
 };
 
 const text = (en: string, ar: string): LocalisedText => ({ en, ar });
@@ -102,6 +104,26 @@ const workspaces: readonly HelpArticle[] = [
 ];
 
 const accountApp: readonly HelpArticle[] = [
+  {
+    id: 'interactive-lanyard-performance',
+    group: 'account_app',
+    tutorialId: 'interactive-lanyard',
+    title: text('Interactive Lanyard & Performance', 'بطاقة التعريف التفاعلية والأداء'),
+    summary: text('Choose whether the optional 3D employee badge appears on your dashboard.', 'اختر ما إذا كانت بطاقة الموظف ثلاثية الأبعاد الاختيارية تظهر في لوحة التحكم.'),
+    keywords: ['lanyard', 'badge', 'performance', 'GPU', 'CPU', 'بطاقة', 'أداء'],
+    eligible: (context) => context.lanyardAvailable === true,
+    sections: [
+      section('What it is', 'ما هي', 'The interactive lanyard is an optional 3D employee badge attached to the Stanza launcher.', 'بطاقة التعريف التفاعلية هي بطاقة موظف ثلاثية الأبعاد اختيارية متصلة بمشغل Stanza.'),
+      section('Resource usage', 'استخدام الموارد', 'Disabling the lanyard may reduce GPU or CPU usage on some devices and browsers.', 'قد يقلل تعطيل البطاقة من استخدام وحدة الرسوميات أو المعالج في بعض الأجهزة والمتصفحات.'),
+      section('Where to change it', 'مكان تغيير الإعداد', 'Open Settings, expand Interface, and use the Lanyard card switch.', 'افتح الإعدادات ووسّع قسم الواجهة ثم استخدم مفتاح بطاقة التعريف.'),
+      section('Stanza functionality', 'وظائف Stanza', 'Turning it off changes only the visual effect. Attendance, navigation, and every Stanza workflow continue to work normally.', 'يغيّر إيقافها التأثير المرئي فقط، وتستمر الحضور والتنقل وجميع وظائف Stanza بصورة طبيعية.'),
+      section('Turn it back on', 'إعادة التشغيل', 'Return to the same switch at any time to re-enable the lanyard.', 'عد إلى المفتاح نفسه في أي وقت لإعادة تشغيل بطاقة التعريف.'),
+    ],
+    action: {
+      label: text('Show lanyard setting', 'إظهار إعداد بطاقة التعريف'),
+      value: { type: 'open-settings', section: 'personalization', target: 'lanyard' },
+    },
+  },
   { id: 'passkeys', group: 'account_app', tutorialId: 'settings', title: text('Passkeys', 'مفاتيح المرور'), summary: text('Register device-backed sign-in credentials without exposing private key material.', 'سجّل بيانات دخول مدعومة بالجهاز دون كشف مادة المفتاح الخاص.'), keywords: ['passkey', 'security', 'مفتاح مرور'], sections: [section('Using passkeys', 'استخدام مفاتيح المرور', 'Open Settings or Profile, register on a trusted device, and name it clearly. Authentication remains bound to the normal secure session cookie.', 'افتح الإعدادات أو الملف الشخصي وسجّل على جهاز موثوق وسمّه بوضوح. يبقى الدخول مرتبطاً بكوكي الجلسة الآمنة المعتادة.')] },
   { id: 'notifications', group: 'account_app', tutorialId: 'settings', title: text('Notifications', 'الإشعارات'), summary: text('Choose personal notification channels without changing workflow authority.', 'اختر قنوات الإشعار الشخصية دون تغيير صلاحية سير العمل.'), keywords: ['notification', 'email', 'push', 'إشعار'], sections: [section('Preferences', 'التفضيلات', 'Settings controls available email and push categories. Turning a notification off does not remove the underlying task or approval responsibility.', 'تتحكم الإعدادات في فئات البريد والدفع، ولا يؤدي إيقاف الإشعار إلى إزالة المهمة أو مسؤولية الموافقة.')] },
   { id: 'install-stanza', group: 'account_app', tutorialId: 'settings', title: text('Install / Remove Stanza', 'تثبيت / إزالة Stanza'), summary: text('Use browser-supported installation for a standalone app window and home-screen access.', 'استخدم التثبيت المدعوم من المتصفح لنافذة مستقلة ووصول من الشاشة الرئيسية.'), keywords: ['install', 'PWA', 'home screen', 'تثبيت'], sections: [section('Installation', 'التثبيت', 'Use App Readiness for platform-specific steps. Android and desktop use the browser install action when available; iPhone and iPad use Safari Add to Home Screen. Removal is performed through the operating system or browser app controls.', 'استخدم جاهزية التطبيق للخطوات المناسبة. يستخدم Android وسطح المكتب إجراء التثبيت عند توفره، ويستخدم iPhone وiPad إضافة إلى الشاشة الرئيسية في Safari. تتم الإزالة من النظام أو المتصفح.')] },
@@ -115,8 +137,20 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [...gettingStarted, ...work
 const ids = new Set(HELP_ARTICLES.map((article) => article.id));
 if (ids.size !== HELP_ARTICLES.length) throw new Error('Duplicate Help article identifiers.');
 
-export function getEligibleHelpArticles(context: Pick<TutorialContext, 'availableModules'>) {
-  return HELP_ARTICLES.filter((article) => !article.moduleId || context.availableModules.includes(article.moduleId));
+export function getEligibleHelpArticles(
+  context: Pick<TutorialContext, 'availableModules'> & Partial<Omit<TutorialContext, 'availableModules'>>,
+) {
+  const eligibilityContext: TutorialContext = {
+    permissions: context.permissions || [],
+    availableModules: context.availableModules,
+    isMobile: context.isMobile === true,
+    lanyardAvailable: context.lanyardAvailable,
+    lanyardEnabled: context.lanyardEnabled,
+  };
+  return HELP_ARTICLES.filter((article) => (
+    (!article.moduleId || context.availableModules.includes(article.moduleId))
+    && (!article.eligible || article.eligible(eligibilityContext))
+  ));
 }
 
 export function searchHelpArticles(articles: readonly HelpArticle[], query: string, locale: HelpLocale) {

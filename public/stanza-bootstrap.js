@@ -17,7 +17,7 @@
       : 50;
     document.documentElement.dataset.lightIntensity = String(Math.round(safeIntensity / 10) * 10);
 
-    const backgroundPresets = ['emerald', 'slate', 'midnight', 'graphite', 'warm_sand', 'amethyst', 'ember'];
+    const backgroundPresets = ['emerald', 'slate', 'midnight', 'graphite', 'warm_sand', 'amethyst', 'ember', 'custom'];
     const savedPreset = storedPreferences.backgroundPreset === 'default'
       ? 'emerald'
       : storedPreferences.backgroundPreset;

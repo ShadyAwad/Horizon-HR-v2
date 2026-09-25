@@ -3,7 +3,10 @@ export const PERFORMANCE_ISOLATION_STORAGE_KEY = 'stanza.performance-isolation.v
 export type PerformanceIsolation = Record<
   'lanyard' | 'topography' | 'atmosphere' | 'shadows' | 'translucentSurfaces' |
   'settingsBackdrop' | 'tutorials' | 'attentionPolling' | 'recentFrequent' |
-  'badges' | 'mobileNavigation' | 'geoSecondaryPanels' | 'transitions' | 'visualAtmosphere',
+  'badges' | 'mobileNavigation' | 'geoSecondaryPanels' | 'transitions' | 'visualAtmosphere' |
+  'atmosphericGlows' | 'cssFilters' | 'backdropFilters' | 'largeShadows' |
+  'hoverTransforms' | 'pressedTransforms' | 'translucentNavigationSurfaces' |
+  'tutorialEffects' | 'decorativeGradients' | 'topographyMask' | 'filteredGlows',
   boolean
 >;
 
@@ -13,6 +16,10 @@ export const defaultPerformanceIsolation: PerformanceIsolation = {
   attentionPolling: true, recentFrequent: true, badges: true,
   mobileNavigation: true, geoSecondaryPanels: true, transitions: true,
   visualAtmosphere: true,
+  atmosphericGlows: true, cssFilters: true, backdropFilters: true,
+  largeShadows: true, hoverTransforms: true, pressedTransforms: true,
+  translucentNavigationSurfaces: true, tutorialEffects: true,
+  decorativeGradients: true, topographyMask: true, filteredGlows: true,
 };
 
 export function normalisePerformanceIsolation(value: unknown): PerformanceIsolation {

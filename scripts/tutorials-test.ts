@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { getEligibleTutorials, tutorialRegistry } from '../src/components/tutorials/tutorial-registry';
-import { readTutorialProgress } from '../src/components/tutorials/tutorial-state';
+import { getAutomaticTutorialCandidate, readTutorialProgress } from '../src/components/tutorials/tutorial-state';
 import { HELP_ARTICLES, getEligibleHelpArticles, getHelpArticle, searchHelpArticles } from '../src/components/tutorials/help-registry';
 
 const employeeContext = { permissions: [], availableModules: ['geofence', 'roster', 'expenses'], isMobile: true };
@@ -12,6 +12,8 @@ assert.ok(employeeTutorials.some((tutorial) => tutorial.id === 'roster'));
 assert.ok(!employeeTutorials.some((tutorial) => tutorial.id === 'hiring'));
 assert.equal(tutorialRegistry.every((tutorial) => tutorial.version > 0 && tutorial.steps.length > 0), true);
 const welcome = tutorialRegistry.find((tutorial) => tutorial.id === 'welcome');
+const lanyardTutorial = tutorialRegistry.find((tutorial) => tutorial.id === 'interactive-lanyard');
+assert.ok(lanyardTutorial);
 assert.equal(welcome?.steps.length, 5);
 assert.deepEqual(welcome?.steps.map((step) => step.id), ['welcome', 'launcher', 'command', 'quick-actions', 'settings']);
 for (const tutorialId of ['geo-operations', 'roster', 'expenses', 'hiring', 'organisation']) {
@@ -34,6 +36,18 @@ for (const moduleId of navigationModuleIds) {
 assert.ok(authorisedTutorials.some((tutorial) => tutorial.id === 'settings'));
 assert.ok(!getEligibleTutorials({ permissions: [], availableModules: ['geofence'], isMobile: false }).some((tutorial) => tutorial.id === 'hiring'));
 assert.ok(!tutorialRegistry.some((tutorial) => /\b(?:hr_admin|manager|employee)\b/i.test(tutorial.eligible.toString())), 'eligibility must not be based on role names');
+
+const capableLanyardContext = { ...authorisedContext, lanyardAvailable: true, lanyardEnabled: true };
+const capableTutorials = getEligibleTutorials(capableLanyardContext);
+const baseProgress = { tutorialsEnabled: true, tutorialsAutoStart: true, completedTutorials: { welcome: welcome!.version }, dismissedTutorials: {} };
+assert.equal(getAutomaticTutorialCandidate(capableTutorials, 'geofence', baseProgress, capableLanyardContext)?.id, 'interactive-lanyard');
+assert.equal(getAutomaticTutorialCandidate(capableTutorials, 'geofence', { ...baseProgress, completedTutorials: {}, dismissedTutorials: { welcome: welcome!.version } }, capableLanyardContext)?.id, 'interactive-lanyard');
+assert.notEqual(getAutomaticTutorialCandidate(capableTutorials, 'geofence', { ...baseProgress, dismissedTutorials: { 'interactive-lanyard': lanyardTutorial!.version } }, capableLanyardContext)?.id, 'interactive-lanyard');
+const disabledLanyardContext = { ...capableLanyardContext, lanyardEnabled: false };
+assert.notEqual(getAutomaticTutorialCandidate(getEligibleTutorials(disabledLanyardContext), 'geofence', baseProgress, disabledLanyardContext)?.id, 'interactive-lanyard');
+assert.ok(getEligibleTutorials(disabledLanyardContext).some((tutorial) => tutorial.id === 'interactive-lanyard'), 'manual Help replay remains available while disabled');
+const mobileLanyardContext = { ...employeeContext, lanyardAvailable: false, lanyardEnabled: true };
+assert.ok(!getEligibleTutorials(mobileLanyardContext).some((tutorial) => tutorial.id === 'interactive-lanyard'));
 
 const [dashboard, translations, provider, overlay, helpCenter, helpRegistry, styles, presetSource] = await Promise.all([
   readFile('src/pages/Dashboard.tsx', 'utf8'),
@@ -70,7 +84,7 @@ assert.match(overlay, /safe-area-inset-bottom/);
 assert.match(overlay, /stanza-tutorial-primary stanza-primary-action min-h-11/);
 assert.match(overlay, /stanza-tutorial-tertiary/);
 assert.match(overlay, /stanza-secondary-action min-h-11/);
-assert.match(overlay, /stanza-icon-action/);
+assert.match(overlay, /stanza-close-action/);
 assert.match(styles, /\.stanza-tutorial-primary \{[\s\S]*background-color: var\(--stanza-control-selected\);[\s\S]*color: var\(--stanza-control-selected-foreground\);/);
 assert.match(styles, /\.stanza-tutorial-primary:disabled \{[\s\S]*background-color: var\(--stanza-surface-muted\);[\s\S]*box-shadow: none;/);
 assert.match(styles, /\.stanza-tutorial-primary:not\(:disabled\):hover \{[\s\S]*background-color: var\(--stanza-accent-hover\);/);
@@ -86,7 +100,14 @@ assert.match(overlay, /step\.helpAction/);
 assert.match(overlay, /onHelpAction\(step\.helpAction!\.action\)/);
 assert.doesNotMatch(overlay, /dangerouslySetInnerHTML/);
 assert.match(provider, /action\.type === 'start-tutorial'/);
+assert.match(provider, /action\.type === 'open-settings'/);
 assert.match(dashboard, /handleTutorialHelpAction/);
+assert.match(dashboard, /setPersonalizationOpenSignal/);
+assert.match(dashboard, /data-settings-highlight=\{lanyardHighlightSignal/);
+assert.match(dashboard, /data-tutorial-target="settings-lanyard"/);
+assert.match(dashboard, /lanyardToggleRef\.current\?\.focus/);
+assert.match(dashboard, /aria-describedby=\{lanyardHighlightSignal/);
+assert.match(dashboard, /openSignal=\{personalizationOpenSignal\}/);
 assert.match(dashboard, /action\.type === 'open-article'/);
 assert.match(dashboard, /setShowControlCenter\(true\)/);
 assert.match(helpCenter, /data-help-article-body=\{selected\.id\}/);
@@ -104,11 +125,11 @@ for (const tutorial of tutorialRegistry.filter((candidate) => navigationModuleId
 }
 for (const step of tutorialRegistry.flatMap((tutorial) => tutorial.steps)) {
   if (!step.helpAction) continue;
-  assert.ok(['open-article', 'start-tutorial', 'open-module'].includes(step.helpAction.action.type));
+  assert.ok(['open-article', 'start-tutorial', 'open-module', 'open-settings'].includes(step.helpAction.action.type));
   if (step.helpAction.action.type === 'open-article') assert.ok(getHelpArticle(step.helpAction.action.articleId));
 }
 for (const tutorial of tutorialRegistry) {
-  for (const key of [tutorial.titleKey, tutorial.descriptionKey, ...tutorial.steps.flatMap((step) => [step.titleKey, step.bodyKey, ...(step.helpAction ? [step.helpAction.labelKey] : [])])]) {
+  for (const key of [tutorial.titleKey, tutorial.descriptionKey, ...tutorial.steps.flatMap((step) => [step.titleKey, step.bodyKey, ...(step.primaryLabelKey ? [step.primaryLabelKey] : []), ...(step.helpAction ? [step.helpAction.labelKey] : [])])]) {
     assert.equal((translations.match(new RegExp(`'${key}':`, 'g')) || []).length, 2, `${key} must be translated in English and Arabic`);
   }
 }
@@ -118,6 +139,14 @@ assert.ok(searchHelpArticles(HELP_ARTICLES, 'geofence', 'en').some((article) => 
 assert.ok(searchHelpArticles(HELP_ARTICLES, '\u0627\u0644\u062c\u062f\u0648\u0644', 'ar').some((article) => article.id === 'weekly-roster'));
 assert.deepEqual(getEligibleHelpArticles({ availableModules: ['geofence'] }).filter((article) => article.moduleId).map((article) => article.moduleId), ['geofence']);
 assert.ok(!getEligibleHelpArticles({ availableModules: ['geofence'] }).some((article) => article.moduleId === 'hiring'));
+const lanyardArticle = getHelpArticle('interactive-lanyard-performance');
+assert.equal(lanyardArticle?.tutorialId, 'interactive-lanyard');
+assert.equal(lanyardArticle?.action?.value.type, 'open-settings');
+assert.ok(getEligibleHelpArticles(capableLanyardContext).some((article) => article.id === 'interactive-lanyard-performance'));
+assert.ok(!getEligibleHelpArticles(mobileLanyardContext).some((article) => article.id === 'interactive-lanyard-performance'));
+assert.match(helpCenter, /onHelpAction\(selected\.action!\.value\)/);
+assert.match(translations, /'tutorial\.lanyard\.body': 'The interactive badge adds a 3D effect/);
+assert.match(translations, /'tutorial\.lanyard\.body': 'تضيف بطاقة التعريف التفاعلية/);
 assert.deepEqual(readTutorialProgress({ tutorialsAutoStart: false, completedTutorials: { welcome: 1 } }), {
   tutorialsEnabled: true,
   tutorialsAutoStart: false,

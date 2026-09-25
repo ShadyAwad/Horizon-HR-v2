@@ -1,0 +1,11 @@
+.stanza-guided-benchmark input,
+.stanza-guided-benchmark textarea {
+  color: #e6fff5;
+}
+
+.stanza-guided-benchmark button:focus-visible,
+.stanza-guided-benchmark input:focus-visible,
+.stanza-guided-benchmark textarea:focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 2px;
+}

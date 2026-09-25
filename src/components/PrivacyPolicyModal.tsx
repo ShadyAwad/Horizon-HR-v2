@@ -33,7 +33,7 @@ export function PrivacyPolicyModal({ open, onClose }: { open: boolean; onClose: 
             <ShieldCheck className="h-5 w-5" />
             <h2 id="privacy-policy-title" className="text-sm font-black uppercase tracking-widest">{t('privacy.title')}</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label={t('privacy.close')} className="rounded-lg border border-emerald-500/20 p-2 text-emerald-200 transition hover:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-400"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label={t('privacy.close')} className="stanza-close-action rounded-lg p-2"><X className="h-4 w-4" /></button>
         </div>
         <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">{t('privacy.notLegalAdvice')}</p>
         <div className="mt-5 space-y-5 text-sm leading-6 text-emerald-50/75">

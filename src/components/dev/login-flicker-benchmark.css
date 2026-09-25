@@ -1,0 +1,13 @@
+html[data-stanza-login-benchmark="no-animation"] [data-login-demo-benchmark],
+html[data-stanza-login-benchmark="no-animation"] [data-login-demo-benchmark] * {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-stanza-login-benchmark="no-grid-transition"] #demo-account-panel {
+  transition-property: opacity !important;
+}
+
+html[data-stanza-login-benchmark="no-opacity-transition"] #demo-account-panel {
+  transition-property: grid-template-rows !important;
+}

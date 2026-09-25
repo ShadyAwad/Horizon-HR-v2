@@ -7,12 +7,13 @@ import {
   getPwaInstallMode,
 } from '../src/lib/pwa-install';
 
-const [manifestText, indexHtml, main, prompt, dashboard, translations, viteConfig, packageJson, productionHtml] = await Promise.all([
+const [manifestText, indexHtml, main, prompt, dashboard, installPromptStore, translations, viteConfig, packageJson, productionHtml] = await Promise.all([
   readFile('public/manifest.webmanifest', 'utf8'),
   readFile('index.html', 'utf8'),
   readFile('src/main.tsx', 'utf8'),
   readFile('src/components/PwaInstallPrompt.tsx', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
+  readFile('src/lib/pwa-install-prompt.ts', 'utf8'),
   readFile('src/lib/LanguageContext.tsx', 'utf8'),
   readFile('vite.config.ts', 'utf8'),
   readFile('package.json', 'utf8'),
@@ -51,7 +52,9 @@ assert.equal(getPwaInstallMode({ platform: 'firefox', hasDeferredPrompt: false, 
 assert.equal(getPwaInstallMode({ platform: 'ios', hasDeferredPrompt: false, isStandalone: false }), 'ios-manual');
 assert.equal(getPwaInstallMode({ platform: 'chromium', hasDeferredPrompt: false, isStandalone: true }), 'installed');
 
-assert.match(prompt, /beforeinstallprompt/);
+assert.match(installPromptStore, /beforeinstallprompt/);
+assert.equal((`${prompt}\n${dashboard}\n${installPromptStore}`.match(/window\.addEventListener\('beforeinstallprompt'/g) || []).length, 1, 'PWA install prompt must register one shared listener.');
+assert.match(installPromptStore, /export async function requestDeferredInstall\(\) \{[\s\S]*publish\(\{ \.\.\.snapshot, installPrompt: null \}\);[\s\S]*await deferred\.prompt\(\);[\s\S]*return deferred\.userChoice;/);
 assert.match(prompt, /installMode === 'direct'/);
 assert.match(prompt, /installFirefoxStep1/);
 assert.match(prompt, /aria-live="polite"/);

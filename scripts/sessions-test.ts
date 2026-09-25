@@ -60,22 +60,26 @@ async function run() {
 
   const centerDenied = await request('/api/hr/session-center', { headers: { Cookie: manager.cookie } });
   assert(centerDenied.response.status === 403, `Manager session center returned ${centerDenied.response.status}.`);
+  const managerOwn = await request('/api/auth/sessions', { headers: { Cookie: manager.cookie } });
+  assert(managerOwn.response.status === 200 && Array.isArray(managerOwn.body.sessions), 'Manager session lookup failed.');
+  const managerCurrentSession = (managerOwn.body.sessions as Json[]).find((session) => session.isCurrent) as Json | undefined;
+  assert(managerCurrentSession?.id, 'Manager current session was not identified.');
   const center = await request('/api/hr/session-center', { headers: { Cookie: adminA.cookie } });
   assert(center.response.status === 200 && Array.isArray(center.body.sessions), 'HR session center failed.');
-  const managerSession = (center.body.sessions as Json[]).find((session) => session.employee?.id === manager.user.id && session.status === 'active');
+  const managerSession = (center.body.sessions as Json[]).find((session) => session.id === managerCurrentSession.id && session.employee?.id === manager.user.id && session.status === 'active');
   assert(managerSession, 'HR center did not return manager session.');
   const adminRevoke = await request(`/api/hr/session-center/${managerSession.id}`, { method: 'DELETE', headers: { Cookie: adminA.cookie, Origin: origin } });
   assert(adminRevoke.response.status === 200, `Admin revoke returned ${adminRevoke.response.status}.`);
   const revokedRequest = await request('/api/auth/session', { headers: { Cookie: manager.cookie } });
-  assert(revokedRequest.response.status === 401, `Revoked session still authenticated (${revokedRequest.response.status}).`);
-  pass('HR permission, tenant session management, and revoked-session rejection');
+  assert(revokedRequest.response.status === 200 && revokedRequest.body.authenticated === false, 'Revoked session still authenticated.');
+  pass('HR permission, tenant session management, and revoked-session status');
 
   const revokeOthers = await request('/api/auth/sessions/revoke-others', { method: 'POST', headers: { Cookie: adminA.cookie, Origin: origin } });
   assert(revokeOthers.response.status === 200, `Revoke others returned ${revokeOthers.response.status}.`);
   const stillCurrent = await request('/api/auth/session', { headers: { Cookie: adminA.cookie } });
   assert(stillCurrent.response.status === 200, 'Revoke others ended the current session.');
   const oldOther = await request('/api/auth/session', { headers: { Cookie: adminB.cookie } });
-  assert(oldOther.response.status === 401, 'Revoke others did not revoke another session.');
+  assert(oldOther.response.status === 200 && oldOther.body.authenticated === false, 'Revoke others did not revoke another session.');
   pass('Revoke all others preserves current session');
 
   console.log(`\nSession tests passed: ${passes.length}`);

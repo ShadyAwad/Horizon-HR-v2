@@ -291,7 +291,7 @@ export function CommandPalette({
                   inputRef.current?.focus();
                 }}
                 aria-label={labels.clearSearch}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/65"
+                className="stanza-close-action grid h-10 w-10 shrink-0 place-items-center rounded-lg"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -300,7 +300,7 @@ export function CommandPalette({
               type="button"
               onClick={onClose}
               aria-label={labels.close}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 outline-none hover:bg-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/65"
+              className="stanza-close-action grid h-10 w-10 shrink-0 place-items-center rounded-lg"
             >
               <X className="h-5 w-5" />
             </button>

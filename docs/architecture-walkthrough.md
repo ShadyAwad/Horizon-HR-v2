@@ -43,7 +43,7 @@ The same stable IDs feed Launcher Only navigation, Compact Rail, mobile
 shortcuts, command search, usage history, Help, and tutorials. Backend permission
 checks still run independently when an API request arrives.
 
-## 3. A resignation request from click to response
+## 3. Domain registrars preserve request order
 
 The rendered UI is `src/components/resignations/ResignationsPanel.tsx`. It owns
 its form, loading state, update state, and API errors. Clicking Submit calls:
@@ -56,7 +56,10 @@ apiFetch(apiUrl('/api/resignations'), { method: 'POST', ... })
 HttpOnly session cookie travels without exposing the session token to React.
 
 In `server.ts`, `registerResignationRoutes` is mounted at the same point where
-the embedded routes used to be. The POST pipeline is:
+the embedded routes used to be. The same pattern now owns Company Feed,
+grievances, notification settings, attendance, breaks, roster shifts, payroll,
+legacy role compatibility, asset evidence, map tiles, and system health. The
+resignation POST pipeline is:
 
 ```text
 standard session authentication
@@ -74,6 +77,13 @@ The registrar is in
 `src/server/resignations/resignation-routes.ts`. It keeps the route, SQL,
 response, audit, and notification behavior together because they are one domain
 operation. It does not add a controller class just to relay parameters.
+
+Express order remains explicit in the composition root. For example, clock-in
+is registered before compatibility location routes, which remain before
+clock-status and clock-out. Payroll registration keeps grievances between the
+main payroll routes and payroll PDF export because that is where those routes
+previously lived. `scripts/architecture-test.ts` protects these meaningful
+relationships without asserting arbitrary line numbers.
 
 ## 4. What middleware and a handler each own
 
@@ -181,9 +191,13 @@ exception to tenant isolation: the token service resolves the tenant-owned token
 record and enforces purpose, expiry, and revocation.
 
 Static avatar/evidence files are another explicit exception to ordinary JSON
-routes. Their mounts use bounded directories and cache/header policies; upload
-routes remain authenticated, validate decoded image dimensions and formats, and
-never expose filesystem paths.
+routes. Their mounts use bounded directories and cache/header policies. Asset
+evidence upload/read behavior lives in
+`src/server/assets/asset-evidence-routes.ts`; it retains same-origin checks,
+tenant ownership, assignment authority, decoded image limits, WebP re-encoding,
+private response caching, and audit logging. Avatar mutation remains beside the
+session identity surface for now because it shares the current bootstrap upload
+pipeline.
 
 ## 11. How to extend Stanza safely
 

@@ -1,11 +1,14 @@
+import CustomThemeEditor from '../components/CustomThemeEditor';
 import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { 
-  Fingerprint, LogOut, MapPin, Map, Navigation, 
+  Fingerprint, LogOut, MapPin, Map, Navigation, X,
   Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText, Settings
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../lib/LanguageContext';
 import { detectPwaInstallPlatform, getPwaInstallMode } from '../lib/pwa-install';
+import { readLanyardIsolation } from '../lib/dev-lanyard-isolation';
+import { useDeferredPwaInstallPrompt } from '../lib/pwa-install-prompt';
 import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiFetch, apiUrl } from '../lib/api';
@@ -255,11 +258,6 @@ class CompanyFeedBoundary extends Component<{ children: ReactNode; onDiscardLoca
   }
 }
 const RichFeedContent = lazy(() => import('../components/FeedDocumentRenderer').then((module) => ({ default: module.RichFeedContent })));
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
 
 type ClockActionState =
   | 'idle'
@@ -1026,6 +1024,32 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setPerformanceIsolation(next);
     if (import.meta.env.DEV) window.sessionStorage.setItem(PERFORMANCE_ISOLATION_STORAGE_KEY, JSON.stringify(next));
   }, []);
+  const updateTransientPerformanceIsolation = useCallback((next: PerformanceIsolation) => {
+    // Guided benchmarks must not overwrite the user's temporary diagnostic controls.
+    setPerformanceIsolation(next);
+  }, []);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const diagnosticRoot = document.documentElement;
+    const attributes: Record<string, boolean> = {
+      'data-stanza-perf-no-mask': !performanceIsolation.topographyMask,
+      'data-stanza-perf-radial-glows': !performanceIsolation.filteredGlows,
+      'data-stanza-perf-no-glows': !performanceIsolation.atmosphericGlows,
+      'data-stanza-perf-no-css-filters': !performanceIsolation.cssFilters,
+      'data-stanza-perf-no-backdrop-filters': !performanceIsolation.backdropFilters,
+      'data-stanza-perf-no-large-shadows': !performanceIsolation.largeShadows,
+      'data-stanza-perf-no-hover-transforms': !performanceIsolation.hoverTransforms,
+      'data-stanza-perf-no-pressed-transforms': !performanceIsolation.pressedTransforms,
+      'data-stanza-perf-opaque-navigation': !performanceIsolation.translucentNavigationSurfaces,
+      'data-stanza-perf-no-tutorial-effects': !performanceIsolation.tutorialEffects,
+      'data-stanza-perf-no-decorative-gradients': !performanceIsolation.decorativeGradients,
+    };
+    for (const [attribute, enabled] of Object.entries(attributes)) {
+      if (enabled) diagnosticRoot.setAttribute(attribute, 'true');
+      else diagnosticRoot.removeAttribute(attribute);
+    }
+    return () => Object.keys(attributes).forEach((attribute) => diagnosticRoot.removeAttribute(attribute));
+  }, [performanceIsolation]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandPaletteFocusRequest, setCommandPaletteFocusRequest] = useState(0);
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -1046,15 +1070,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [tutorialController, setTutorialController] = useState<TutorialController | null>(null);
   const [requestedHelpArticleId, setRequestedHelpArticleId] = useState<string | null>(null);
   const [helpOpenSignal, setHelpOpenSignal] = useState(0);
+  const [personalizationOpenSignal, setPersonalizationOpenSignal] = useState(0);
+  const [lanyardHighlightSignal, setLanyardHighlightSignal] = useState(0);
+  const lanyardToggleRef = useRef<HTMLButtonElement>(null);
   const [showTenantId, setShowTenantId] = useState(false);
   const [tenantIdCopied, setTenantIdCopied] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(() => window.localStorage.getItem('stanza-install-dismissed') === 'true');
-  const [isStandalone, setIsStandalone] = useState(() => (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
-  ));
+  const { installPrompt, isStandalone, requestDeferredInstall, clearDeferredInstallPrompt } = useDeferredPwaInstallPrompt();
+  const standaloneBeforeInstallRef = useRef(isStandalone);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => (
     'Notification' in window ? Notification.permission : 'unsupported'
   ));
@@ -1150,7 +1174,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
   }, []);
 
-  const shouldMountLanyard = lanyardEnabled && performanceIsolation.lanyard && isLanyardCapable && desktopNavigationMode === 'launcher';
+  const shouldMountLanyard = lanyardEnabled && performanceIsolation.lanyard && isLanyardCapable && desktopNavigationMode === 'launcher'
+    && !(import.meta.env.DEV && readLanyardIsolation(window.location.search) === 'off');
 
   useEffect(() => {
     const generation = ++lanyardMountGeneration.current;
@@ -1286,53 +1311,32 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   useEffect(() => {
     const updateOnlineState = () => setIsOffline(!navigator.onLine);
-    const updateStandaloneState = () => {
-      setIsStandalone(
-        window.matchMedia('(display-mode: standalone)').matches ||
-        Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
-      );
-    };
-    const displayModeQuery = window.matchMedia('(display-mode: standalone)');
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      if (!installDismissed) {
-        setInstallPrompt(event as BeforeInstallPromptEvent);
-      }
-    };
-    const handleAppInstalled = () => {
-      setInstallPrompt(null);
-      setInstallDismissed(false);
-      window.localStorage.removeItem('stanza-install-dismissed');
-      setIsStandalone(true);
-      setPwaMessageType('success');
-      setPwaMessage(t('dash.installedMessage'));
-    };
-
     window.addEventListener('online', updateOnlineState);
     window.addEventListener('offline', updateOnlineState);
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-    displayModeQuery.addEventListener('change', updateStandaloneState);
 
     updateOnlineState();
-    updateStandaloneState();
 
     return () => {
       window.removeEventListener('online', updateOnlineState);
       window.removeEventListener('offline', updateOnlineState);
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-      displayModeQuery.removeEventListener('change', updateStandaloneState);
     };
-  }, [installDismissed, t]);
+  }, []);
+
+  useEffect(() => {
+    const wasStandalone = standaloneBeforeInstallRef.current;
+    standaloneBeforeInstallRef.current = isStandalone;
+    if (!wasStandalone && isStandalone) {
+      setInstallDismissed(false);
+      window.localStorage.removeItem('stanza-install-dismissed');
+      setPwaMessageType('success');
+      setPwaMessage(t('dash.installedMessage'));
+    }
+  }, [isStandalone, t]);
 
   const installStanza = async () => {
-    if (!installPrompt) return;
-
     try {
-      await installPrompt.prompt();
-      const choice = await installPrompt.userChoice;
-      setInstallPrompt(null);
+      const choice = await requestDeferredInstall();
+      if (!choice) return;
 
       if (choice.outcome === 'dismissed') {
         setInstallDismissed(true);
@@ -1351,7 +1355,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   const dismissInstallPrompt = () => {
     setInstallDismissed(true);
-    setInstallPrompt(null);
+    clearDeferredInstallPrompt();
     window.localStorage.setItem('stanza-install-dismissed', 'true');
   };
 
@@ -1985,7 +1989,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     permissions: user.permissions || [],
     availableModules: tutorialAvailableModulesKey ? tutorialAvailableModulesKey.split('|') : [],
     isMobile: isMobileNavigationLayout,
-  }), [isMobileNavigationLayout, tutorialAvailableModulesKey, user.permissions]);
+    lanyardAvailable: isLanyardCapable,
+    lanyardEnabled,
+  }), [isLanyardCapable, isMobileNavigationLayout, lanyardEnabled, tutorialAvailableModulesKey, user.permissions]);
   const tutorialProgress = useMemo(() => ({
     tutorialsEnabled,
     tutorialsAutoStart,
@@ -1998,6 +2004,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     if (isDashboardWorkspaceId(tutorial.module)) selectNavigationItem(tutorial.module);
   }, [selectNavigationItem]);
   const handleTutorialHelpAction = useCallback((action: HelpAction) => {
+    if (action.type === 'open-settings' && action.section === 'personalization' && action.target === 'lanyard') {
+      setPersonalizationOpenSignal((current) => current + 1);
+      setLanyardHighlightSignal((current) => current + 1);
+      setShowControlCenter(true);
+      return;
+    }
     if (action.type === 'open-article') {
       setRequestedHelpArticleId(action.articleId);
       setHelpOpenSignal((current) => current + 1);
@@ -2008,6 +2020,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       selectNavigationItem(action.moduleId);
     }
   }, [selectNavigationItem]);
+  useEffect(() => {
+    if (!showControlCenter || lanyardHighlightSignal === 0) return;
+    const focusTimer = window.setTimeout(() => lanyardToggleRef.current?.focus({ preventScroll: false }), 240);
+    const clearTimer = window.setTimeout(() => setLanyardHighlightSignal(0), 5000);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [lanyardHighlightSignal, showControlCenter]);
   useEffect(() => {
     const nextRecentCommandIds = normaliseRecentCommandIds(recentCommandIds, availableCommandIds);
     if (nextRecentCommandIds.join('|') !== recentCommandIds.join('|')) {
@@ -4090,7 +4111,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       </p>
 
       {notificationMessage && (
-        <p className={cn(
+        <p data-stanza-status={notificationMessageType === 'success' ? 'success' : undefined} className={cn(
           "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
           notificationMessageType === 'success'
             ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -4255,7 +4276,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </p>
         </div>
 
-        <span className={cn(
+        <span data-stanza-status={isOffline ? undefined : 'success'} className={cn(
           "w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest",
           isOffline
             ? "border-amber-300/30 bg-amber-500/10 text-amber-600 dark:text-amber-200"
@@ -4330,7 +4351,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       )}
 
       {pwaMessage && (
-        <p className={cn(
+        <p data-stanza-status={pwaMessageType === 'success' ? 'success' : undefined} className={cn(
           "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
           pwaMessageType === 'success'
             ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -4445,7 +4466,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           type="button"
           onClick={addPasskey}
           disabled={isOffline || passkeySaving}
-          className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="stanza-primary-action stanza-theme-primary rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest"
         >
           {passkeySaving ? t('dash.opening') : t('dash.addPasskey')}
         </button>
@@ -4457,7 +4478,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       </p>
 
       {passkeyMessage && (
-        <p className={cn(
+        <p data-stanza-status={passkeyMessageType === 'success' ? 'success' : undefined} className={cn(
           "mt-3 rounded-lg border px-3 py-2 text-xs font-semibold",
           passkeyMessageType === 'success'
             ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -4553,12 +4574,22 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               <span>{t('dash.resetRecentFrequent')}</span>
             </button>
           </section>
-          {isLanyardCapable && <div className="stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
+          {isLanyardCapable && <div
+            data-tutorial-target="settings-lanyard"
+            data-settings-highlight={lanyardHighlightSignal > 0 ? 'lanyard' : undefined}
+            className={cn(
+              'stanza-preference-surface flex min-w-0 flex-col gap-3 border border-emerald-500/15 bg-white/75 p-3 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none dark:border-emerald-500/20 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between',
+              lanyardHighlightSignal > 0 && 'border-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.22)]',
+            )}
+          >
             <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800 dark:text-emerald-50">{t('dash.lanyardCard')}</p>
-              <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
+              <p id="stanza-lanyard-description" className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
                 {t('dash.lanyardCardDescription')}
               </p>
+              {lanyardHighlightSignal > 0 && <p id="stanza-lanyard-performance-help" role="status" className="mt-2 text-xs font-semibold leading-5 text-emerald-700 dark:text-emerald-300">
+                {t('tutorial.lanyard.settingHint')}
+              </p>}
               {desktopNavigationMode === 'rail' && (
                 <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                   {t('dash.lanyardLauncherOnly')}
@@ -4570,11 +4601,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {lanyardEnabled ? t('dash.on') : t('dash.off')}
               </span>
               <button
+                ref={lanyardToggleRef}
                 type="button"
                 role="switch"
                 dir="ltr"
                 aria-checked={lanyardEnabled}
                 aria-label={t('dash.lanyardCard')}
+                aria-describedby={lanyardHighlightSignal > 0 ? 'stanza-lanyard-description stanza-lanyard-performance-help' : 'stanza-lanyard-description'}
                 onClick={() => setLanyardEnabled(!lanyardEnabled)}
                 className="stanza-interactive-control stanza-toggle-track relative h-7 w-12 shrink-0 rounded-full border p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]"
               >
@@ -4695,7 +4728,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 <span className="mt-1 block text-[10px] leading-4 text-[var(--stanza-text-muted)]">{t(preset.descriptionKey as never)}</span>
               </button>;
             })}
+            <button type="button" role="radio" aria-checked={backgroundPreset === 'custom'} onClick={() => setBackgroundPreset('custom')} className="stanza-interactive-control min-h-11 rounded-lg border border-[var(--stanza-border-subtle)] p-2 text-start text-xs font-bold">{t('background.custom')}</button>
           </div>
+          {backgroundPreset === 'custom' && <CustomThemeEditor />}
         </fieldset>
 
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
@@ -4810,6 +4845,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setShowControlCenter(false);
             if (isDashboardWorkspaceId(moduleId)) selectNavigationItem(moduleId);
           }}
+          onHelpAction={handleTutorialHelpAction}
         />
       </Suspense>}
       <button type="button" onClick={() => tutorialController?.reset()} className="stanza-preference-control min-h-10 border border-emerald-500/20 bg-white px-3 text-xs font-bold text-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-black/40 dark:text-emerald-100">
@@ -4854,10 +4890,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
   {/* Light mode base */}
-  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />}
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.decorativeGradients && <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />}
 
   {/* Dark mode base */}
-  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <div className="stanza-dark-atmosphere absolute inset-0 hidden dark:block" />}
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.decorativeGradients && <div className="stanza-dark-atmosphere absolute inset-0 hidden dark:block" />}
 
   {/* Light mode topography */}
   {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div
@@ -4890,13 +4926,13 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   />}
 
   {/* Light mode soft glows */}
-  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <><div className="stanza-light-glow stanza-light-glow-top absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full blur-3xl dark:hidden" /><div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" /></>}
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.atmosphericGlows && <><div className="stanza-light-glow stanza-light-glow-top absolute right-[-160px] top-[-120px] h-[420px] w-[420px] rounded-full blur-3xl dark:hidden" /><div className="stanza-light-glow stanza-light-glow-bottom absolute left-[18%] bottom-[-220px] h-[520px] w-[520px] rounded-full blur-3xl dark:hidden" /></>}
 
   {/* Dark mode soft glows */}
-  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && <><div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" /><div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" /></>}
+  {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.atmosphericGlows && <><div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" /><div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" /></>}
 
   {/* Dark mode vignette only */}
-  <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />
+  {performanceIsolation.decorativeGradients && <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />}
 </div>
 
       <DashboardNavigation
@@ -5211,9 +5247,10 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               <button
                 type="button"
                 onClick={() => setShowControlCenter(false)}
-                className="rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 dark:text-emerald-300"
+                aria-label={t('dash.close')}
+                className="stanza-close-action grid h-10 w-16 shrink-0 place-items-center rounded-lg"
               >
-                {t('dash.close')}
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -5224,6 +5261,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 title={t('dash.personalization')}
                 summary={`${t('dash.interfaceSize')} ${Math.round(interfaceScale * 100)}% - ${lanyardEnabled ? t('dash.on') : t('dash.off')}`}
                 renderContent={renderPersonalizationPanel}
+                openSignal={personalizationOpenSignal}
                 isRtl={isRtl}
                 expandLabel={t('dash.expand')}
                 collapseLabel={t('dash.collapse')}
@@ -5265,7 +5303,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 title={t('dash.appReadiness')}
                 summary={`${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`}
                 renderContent={renderPwaReadinessPanel}
-                badge={<span className={cn(
+                badge={<span data-stanza-status={isOffline ? undefined : 'success'} className={cn(
                   "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
                   isOffline ? "border-amber-300/30 text-amber-600 dark:text-amber-200" : "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
                 )}>{isOffline ? t('dash.offline') : t('dash.online')}</span>}
@@ -5624,12 +5662,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                type="button"
-                               onClick={handleClockAction}
+                               data-geo-interaction="clock"
+                               onClick={(event) => recordDevInteraction('attendance:clock-action', () => {
+                                 void handleClockAction(event);
+                               })}
                                disabled={isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
-                                   "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter transition-transform duration-300 hover:scale-105 active:scale-95 md:h-36 md:min-h-36 md:w-36 md:min-w-36",
+                                   "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter stanza-geo-clock md:h-36 md:min-h-36 md:w-36 md:min-w-36",
                                    clockInState === 'idle' && hasActiveShift ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
-                                   clockInState === 'idle' ? "stanza-theme-primary" :
+                                   clockInState === 'idle' ? "stanza-theme-primary stanza-geo-clock-primary" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
                                    clockInState === 'success' || clockInState === 'clocked_out' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
                                    clockInState === 'open_shift_conflict' ? "bg-amber-500 text-slate-950 shadow-[0_0_40px_rgba(245,158,11,0.42)]" :
@@ -5804,9 +5845,12 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                                <button
                                  type="button"
-                                 onClick={submitBreakRequest}
+                                 data-geo-interaction="break"
+                                 onClick={() => recordDevInteraction('break-request:submit', () => {
+                                   void submitBreakRequest();
+                                 })}
                                  disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 className="stanza-theme-primary rounded-lg px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+                                 className="stanza-theme-primary stanza-geo-break-primary rounded-lg px-4 py-2 text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-55"
                                >
                                  {breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}
                                </button>
@@ -7499,7 +7543,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onReady={setTutorialController}
         onHelpAction={handleTutorialHelpAction}
       />}
-      {PerformanceIsolationPanel && <Suspense fallback={null}><PerformanceIsolationPanel value={performanceIsolation} onChange={updatePerformanceIsolation} activePreset={backgroundPreset} module={activeTab} settingsOpen={showControlCenter} lanyardMounted={Boolean(launcherLanyard)} /></Suspense>}
+      {PerformanceIsolationPanel && <Suspense fallback={null}><PerformanceIsolationPanel value={performanceIsolation} onChange={updatePerformanceIsolation} onTransientChange={updateTransientPerformanceIsolation} activePreset={backgroundPreset} module={activeTab} settingsOpen={showControlCenter} lanyardMounted={Boolean(launcherLanyard)} /></Suspense>}
     </div>
   );
 }

@@ -69,18 +69,18 @@ export function TutorialOverlay({ tutorialId, steps, stepIndex, onBack, onNext, 
     : 'calc(env(safe-area-inset-bottom) + .75rem)';
 
   return <div className="pointer-events-none fixed inset-0 z-[95]" data-tutorial-overlay={tutorialId} aria-live="polite">
-    <div className="pointer-events-none absolute inset-0 bg-black/45" aria-hidden="true" />
+    <div className="stanza-tutorial-dim pointer-events-none absolute inset-0 bg-black/45" aria-hidden="true" />
     {bounds && <div aria-hidden="true" className="stanza-tutorial-highlight pointer-events-none fixed rounded-xl border-2 shadow-[0_0_0_9999px_rgba(0,0,0,.36)] motion-reduce:transition-none" style={{ top: bounds.top - 4, left: bounds.left - 4, width: bounds.width + 8, height: bounds.height + 8 }} />}
     <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-body" dir={isRtl ? 'rtl' : 'ltr'} className="stanza-tutorial-dialog pointer-events-auto fixed z-10 max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-emerald-500/25 bg-white p-4 text-slate-900 shadow-2xl outline-none dark:bg-[#061411] dark:text-emerald-50 md:w-80" style={isCompactViewport ? { insetInline: 12, bottom: mobileBottom } : { left, top }}>
-      <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">{stepIndex + 1} / {steps.length}</p><h2 id="tutorial-title" className="mt-1 text-sm font-black">{t(step.titleKey as never)}</h2></div><button type="button" onClick={onClose} aria-label={t('tutorial.close')} className="stanza-icon-action grid h-9 w-9 place-items-center rounded-lg"><X className="h-4 w-4" /></button></div>
+      <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">{stepIndex + 1} / {steps.length}</p><h2 id="tutorial-title" className="mt-1 text-sm font-black">{t(step.titleKey as never)}</h2></div><button type="button" onClick={onClose} aria-label={t('tutorial.close')} className="stanza-close-action grid h-9 w-9 place-items-center rounded-lg"><X className="h-4 w-4" /></button></div>
       <p id="tutorial-body" className="mt-2 text-xs leading-5 text-slate-600 dark:text-emerald-100/70">{t(step.bodyKey as never)}</p>
       {step.helpAction && <button type="button" onClick={() => onHelpAction(step.helpAction!.action)} className="stanza-tutorial-help-link mt-2 min-h-9 rounded-md px-2 text-xs font-bold text-emerald-700 underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-300">{t(step.helpAction.labelKey as never)}</button>}
-      <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600 dark:text-emerald-100/65"><input type="checkbox" onChange={(event) => { if (event.target.checked) onSkip(true); }} className="h-4 w-4 accent-emerald-600" />{t('tutorial.disableAutomatic')}</label>
+      {!step.compactTip && <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600 dark:text-emerald-100/65"><input type="checkbox" onChange={(event) => { if (event.target.checked) onSkip(true); }} className="h-4 w-4 accent-emerald-600" />{t('tutorial.disableAutomatic')}</label>}
       <div className="mt-4 flex items-center justify-between gap-2">
-        <button type="button" onClick={() => onSkip(false)} className="stanza-tutorial-tertiary min-h-11 rounded-lg px-2 text-xs font-bold">{t('tutorial.skip')}</button>
+        {!step.compactTip && <button type="button" onClick={() => onSkip(false)} className="stanza-tutorial-tertiary min-h-11 rounded-lg px-2 text-xs font-bold">{t('tutorial.skip')}</button>}
         <div className="flex gap-2">
           {stepIndex > 0 && <button type="button" onClick={onBack} className="stanza-secondary-action min-h-11 rounded-lg border px-3 text-xs font-bold">{t('tutorial.back')}</button>}
-          <button type="button" onClick={onNext} className="stanza-tutorial-primary stanza-primary-action min-h-11 rounded-lg border px-4 text-xs font-black">{isLast ? t('tutorial.finish') : t('tutorial.next')}</button>
+          <button type="button" onClick={onNext} className="stanza-tutorial-primary stanza-primary-action min-h-11 rounded-lg border px-4 text-xs font-black">{step.primaryLabelKey ? t(step.primaryLabelKey as never) : isLast ? t('tutorial.finish') : t('tutorial.next')}</button>
         </div>
       </div>
     </section>

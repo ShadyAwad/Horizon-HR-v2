@@ -30,12 +30,72 @@ type DiagnosticRecord = {
   detail?: DiagnosticDetail | InteractionDetail;
 };
 
-type LanyardFrameTier = 'active' | 'passive' | 'settled' | 'unmounted';
+type LanyardFrameTier = 'active' | 'passive' | 'settled' | 'paused' | 'unmounted';
 
 const records: DiagnosticRecord[] = [];
 const once = new Set<string>();
 const interactionStarts = new Map<string, number>();
 let lanyardFrameTier: LanyardFrameTier = 'unmounted';
+export type DevLanyardQuality = 'auto' | 'full' | 'chromium-lightweight' | 'very-light';
+let lanyardQuality: DevLanyardQuality = 'auto';
+type LanyardWorkKind = 'advance' | 'frame' | 'render' | 'physics' | 'pointer' | 'wake' | 'pointer-target' | 'drag-start' | 'drag-end' | 'settled';
+const lanyardSamples: Array<{ at: number; tier: LanyardFrameTier; kind: LanyardWorkKind; duration: number }> = [];
+const lanyardTotals: Record<LanyardWorkKind, number> = { advance: 0, frame: 0, render: 0, physics: 0, pointer: 0, wake: 0, 'pointer-target': 0, 'drag-start': 0, 'drag-end': 0, settled: 0 };
+const lanyardDurations = { active: 0, passive: 0, settled: 0, paused: 0, unmounted: 0 };
+let lanyardTierStarted = performance.now();
+let lanyardSettledAt: number | null = null;
+let lanyardPending = { timer: false, raf: false };
+export function setDevLanyardPending(timer: boolean, raf: boolean) {
+  if (import.meta.env.DEV) lanyardPending = { timer, raf };
+}
+export function getDevLanyardQuality() { return import.meta.env.DEV ? lanyardQuality : 'auto'; }
+export function setDevLanyardQuality(value: DevLanyardQuality) {
+  if (!import.meta.env.DEV) return;
+  lanyardQuality = value;
+  window.dispatchEvent(new Event('stanza-lanyard-quality'));
+}
+export function recordDevLanyardWork(kind: LanyardWorkKind, duration = 0) {
+  if (!import.meta.env.DEV) return;
+  lanyardTotals[kind]++;
+  if (!guidedBenchmarkWindow) return;
+  if (lanyardSamples.length < 20000) lanyardSamples.push({ at: performance.now(), tier: lanyardFrameTier, kind, duration });
+}
+
+// Opt-in style reads perturb timing. Use this separately from CPU benchmarks.
+// Bounded to the selected control, its parent, and containing stacking contexts.
+const controlFrames: Array<Record<string, unknown>> = [];
+export function observeDevControlFrames(root: HTMLElement) {
+  if (!import.meta.env.DEV) return () => undefined;
+  let frame = 0;
+  const describe = (element: Element, pseudo?: string) => {
+    const style = getComputedStyle(element, pseudo);
+    return Object.fromEntries(['background-color', 'background-image', 'opacity', 'transform', 'filter', 'backdrop-filter', 'box-shadow', 'outline', 'border-color', 'color', 'position', 'z-index', 'isolation', 'will-change', 'contain', 'mask-image', 'content', 'scale', 'translate', 'rotate', 'clip-path', 'overflow', 'border-radius', 'transition-property', 'transition-duration'].map((property) => [property, style.getPropertyValue(property)]));
+  };
+  const capture = (button: HTMLElement, phase: string, eventTimestamp: number | null = null) => {
+    const stackingContexts = [];
+    for (let parent = button.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (style.transform !== 'none' || style.scale !== 'none' || style.translate !== 'none' || style.rotate !== 'none' || style.clipPath !== 'none' || style.filter !== 'none' || style.backdropFilter !== 'none' || Number(style.opacity) < 1 || style.isolation === 'isolate' || style.position === 'fixed' || style.zIndex !== 'auto' || style.contain.includes('paint') || style.maskImage !== 'none') stackingContexts.push({ element: `${parent.tagName}.${parent.className}`, style: describe(parent) });
+    }
+    controlFrames.push({ at: performance.now(), eventTimestamp, lanyardFrameTier, lanyardFrames: lanyardTotals.frame, className: button.className, disabled: button.matches(':disabled'), phase, control: button.dataset.perfControl ?? button.dataset.geoInteraction ?? button.id, active: button.matches(':active'), hover: button.matches(':hover'), focus: button.matches(':focus'), selected: button.getAttribute('aria-pressed') ?? button.getAttribute('aria-checked') ?? button.getAttribute('data-selected'), style: describe(button), before: describe(button, '::before'), after: describe(button, '::after'), parent: button.parentElement ? describe(button.parentElement) : null, stackingContexts });
+    if (controlFrames.length > 240) controlFrames.shift();
+  };
+  const handle = (event: Event) => {
+    const button = (event.target as Element).closest<HTMLElement>('[data-perf-control], [data-geo-interaction]');
+    if (!button) return;
+    // Sample movement synchronously, but keep the entry RAF sequence alive.
+    if (event.type !== 'pointermove') cancelAnimationFrame(frame);
+    capture(button, event.type, event.timeStamp);
+    if (event.type === 'pointermove') return;
+    let remaining = 12;
+    const sample = () => { if (!button.isConnected) return; capture(button, `${event.type}:frame`, event.timeStamp); if (--remaining > 0) frame = requestAnimationFrame(sample); };
+    frame = requestAnimationFrame(sample);
+  };
+  root.querySelectorAll<HTMLElement>('[data-perf-control], [data-geo-interaction]').forEach((button) => capture(button, 'rest'));
+  const events = ['pointerenter', 'mouseover', 'mouseenter', 'pointermove', 'pointerdown', 'pointerup', 'mouseleave', 'pointerover', 'pointerout', 'focusin', 'click'];
+  events.forEach((event) => root.addEventListener(event, handle, true));
+  return () => { cancelAnimationFrame(frame); events.forEach((event) => root.removeEventListener(event, handle, true)); };
+}
 let sequence = 0;
 let lastInteractionAt = performance.now();
 let armedBenchmark: { scenario: string; idleTargetMs: number; armedAt: number } | null = null;
@@ -52,6 +112,49 @@ type InteractionWindowMetrics = {
 };
 
 type InteractionWindowSample = Omit<InteractionWindowMetrics, 'finish'>;
+
+export type GuidedBenchmarkCapture = {
+  scenario: string;
+  durationMs: number;
+  twoFramePaintMs: number;
+  handlerCount: number;
+  handlerDurationMs: number;
+  renderDelta: number;
+  resourceDelta: number;
+  domNodesBefore: number;
+  domNodesAfter: number;
+  canvasCountBefore: number;
+  canvasCountAfter: number;
+  domMutationCount: number;
+  longTaskCount: number;
+  longTaskDuration: number;
+  eventCount: number;
+  eventDuration: number;
+  frameCount: number;
+  worstFrameDuration: number;
+  heapDeltaBytes: number | null;
+  runningAnimations: number;
+  lanyardFrameTier: LanyardFrameTier;
+};
+
+type GuidedBenchmarkWindow = {
+  scenario: string;
+  startedAt: number;
+  rendersBefore: number;
+  resourcesBefore: number;
+  domNodesBefore: number;
+  canvasCountBefore: number;
+  heapBefore: number | null;
+  recordStartIndex: number;
+  metrics: InteractionWindowMetrics;
+};
+
+let guidedBenchmarkWindow: GuidedBenchmarkWindow | null = null;
+let guidedCaptureResolve: ((value: GuidedBenchmarkCapture | null) => void) | undefined;
+let guidedBenchmarkFirstFrame: number | undefined;
+let guidedBenchmarkSecondFrame: number | undefined;
+let guidedBenchmarkSettleTimer: number | undefined;
+let guidedBenchmarkDeadline: number | undefined;
 
 type MemoryPerformance = Performance & { memory?: { usedJSHeapSize?: number } };
 
@@ -280,8 +383,108 @@ export function armDevInteractionBenchmark(scenario: string, idleTargetMs = 10_0
   markDevPerformance('interaction-benchmark:armed', { scenario, idleTargetMs });
 }
 
+/**
+ * Starts one explicitly requested development-only measurement window. The
+ * caller must finish it; observers and frame sampling never outlive the short
+ * post-interaction settle period.
+ */
+export function beginDevGuidedBenchmarkCapture(scenario: string) {
+  if (!import.meta.env.DEV || typeof window === 'undefined' || guidedBenchmarkWindow) return false;
+  const startedAt = performance.now();
+  lanyardSamples.length = 0;
+  guidedBenchmarkWindow = {
+    scenario,
+    startedAt,
+    rendersBefore: renderCount(),
+    resourcesBefore: performance.getEntriesByType('resource').length,
+    domNodesBefore: countDomNodes(),
+    canvasCountBefore: document.querySelectorAll('canvas').length,
+    heapBefore: readHeapBytes(),
+    recordStartIndex: records.length,
+    metrics: collectInteractionWindow(startedAt),
+  };
+  markDevPerformance('guided-benchmark:capture-start', { scenario });
+  guidedBenchmarkDeadline = window.setTimeout(cancelDevGuidedBenchmarkCapture, 60_000);
+  return true;
+}
+
+/** Finishes a guided measurement after two paints and the existing settle window. */
+export function finishDevGuidedBenchmarkCapture() {
+  const capture = guidedBenchmarkWindow;
+  if (!import.meta.env.DEV || !capture || guidedCaptureResolve || typeof window === 'undefined') return Promise.resolve<GuidedBenchmarkCapture | null>(null);
+  window.clearTimeout(guidedBenchmarkDeadline);
+  guidedBenchmarkDeadline = undefined;
+
+  return new Promise<GuidedBenchmarkCapture | null>((resolve) => {
+    guidedCaptureResolve = resolve;
+    const finishRequestedAt = performance.now();
+    guidedBenchmarkFirstFrame = requestAnimationFrame(() => {
+      guidedBenchmarkSecondFrame = requestAnimationFrame((paintedAt) => {
+        guidedBenchmarkSettleTimer = window.setTimeout(() => {
+        const sampled = capture.metrics.finish();
+        const handlerMeasures = records
+          .slice(capture.recordStartIndex)
+          .filter((record) => record.kind === 'measure' && record.name.endsWith(':handler'));
+        const heapAfter = readHeapBytes();
+        const result: GuidedBenchmarkCapture = {
+          scenario: capture.scenario,
+          durationMs: Math.round((performance.now() - capture.startedAt) * 10) / 10,
+          twoFramePaintMs: Math.round((paintedAt - finishRequestedAt) * 10) / 10,
+          handlerCount: handlerMeasures.length,
+          handlerDurationMs: Math.round(handlerMeasures.reduce((total, record) => total + record.duration, 0) * 10) / 10,
+          renderDelta: renderCount() - capture.rendersBefore,
+          resourceDelta: performance.getEntriesByType('resource').length - capture.resourcesBefore,
+          domNodesBefore: capture.domNodesBefore,
+          domNodesAfter: countDomNodes(),
+          canvasCountBefore: capture.canvasCountBefore,
+          canvasCountAfter: document.querySelectorAll('canvas').length,
+          domMutationCount: sampled.mutationCount,
+          longTaskCount: sampled.longTaskCount,
+          longTaskDuration: Math.round(sampled.longTaskDuration * 10) / 10,
+          eventCount: sampled.eventCount,
+          eventDuration: Math.round(sampled.eventDuration * 10) / 10,
+          frameCount: sampled.frameCount,
+          worstFrameDuration: Math.round(sampled.worstFrameDuration * 10) / 10,
+          heapDeltaBytes: capture.heapBefore !== null && heapAfter !== null ? heapAfter - capture.heapBefore : null,
+          runningAnimations: runningAnimations(),
+          lanyardFrameTier,
+        };
+        guidedBenchmarkFirstFrame = undefined;
+        guidedBenchmarkSecondFrame = undefined;
+        guidedBenchmarkSettleTimer = undefined;
+        guidedBenchmarkWindow = null;
+        append({ name: 'guided-benchmark:capture-settled', kind: 'interaction-settle', startTime: capture.startedAt, duration: result.durationMs, detail: result });
+        guidedCaptureResolve = undefined;
+        resolve(result);
+      }, 2_000);
+      });
+    });
+  });
+}
+
+/** Cancels an abandoned development capture, including every temporary observer. */
+export function cancelDevGuidedBenchmarkCapture() {
+  if (guidedBenchmarkDeadline !== undefined) window.clearTimeout(guidedBenchmarkDeadline);
+  guidedBenchmarkDeadline = undefined;
+  if (guidedBenchmarkFirstFrame !== undefined) cancelAnimationFrame(guidedBenchmarkFirstFrame);
+  if (guidedBenchmarkSecondFrame !== undefined) cancelAnimationFrame(guidedBenchmarkSecondFrame);
+  if (guidedBenchmarkSettleTimer !== undefined) window.clearTimeout(guidedBenchmarkSettleTimer);
+  guidedBenchmarkFirstFrame = undefined;
+  guidedBenchmarkSecondFrame = undefined;
+  guidedBenchmarkSettleTimer = undefined;
+  guidedBenchmarkWindow?.metrics.finish();
+  guidedBenchmarkWindow = null;
+  guidedCaptureResolve?.(null);
+  guidedCaptureResolve = undefined;
+}
+
 export function setDevLanyardFrameTier(tier: LanyardFrameTier) {
   if (!import.meta.env.DEV) return;
+  if (tier === lanyardFrameTier) return;
+  const now = performance.now();
+  lanyardDurations[lanyardFrameTier] += now - lanyardTierStarted;
+  lanyardTierStarted = now;
+  if (tier === 'settled') { lanyardSettledAt = now; recordDevLanyardWork('settled'); }
   lanyardFrameTier = tier;
 }
 
@@ -311,13 +514,17 @@ export function recordDevResource(name: string, urlFragment: string) {
 export function getDevPerformanceDiagnostics() {
   return {
     records: records.map((record) => ({ ...record, detail: record.detail ? { ...record.detail } : undefined })),
-    runtime: { lanyardFrameTier },
+    runtime: { lanyardFrameTier, lanyardQuality, lanyardTotals: { ...lanyardTotals }, lanyardPending: { ...lanyardPending }, lanyardSettledAt, lanyardDurationMs: { ...lanyardDurations, [lanyardFrameTier]: lanyardDurations[lanyardFrameTier] + performance.now() - lanyardTierStarted } },
+    lanyardSamples: lanyardSamples.map((sample) => ({ ...sample })),
+    controlFrames: controlFrames.map((sample) => ({ ...sample })),
     benchmark: armedBenchmark ? { ...armedBenchmark } : null,
   };
 }
 
 export function resetDevPerformanceDiagnostics() {
   records.length = 0;
+  lanyardSamples.length = 0;
+  controlFrames.length = 0;
   once.clear();
   interactionStarts.clear();
   armedBenchmark = null;

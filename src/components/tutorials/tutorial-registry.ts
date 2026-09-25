@@ -38,6 +38,25 @@ export const tutorialRegistry: readonly TutorialDefinition[] = [
     ],
   },
   {
+    id: 'interactive-lanyard', version: 1, module: 'dashboard', titleKey: 'tutorial.lanyard.title', descriptionKey: 'tutorial.lanyard.description', automatic: true, replayable: true,
+    eligible: (context) => context.lanyardAvailable === true,
+    automaticEligible: (context) => context.lanyardAvailable === true && context.lanyardEnabled === true,
+    steps: [
+      {
+        id: 'performance-tip',
+        placement: 'center',
+        titleKey: 'tutorial.lanyard.title',
+        bodyKey: 'tutorial.lanyard.body',
+        primaryLabelKey: 'tutorial.lanyard.gotIt',
+        compactTip: true,
+        helpAction: {
+          labelKey: 'tutorial.lanyard.showMe',
+          action: { type: 'open-settings', section: 'personalization', target: 'lanyard' },
+        },
+      },
+    ],
+  },
+  {
     id: 'geo-operations', version: 2, module: 'geofence', titleKey: 'tutorial.geo.title', descriptionKey: 'tutorial.geo.description', automatic: true, replayable: true,
     eligible: (context) => hasModule(context, 'geofence'),
     steps: [

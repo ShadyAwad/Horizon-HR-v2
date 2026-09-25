@@ -302,6 +302,90 @@ Useful manual sequence:
 
 Switches persist only for the current browser session.
 
+## Chrome compositor A/B matrix
+
+The visual-isolation controls are **development-only diagnostics**, not user
+appearance settings. They never change saved preferences, permissions, data, or
+business workflows. Start the local development build, open the `Perf` panel,
+and use the presets below against the same signed-in dashboard route.
+
+For each row, use Chrome Task Manager (`Shift` + `Esc`) and record the Stanza
+renderer/tab process and the Chrome GPU Process separately. Let the page idle
+for 10 seconds, perform the same interaction, record the peak, then wait for
+the page to settle.
+
+| Preset | Renderer idle / peak | GPU idle / peak | Paint flashing scope | Notes |
+| --- | --- | --- | --- | --- |
+| NORMAL |  |  |  |  |
+| NO LANYARD |  |  |  |  |
+| NO ATMOSPHERE |  |  |  |  |
+| NO TRANSFORMS |  |  |  |  |
+| OPAQUE SHELL |  |  |  |  |
+| MINIMAL COMPOSITOR |  |  |  |  |
+
+Run four comparable interactions for each preset:
+
+1. Idle 10 seconds, open Launcher, hover several rows, then close it.
+2. Open and close Settings.
+3. Switch one module.
+4. Scroll the Launcher.
+
+Interpret the two Chrome processes independently: a high renderer spike with a
+quiet GPU process suggests JS/style/layout work; a high GPU-process spike with
+a quiet renderer points to raster/compositor, WebGL, filters, or blending; a
+spike in both needs paint/compositing and main-thread investigation.
+
+### Paint and layer inspection
+
+Open DevTools, press `Ctrl` + `Shift` + `P`, run **Show Rendering**, then enable
+**Paint flashing**. Hover one Launcher row and record whether only that row, the
+navigation panel, or the whole Dashboard repaints. The Rendering panel may also
+offer layer borders or composited-layer diagnostics depending on the Chrome
+build; use them when available, but do not rely on an option that is absent.
+
+The most focused flicker experiment is **NO TRANSFORMS**, or independently turn
+off only **Pressed transforms**. It suppresses `:active` transforms on Dashboard,
+Launcher portal, navigation, and command-palette controls while retaining the
+same semantic fill, border, focus, and selected-state styling. This distinguishes
+transform/layer-promotion artifacts from color-state or pseudo-element issues.
+
+### Visual-effect inventory
+
+| Surface | Effect | Coverage | Diagnostic switch |
+| --- | --- | --- | --- |
+| Dashboard atmosphere | Two 420–520px `blur-3xl` glows | Large fixed background | Atmospheric glows / CSS filters |
+| Dashboard atmosphere | Gradient base and dark vignette | Full dashboard background | Decorative gradients |
+| Dashboard topography | Repeating mask image | Full dashboard background | Existing topography switch |
+| Workspace, roster, feed, settings | `backdrop-blur-*` and translucent backgrounds | Active workspace and fixed shell surfaces | Backdrop filters / Opaque shell |
+| Launcher and semantic controls | Small selected/primary shadows | Interactive descendants | Large shadows (focus outline remains) |
+| Tutorial overlay | Full-screen dim plus 9999px spotlight shadow | Tutorial lifetime only | Tutorial spotlight / dimming effects |
+| Launcher controls | Hover and pressed scale/translate transforms | Launcher portal and navigation | Hover transforms / Pressed transforms |
+
+### Interaction microbenchmark
+
+The development Performance panel includes **Open interaction lab**. It opens
+`/?stanzaPerfLab=1`, a development-only page with equal-size controls for plain
+opaque, themed, launcher-like, atmospheric, no-transform, no-shadow, and opaque
+parent variants. It also renders a 240-button opaque baseline. The lab reuses
+the existing armed interaction instrumentation, so it reports handler and
+two-frame paint timing, long-task/Event Timing support, DOM mutations, frame
+cadence, resources, and heap delta without the full Dashboard module tree.
+
+Use it to compare one style difference at a time. It is not shipped in the
+production bundle and is not a product route.
+
+## Development performance budget
+
+These are investigation targets for cached normal interaction on a capable
+desktop, not machine-dependent CI thresholds:
+
+- Ordinary hover: no React render.
+- Simple button press: no long task.
+- Launcher open: no main-thread task above 50ms unless the trace explains it.
+- Cached module switch: no persistent work after its settle window.
+- Idle: no continuous decorative animation or RAF.
+- Settled lanyard: 0 FPS.
+
 ## Remaining architecture work
 
 `activeTab` still has broad shell reach, but a module switch inherently changes

@@ -358,7 +358,10 @@ async function runOptionalPortfolioDemoSessionChecks() {
     const revokedSession = await request('/api/auth/session', {
       headers: { Cookie: cookie.split(';', 1)[0] },
     });
-    expectStatus(revokedSession, 401, `Portfolio demo ${role} revoked session`);
+    expectStatus(revokedSession, 200, `Portfolio demo ${role} revoked session status`);
+    if (revokedSession.body?.authenticated !== false) {
+      throw new Error(`Portfolio demo ${role} revoked session still authenticated.`);
+    }
   }
   if (tenantIds.size !== 1) throw new Error('Portfolio demo roles were not scoped to one tenant.');
 
@@ -547,6 +550,38 @@ async function run() {
     }
     if (process.env.NODE_ENV === 'production' && !/connect-src[^;]*\bblob:/i.test(contentSecurityPolicy)) {
       throw new Error('Production CSP does not permit GLTF embedded-texture decoding.');
+    }
+  });
+
+  await check('Passive session status is single-owner and anonymous-safe', async () => {
+    const [serverSource, appSource] = await Promise.all([
+      readFile(path.join(rootDir, 'server.ts'), 'utf8'),
+      readFile(path.join(rootDir, 'src', 'App.tsx'), 'utf8'),
+    ]);
+    if (!serverSource.includes("app.get('/api/auth/session', async (req, res) => {")
+      || !serverSource.includes('authenticated: false')
+      || !serverSource.includes('const sessionIdentity = await getAuthSessionIdentity(req);')
+      || serverSource.includes("app.get('/api/auth/session', demoAuth")) {
+      throw new Error('Passive session status does not use its explicit anonymous-safe contract.');
+    }
+    if (!appSource.includes('let initialSessionBootstrap: Promise<AuthUser | null> | null = null;')
+      || (appSource.match(/apiFetch\(apiUrl\('\/api\/auth\/session'\)\)/g) || []).length !== 1) {
+      throw new Error('Initial session restore does not have one canonical request owner.');
+    }
+
+    const result = await request('/api/auth/session');
+    expectStatus(result, 200, 'Anonymous passive session status');
+    if (result.body?.authenticated !== false || result.body?.user) {
+      throw new Error('Anonymous passive session status exposed an authenticated user.');
+    }
+  });
+
+  await check('Loopback session cookies remain browser-usable without weakening public HTTPS', async () => {
+    const serverSource = await readFile(path.join(rootDir, 'server.ts'), 'utf8');
+    if (!serverSource.includes("function isLoopbackHostname(hostname: string | undefined)")
+      || !serverSource.includes("return req.secure || !isLoopbackHostname(req.hostname);")
+      || /const secure = isProduction\(\) \|\| req\.secure/.test(serverSource)) {
+      throw new Error('Session-cookie security does not distinguish loopback HTTP from public or HTTPS origins.');
     }
   });
 

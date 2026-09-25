@@ -187,6 +187,11 @@ const checks: Array<[string, boolean]> = [
     /@media \(hover: hover\) and \(pointer: fine\)/.test(css) &&
     /\.stanza-navigation-item\[data-selected="true"\]/.test(css) &&
     /var\(--stanza-surface-selected\) 82%, var\(--stanza-accent\) 18%/.test(css)],
+  ['navigation pressed states retain semantic fills without generic black or transition-all overrides',
+    /transparent utility states can briefly expose the dark shell/.test(css) &&
+    /:where\(\.stanza-navigation-panel, \.stanza-navigation-shell, \.stanza-command-palette\)[\s\S]*background-color: var\(--stanza-surface-hover\);/.test(css) &&
+    /\.stanza-navigation-item\[data-selected="true"\][\s\S]*:active[\s\S]*background-color: color-mix\(in srgb, var\(--stanza-surface-selected\) 82%, var\(--stanza-accent\) 18%\);/.test(css) &&
+    !/stanza-navigation-item[^\n]*transition-all/.test(nav)],
   ['selected navigation and roster tabs delegate fill and foreground ownership to semantic state tokens',
     !/item\.active \? '[^']*bg-emerald/.test(nav) &&
     !/rosterSubview === view \? '[^']*bg-emerald/.test(dashboard)],

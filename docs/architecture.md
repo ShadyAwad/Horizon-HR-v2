@@ -47,15 +47,15 @@ current user capabilities and active state.
 
 ### Server
 
-`server.ts` remains the Express composition root and compatibility host for
-routes that have not yet been extracted. It establishes middleware in this
-order:
+`server.ts` is the Express composition root and the intentionally retained
+identity/security compatibility host. It establishes middleware in this order:
 
 1. environment and production safety assertions;
 2. proxy trust, compression, Helmet/CSP, and JSON limits;
 3. bounded CORS/origin handling and static evidence/avatar mounts;
-4. extracted domain route registration and legacy embedded routes in their
-   existing Express order;
+4. extracted domain route registration and the retained signup, session,
+   profile-image, passkey, and password-recovery routes in their existing
+   Express order;
 5. API error handling;
 6. Vite development middleware or production static hosting and SPA fallback;
 7. listener startup.
@@ -66,9 +66,11 @@ registrars receive it through a `standardAuth` dependency name.
 
 Extracted route groups live under `src/server/<domain>` and expose a
 `register...Routes(app, dependencies)` boundary. Dependencies make security
-middleware ordering visible without introducing a DI container. Resignations is
-one example: `server.ts` mounts `registerResignationRoutes` at the exact location
-formerly occupied by the six embedded routes.
+middleware ordering visible without introducing a DI container. Some registrars
+are deliberately split where another route family must remain between them:
+attendance registers clock-in, compatibility location routes, then attendance
+status/clock-out. Payroll similarly preserves the legacy leave, compensation,
+loan, grievance, export, and Company Feed ordering.
 
 `src/server/auth/permission-claims.ts` owns the simple permission claims already
 materialized into an authenticated session. Scope and delegation evaluation is
@@ -112,18 +114,20 @@ such as `src/auth/auth-contract.ts`, sit outside a feature.
 | Domain | Frontend entry | Server owner | Primary tables | Permission examples | Main tests |
 | --- | --- | --- | --- | --- | --- |
 | Authentication / sessions | `App`, Login, Profile session panels | `server.ts` auth compatibility routes | `employees`, `auth_sessions`, WebAuthn/reset tables | authenticated self, `sessions.manage` | `security-test`, `sessions-test` |
-| Attendance / breaks | Dashboard Geo Operations | embedded attendance routes, worker rollup | `time_logs`, `break_requests`, `attendance_daily_summaries`, geofences | `attendance.clock`, `attendance.view_live`, `break_requests.review` | `security-test`, `smoke-test`, `live-employees-test` |
-| Roster / swaps / goals | Dashboard schedule, `components/roster` | embedded roster routes, `server/roster` | `roster_shifts`, shift swap/history tables, `roster_goals` | `roster.manage_scoped`, `roster.swap.approve`, `roster.goals.manage` | `shift-swaps-test`, `roster-goals-test` |
+| Attendance / breaks | Dashboard Geo Operations | `server/attendance`, `server/breaks`, worker rollup | `time_logs`, `break_requests`, `attendance_daily_summaries`, geofences | `attendance.clock`, `attendance.view_live`, `break_requests.review` | `security-test`, `smoke-test`, `live-employees-test` |
+| Roster / swaps / goals | Dashboard schedule, `components/roster` | `server/roster` | `roster_shifts`, shift swap/history tables, `roster_goals` | `roster.manage_scoped`, `roster.swap.approve`, `roster.goals.manage` | `shift-swaps-test`, `roster-goals-test`, `leave-test` |
 | Leave | `LeaveWorkspace` | `server/leave` | `leave_requests`, history/conflicts | `leave.request.self`, `leave.view.scoped`, `leave.approve` | `leave-test` |
 | Locations | `LocationsPanel` | `server/locations` | `company_locations`, `geofences` | `locations.read`, `locations.manage`, `geofences.manage` | `locations-test` |
-| Organisation | `OrganisationPanel` and subpanels | `server/organisation` | departments, teams, memberships, titles, roles, assignments, delegations | `organisation.view`, `hierarchy.manage`, `roles.manage` | `organisation-test`, concurrency test |
+| Organisation | `OrganisationPanel` and subpanels | `server/organisation`, including legacy role compatibility registrar | departments, teams, memberships, titles, roles, assignments, delegations | `organisation.view`, `hierarchy.manage`, `roles.manage` | `organisation-test`, concurrency test |
 | Hiring | `HiringPanel` | `server/hiring` | applicants, notes, handoffs, stage history | `hiring.view`, `hiring.assign`, `hiring.make_final_decision` | `hiring-rules-test`, integration test |
 | Expenses | `ExpensesPanel` | `server/expenses` | `expense_claims`, claim history, extraction jobs | `expenses.submit.self`, `expenses.approve`, `expenses.reimburse` | `expenses-test`, document extraction test |
 | Performance | `PerformancePanel` | `server/performance` | review cycles/templates/reviews, goals, recognitions | `performance.view`, `performance.review`, cycle/goal permissions | `performance-test` where present; security contracts |
-| Assets | `AssetsPanel`, `MyEquipmentPanel` | `server/assets`, QR label registrar | assets, assignments, condition reports, software licenses | `assets.view`, `assets.assign`, `assets.return` | `assets-test`, `qr-test` |
-| Company Feed | Dashboard feed and lazy editor/renderer | embedded feed routes | posts, visibility, drafts, images | `feed.read`, `feed.publish` | editor, feed submission, company-feed draft tests |
-| Employee relations | Dashboard grievances, lazy `ResignationsPanel` | embedded grievance routes, `server/resignations` | `grievances`, `resignation_requests` | create/review/process permissions | security, smoke, architecture contracts |
-| Payroll | Dashboard payroll/profile views | embedded payroll routes | payroll, compensation, loans/payments | view/run/approve/mark-paid permissions | security and smoke tests |
+| Assets | `AssetsPanel`, `MyEquipmentPanel` | `server/assets`, including evidence upload/read and QR label registrars | assets, assignments, condition reports, software licenses | `assets.view`, `assets.assign`, `assets.return` | `assets-test`, `qr-test` |
+| Company Feed | Dashboard feed and lazy editor/renderer | `server/feed/company-feed-routes.ts` | posts, visibility, drafts, images | `feed.read`, `feed.publish` | editor, feed submission, company-feed draft tests |
+| Employee relations | Dashboard grievances, lazy `ResignationsPanel` | `server/grievances`, `server/resignations` | `grievances`, `resignation_requests` | create/review/process permissions | security, smoke, architecture contracts |
+| Payroll | Dashboard payroll/profile views | `server/payroll` plus legacy leave compatibility registrar | payroll, compensation, loans/payments | view/run/approve/mark-paid permissions | security and smoke tests |
+| Notifications / attention | Dashboard navigation and preferences | `server/notifications`, `server/dashboard` | notification settings plus domain work queues | self settings and existing domain permissions | security, audit, navigation tests |
+| System / map tiles | Signup map and health tooling | `server/system` | queue/DB health; external MapTiler proxy | public minimized responses | security and locations tests |
 | Audit | `AuditTrailPanel` | `server/audit` | `audit_logs`, `outbox_events` | `audit.view` | `audit-test` |
 | QR / public verification | badge and asset label panels, public pages | `server/qr` | `qr_access_tokens` plus referenced domain records | QR issue/revoke permissions plus domain authority | `qr-test`, PWA/security tests |
 | PWA / Help / tutorials | `main`, prompt, `components/tutorials` | static hosting and service worker | none | workspace visibility only; server still authorizes APIs | PWA, navigation, tutorial, theme tests |
@@ -158,17 +162,20 @@ public projections.
 ## Known residual hotspots
 
 This pass is deliberately incremental. `Dashboard.tsx`, `server.ts`,
-`LanguageContext.tsx`, and `index.css` remain large. Dashboard still owns legacy
-attendance, roster schedule, payroll, grievances, Company Feed, and profile
-workflows; server still embeds their route groups. Those should move one complete
-vertical slice at a time, with domain tests, rather than through a bulk rewrite.
-The translation catalog is large but cohesive and was not split merely to reduce
-line count. Theme CSS and lanyard physics were left unchanged.
+`LanguageContext.tsx`, and `index.css` remain large. Server retains the tightly
+coupled identity surface: tenant registration, login/logout, self/admin sessions,
+avatar mutation, WebAuthn/passkeys, and password recovery. Those routes share
+challenge/session rotation, cookie, CSRF, startup-origin, and upload bootstrap
+state, so moving them safely requires a dedicated authentication campaign.
+Dashboard still has historical UI coordination that should move one complete
+vertical slice at a time. The translation catalog is large but cohesive and was
+not split merely to reduce line count. Theme CSS and lanyard physics were left
+unchanged.
 
 ## Architecture guardrails
 
 Run `npm run test:architecture` after changing module ownership. It verifies the
 workspace/Help/tutorial contract, absence of relative import cycles, browser and
 server direction rules, heavy lazy boundaries, auth type ownership, resignation
-route ownership/order, and shared permission claims. This complements behavioral
-tests; it does not replace them.
+route ownership, meaningful Express registration/fallback ordering, and shared
+permission claims. This complements behavioral tests; it does not replace them.

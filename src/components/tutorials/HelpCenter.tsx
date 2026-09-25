@@ -4,7 +4,7 @@ import { useLanguage } from '../../lib/LanguageContext';
 import { cn } from '../../lib/utils';
 import { recordDevInteraction } from '../../lib/dev-performance';
 import { getEligibleHelpArticles, searchHelpArticles, type HelpArticle, type HelpGroup } from './help-registry';
-import type { TutorialContext, TutorialDefinition } from './tutorial-types';
+import type { HelpAction, TutorialContext, TutorialDefinition } from './tutorial-types';
 
 type Props = {
   context: TutorialContext;
@@ -14,11 +14,12 @@ type Props = {
   requestVersion?: number;
   onStartTutorial: (tutorialId: string) => void;
   onOpenModule: (moduleId: string) => void;
+  onHelpAction: (action: HelpAction) => void;
 };
 
 const GROUP_ORDER: readonly HelpGroup[] = ['getting_started', 'workspaces', 'account_app'];
 
-export function HelpCenter({ context, tutorials, completedTutorials, requestedArticleId, requestVersion, onStartTutorial, onOpenModule }: Props) {
+export function HelpCenter({ context, tutorials, completedTutorials, requestedArticleId, requestVersion, onStartTutorial, onOpenModule, onHelpAction }: Props) {
   const { t, lang, isRtl } = useLanguage();
   const locale = lang === 'ar' ? 'ar' : 'en';
   const [query, setQuery] = useState('');
@@ -66,6 +67,7 @@ export function HelpCenter({ context, tutorials, completedTutorials, requestedAr
       </div>
       <div className="mt-5 flex flex-col gap-2 border-t border-[var(--stanza-border-subtle)] pt-4 sm:flex-row">
         {selected.moduleId && <button type="button" onClick={() => onOpenModule(selected.moduleId!)} className="stanza-secondary-action min-h-11 flex-1 rounded-md border border-[var(--stanza-border-subtle)] px-3 text-sm font-bold">{t('help.openModule')}</button>}
+        {selected.action && <button type="button" onClick={() => onHelpAction(selected.action!.value)} className="stanza-secondary-action min-h-11 flex-1 rounded-md border border-[var(--stanza-border-subtle)] px-3 text-sm font-bold">{selected.action.label[locale]}</button>}
         {tutorial && <button type="button" onClick={() => onStartTutorial(tutorial.id)} className="stanza-primary-action inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-500 px-3 text-sm font-bold text-[#02110b]">{completed ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}{completed ? t('help.replayTour') : t('help.startTour')}</button>}
       </div>
     </article>;

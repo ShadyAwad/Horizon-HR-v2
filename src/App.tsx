@@ -15,11 +15,13 @@ const loadSignup = () => import('./pages/Signup').then((module) => ({ default: m
 const loadResetPassword = () => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword }));
 const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
 const loadPublicAssetVerification = () => import('./pages/PublicAssetVerification').then((module) => ({ default: module.PublicAssetVerification }));
+const loadInteractionMicrobenchmark = () => import('./components/dev/InteractionMicrobenchmark');
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
 const ResetPassword = lazy(loadResetPassword);
 const PublicEmployeeVerification = lazy(loadPublicEmployeeVerification);
 const PublicAssetVerification = lazy(loadPublicAssetVerification);
+const InteractionMicrobenchmark = import.meta.env.DEV ? lazy(loadInteractionMicrobenchmark) : null;
 const AUTH_TRANSITION_MINIMUM_MS = 280;
 
 const waitFor = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
@@ -32,6 +34,28 @@ const fallbackUser: AuthUser = {
   tenantId: 'demo-tenant',
   tenant: 'Stanza Demo Company',
 };
+
+// App is the only owner of the passive session-status probe. Keeping the
+// promise at module scope also makes development StrictMode remounts share the
+// same in-flight request instead of issuing a second bootstrap probe.
+let initialSessionBootstrap: Promise<AuthUser | null> | null = null;
+
+function restoreInitialSession() {
+  if (!initialSessionBootstrap) {
+    initialSessionBootstrap = apiFetch(apiUrl('/api/auth/session'))
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to restore the session.');
+        const data = await response.json() as { authenticated?: boolean; user?: AuthUser };
+        return data.authenticated && data.user ? data.user : null;
+      })
+      .catch((error) => {
+        initialSessionBootstrap = null;
+        throw error;
+      });
+  }
+
+  return initialSessionBootstrap;
+}
 
 function getStoredUser() {
   if (typeof window === 'undefined') return fallbackUser;
@@ -53,6 +77,7 @@ function getStoredUser() {
 }
 
 export default function App() {
+  const isInteractionMicrobenchmark = import.meta.env.DEV && new URLSearchParams(window.location.search).get('stanzaPerfLab') === '1';
   const publicEmployeeMatch = /^\/verify\/employee\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const isPublicEmployeeVerification = Boolean(publicEmployeeMatch);
   const publicAssetMatch = /^\/verify\/asset\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
@@ -87,20 +112,18 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    if (window.location.pathname === '/reset-password' || isPublicEmployeeVerification || isPublicAssetVerification) {
+    if (isInteractionMicrobenchmark || window.location.pathname === '/reset-password' || isPublicEmployeeVerification || isPublicAssetVerification) {
       setSessionChecked(true);
       return () => { cancelled = true; };
     }
 
     markDevPerformance('startup:auth-session-start', undefined, true);
-    void apiFetch(apiUrl('/api/auth/session'))
-      .then(async (response) => {
-        if (!response.ok) throw new Error('No active session.');
-        const data = await response.json() as { success?: boolean; user?: AuthUser };
-        if (!data.success || !data.user) throw new Error('No active session.');
+    void restoreInitialSession()
+      .then((user) => {
+        if (!user) return;
         if (cancelled) return;
-        setAuthUser(data.user);
-        window.localStorage.setItem('horizon-auth-user', JSON.stringify(data.user));
+        setAuthUser(user);
+        window.localStorage.setItem('horizon-auth-user', JSON.stringify(user));
         setAuthState('authenticated');
       })
       .catch(() => {
@@ -112,7 +135,7 @@ export default function App() {
       });
 
     return () => { cancelled = true; };
-  }, [isPublicAssetVerification, isPublicEmployeeVerification]);
+  }, [isInteractionMicrobenchmark, isPublicAssetVerification, isPublicEmployeeVerification]);
 
   useEffect(() => {
     const titles = {
@@ -248,7 +271,11 @@ export default function App() {
     <ThemeProvider>
       <LanguageProvider>
         <div className="w-full min-h-screen bg-[#020604] text-emerald-50 transition-colors duration-300">
-         {isPublicEmployeeVerification ? (
+         {isInteractionMicrobenchmark && InteractionMicrobenchmark ? (
+           <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
+             <InteractionMicrobenchmark />
+           </Suspense>
+         ) : isPublicEmployeeVerification ? (
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <PublicEmployeeVerification token={publicEmployeeMatch![1]} />
            </Suspense>
@@ -313,7 +340,7 @@ export default function App() {
              </button>
            </div>
          )}
-         {!isPublicEmployeeVerification && !isPublicAssetVerification && <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />}
+         {!isInteractionMicrobenchmark && !isPublicEmployeeVerification && !isPublicAssetVerification && <DemoNoticeModal open={showDemoNotice} onClose={dismissDemoNotice} />}
         </div>
       </LanguageProvider>
     </ThemeProvider>

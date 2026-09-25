@@ -155,17 +155,52 @@ check('heavy Dashboard features remain dynamic imports', () => {
   assert.doesNotMatch(read('src/navigation/workspace-registry.ts'), /three|rapier|maplibre|\.glb/i);
 });
 
-check('resignation routes are domain-owned and mounted once in order', () => {
+check('extracted server domains remain domain-owned', () => {
   const server = read('server.ts');
-  const routes = read('src/server/resignations/resignation-routes.ts');
-  const attentionRouteIndex = server.search(/app\.get\(\s*['"]\/api\/dashboard\/attention-counts['"]/);
+  const extractedRoutes = [
+    ['/api/dashboard/attention-counts', 'src/server/dashboard/attention-routes.ts'],
+    ['/api/notification-settings', 'src/server/notifications/notification-settings-routes.ts'],
+    ['/api/grievances', 'src/server/grievances/grievance-routes.ts'],
+    ['/api/company-feed', 'src/server/feed/company-feed-routes.ts'],
+    ['/api/clock-in', 'src/server/attendance/attendance-routes.ts'],
+    ['/api/break-requests', 'src/server/breaks/break-request-routes.ts'],
+    ['/api/roster/shifts', 'src/server/roster/roster-shift-routes.ts'],
+    ['/api/compensation', 'src/server/payroll/compensation-routes.ts'],
+    ['/api/employee-loans', 'src/server/payroll/loan-routes.ts'],
+    ['/api/payroll', 'src/server/payroll/payroll-routes.ts'],
+    ['/api/assets/:assetId/evidence', 'src/server/assets/asset-evidence-routes.ts'],
+    ['/api/map-tiles/:z/:x/:y.png', 'src/server/system/map-tile-routes.ts'],
+  ] as const;
+  for (const [routePath, owner] of extractedRoutes) {
+    assert.doesNotMatch(server, new RegExp(`app\\.(?:get|post|put|patch|delete)\\(\\s*['"]${routePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`));
+    assert.match(read(owner), new RegExp(routePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.doesNotMatch(server, /app\.(?:get|post|put|patch|delete)\(\s*['"]\/api\/roles/);
+  assert.doesNotMatch(server, /app\.(?:get|post|put|patch|delete)\(\s*['"]\/api\/employees\/:employeeId\/(?:roles|title)/);
+});
+
+check('meaningful server route and fallback ordering is preserved', () => {
+  const server = read('server.ts');
+  const attentionRegistrationIndex = server.indexOf('registerDashboardAttentionRoutes(app');
   const resignationRegistrationIndex = server.indexOf('registerResignationRoutes(app');
-  const roleCreationRouteIndex = server.search(/app\.post\(\s*['"]\/api\/roles['"]/);
+  const roleMutationRegistrationIndex = server.indexOf('registerLegacyRoleMutationRoutes(app');
+  const clockInIndex = server.indexOf('registerAttendanceClockInRoute(app');
+  const compatibilityLocationsIndex = server.indexOf('registerCompanyLocationCompatibilityRoutes(app');
+  const attendanceStatusIndex = server.indexOf('registerAttendanceStatusRoutes(app');
+  const payrollIndex = server.indexOf('registerPayrollRoutes(app');
+  const grievanceIndex = server.indexOf('registerGrievanceRoutes(app');
+  const payrollExportIndex = server.indexOf('registerPayrollExportRoute(app');
+  const feedIndex = server.indexOf('registerCompanyFeedRoutes(app');
+  const apiErrorIndex = server.indexOf("app.use('/api', apiErrorHandler)");
+  const staticIndex = server.indexOf('app.use(express.static(distPath');
+  const spaFallbackIndex = server.indexOf("app.get('*'");
   assert.match(server, /registerResignationRoutes\(app, \{/);
   assert.doesNotMatch(server, /app\.(?:get|post|patch)\(['"]\/api\/resignations/);
-  assert.equal((routes.match(/['"]\/api\/resignations/g) || []).length, 6);
-  assert.ok(attentionRouteIndex >= 0 && attentionRouteIndex < resignationRegistrationIndex);
-  assert.ok(resignationRegistrationIndex < roleCreationRouteIndex);
+  assert.ok(attentionRegistrationIndex >= 0 && attentionRegistrationIndex < resignationRegistrationIndex);
+  assert.ok(resignationRegistrationIndex < roleMutationRegistrationIndex);
+  assert.ok(clockInIndex < compatibilityLocationsIndex && compatibilityLocationsIndex < attendanceStatusIndex);
+  assert.ok(payrollIndex < grievanceIndex && grievanceIndex < payrollExportIndex && payrollExportIndex < feedIndex);
+  assert.ok(feedIndex < apiErrorIndex && apiErrorIndex < staticIndex && staticIndex < spaFallbackIndex);
 });
 
 check('simple permission claims use one server helper', () => {

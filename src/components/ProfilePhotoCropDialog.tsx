@@ -71,7 +71,7 @@ export function ProfilePhotoCropDialog({
       <div className="w-full max-w-md rounded-xl border border-emerald-500/20 bg-[#04110d] p-4 shadow-2xl shadow-black/60">
         <div className="flex items-center justify-between gap-3">
           <h2 id="profile-crop-title" className="text-sm font-black uppercase tracking-widest text-emerald-50">{labels.title}</h2>
-          <button type="button" onClick={onCancel} aria-label={labels.cancel} className="rounded p-2 text-emerald-100/60 hover:bg-emerald-500/10 hover:text-emerald-300"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onCancel} aria-label={labels.cancel} className="stanza-close-action rounded p-2"><X className="h-4 w-4" /></button>
         </div>
 
         <div

@@ -1,18 +1,26 @@
-import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { BriefcaseBusiness, ChevronDown, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiFetch, apiUrl } from '../lib/api';
+import { recordDevInteraction } from '../lib/dev-performance';
+import { useDevDemoMotion } from '../components/dev/use-demo-motion';
 
 const fetch = apiFetch;
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
+import { readLoginShellTest } from '../components/dev/login-shell-tests';
 import { StanzaFingerprintLoader } from '../components/StanzaFingerprintLoader';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
 import type { AuthUser, AuthVisualState } from '../auth/auth-contract';
 import { validateEmail } from '../lib/validation';
 import type { RecognitionCelebrationPayload } from '../components/performance/RecognitionCelebration';
+
+const LoginFlickerBenchmark = import.meta.env.DEV ? lazy(() => import('../components/dev/LoginFlickerBenchmark')) : null;
+
+const useDemoMotion = import.meta.env.DEV ? useDevDemoMotion : () => undefined;
+const shellTest = import.meta.env.DEV ? readLoginShellTest(window.location.search) : undefined;
 
 type PortfolioDemoRole = 'hr_admin' | 'manager' | 'employee';
 
@@ -106,7 +114,9 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
+  const demoMotion = useDemoMotion(showDemoAccounts);
   const [selectedDemoRole, setSelectedDemoRole] = useState<PortfolioDemoRole | null>(null);
+  const [loginBenchmarkOpen, setLoginBenchmarkOpen] = useState(false);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const loginFormRef = useRef<HTMLFormElement>(null);
   const { t, lang, setLang, isRtl } = useLanguage();
@@ -345,7 +355,8 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   };
 
   return (
-<div className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans md:min-h-screen md:justify-center md:px-4 md:py-8">
+<div data-login-shell-test={shellTest?.mode} className="relative flex min-h-[100dvh] w-full flex-col items-center overflow-x-hidden px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] font-sans md:min-h-screen md:px-4 md:pb-8 md:pt-[calc(env(safe-area-inset-top)+4rem)]">
+      {shellTest?.css && <style>{shellTest.css}</style>}
 
       <div className={`relative z-20 mb-4 flex w-full max-w-sm items-center justify-center gap-2 self-center rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md dark:border-emerald-500/15 dark:bg-black/35 md:absolute md:top-4 md:mb-0 md:w-auto md:max-w-none ${isRtl ? "md:left-4" : "md:right-4"}`}>
         <button
@@ -388,7 +399,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
       </div>
 
       {/* Main Login Panel */}
-      <div className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-[#030b08]/70 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/12 rounded-2xl shadow-xl dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
+      <div ref={demoMotion?.card} data-login-card-effect={demoMotion?.cardEffect} className="relative z-10 w-full max-w-sm px-5 py-8 bg-white/85 dark:bg-[#030b08]/70 backdrop-blur-xl border border-slate-200 dark:border-emerald-500/12 rounded-2xl shadow-xl dark:shadow-[0_0_42px_rgba(16,185,129,0.055)] animate-[loginCardIn_180ms_ease-out] sm:px-8 sm:py-10">
         <div className="flex flex-col items-center mb-8">
 <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.18)]">            <StanzaFingerprintMark size={32} />
           </div>
@@ -526,34 +537,38 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
             )}
           </div>
 
-          <div className="isolate rounded-xl border border-emerald-500/25 bg-[#061f17] p-1 shadow-[inset_0_1px_0_rgba(221,248,238,0.05)]">
+          <div ref={demoMotion?.parent} data-demo-motion={demoMotion?.mode} data-login-demo-benchmark className="rounded-xl border border-emerald-200 bg-white/80 p-1 dark:border-emerald-500/25 dark:bg-[#061f17] dark:shadow-[inset_0_1px_0_rgba(221,248,238,0.05)]">
             <button
               type="button"
-              onClick={() => setShowDemoAccounts((current) => !current)}
+              onClick={() => recordDevInteraction('login:demo-accounts-toggle', () => {
+                demoMotion?.beforeToggle();
+                setShowDemoAccounts((current) => !current);
+              })}
               aria-expanded={showDemoAccounts}
               aria-controls="demo-account-panel"
               aria-label={`${t('login.useDemoAccount')}. ${t('login.demoExploreRoles')}`}
-              className={`group flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-[background-color,transform] duration-150 active:scale-[.99] motion-reduce:transition-none hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 ${isRtl ? 'text-right' : ''}`}
+              className={`group flex w-full items-center gap-3 rounded-[10px] bg-transparent px-3 py-2.5 text-left transition-[background-color] duration-150 motion-reduce:transition-none hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:hover:bg-emerald-500/10 dark:focus-visible:ring-emerald-300/80 ${isRtl ? 'text-right' : ''}`}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-[inset_0_1px_0_rgba(221,248,238,0.08)]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-[inset_0_1px_0_rgba(221,248,238,0.08)]">
                 <UsersRound className="h-4 w-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-xs font-bold text-[#DDF8EE]">{t('login.useDemoAccount')}</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-emerald-200/70">{t('login.demoExploreRoles')}</span>
+                <span className="block text-xs font-bold text-slate-900 dark:text-[#DDF8EE]">{t('login.useDemoAccount')}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-emerald-700 dark:text-emerald-200/70">{t('login.demoExploreRoles')}</span>
               </span>
               <ChevronDown
-                className={`h-4 w-4 shrink-0 text-emerald-200/75 transition-transform duration-200 motion-reduce:transition-none ${showDemoAccounts ? 'rotate-180' : ''}`}
+                className={`h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-200/75 transition-transform duration-200 motion-reduce:transition-none ${showDemoAccounts ? 'rotate-180' : ''}`}
                 aria-hidden="true"
               />
             </button>
             <div
+              ref={demoMotion?.panel}
               id="demo-account-panel"
               aria-hidden={!showDemoAccounts}
-              className={`grid bg-[#061f17] transition-[grid-template-rows,opacity] duration-[180ms] ease-out motion-reduce:transition-none ${showDemoAccounts ? '[grid-template-rows:1fr] opacity-100' : '[grid-template-rows:0fr] opacity-0'}`}
+              className={`grid bg-transparent opacity-100 transition-[grid-template-rows] duration-[180ms] ease-out motion-reduce:transition-none ${showDemoAccounts ? '[grid-template-rows:1fr]' : '[grid-template-rows:0fr]'}`}
             >
               <div className="min-h-0 overflow-hidden">
-                <div className="space-y-2 px-1 pb-1 pt-3">
+                <div ref={demoMotion?.content} className="space-y-2 px-1 pb-1 pt-3">
                   {demoAccounts.map(({ role, label, action, description, Icon }) => {
                     const selected = selectedDemoRole === role;
 
@@ -567,22 +582,22 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
                         aria-pressed={selected}
                         aria-label={`${label}. ${description}. ${action}`}
                         onClick={() => handleDemoSession(role)}
-                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/80 disabled:pointer-events-none ${selected ? 'border-emerald-300/50 bg-emerald-500/15 text-emerald-50' : 'border-emerald-500/15 bg-black/20 text-emerald-50/90 hover:border-emerald-300/45 hover:bg-emerald-500/10'} ${isRtl ? 'text-right' : ''}`}
+                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:focus-visible:ring-emerald-300/80 disabled:pointer-events-none ${selected ? 'border-emerald-500 bg-emerald-100 text-slate-900 dark:border-emerald-300/50 dark:bg-emerald-500/15 dark:text-emerald-50' : 'border-emerald-200 bg-white/80 text-slate-900 hover:border-emerald-400 hover:bg-emerald-50 dark:border-emerald-500/15 dark:bg-black/20 dark:text-emerald-50/90 dark:hover:border-emerald-300/45 dark:hover:bg-emerald-500/10'} ${isRtl ? 'text-right' : ''}`}
                       >
-                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${selected ? 'border-emerald-300/35 bg-emerald-400/15 text-emerald-200' : 'border-emerald-500/15 bg-black/20 text-emerald-200/75'}`}>
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${selected ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-300/35 dark:bg-emerald-400/15 dark:text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/15 dark:bg-black/20 dark:text-emerald-200/75'}`}>
                           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[11px] font-bold">{label}</span>
-                          <span className="mt-0.5 block text-[10px] leading-4 text-emerald-100/55">{description}</span>
+                          <span className="mt-0.5 block text-[10px] leading-4 text-slate-600 dark:text-emerald-100/55">{description}</span>
                         </span>
-                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-200">
+                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-200">
                           {isLoading && selected ? t('login.authenticating') : action}
                         </span>
                       </button>
                     );
                   })}
-                  <p className="px-1 pt-0.5 text-[10px] leading-4 text-emerald-100/45">{t('login.demoSessionNote')}</p>
+                  <p className="px-1 pt-0.5 text-[10px] leading-4 text-slate-600 dark:text-emerald-100/45">{t('login.demoSessionNote')}</p>
                 </div>
               </div>
             </div>
@@ -737,6 +752,9 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
             </div>
           </div>
         )}
+      {demoMotion?.css && <style>{demoMotion.css}</style>}
+      {LoginFlickerBenchmark && <button type="button" onClick={() => setLoginBenchmarkOpen(true)} className="fixed bottom-3 right-3 z-30 rounded border border-amber-400/40 bg-black/85 px-3 py-2 text-xs font-bold text-amber-200">Login benchmark</button>}
+      {LoginFlickerBenchmark && loginBenchmarkOpen && <Suspense fallback={null}><LoginFlickerBenchmark onClose={() => setLoginBenchmarkOpen(false)} onPrepare={() => setShowDemoAccounts(false)} /></Suspense>}
     </div>
   );
 }

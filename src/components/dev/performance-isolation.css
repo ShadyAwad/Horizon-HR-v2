@@ -1,0 +1,117 @@
+/* Loaded only by the development-only PerformanceIsolationPanel. The launcher
+   is portalled to body, so these selectors intentionally start at html. */
+html[data-stanza-perf-no-mask="true"] :is(.stanza-light-topography, .stanza-dark-topography) { mask-image: none !important; -webkit-mask-image: none !important; }
+/* Approximate Gaussian falloff, with the same box/position/color. Keep this
+   experimental until Chrome tracing and screenshot parity justify promotion. */
+html[data-stanza-perf-radial-glows="true"] :is(.stanza-light-glow, .stanza-dark-glow-strong, .stanza-dark-glow-soft) { filter: none !important; background-color: transparent; background-image: radial-gradient(ellipse, var(--perf-glow) 0%, color-mix(in srgb, var(--perf-glow) 65%, transparent) 38%, transparent 72%); }
+html[data-stanza-perf-radial-glows="true"] .stanza-light-glow-top { --perf-glow: color-mix(in srgb, var(--stanza-selected-surface) 76%, transparent); }
+html[data-stanza-perf-radial-glows="true"] .stanza-light-glow-bottom { --perf-glow: color-mix(in srgb, var(--stanza-subtle-accent-surface) 88%, transparent); }
+html[data-stanza-perf-radial-glows="true"] .stanza-dark-glow-strong { --perf-glow: var(--stanza-dark-glow-strong); }
+html[data-stanza-perf-radial-glows="true"] .stanza-dark-glow-soft { --perf-glow: var(--stanza-dark-glow-soft); }
+.stanza-dashboard[data-perf-no-shadows="true"] :is(.shadow-xl, .shadow-2xl, [class*="shadow-["]) { box-shadow: none !important; }
+.stanza-dashboard[data-perf-flat-surfaces="true"] :is(.stanza-navigation-shell, .stanza-navigation-panel, .stanza-control-center-panel, .stanza-settings-drawer) { backdrop-filter: none !important; background-color: var(--stanza-surface-elevated) !important; }
+.stanza-dashboard[data-perf-hide-badges="true"] .stanza-attention-badge { display: none !important; }
+.stanza-dashboard[data-perf-no-transitions="true"] :is(button, [role="tab"], .stanza-navigation-panel, .stanza-control-center-panel) { transition: none !important; }
+
+html[data-stanza-perf-no-glows="true"] :is(.stanza-light-glow, .stanza-dark-glow-strong, .stanza-dark-glow-soft) { display: none !important; }
+html[data-stanza-perf-no-css-filters="true"] .stanza-dashboard :is(.stanza-light-glow, .stanza-dark-glow-strong, .stanza-dark-glow-soft) { filter: none !important; opacity: 0 !important; }
+html[data-stanza-perf-no-backdrop-filters="true"] :is(.stanza-dashboard, [data-stanza-launcher-assembly], .stanza-navigation-panel, .stanza-command-palette) :is(.stanza-navigation-shell, .stanza-navigation-panel, .stanza-control-center-panel, .stanza-settings-drawer, .dashboard-workspace-content, .stanza-workspace-enter, [class*="backdrop-blur"]) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-color: var(--stanza-surface-elevated) !important; }
+html[data-stanza-perf-no-large-shadows="true"] :is(.stanza-dashboard, [data-stanza-launcher-assembly], .stanza-navigation-panel, .stanza-command-palette) :is(.shadow-xl, .shadow-2xl, [class*="shadow-["]) { box-shadow: none !important; }
+@media (hover: hover) and (pointer: fine) {
+  html[data-stanza-perf-no-hover-transforms="true"] :is(.stanza-dashboard, [data-stanza-launcher-assembly], .stanza-navigation-panel, .stanza-command-palette) :is(button, [role="tab"], [role="menuitem"], [role="option"]):hover { transform: none !important; }
+}
+html[data-stanza-perf-no-pressed-transforms="true"] :is(.stanza-dashboard, [data-stanza-launcher-assembly], .stanza-navigation-panel, .stanza-command-palette) :is(button, [role="tab"], [role="menuitem"], [role="option"]):active { transform: none !important; }
+html[data-stanza-perf-opaque-navigation="true"] :is(.stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-control-center-panel, .stanza-settings-drawer) { background-color: var(--stanza-surface-elevated) !important; }
+html[data-stanza-perf-no-tutorial-effects="true"] .stanza-tutorial-dim,
+html[data-stanza-perf-no-tutorial-effects="true"] .stanza-tutorial-highlight { display: none !important; }
+/* Geo-only A/B experiments. No production simplification is selected here. */
+html[data-stanza-geo-surface="opaque"] .geo-operations-content,
+html[data-stanza-geo-surface="opaque"] .geo-operations-content [class*="rounded"][class*="border"],
+html[data-stanza-geo-control="opaque-parent"] .geo-operations-content,
+html[data-stanza-geo-control="opaque-parent"] .geo-operations-content div[class*="rounded"][class*="border"]:has([data-geo-interaction]) { background-color: var(--stanza-surface-elevated) !important; }
+html[data-stanza-geo-surface="no-shadows"] .geo-operations-content,
+html[data-stanza-geo-surface="no-shadows"] .geo-operations-content * { box-shadow: none !important; }
+html[data-stanza-geo-surface="no-filters"] .geo-operations-content,
+html[data-stanza-geo-surface="no-filters"] .geo-operations-content * { filter: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-stanza-geo-surface="no-topography"] :is(.stanza-light-topography, .stanza-dark-topography),
+html[data-stanza-geo-surface="flat"] :is(.stanza-light-topography, .stanza-dark-topography, .stanza-light-glow, .stanza-dark-glow-strong, .stanza-dark-glow-soft) { display: none !important; }
+html[data-stanza-geo-surface="flat"] .geo-operations-content { background: var(--stanza-surface-elevated) !important; }
+html[data-stanza-geo-surface="flat"] .geo-operations-content > .absolute.inset-0 { display: none !important; }
+html[data-stanza-geo-control="no-transform"] [data-geo-interaction],
+html[data-stanza-geo-control="no-transform"] [data-geo-interaction] * { transform: none !important; scale: none !important; translate: none !important; rotate: none !important; }
+html[data-stanza-geo-control="no-backdrop"] .geo-operations-content,
+html[data-stanza-geo-control="no-backdrop"] .geo-operations-content * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-stanza-geo-control="no-transition"] [data-geo-interaction],
+html[data-stanza-geo-control="no-transition"] [data-geo-interaction] * { transition: none !important; }
+html[data-stanza-geo-control="no-shadow"] [data-geo-interaction] { box-shadow: none !important; }
+html[data-stanza-geo-control="no-pseudo"] [data-geo-interaction]::before,
+html[data-stanza-geo-control="no-pseudo"] [data-geo-interaction]::after { content: none !important; }
+
+/* Keep these experiments on the two real controls; never force promotion. */
+html[data-stanza-geo-control="color-only"] [data-geo-interaction],
+html[data-stanza-geo-control="color-only"] [data-geo-interaction] * {
+  transition-property: background-color, border-color, color !important;
+}
+/* Supply a solid semantic base under the existing gradient, and retain the
+   gradient on hover instead of removing it while its transparent base animates. */
+html[data-stanza-geo-control="opaque-button"] [data-geo-interaction].stanza-theme-primary {
+  background-color: var(--stanza-accent) !important;
+  background-image: linear-gradient(135deg, var(--stanza-accent), var(--stanza-accent-hover)) !important;
+}
+html[data-stanza-geo-control="opaque-button"] [data-geo-interaction].stanza-theme-primary:not(:disabled):is(:hover, :active) {
+  background-color: var(--stanza-accent-hover) !important;
+  border-color: var(--stanza-focus-ring) !important;
+}
+/* Canvas CSS background fills only transparent WebGL pixels. No resize,
+   geometry, hit-area, renderer-alpha, or physics change. */
+html[data-stanza-lanyard-flat="true"] [data-lanyard-canvas-surface] canvas {
+  background-color: var(--stanza-surface-elevated) !important;
+}
+
+/* Rendering-primitive experiments on primary states of the exact Geo controls. */
+html[data-stanza-geo-control="gradient-gradient"] [data-geo-interaction].stanza-theme-primary {
+  background-image: linear-gradient(135deg, var(--stanza-accent), var(--stanza-accent-hover)) !important;
+}
+html[data-stanza-geo-control="gradient-gradient"] [data-geo-interaction].stanza-theme-primary:not(:disabled):hover {
+  background-image: linear-gradient(135deg, var(--stanza-accent-hover), var(--stanza-accent)) !important;
+}
+html[data-stanza-geo-control="solid-solid"] [data-geo-interaction].stanza-theme-primary {
+  background-image: none !important;
+  background-color: color-mix(in srgb, var(--stanza-accent) 50%, var(--stanza-accent-hover)) !important;
+}
+html[data-stanza-geo-control="solid-solid"] [data-geo-interaction].stanza-theme-primary:not(:disabled):is(:hover, :active) {
+  background-image: none !important;
+  background-color: var(--stanza-accent-hover) !important;
+}
+html[data-stanza-geo-control="no-background-transition"] [data-geo-interaction] {
+  transition-property: border-color, color, box-shadow, transform, opacity !important;
+}
+html[data-stanza-gpu-surface="css-opaque"] [data-lanyard-canvas-surface] canvas {
+  background: var(--stanza-page-bg) !important;
+}
+html[data-stanza-gpu-surface="precomposed"] [data-lanyard-canvas-surface] canvas {
+  background: var(--stanza-page-bg) var(--stanza-gpu-precomposed) center / 100% 100% no-repeat !important;
+}
+html[data-stanza-gpu-surface="opaque-dom"] .stanza-dashboard :is(.geo-operations-content, .geo-operations-content *, .stanza-generic-surface, .stanza-generic-surface *) {
+  background-color: var(--stanza-page-bg) !important; background-image: none !important;
+}
+html[data-stanza-gpu-surface="flat-geo"] .geo-operations-content {
+  background: var(--stanza-page-bg) !important; backdrop-filter: none !important; box-shadow: none !important;
+}
+html[data-stanza-gpu-surface="flat-geo"] .geo-operations-content > * { visibility: hidden !important; }
+html[data-stanza-gpu-surface="flat-test"] .stanza-dashboard * { visibility: hidden !important; }
+html[data-stanza-gpu-surface="flat-test"] .stanza-dashboard :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, [data-performance-isolation], [data-performance-isolation] *) { visibility: visible !important; }
+/* One category at a time. These do not also force opaque surfaces. */
+html[data-stanza-gpu-isolation="no-backdrop"] .stanza-dashboard,
+html[data-stanza-gpu-isolation="no-backdrop"] .stanza-dashboard * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-stanza-gpu-isolation="no-filters"] .stanza-dashboard,
+html[data-stanza-gpu-isolation="no-filters"] .stanza-dashboard * { filter: none !important; }
+html[data-stanza-gpu-isolation="no-glows"] :is(.stanza-light-glow, .stanza-dark-glow-strong, .stanza-dark-glow-soft) { visibility: hidden !important; }
+html[data-stanza-gpu-isolation="no-topography"] :is(.stanza-light-topography, .stanza-dark-topography) { visibility: hidden !important; }
+html[data-stanza-gpu-isolation="no-shadows"] .stanza-dashboard,
+html[data-stanza-gpu-isolation="no-shadows"] .stanza-dashboard * { box-shadow: none !important; }
+html[data-stanza-gpu-isolation="no-clipping"] :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, :has(.stanza-dashboard-lanyard)) { overflow: visible !important; clip-path: none !important; border-radius: 0 !important; }
+html[data-stanza-gpu-isolation="no-masks"] :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, :has(.stanza-dashboard-lanyard)) { mask-image: none !important; -webkit-mask-image: none !important; }
+html[data-stanza-gpu-isolation="no-transform"] :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, :has(.stanza-dashboard-lanyard)) { transform: none !important; scale: none !important; translate: none !important; rotate: none !important; }
+html[data-stanza-gpu-isolation="no-isolation"] :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, :has(.stanza-dashboard-lanyard)) { isolation: auto !important; }
+html[data-stanza-gpu-isolation="no-contain"] :is(.stanza-dashboard-lanyard, .stanza-dashboard-lanyard *, :has(.stanza-dashboard-lanyard)) { contain: none !important; }

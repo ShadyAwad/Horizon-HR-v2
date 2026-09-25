@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TutorialOverlay } from './TutorialOverlay';
 import { getEligibleTutorials } from './tutorial-registry';
-import { isTutorialCurrent } from './tutorial-state';
+import { getAutomaticTutorialCandidate, isTutorialCurrent } from './tutorial-state';
 import type { HelpAction, TutorialContext, TutorialDefinition, TutorialProgress, TutorialStep } from './tutorial-types';
 import { recordDevRender } from '../../lib/render-diagnostics';
 import { beginDevSpan, markDevPerformance, recordDevInteraction } from '../../lib/dev-performance';
@@ -95,8 +95,16 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
       [historyKey]: { ...progress[historyKey], [active.tutorial.id]: active.tutorial.version },
       ...(disableAutomatic ? { tutorialsAutoStart: false } : {}),
     });
+    const followUp = active.tutorial.id === 'welcome' && !disableAutomatic && progress.tutorialsAutoStart
+      ? eligible.find((tutorial) => tutorial.id === 'interactive-lanyard'
+        && !isTutorialCurrent(progress.completedTutorials, tutorial.id, tutorial.version)
+        && !isTutorialCurrent(progress.dismissedTutorials, tutorial.id, tutorial.version))
+      : null;
     setActive(null);
-  }, [active, progress, updateProgress]);
+    if (followUp?.automaticEligible?.(context)) {
+      start(followUp.id, true);
+    }
+  }, [active, context, eligible, progress, start, updateProgress]);
 
   const advance = useCallback(() => {
     if (!active) return;
@@ -112,13 +120,21 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
   const back = useCallback(() => setActive((current) => current && current.index > 0 ? { ...current, index: current.index - 1 } : current), []);
 
   const runHelpAction = useCallback((action: HelpAction) => {
+    if (action.type === 'open-settings' && active) {
+      updateProgress({
+        completedTutorials: {
+          ...progress.completedTutorials,
+          [active.tutorial.id]: active.tutorial.version,
+        },
+      });
+    }
     setActive(null);
     if (action.type === 'start-tutorial') {
       start(action.tutorialId);
       return;
     }
     onHelpAction(action);
-  }, [onHelpAction, start]);
+  }, [active, onHelpAction, progress.completedTutorials, start, updateProgress]);
 
   useEffect(() => {
     if (!active) return;
@@ -136,9 +152,7 @@ export function TutorialProvider({ context, activeModule, progress, updateProgre
   }, [active, advance]);
 
   useEffect(() => {
-    const isUnseen = (tutorial: TutorialDefinition) => !isTutorialCurrent(progress.completedTutorials, tutorial.id, tutorial.version) && !isTutorialCurrent(progress.dismissedTutorials, tutorial.id, tutorial.version);
-    const candidate = eligible.find((tutorial) => tutorial.id === 'welcome' && isUnseen(tutorial))
-      || eligible.find((tutorial) => tutorial.automatic && tutorial.module === activeModule && isUnseen(tutorial));
+    const candidate = getAutomaticTutorialCandidate(eligible, activeModule, progress, context);
     markDevPerformance('startup:automatic-tutorial-decision', {
       blocked: isBlocked,
       candidate: candidate?.id || 'none',

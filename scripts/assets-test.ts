@@ -19,7 +19,7 @@ const resignationsPanel = read('src/components/resignations/ResignationsPanel.ts
 const resignationRoutes = read('src/server/resignations/resignation-routes.ts');
 const assetsPanel = read('src/components/assets/AssetsPanel.tsx');
 const equipmentPanel = read('src/components/assets/MyEquipmentPanel.tsx');
-const server = read('server.ts');
+const evidenceRoutes = read('src/server/assets/asset-evidence-routes.ts');
 const evidenceStorage = read('src/lib/asset-evidence-storage.ts');
 const assetForm = read('src/components/assets/AssetFormDialog.tsx');
 const extractionUi = read('src/components/assets/AssetLabelExtraction.tsx');
@@ -79,10 +79,10 @@ const checks: Array<[string, boolean]> = [
   ['lazy dashboard Assets tab', /const AssetsPanel = lazy/.test(dashboard) && /activeTab === 'assets'/.test(dashboard)],
   ['mobile-aware asset and equipment panels', /md:hidden/.test(assetsPanel) && /report-condition/.test(equipmentPanel)],
   ['employee damage report does not expose return action', /report-condition/.test(equipmentPanel) && !/\/return/.test(equipmentPanel)],
-  ['evidence upload uses authenticated tenant-scoped endpoint', /\/api\/assets\/:assetId\/evidence/.test(server) && /tenant_id=\$1 AND asset_id=\$2 AND employee_id=\$3/.test(server)],
-  ['evidence validates decoded image data and re-encodes WebP', /sharp\(file\.buffer/.test(server) && /\['jpeg', 'png', 'webp'\]/.test(server) && /\.webp\(/.test(server)],
+  ['evidence upload uses authenticated tenant-scoped endpoint', /\/api\/assets\/:assetId\/evidence/.test(evidenceRoutes) && /tenant_id=\$1 AND asset_id=\$2 AND employee_id=\$3/.test(evidenceRoutes)],
+  ['evidence validates decoded image data and re-encodes WebP', /sharp\(file\.buffer/.test(evidenceRoutes) && /\['jpeg', 'png', 'webp'\]/.test(evidenceRoutes) && /\.webp\(/.test(evidenceRoutes)],
   ['evidence storage is UUID-owned and isolated from Company Feed', /uploads\/assets/.test(evidenceStorage) && !/company-feed/.test(evidenceStorage)],
-  ['evidence retrieval is private and nosniff', /\/api\/assets\/evidence\/:reportId/.test(server) && /X-Content-Type-Options/.test(server)],
+  ['evidence retrieval is private and nosniff', /\/api\/assets\/evidence\/:reportId/.test(evidenceRoutes) && /X-Content-Type-Options/.test(evidenceRoutes)],
   ['offboarding count is derived from active tenant assignments', /outstanding_asset_count/.test(resignationRoutes) && /asset_assignment\.status = 'active'/.test(resignationRoutes)],
   ['offboarding warning is visible and opens assets', /assets-warning-/.test(resignationsPanel) && /onViewAssets/.test(resignationsPanel) && /setActiveTab\('assets'\)/.test(dashboard)],
   ['offboarding completion audits retained assets safely', /offboarding\.completed_with_assets/.test(resignationRoutes) && /outstandingAssetCount/.test(resignationRoutes)],

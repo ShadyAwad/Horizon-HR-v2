@@ -7,6 +7,7 @@ import {
   resolveLightIntensityStop,
 } from '../src/lib/StanzaPreferencesContext';
 import { BACKGROUND_PRESET_IDS, backgroundPresets, normaliseBackgroundPreset } from '../src/lib/background-presets';
+import { contrastRatio, DEFAULT_CUSTOM_ACCENT, deriveCustomTheme, mixColor, normaliseCustomAccent } from '../src/lib/custom-theme';
 
 const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings, authShell, fingerprintCanvas, expensesPanel, shiftSwapsPanel, commandPalette] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
@@ -122,7 +123,7 @@ assert.equal(backgroundPresets.find((preset) => preset.id === 'emerald')?.lightP
 assert.equal(backgroundPresets.find((preset) => preset.id === 'emerald')?.darkPreview, '#020403');
 assert.match(css, /data-background-preset="emerald"\]:not\(\[data-theme="light"\]\) \{ --stanza-page-bg: #020403;/);
 assert.match(css, /--stanza-surface: #04110d; --stanza-surface-elevated: #061811; --stanza-surface-muted: #03100b;/);
-assert.match(css, /data-background-preset="emerald"\] \{ --stanza-auth-background: #020604; --stanza-auth-text: #ecfdf5;/);
+assert.match(css, /data-background-preset="emerald"\]:not\(\[data-theme="light"\]\) \{ --stanza-auth-background: #020604; --stanza-auth-text: #ecfdf5;/);
 
 assert.match(dashboard, /useStanzaPreferences\(\)/);
 assert.match(dashboard, /lightIntensity/);
@@ -221,7 +222,7 @@ assert.match(css, /--stanza-auth-ring-rgb:/);
 assert.match(authShell, /stanza-auth-shell/);
 assert.doesNotMatch(authShell, /bg-\[#020604\]/);
 assert.match(fingerprintCanvas, /data-background-preset/);
-assert.match(fingerprintCanvas, /--stanza-auth-ring-rgb/);
+assert.match(await readFile('src/lib/login-canvas-palette.ts', 'utf8'), /--stanza-auth-ring-rgb/);
 assert.match(dashboard, /stanza-settings-overlay fixed inset-0 z-40/);
 assert.match(dashboard, /stanza-modal-backdrop absolute inset-0/);
 assert.match(dashboard, /stanza-settings-drawer/);
@@ -248,4 +249,56 @@ assert.match(quickActionSettings, /dark:bg-black\/40/);
 assert.match(quickActionSettings, /focus-visible:ring-2/);
 assert.match(quickActionSettings, /motion-reduce/);
 
-console.log('Light intensity preference, semantic surface token, accessibility, and cross-role contracts passed');
+const originalRules = JSON.parse(await readFile('scripts/fixtures/original-theme-rules.json', 'utf8'));
+assert.deepEqual([...css.matchAll(/:root\[data-background-preset="(?:emerald|slate|midnight|graphite|warm_sand|amethyst|ember)"\][^{]*\{[^}]*\}/g)].map((match) => match[0]), originalRules, 'Original preset rules match the baseline including the Login dark-mode scoping fix');
+assert.equal(normaliseBackgroundPreset('custom'), 'custom');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"custom","customAccent":"#2563eb"}').customAccent, '#2563EB');
+assert.equal(readStanzaPreferences('{"backgroundPreset":"emerald","customAccent":"#EC4899"}').customAccent, '#EC4899', 'Switching away retains the custom color');
+for (const invalid of [null, 4, '', '#fff', 'red', '#1234567', '#GG0000', 'url(javascript:alert(1))']) assert.equal(normaliseCustomAccent(invalid), null);
+assert.equal(readStanzaPreferences('{"customAccent":"bad"}').customAccent, DEFAULT_CUSTOM_ACCENT);
+const samples = ['#6366F1', '#2563EB', '#EC4899', '#F59E0B', '#111827', '#F8FAFC', '#000000', '#FFFFFF', '#FFFF00', '#000018'];
+let lowestText = Infinity, lowestButton = Infinity;
+for (const color of samples) for (const mode of ['light', 'dark'] as const) {
+  const { base, tokens } = deriveCustomTheme(color, mode);
+  assert.equal(base, color, 'Never replace the saved base accent');
+  for (const shade of ['accent', 'accent-hover', 'accent-active']) {
+    const contrast = contrastRatio(tokens[shade], tokens['accent-foreground']);
+    lowestButton = Math.min(lowestButton, contrast);
+    assert.ok(contrast >= 4.5, `${color} ${mode} ${shade} button: ${contrast}`);
+  }
+  for (const surface of ['page-bg', 'surface', 'surface-elevated', 'selected-surface', 'hover-surface']) {
+    for (const text of ['text-primary', 'text-secondary', 'text-muted', 'accent', 'accent-hover']) {
+      const contrast = contrastRatio(tokens[surface], tokens[text]);
+      lowestText = Math.min(lowestText, contrast);
+      assert.ok(contrast >= 4.5, `${color} ${mode} ${text} on ${surface}: ${contrast}`);
+    }
+    assert.ok(contrastRatio(tokens['focus-ring'], tokens[surface]) >= 3);
+  }
+  for (const state of ['selected-surface', 'hover-surface']) assert.ok(contrastRatio(tokens['nav-active-foreground'], mixColor(tokens[state], tokens.accent, .18)) >= 4.5);
+  assert.ok(Object.keys(tokens).every((token) => !/success|approved|secure|online|valid|warning|pending|destructive|rejected|error/.test(token)), 'Identity tokens never define status colors');
+}
+const customEditor = await readFile('src/components/CustomThemeEditor.tsx', 'utf8');
+assert.match(customEditor, /type="color"/);
+assert.match(customEditor, /aria-invalid=\{!valid\}/);
+assert.match(customEditor, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
+assert.match(customEditor, /onChange=\{\(event\) => setDraft\(event.target.value\)\}/, 'Picker input only changes the local preview');
+assert.match(customEditor, /onBlur=\{commit\}/);
+assert.doesNotMatch(customEditor, /setBackgroundPreset|localStorage|querySelectorAll|insertRule/);
+console.log(`Custom contrast: minimum button ${lowestButton.toFixed(2)}:1, text ${lowestText.toFixed(2)}:1 across ${samples.length * 2} palettes`);
+console.log('Original preset snapshots, Custom contrast/persistence, light intensity, accessibility, and cross-role contracts passed');
+// Icon close styling is a scoped semantic contract, independent of preset values.
+const closeRules = css.slice(css.indexOf('/* Close controls keep their hit target still;'));
+assert.match(closeRules, /background: transparent !important/);
+assert.match(closeRules, /:hover \{ color: var\(--stanza-accent\) !important/);
+assert.match(closeRules, /scale\(1\.08\)/);
+assert.match(closeRules, /scale\(\.97\)/);
+assert.match(closeRules, /outline: 2px solid var\(--stanza-focus-ring\)/);
+assert.match(closeRules, /prefers-reduced-motion/);
+assert.doesNotMatch(closeRules, /transition:\s*all|emerald/);
+const passkeyButton = dashboard.slice(dashboard.indexOf('onClick={addPasskey}'), dashboard.indexOf("{passkeySaving ? t('dash.opening')"));
+assert.match(passkeyButton, /stanza-primary-action stanza-theme-primary/);
+assert.doesNotMatch(passkeyButton, /bg-emerald|text-black/);
+for (const path of ['src/components/navigation/DashboardNavigation.tsx', 'src/components/navigation/MobileShortcutEditor.tsx', 'src/components/tutorials/TutorialOverlay.tsx', 'src/components/command-palette/CommandPalette.tsx', 'src/components/PrivacyPolicyModal.tsx', 'src/components/DemoNoticeModal.tsx']) {
+  assert.match(await readFile(path, 'utf8'), /stanza-close-action/, path);
+}
+console.log('Semantic primary Passkey and transparent close glyph interaction contracts passed');

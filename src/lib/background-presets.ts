@@ -1,6 +1,6 @@
 export const BACKGROUND_PRESET_IDS = ['emerald', 'slate', 'midnight', 'graphite', 'warm_sand', 'amethyst', 'ember'] as const;
 
-export type BackgroundPresetId = (typeof BACKGROUND_PRESET_IDS)[number];
+export type BackgroundPresetId = (typeof BACKGROUND_PRESET_IDS)[number] | 'custom';
 
 export type BackgroundPreset = {
   id: BackgroundPresetId;
@@ -21,7 +21,7 @@ export const backgroundPresets: readonly BackgroundPreset[] = [
 ];
 
 export function isBackgroundPresetId(value: unknown): value is BackgroundPresetId {
-  return typeof value === 'string' && (BACKGROUND_PRESET_IDS as readonly string[]).includes(value);
+  return value === 'custom' || (typeof value === 'string' && (BACKGROUND_PRESET_IDS as readonly string[]).includes(value));
 }
 
 export function normaliseBackgroundPreset(value: unknown): BackgroundPresetId {

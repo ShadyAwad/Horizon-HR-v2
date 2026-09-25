@@ -15,6 +15,8 @@ import { readTutorialProgress } from '../components/tutorials/tutorial-state';
 import type { TutorialProgress } from '../components/tutorials/tutorial-types';
 import { applyBackgroundPreset, normaliseBackgroundPreset, type BackgroundPresetId } from './background-presets';
 
+import { applyCustomAccent, DEFAULT_CUSTOM_ACCENT, normaliseCustomAccent } from './custom-theme';
+
 export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
 export const MIN_INTERFACE_SCALE = 0.85;
 export const MAX_INTERFACE_SCALE = 1.2;
@@ -39,6 +41,7 @@ export type StanzaPreferences = {
   rosterPresentationMode: RosterPresentationMode;
   desktopNavigationMode: DesktopNavigationMode;
   backgroundPreset: BackgroundPresetId;
+  customAccent: string;
   tutorialsEnabled: boolean;
   tutorialsAutoStart: boolean;
   completedTutorials: Record<string, number>;
@@ -58,6 +61,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   rosterPresentationMode: 'auto',
   desktopNavigationMode: 'launcher',
   backgroundPreset: 'emerald',
+  customAccent: DEFAULT_CUSTOM_ACCENT,
   tutorialsEnabled: true,
   tutorialsAutoStart: true,
   completedTutorials: {},
@@ -126,6 +130,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
         ? 'rail'
         : 'launcher',
       backgroundPreset: normaliseBackgroundPreset(parsed.backgroundPreset),
+      customAccent: normaliseCustomAccent(parsed.customAccent) ?? DEFAULT_CUSTOM_ACCENT,
       ...tutorials,
     };
   } catch {
@@ -147,6 +152,8 @@ export function initializeStanzaPreferences() {
   const preferences = readStanzaPreferences();
   applyInterfaceScale(preferences.interfaceScale);
   applyLightIntensity(preferences.lightIntensity);
+  applyCustomAccent(preferences.customAccent);
+  applyBackgroundPreset(preferences.backgroundPreset);
   return preferences;
 }
 
@@ -165,6 +172,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setRosterPresentationMode: (mode: RosterPresentationMode) => void;
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
   setBackgroundPreset: (preset: BackgroundPresetId) => void;
+  setCustomAccent: (accent: string) => void;
   updateTutorialProgress: (next: Partial<TutorialProgress>) => void;
 };
 
@@ -175,8 +183,11 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     applyInterfaceScale(preferences.interfaceScale);
-  applyLightIntensity(preferences.lightIntensity);
-  applyBackgroundPreset(preferences.backgroundPreset);
+  }, [preferences.interfaceScale]);
+  useEffect(() => applyLightIntensity(preferences.lightIntensity), [preferences.lightIntensity]);
+  useEffect(() => applyBackgroundPreset(preferences.backgroundPreset), [preferences.backgroundPreset]);
+  useEffect(() => applyCustomAccent(preferences.customAccent), [preferences.customAccent]);
+  useEffect(() => {
     try {
       window.localStorage.setItem(STANZA_PREFERENCES_KEY, JSON.stringify(preferences));
     } catch {
@@ -191,6 +202,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       applyInterfaceScale(nextPreferences.interfaceScale);
       applyLightIntensity(nextPreferences.lightIntensity);
       applyBackgroundPreset(nextPreferences.backgroundPreset);
+      applyCustomAccent(nextPreferences.customAccent);
       setPreferences(nextPreferences);
     };
 
@@ -260,6 +272,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const setBackgroundPreset = useCallback((backgroundPreset: BackgroundPresetId) => {
     setPreferences((current) => ({ ...current, backgroundPreset: normaliseBackgroundPreset(backgroundPreset) }));
   }, []);
+  const setCustomAccent = useCallback((value: string) => {
+    const customAccent = normaliseCustomAccent(value);
+    if (customAccent) setPreferences((current) => current.customAccent === customAccent ? current : { ...current, customAccent });
+  }, []);
   const updateTutorialProgress = useCallback((next: Partial<TutorialProgress>) => {
     setPreferences((current) => ({
       ...current,
@@ -283,8 +299,9 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setRosterPresentationMode,
     setDesktopNavigationMode,
     setBackgroundPreset,
+    setCustomAccent,
     updateTutorialProgress,
-  }), [preferences, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
+  }), [preferences, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
 }

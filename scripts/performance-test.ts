@@ -16,7 +16,9 @@ const migration = read('src/db/migrations/20260725_add_performance_management.sq
 const routes = read('src/server/performance/performance-routes.ts');
 const delivery = read('src/server/performance/recognition-delivery.ts');
 const server = read('server.ts');
+const attendanceRoutes = read('src/server/attendance/attendance-routes.ts');
 const dashboard = read('src/pages/Dashboard.tsx');
+const app = read('src/App.tsx');
 const navigation = read('src/components/navigation/DashboardNavigation.tsx');
 const attentionCounts = read('src/hooks/useDashboardAttentionCounts.ts');
 const languageContext = read('src/lib/LanguageContext.tsx');
@@ -60,6 +62,12 @@ const indexHtml = read('index.html');
 const main = read('src/main.tsx');
 const viteConfig = read('vite.config.ts');
 const performanceIsolation = read('src/components/dev/PerformanceIsolationPanel.tsx');
+const performanceIsolationStyles = read('src/components/dev/performance-isolation.css');
+const guidedChromeBenchmark = read('src/components/dev/GuidedChromeBenchmark.tsx');
+const loginFlickerBenchmark = read('src/components/dev/LoginFlickerBenchmark.tsx');
+const loginFlickerStyles = read('src/components/dev/login-flicker-benchmark.css');
+const login = read('src/pages/Login.tsx');
+const interactionMicrobenchmark = read('src/components/dev/InteractionMicrobenchmark.tsx');
 const performanceIsolationState = read('src/lib/performance-isolation.ts');
 const frontendSourceFiles = sourceFiles('src').filter((path) => /\.(?:css|ts|tsx)$/.test(path));
 const frontendAnimationSources = frontendSourceFiles
@@ -130,7 +138,7 @@ check('locks submitted assignment updates', routes.includes("['submitted','cance
 check('calculates score server-side', routes.includes('calculateScore(client'));
 check('uses atomic recognition delivery claim', delivery.includes('FOR UPDATE OF delivery SKIP LOCKED') && delivery.includes("delivery_status = 'pending'"));
 check('recognition failures do not block login', server.includes('claimRecognitionAfterSuccessfulAuth') && server.includes('Login delivery lookup failed'));
-check('recognition failures do not block clock-in', server.includes('Clock-in delivery lookup failed'));
+check('recognition failures do not block clock-in', attendanceRoutes.includes('Clock-in delivery lookup failed'));
 check('dashboard lazy-loads performance panel', dashboard.includes("const PerformancePanel = lazy"));
 check('dashboard accepts recognition payload', dashboard.includes('initialRecognition'));
 check('tutorial inputs are memoized outside JSX', dashboard.includes('const tutorialContext = useMemo') && dashboard.includes('context={tutorialContext}') && !dashboard.includes('context={{'));
@@ -191,7 +199,7 @@ check('Settings lazy mounting retains a short compositor-safe entry transition',
 check('Dashboard local entry transitions do not eagerly load Motion', !dashboard.includes("from 'motion/react'") && dashboard.includes('stanza-workspace-enter') && dashboard.includes('stanza-state-enter'));
 check('interaction polish respects reduced motion', styles.includes('.stanza-accordion-content { animation: none; }') && styles.includes('.stanza-workspace-enter,') && styles.includes('transition-duration: 1ms'));
 check('MapLibre manual chunk does not capture entry dependencies', viteConfig.includes('onlyExplicitManualChunks: true'));
-check('lanyard uses one demand-driven Canvas', (lanyard.match(/<Canvas/g) || []).length === 1 && lanyard.includes('frameloop="demand"'));
+check('lanyard uses one explicitly advanced Canvas', (lanyard.match(/<Canvas/g) || []).length === 1 && lanyard.includes('frameloop="never"'));
 check('live lanyard imports the promoted production GLB without candidate branching',
   lanyard.includes("import cardGLB from './card.glb'") &&
   !lanyard.includes('card.meshopt-webp') &&
@@ -240,11 +248,11 @@ check('asset experiment avoids graph-destructive and geometry-quantizing transfo
 check('temporary lanyard comparison UI is removed from the application source',
   !existsSync(resolve(root, 'src/components/dev/LanyardAssetComparison.tsx')) &&
   !read('src/App.tsx').includes('LanyardAssetComparison'));
-check('lanyard caps device pixel ratio', lanyard.includes('dpr={1}'));
+check('lanyard caps device pixel ratio', lanyard.includes('dpr={import.meta.env.DEV ? experiment.dpr : 1}'));
 check('lanyard uses a settled-scene scheduler with visibility cleanup',
 lanyard.includes("document.visibilityState !== 'visible'") &&
-lanyard.includes("requestedTier === 'settled'") &&
-lanyard.includes('window.clearTimeout(frameTimer)'));
+read('src/components/lanyard/lanyard-frame-scheduler.ts').includes("tier === 'settled'") &&
+read('src/components/lanyard/lanyard-frame-scheduler.ts').includes('host.clearTimeout(timer)'));
 check('lanyard reserves high-rate frames for interaction and settling',
 lanyard.includes("? 'active'") &&
 lanyard.includes(": 'passive'") &&
@@ -254,7 +262,7 @@ lanyard.includes('SETTLED_STABLE_DURATION_SECONDS') &&
 lanyard.includes('settledElapsed.current'));
 check('lanyard reports readiness before it can enter the settled frame tier',
 lanyard.includes('readyFrames.current >= 2') &&
-lanyard.includes("!readyReported.current\n        ? 'active'") &&
+/!readyReported\.current\s*\? 'active'/.test(lanyard) &&
 lanyard.includes("? 'settled'"));
 check('lanyard visibility does not pause its initial demand frames',
 !dashboardLanyard.includes('hidden: boolean') &&
@@ -266,7 +274,7 @@ lanyardCapabilitySource.includes("window.matchMedia('(min-width: 1024px)')") &&
 lanyardCapabilitySource.includes("canvas.getContext('webgl2') || canvas.getContext('webgl')") &&
 !/(effectiveType|deviceMemory|hardwareConcurrency|pointer: fine|userAgent)/.test(lanyardCapabilitySource));
 check('settled lanyard retains its mounted canvas without visual hiding',
-lanyard.includes('requestedTier === \'settled\'') &&
+read('src/components/lanyard/lanyard-frame-scheduler.ts').includes("tier === 'settled'") &&
 !dashboardLanyard.includes('opacity: 0') &&
 !dashboardLanyard.includes('display: \'none\'') &&
 !dashboardLanyard.includes('visibility: \'hidden\''));
@@ -323,9 +331,9 @@ check('Settings pauses the already-mounted lanyard scheduler without changing re
   dashboard.includes('paused={isLanyardSchedulerPaused}') &&
   dashboard.includes('shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc') &&
   !dashboard.includes('shouldMountLanyard && !showControlCenter'));
-check('Settings lanyard pause keeps the demand-driven canvas mounted without a permanent animation loop',
-  lanyard.includes('frameloop="demand"') &&
-  lanyard.includes("frameRuntime.current.requestFrame(paused ? 'settled' : 'passive')") &&
+check('Settings lanyard pause keeps the explicitly scheduled canvas mounted without a permanent animation loop',
+  lanyard.includes('frameloop="never"') &&
+  lanyard.includes('schedulerRef.current?.setPaused(blocked)') &&
   !lanyard.includes('window.setInterval') &&
   !dashboardLanyard.includes('opacity: 0'));
 check('performance isolation diagnostics are dev-only and lazy', dashboard.includes('import.meta.env.DEV ? lazy(() => import(\'../components/dev/PerformanceIsolationPanel\')) : null'));
@@ -337,6 +345,56 @@ check('development render diagnostics are absent from every production JavaScrip
   !builtJavaScript.includes('__STANZA_RENDER_DIAGNOSTICS__') &&
   !builtJavaScript.includes('__STANZA_PERFORMANCE_DIAGNOSTICS__') &&
   !builtJavaScript.includes('Performance isolation (DEV)'));
+check('visual isolation controls stay development-only and default to normal presentation',
+  ['atmosphericGlows', 'cssFilters', 'backdropFilters', 'largeShadows', 'hoverTransforms', 'pressedTransforms', 'translucentNavigationSurfaces', 'tutorialEffects', 'decorativeGradients'].every((key) => performanceIsolationState.includes(`${key}: true`)) &&
+  performanceIsolation.includes('MINIMAL COMPOSITOR') &&
+  performanceIsolation.includes('NO TRANSFORMS') &&
+  performanceIsolationStyles.includes('data-stanza-perf-no-pressed-transforms') &&
+  performanceIsolationStyles.includes('data-stanza-perf-opaque-navigation') &&
+  !styles.includes('data-stanza-perf-no-pressed-transforms') &&
+  !builtJavaScript.includes('data-stanza-perf-no-pressed-transforms'));
+check('guided Chrome benchmark contains the eight requested transient visual modes',
+  ['NORMAL', 'NO ATMOSPHERE', 'NO TOPOGRAPHY', 'NO BACKDROP FILTERS', 'OPAQUE SHELL', 'NO TRANSFORMS', 'NO LANYARD', 'MINIMAL COMPOSITOR'].every((mode) => guidedChromeBenchmark.includes(`label: '${mode}'`)) &&
+  guidedChromeBenchmark.includes('Run button-only benchmark') &&
+  guidedChromeBenchmark.includes('defaultPerformanceIsolation') &&
+  guidedChromeBenchmark.includes('onApplyIsolation(baselineRef.current)'));
+check('guided benchmark uses bounded capture observers and never persists diagnostic choices',
+  guidedChromeBenchmark.includes('beginDevGuidedBenchmarkCapture') &&
+  guidedChromeBenchmark.includes('finishDevGuidedBenchmarkCapture') &&
+  guidedChromeBenchmark.includes('cancelDevGuidedBenchmarkCapture') &&
+  guidedChromeBenchmark.includes('window.clearTimeout(timer)') &&
+  devPerformance.includes('cancelDevGuidedBenchmarkCapture') &&
+  devPerformance.includes('mutations.disconnect()') &&
+  !guidedChromeBenchmark.includes('localStorage') &&
+  !guidedChromeBenchmark.includes('sessionStorage'));
+check('login flicker benchmark compares the requested transition modes only in development',
+  login.includes('const LoginFlickerBenchmark = import.meta.env.DEV') &&
+  ['CURRENT ANIMATION', 'NO ANIMATION', 'NO GRID TRANSITION', 'NO OPACITY TRANSITION'].every((mode) => loginFlickerBenchmark.includes(`label: '${mode}'`)) &&
+  loginFlickerBenchmark.includes('twoFramePaintMs') &&
+  loginFlickerBenchmark.includes('flicker') &&
+  loginFlickerStyles.includes('data-stanza-login-benchmark'));
+check('benchmark UI and its observers are absent from production bundles',
+  !builtJavaScript.includes('Guided Chrome A/B benchmark') &&
+  !builtJavaScript.includes('Login flicker benchmark') &&
+  !builtJavaScript.includes('lanyardTotals') &&
+  !builtJavaScript.includes('stanza-lanyard-quality') &&
+  !builtJavaScript.includes('Start lanyard capture') &&
+  !builtJavaScript.includes('Copy lanyard comparison') &&
+  !builtJavaScript.includes('manual-lanyard:') &&
+  !builtJavaScript.includes('Opaque WebGL2 diagnostic context unavailable') &&
+  !builtJavaScript.includes('stanza-gpu-experiment') &&
+  !builtJavaScript.includes('Inspect actual context and ancestors') &&
+  !builtJavaScript.includes('VERY LIGHT 30/15') &&
+  !builtJavaScript.includes('Geo surface experiment') &&
+  !builtJavaScript.includes('Capture real Geo control styles') &&
+  !builtJavaScript.includes('guided-benchmark:capture-start'));
+check('interaction microbenchmark is development-only and has no background scheduler',
+  app.includes('const InteractionMicrobenchmark = import.meta.env.DEV') &&
+  performanceIsolation.includes('Open interaction lab') &&
+  interactionMicrobenchmark.includes('Dense opaque baseline') &&
+  interactionMicrobenchmark.includes('recordDevInteraction') &&
+  !/(?:setInterval|setTimeout|requestAnimationFrame)/.test(interactionMicrobenchmark) &&
+  !builtJavaScript.includes('Interaction microbenchmark'));
 check('production bundle ships only the promoted lanyard asset, not the original or lab candidates',
   builtGlbAssets.length === 1 &&
   statSync(resolve(root, 'dist/assets', builtGlbAssets[0]!)).size === promotedLanyardCandidate?.bytes &&
@@ -375,9 +433,14 @@ check('lanyard lifecycle diagnostics report resource, first frame, and settled t
   lanyard.includes('startup:lanyard-glb-parse-decode-complete') &&
   lanyard.includes('startup:lanyard-first-frame') &&
   lanyard.includes('startup:lanyard-settled') &&
-  lanyard.includes('setDevLanyardFrameTier(requestedTier)'));
+  lanyard.includes('setDevLanyardFrameTier(schedulerRef.current?.snapshot().paused'));
 check('performance diagnostics use session-only state', performanceIsolationState.includes('sessionStorage') === false && performanceIsolationState.includes('PERFORMANCE_ISOLATION_STORAGE_KEY') && dashboard.includes('window.sessionStorage.setItem') && !performanceIsolation.includes('localStorage'));
 check('performance diagnostics have no closed-panel background timer', !performanceIsolation.includes('setInterval') && performanceIsolation.includes('if (!open) return') && performanceIsolation.includes('cancelAnimationFrame'));
+check('visual isolation uses root attributes without animation or application-state loops',
+  dashboard.includes("'data-stanza-perf-no-pressed-transforms'") &&
+  dashboard.includes('if (!import.meta.env.DEV) return;') &&
+  !performanceIsolation.includes('setInterval') &&
+  !performanceIsolation.includes('setTimeout'));
 check('performance sampler stops after ten seconds', performanceIsolation.includes('now - start >= 10000') && performanceIsolation.includes('raf.current = undefined'));
 check('development interaction benchmark is explicitly armed and remains development-only',
   devPerformance.includes('export function armDevInteractionBenchmark') &&
@@ -399,7 +462,7 @@ check('interaction diagnostics record browser work categories without a persiste
 check('lanyard isolation removes its mount condition without changing saved preferences', dashboard.includes('lanyardEnabled && performanceIsolation.lanyard') && !dashboard.includes('setLanyardEnabled(false)'));
 check('atmosphere isolation gates only atmosphere and topography layers', dashboard.includes('performanceIsolation.atmosphere') && dashboard.includes('performanceIsolation.topography'));
 check('disabled tutorials unmount their provider instead of retaining idle eligibility work', dashboard.includes('{tutorialsEnabled && performanceIsolation.tutorials && <TutorialProvider'));
-check('tutorial eligibility remains stable across active-item and attention-badge changes', dashboard.includes("const tutorialAvailableModulesKey = navigationItems.map((item) => item.id).join('|');") && dashboard.includes('[isMobileNavigationLayout, tutorialAvailableModulesKey, user.permissions]'));
+check('tutorial eligibility remains stable across active-item and attention-badge changes', dashboard.includes("const tutorialAvailableModulesKey = navigationItems.map((item) => item.id).join('|');") && dashboard.includes('[isLanyardCapable, isMobileNavigationLayout, lanyardEnabled, tutorialAvailableModulesKey, user.permissions]'));
 check('mobile dashboard removes oversized filtered glows while preserving its base atmosphere', styles.includes('.stanza-light-glow-top,') && styles.includes('.stanza-dark-glow-soft') && styles.includes('display: none !important;') && !styles.includes('.stanza-light-atmosphere,\n    .stanza-light-glow-top'));
 check('mobile opaque workspace chrome does not retain backdrop sampling', styles.includes('.stanza-navigation-shell,\n    .dashboard-workspace-content') && styles.includes('-webkit-backdrop-filter: none !important;'));
 check('retired contextual tabs are absent from the live DOM', dashboard.includes('{false && <div className="hidden">'));

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { resolveLoginCanvasPalette } from '../lib/login-canvas-palette';
+import { createLoginCanvasMeasurement } from '../lib/dev-login-canvas';
 import type { AuthVisualState } from '../auth/auth-contract';
 
 interface FingerprintCanvasProps {
@@ -50,20 +52,36 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
+    const measurement = import.meta.env.DEV ? createLoginCanvasMeasurement() : undefined;
+    let palette = resolveLoginCanvasPalette(document.documentElement);
+    measurement?.palette();
+    let disposed = false;
+    let hiddenAt: number | null = document.hidden ? performance.now() : null;
     let animationFrameId: number | undefined;
     let drawFrame: ((time: number) => void) | undefined;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     reducedMotionRef.current = prefersReducedMotion;
 
-    const scheduleStaticRedraw = () => {
-      if (!staticModeRef.current || !drawFrame) return;
-
-      if (animationFrameId !== undefined) {
-        cancelAnimationFrame(animationFrameId);
-      }
+    const scheduleFrame = () => {
+      if (disposed || document.hidden || animationFrameId !== undefined || !drawFrame) return;
       animationFrameId = requestAnimationFrame(drawFrame);
     };
+    const scheduleStaticRedraw = () => scheduleFrame();
     requestStaticRedrawRef.current = scheduleStaticRedraw;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAt = performance.now();
+        if (animationFrameId !== undefined) cancelAnimationFrame(animationFrameId);
+        animationFrameId = undefined;
+      } else {
+        if (hiddenAt !== null && pulseStartTimeRef.current !== null) {
+          pulseStartTimeRef.current += performance.now() - Math.max(hiddenAt, pulseStartTimeRef.current);
+        }
+        hiddenAt = null;
+        scheduleFrame();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // High DPI & dynamic scaling via ResizeObserver safely writing to dimensionsRef
     const resizeObserver = new ResizeObserver((entries) => {
@@ -87,47 +105,40 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
 
     resizeObserver.observe(parent);
 
-    const themeObserver = new MutationObserver(scheduleStaticRedraw);
+    const themeObserver = new MutationObserver(() => {
+      if (disposed) return;
+      // One resolution per delivered mutation batch, including Custom's inline tokens.
+      palette = resolveLoginCanvasPalette(document.documentElement);
+      measurement?.palette();
+      scheduleFrame();
+    });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'data-theme', 'data-background-preset'],
+      attributeFilter: ['class', 'data-theme', 'data-background-preset', 'data-light-intensity', 'style'],
     });
 
-    if (prefersReducedMotion) {
-      const { width, height } = parent.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      dimensionsRef.current = { width, height };
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--stanza-auth-background').trim() || '#020604';
-      ctx.fillRect(0, 0, width, height);
-
-      return () => {
-        resizeObserver.disconnect();
-        themeObserver.disconnect();
-      };
-    }
-
     drawFrame = (time: number) => {
+      animationFrameId = undefined;
+      if (disposed || document.hidden) return;
+      const started = measurement?.active ? performance.now() : undefined;
       const { width, height } = dimensionsRef.current;
       
       // Safety check: skip render cycles if dimensions haven't been captured yet
       if (width === 0 || height === 0) {
-        animationFrameId = requestAnimationFrame(drawFrame!);
+        scheduleFrame();
         return;
       }
 
       // Clear the canvas buffer cleanly
       ctx.clearRect(0, 0, width, height);
 
-      const rootStyles = getComputedStyle(document.documentElement);
-      const isDark = document.documentElement.classList.contains('dark');
-      const authBackground = rootStyles.getPropertyValue('--stanza-auth-background').trim() || (isDark ? '#020604' : '#f7fbf8');
-      const authRingRgb = rootStyles.getPropertyValue('--stanza-auth-ring-rgb').trim() || '16, 185, 129';
-      const authPulseRgb = rootStyles.getPropertyValue('--stanza-auth-pulse-rgb').trim() || '52, 211, 153';
+      const { isDark, authBackground, authRingRgb, baseRed, baseGreen, baseBlue, pulseRed, pulseGreen, pulseBlue } = palette;
+      if (prefersReducedMotion) {
+        ctx.fillStyle = authBackground;
+        ctx.fillRect(0, 0, width, height);
+        if (started !== undefined) measurement?.frame(performance.now() - started, 0);
+        return;
+      }
       const cx = width / 2;
       const cy = height / 2;
 
@@ -196,13 +207,11 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
         }
         ctx.closePath();
 
-        // Theme palette color mappings
-        const [baseRed = 16, baseGreen = 185, baseBlue = 129] = authRingRgb.split(',').map((value) => Number.parseInt(value.trim(), 10));
-        const [pulseRed = 52, pulseGreen = 211, pulseBlue = 153] = authPulseRgb.split(',').map((value) => Number.parseInt(value.trim(), 10));
-let rVal = baseRed;
-let gVal = baseGreen;
-let bVal = baseBlue;
-let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
+        // Numeric palette is prepared only when the theme changes.
+        let rVal = baseRed;
+        let gVal = baseGreen;
+        let bVal = baseBlue;
+        let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
 
         globalAlpha += ambientBreath * 0.012;
 
@@ -230,14 +239,16 @@ let globalAlpha = 0.145 - (rIdx / ringsCount) * 0.085;
         ctx.stroke();
       }
 
-      if (!staticModeRef.current) {
-        animationFrameId = requestAnimationFrame(drawFrame);
-      }
+      if (started !== undefined) measurement?.frame(performance.now() - started, ringsCount);
+      if (!staticModeRef.current) scheduleFrame();
     };
 
-    animationFrameId = requestAnimationFrame(drawFrame);
+    scheduleFrame();
 
     return () => {
+      disposed = true;
+      measurement?.stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (animationFrameId !== undefined) {
         cancelAnimationFrame(animationFrameId);
       }

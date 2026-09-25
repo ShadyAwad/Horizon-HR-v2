@@ -347,11 +347,6 @@
 
 .stanza-dark-atmosphere { background: var(--stanza-dark-atmosphere); }
 
-/* Development performance isolation: scoped to the Dashboard and absent from normal behaviour. */
-.stanza-dashboard[data-perf-no-shadows="true"] :is(.shadow-xl, .shadow-2xl, [class*="shadow-["]) { box-shadow: none !important; }
-.stanza-dashboard[data-perf-flat-surfaces="true"] :is(.stanza-navigation-shell, .stanza-navigation-panel, .stanza-control-center-panel, .stanza-settings-drawer) { backdrop-filter: none !important; background-color: var(--stanza-surface-elevated) !important; }
-.stanza-dashboard[data-perf-hide-badges="true"] .stanza-attention-badge { display: none !important; }
-.stanza-dashboard[data-perf-no-transitions="true"] :is(button, [role="tab"], .stanza-navigation-panel, .stanza-control-center-panel) { transition: none !important; }
   .stanza-dark-topography { background-color: var(--stanza-topography-color); opacity: var(--stanza-topography-alpha); }
   .stanza-dark-glow-strong { background-color: var(--stanza-dark-glow-strong); }
   .stanza-dark-glow-soft { background-color: var(--stanza-dark-glow-soft); }
@@ -807,7 +802,8 @@
   --stanza-nav-active-foreground: color-mix(in srgb, var(--stanza-accent) 40%, var(--stanza-text-primary) 60%);
 }
 
-:root[data-background-preset="emerald"] { --stanza-auth-background: #020604; --stanza-auth-text: #ecfdf5; --stanza-auth-ring-rgb: 16, 185, 129; --stanza-auth-pulse-rgb: 52, 211, 153; }
+:root[data-background-preset="emerald"]:not([data-theme="light"]) { --stanza-auth-background: #020604; --stanza-auth-text: #ecfdf5; }
+:root[data-background-preset="emerald"] { --stanza-auth-ring-rgb: 16, 185, 129; --stanza-auth-pulse-rgb: 52, 211, 153; }
 :root[data-background-preset="slate"] { --stanza-auth-ring-rgb: 79, 134, 168; --stanza-auth-pulse-rgb: 117, 168, 199; }
 :root[data-background-preset="midnight"] { --stanza-auth-ring-rgb: 91, 124, 219; --stanza-auth-pulse-rgb: 141, 165, 255; }
 :root[data-background-preset="graphite"] { --stanza-auth-ring-rgb: 130, 146, 154; --stanza-auth-pulse-rgb: 184, 196, 201; }
@@ -866,7 +862,31 @@
   border-color: var(--stanza-border-accent) !important;
   box-shadow: 0 0 26px color-mix(in srgb, var(--stanza-accent) 34%, transparent);
 }
-.stanza-theme-primary:hover { background: var(--stanza-accent-hover) !important; }
+.stanza-theme-primary:not(:disabled):hover { background: var(--stanza-accent-hover) !important; }
+/* Geo restores its pre-August-8 fill primitives without hard-coded preset colors.
+   Keep an opaque base beneath the Clock gradient, including during hover entry. */
+button.stanza-theme-primary.stanza-geo-clock-primary,
+button.stanza-theme-primary.stanza-geo-clock-primary:not(:disabled):hover {
+  background: linear-gradient(135deg, var(--stanza-accent), var(--stanza-accent-hover)) var(--stanza-accent) !important;
+}
+button.stanza-theme-primary.stanza-geo-break-primary {
+  background: var(--stanza-accent) !important;
+}
+button.stanza-theme-primary.stanza-geo-break-primary:not(:disabled):hover {
+  background: var(--stanza-accent-hover) !important;
+}
+button.stanza-geo-clock,
+button.stanza-geo-break-primary {
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+button.stanza-geo-clock:not(:disabled):is(:hover, :active),
+button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
+  transform: none;
+  scale: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  button.stanza-geo-clock, button.stanza-geo-break-primary { transition: none; }
+}
 .stanza-theme-outline { border-color: var(--stanza-border-accent) !important; color: var(--stanza-accent-hover) !important; }
 .stanza-theme-outline:hover { background-color: var(--stanza-accent-soft) !important; border-color: var(--stanza-focus-ring) !important; }
 
@@ -1005,6 +1025,22 @@
 .stanza-theme-primary:not(:disabled):active,
 .stanza-theme-outline:not(:disabled):active {
   transform: scale(.98);
+}
+
+/* Pressed navigation controls keep explicit ownership of their fill. Without
+   this, transparent utility states can briefly expose the dark shell between
+   hover and active paints in Chromium. */
+:where(.stanza-navigation-panel, .stanza-navigation-shell, .stanza-command-palette) :is(.stanza-interactive-control, .stanza-secondary-action, .stanza-icon-action):not(:disabled):not([aria-disabled="true"]):not([data-selected="true"]):not([aria-current="page"]):not([aria-selected="true"]):active,
+:where(.stanza-dashboard) :is([role="tab"], [role="menuitem"], [role="option"]):not([aria-disabled="true"]):not([aria-selected="true"]):active {
+  background-color: var(--stanza-surface-hover);
+  border-color: var(--stanza-border-accent);
+}
+
+:is(.stanza-navigation-item[data-selected="true"], .stanza-navigation-item[aria-current="page"], .stanza-interactive-control[data-selected="true"]:not(#stanza-control-center-trigger)):active,
+:where(.stanza-dashboard, .stanza-preference-surface, .stanza-control-center-panel, .stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-tutorial-dialog) :is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"], [role="radio"][aria-checked="true"], [role="switch"][aria-checked="true"]):not(.stanza-destructive-action):not(.stanza-toggle-track):active {
+  background-color: color-mix(in srgb, var(--stanza-surface-selected) 82%, var(--stanza-accent) 18%);
+  border-color: var(--stanza-border-strong);
+  color: var(--stanza-nav-active-foreground);
 }
 
 .stanza-interactive-control:disabled,
@@ -1235,4 +1271,145 @@
 
 @media (prefers-reduced-motion: reduce) {
   .performance-confetti { display: none; }
+}
+
+/* Settings status messages opt out of the older shell-wide emerald remapping.
+   Custom identity colors must not turn a successful/online state purple. */
+:root[data-background-preset="custom"] [data-stanza-status="success"] {
+  color: var(--color-emerald-300) !important;
+  background-color: color-mix(in srgb, var(--color-emerald-500) 10%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-emerald-500) 25%, transparent) !important;
+}
+:root[data-background-preset="custom"][data-theme="light"] [data-stanza-status="success"] { color: var(--color-emerald-700) !important; }
+.stanza-custom-editor { display: grid; gap: .75rem; margin-top: 1rem; font-size: .8rem; color: var(--stanza-text-primary); }
+.stanza-custom-editor h3 { font-weight: 700; }
+.stanza-custom-editor p { color: var(--stanza-text-secondary); }
+.stanza-custom-inputs { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; }
+.stanza-custom-inputs label { display: grid; gap: .35rem; }
+.stanza-custom-inputs input[type="color"] { width: 3rem; height: 2.75rem; padding: .2rem; cursor: pointer; }
+.stanza-custom-inputs input[type="text"] { width: 9rem; min-height: 2.75rem; padding: .5rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; font-family: monospace; }
+.stanza-custom-editor > button, .stanza-custom-inputs button { justify-self: start; min-height: 2.75rem; padding: .5rem .75rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; }
+.stanza-custom-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .75rem; border: 1px solid var(--stanza-border-accent); border-radius: .6rem; padding: .75rem; background: var(--stanza-page-bg); color: var(--stanza-text-primary); }
+.stanza-custom-preview-nav { align-self: start; background: var(--stanza-selected-surface); color: var(--stanza-nav-active-foreground); border-inline-start: 3px solid var(--stanza-accent); padding: .5rem; border-radius: .3rem; }
+.stanza-custom-preview-content { background: var(--stanza-surface); padding: .5rem; border-radius: .3rem; }
+.stanza-custom-preview-primary { background: var(--stanza-accent); color: var(--stanza-accent-foreground); border-radius: .3rem; padding: .5rem; margin-top: .5rem; min-height: 2.75rem; }
+.stanza-custom-preview-primary:hover { background: var(--stanza-accent-hover); }
+.stanza-custom-preview-primary:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
+@media (max-width: 420px) { .stanza-custom-preview { grid-template-columns: 1fr; } }
+
+/* Custom is additive: original preset declarations above remain unchanged. */
+:root[data-background-preset="custom"]:not([data-theme="light"]) {
+  --stanza-accent: var(--stanza-custom-dark-accent);
+  --stanza-accent-hover: var(--stanza-custom-dark-accent-hover);
+  --stanza-accent-active: var(--stanza-custom-dark-accent-active);
+  --stanza-accent-soft: var(--stanza-custom-dark-accent-soft);
+  --stanza-accent-muted: var(--stanza-custom-dark-accent-muted);
+  --stanza-accent-border: var(--stanza-custom-dark-accent-border);
+  --stanza-accent-foreground: var(--stanza-custom-dark-accent-foreground);
+  --stanza-accent-contrast: var(--stanza-custom-dark-accent-contrast);
+  --stanza-focus-ring: var(--stanza-custom-dark-focus-ring);
+  --stanza-focus-ring-soft: var(--stanza-custom-dark-focus-ring-soft);
+  --stanza-page-bg: var(--stanza-custom-dark-page-bg);
+  --stanza-surface: var(--stanza-custom-dark-surface);
+  --stanza-surface-elevated: var(--stanza-custom-dark-surface-elevated);
+  --stanza-surface-muted: var(--stanza-custom-dark-surface-muted);
+  --stanza-navigation-surface: var(--stanza-custom-dark-navigation-surface);
+  --stanza-sidebar-surface: var(--stanza-custom-dark-sidebar-surface);
+  --stanza-hover-surface: var(--stanza-custom-dark-hover-surface);
+  --stanza-selected-surface: var(--stanza-custom-dark-selected-surface);
+  --stanza-subtle-accent-surface: var(--stanza-custom-dark-subtle-accent-surface);
+  --stanza-border-subtle: var(--stanza-custom-dark-border-subtle);
+  --stanza-border-default: var(--stanza-custom-dark-border-default);
+  --stanza-border-strong: var(--stanza-custom-dark-border-strong);
+  --stanza-border-accent: var(--stanza-custom-dark-border-accent);
+  --stanza-text-primary: var(--stanza-custom-dark-text-primary);
+  --stanza-text-secondary: var(--stanza-custom-dark-text-secondary);
+  --stanza-text-muted: var(--stanza-custom-dark-text-muted);
+  --stanza-icon-muted: var(--stanza-custom-dark-icon-muted);
+  --stanza-nav-active-foreground: var(--stanza-custom-dark-nav-active-foreground);
+  --stanza-control-selected-foreground: var(--stanza-custom-dark-control-selected-foreground);
+  --stanza-input-bg: var(--stanza-custom-dark-input-bg);
+  --stanza-dropdown-bg: var(--stanza-custom-dark-dropdown-bg);
+  --stanza-editor-toolbar-bg: var(--stanza-custom-dark-editor-toolbar-bg);
+  --stanza-auth-background: var(--stanza-custom-dark-auth-background);
+  --stanza-auth-text: var(--stanza-custom-dark-auth-text);
+  --stanza-auth-ring-rgb: var(--stanza-custom-dark-auth-ring-rgb);
+  --stanza-auth-pulse-rgb: var(--stanza-custom-dark-auth-pulse-rgb);
+  --stanza-dark-atmosphere: var(--stanza-custom-dark-dark-atmosphere);
+  --stanza-topography-color: var(--stanza-custom-dark-topography-color);
+  --stanza-dark-glow-strong: var(--stanza-custom-dark-dark-glow-strong);
+  --stanza-dark-glow-soft: var(--stanza-custom-dark-dark-glow-soft);
+  --stanza-light-atmosphere: var(--stanza-custom-dark-light-atmosphere);
+  --stanza-light-topography: var(--stanza-custom-dark-light-topography);
+  --stanza-light-glow-top: var(--stanza-custom-dark-light-glow-top);
+  --stanza-light-glow-bottom: var(--stanza-custom-dark-light-glow-bottom);
+}
+:root[data-background-preset="custom"][data-theme="light"] {
+  --stanza-accent: var(--stanza-custom-light-accent);
+  --stanza-accent-hover: var(--stanza-custom-light-accent-hover);
+  --stanza-accent-active: var(--stanza-custom-light-accent-active);
+  --stanza-accent-soft: var(--stanza-custom-light-accent-soft);
+  --stanza-accent-muted: var(--stanza-custom-light-accent-muted);
+  --stanza-accent-border: var(--stanza-custom-light-accent-border);
+  --stanza-accent-foreground: var(--stanza-custom-light-accent-foreground);
+  --stanza-accent-contrast: var(--stanza-custom-light-accent-contrast);
+  --stanza-focus-ring: var(--stanza-custom-light-focus-ring);
+  --stanza-focus-ring-soft: var(--stanza-custom-light-focus-ring-soft);
+  --stanza-page-bg: var(--stanza-custom-light-page-bg);
+  --stanza-surface: var(--stanza-custom-light-surface);
+  --stanza-surface-elevated: var(--stanza-custom-light-surface-elevated);
+  --stanza-surface-muted: var(--stanza-custom-light-surface-muted);
+  --stanza-navigation-surface: var(--stanza-custom-light-navigation-surface);
+  --stanza-sidebar-surface: var(--stanza-custom-light-sidebar-surface);
+  --stanza-hover-surface: var(--stanza-custom-light-hover-surface);
+  --stanza-selected-surface: var(--stanza-custom-light-selected-surface);
+  --stanza-subtle-accent-surface: var(--stanza-custom-light-subtle-accent-surface);
+  --stanza-border-subtle: var(--stanza-custom-light-border-subtle);
+  --stanza-border-default: var(--stanza-custom-light-border-default);
+  --stanza-border-strong: var(--stanza-custom-light-border-strong);
+  --stanza-border-accent: var(--stanza-custom-light-border-accent);
+  --stanza-text-primary: var(--stanza-custom-light-text-primary);
+  --stanza-text-secondary: var(--stanza-custom-light-text-secondary);
+  --stanza-text-muted: var(--stanza-custom-light-text-muted);
+  --stanza-icon-muted: var(--stanza-custom-light-icon-muted);
+  --stanza-nav-active-foreground: var(--stanza-custom-light-nav-active-foreground);
+  --stanza-control-selected-foreground: var(--stanza-custom-light-control-selected-foreground);
+  --stanza-input-bg: var(--stanza-custom-light-input-bg);
+  --stanza-dropdown-bg: var(--stanza-custom-light-dropdown-bg);
+  --stanza-editor-toolbar-bg: var(--stanza-custom-light-editor-toolbar-bg);
+  --stanza-auth-background: var(--stanza-custom-light-auth-background);
+  --stanza-auth-text: var(--stanza-custom-light-auth-text);
+  --stanza-auth-ring-rgb: var(--stanza-custom-light-auth-ring-rgb);
+  --stanza-auth-pulse-rgb: var(--stanza-custom-light-auth-pulse-rgb);
+  --stanza-dark-atmosphere: var(--stanza-custom-light-dark-atmosphere);
+  --stanza-topography-color: var(--stanza-custom-light-topography-color);
+  --stanza-dark-glow-strong: var(--stanza-custom-light-dark-glow-strong);
+  --stanza-dark-glow-soft: var(--stanza-custom-light-dark-glow-soft);
+  --stanza-light-atmosphere: var(--stanza-custom-light-light-atmosphere);
+  --stanza-light-topography: var(--stanza-custom-light-light-topography);
+  --stanza-light-glow-top: var(--stanza-custom-light-light-glow-top);
+  --stanza-light-glow-bottom: var(--stanza-custom-light-light-glow-bottom);
+}
+/* Close controls keep their hit target still; only the glyph animates. */
+button.stanza-close-action,
+button.stanza-close-action:is(:hover, :active, :focus-visible) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  color: var(--stanza-text-muted);
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+button.stanza-close-action > svg { transition: transform 140ms ease, color 140ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  button.stanza-close-action:not(:disabled):hover { color: var(--stanza-accent) !important; }
+  button.stanza-close-action:not(:disabled):hover > svg { transform: scale(1.08); }
+}
+button.stanza-close-action:not(:disabled):active > svg { transform: scale(.97); }
+button.stanza-close-action:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 2px; }
+button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  button.stanza-close-action, button.stanza-close-action > svg { transition: none; }
+  button.stanza-close-action:is(:hover, :active) > svg { transform: none; }
 }

@@ -1,4 +1,4 @@
-import type { TutorialProgress } from './tutorial-types';
+import type { TutorialContext, TutorialDefinition, TutorialProgress } from './tutorial-types';
 
 const MAX_TUTORIAL_HISTORY = 20;
 
@@ -23,4 +23,32 @@ export function readTutorialProgress(value: unknown): TutorialProgress {
 
 export function isTutorialCurrent(history: Record<string, number>, id: string, version: number) {
   return history[id] === version;
+}
+
+export function getAutomaticTutorialCandidate(
+  tutorials: readonly TutorialDefinition[],
+  activeModule: string,
+  progress: TutorialProgress,
+  context: TutorialContext,
+) {
+  const isUnseen = (tutorial: TutorialDefinition) => (
+    !isTutorialCurrent(progress.completedTutorials, tutorial.id, tutorial.version)
+    && !isTutorialCurrent(progress.dismissedTutorials, tutorial.id, tutorial.version)
+  );
+  const welcome = tutorials.find((tutorial) => tutorial.id === 'welcome');
+  if (welcome && isUnseen(welcome)) return welcome;
+
+  const lanyardTip = tutorials.find((tutorial) => (
+    tutorial.id === 'interactive-lanyard'
+    && isUnseen(tutorial)
+    && tutorial.automaticEligible?.(context)
+  ));
+  if (lanyardTip) return lanyardTip;
+
+  return tutorials.find((tutorial) => (
+    tutorial.automatic
+    && tutorial.id !== 'interactive-lanyard'
+    && tutorial.module === activeModule
+    && isUnseen(tutorial)
+  ));
 }

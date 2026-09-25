@@ -4,12 +4,15 @@ export type TutorialAdvanceAction = 'click' | 'module-change' | 'tab-change' | '
 export type HelpAction =
   | { type: 'open-article'; articleId: string }
   | { type: 'start-tutorial'; tutorialId: string }
-  | { type: 'open-module'; moduleId: string };
+  | { type: 'open-module'; moduleId: string }
+  | { type: 'open-settings'; section: 'personalization'; target: 'lanyard' };
 
 export type TutorialContext = {
   permissions: readonly string[];
   availableModules: readonly string[];
   isMobile: boolean;
+  lanyardAvailable?: boolean;
+  lanyardEnabled?: boolean;
 };
 
 export type TutorialStep = {
@@ -18,6 +21,8 @@ export type TutorialStep = {
   placement: TutorialPlacement;
   titleKey: string;
   bodyKey: string;
+  primaryLabelKey?: string;
+  compactTip?: boolean;
   when?: (context: TutorialContext) => boolean;
   advanceOn?: {
     type: TutorialAdvanceAction;
@@ -36,6 +41,7 @@ export type TutorialDefinition = {
   automatic: boolean;
   replayable: boolean;
   eligible: (context: TutorialContext) => boolean;
+  automaticEligible?: (context: TutorialContext) => boolean;
   steps: readonly TutorialStep[];
 };
 

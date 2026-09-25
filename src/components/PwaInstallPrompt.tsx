@@ -2,50 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useLanguage } from '../lib/LanguageContext';
 import { detectPwaInstallPlatform, getPwaInstallMode } from '../lib/pwa-install';
+import { useDeferredPwaInstallPrompt } from '../lib/pwa-install-prompt';
 import { StanzaFingerprintMark } from './StanzaFingerprintMark';
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
-
-type NavigatorWithStandalone = Navigator & { standalone?: boolean };
-const isStandaloneMode = () => (
-  window.matchMedia('(display-mode: standalone)').matches ||
-  Boolean((navigator as NavigatorWithStandalone).standalone)
-);
 
 export function PwaInstallPrompt() {
   const { t, isRtl } = useLanguage();
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isStandalone, setIsStandalone] = useState(isStandaloneMode);
+  const { installPrompt, isStandalone, requestDeferredInstall } = useDeferredPwaInstallPrompt();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage] = useState('');
   const platform = useMemo(() => detectPwaInstallPlatform(navigator), []);
 
   useEffect(() => {
-    const displayMode = window.matchMedia('(display-mode: standalone)');
-    const updateStandalone = () => setIsStandalone(isStandaloneMode());
-    const handleInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-    const handleInstalled = () => {
-      setInstallPrompt(null);
-      setIsStandalone(true);
-      setIsOpen(false);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
-    window.addEventListener('appinstalled', handleInstalled);
-    displayMode.addEventListener('change', updateStandalone);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
-      window.removeEventListener('appinstalled', handleInstalled);
-      displayMode.removeEventListener('change', updateStandalone);
-    };
-  }, []);
+    if (isStandalone) setIsOpen(false);
+  }, [isStandalone]);
 
   const installMode = getPwaInstallMode({
     platform,
@@ -94,12 +64,10 @@ export function PwaInstallPrompt() {
             : [t('login.installRemoveDesktop')];
 
   const requestInstall = async () => {
-    if (!installPrompt) return;
     setMessage('');
     try {
-      await installPrompt.prompt();
-      const choice = await installPrompt.userChoice;
-      setInstallPrompt(null);
+      const choice = await requestDeferredInstall();
+      if (!choice) return;
       if (choice.outcome === 'accepted') {
         setMessage(t('login.installAccepted'));
       } else {

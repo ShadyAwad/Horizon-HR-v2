@@ -10,13 +10,18 @@ import {
   RigidBody,
   useRopeJoint,
   useSphericalJoint,
+  useBeforePhysicsStep,
+  useAfterPhysicsStep,
   type RapierRigidBody,
   type RigidBodyProps
 } from '@react-three/rapier';
 import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import * as THREE from 'three';
-import { markDevPerformance, recordDevResource, setDevLanyardFrameTier } from '../../lib/dev-performance';
+import { getDevLanyardQuality, markDevPerformance, recordDevLanyardWork, recordDevResource, setDevLanyardFrameTier, setDevLanyardPending } from '../../lib/dev-performance';
 
+import { createLanyardFrameScheduler, FULL_LANYARD_RATES, LIGHT_LANYARD_RATES, VERY_LIGHT_LANYARD_RATES, MAX_LANYARD_DELTA_SECONDS, type LanyardFrameTier } from './lanyard-frame-scheduler';
+import { getDevGpuExperiment, registerDevCanvasAudit, type GpuExperiment } from '../../lib/dev-gpu-experiments';
+import { readLanyardIsolation, disconnectedLanyardEvents, registerLanyardIsolationAudit } from '../../lib/dev-lanyard-isolation';
 import cardGLB from './card.glb';
 import { STANZA_LANYARD_TEXTURE } from './stanzaLanyardArtwork';
 
@@ -61,8 +66,6 @@ const CLICK_MOVE_THRESHOLD = 6;
 const CLICK_TIME_THRESHOLD_MS = 350;
 const FLIP_SMOOTHING_RATE = 10;
 const FLIP_SETTLED_EPSILON = 0.01;
-const ACTIVE_FRAME_RATE = 60;
-const PASSIVE_FRAME_RATE = 24;
 const BADGE_GROUP_Y = -1.2;
 const BADGE_MIN_Y = 0.02290511131286621;
 const BADGE_MAX_Y = 1.2293701171875;
@@ -96,7 +99,7 @@ const waitForImageDecode = (image: HTMLImageElement) => {
 function useRasterizedBadgeArtwork(
   svgMarkup: string | null,
   gl: THREE.WebGLRenderer,
-  invalidate: () => void,
+  requestRender: () => void,
 ) {
   const textureRef = useRef<THREE.CanvasTexture | null>(null);
   const artworkGenerationRef = useRef(0);
@@ -143,7 +146,7 @@ function useRasterizedBadgeArtwork(
         const previousTexture = textureRef.current;
         textureRef.current = pendingTexture;
         setTexture(pendingTexture);
-        invalidate();
+        requestRender();
         previousTexture?.dispose();
         pendingTexture = null;
       } catch (error) {
@@ -160,7 +163,7 @@ function useRasterizedBadgeArtwork(
       if (artworkGenerationRef.current === generation) artworkGenerationRef.current += 1;
       pendingTexture?.dispose();
     };
-  }, [gl, invalidate, svgMarkup]);
+  }, [gl, requestRender, svgMarkup]);
 
   useEffect(() => () => textureRef.current?.dispose(), []);
   return texture;
@@ -184,8 +187,6 @@ interface LanyardProps {
   onReady?: () => void;
 }
 
-type LanyardFrameTier = 'active' | 'passive' | 'settled';
-
 type LanyardFrameRuntime = {
   tier: LanyardFrameTier;
   requestFrame: (tier?: LanyardFrameTier) => void;
@@ -196,7 +197,20 @@ const createFrameRuntime = (): LanyardFrameRuntime => ({
   requestFrame: () => undefined,
 });
 
-export default function Lanyard({
+export default function Lanyard(props: LanyardProps) {
+  const [experiment, setExperiment] = useState(getDevGpuExperiment);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const update = () => setExperiment(getDevGpuExperiment());
+    window.addEventListener('stanza-gpu-experiment', update);
+    return () => window.removeEventListener('stanza-gpu-experiment', update);
+  }, []);
+  // Context attributes are immutable: start a fresh scene/world for this A/B.
+  const key = import.meta.env.DEV ? `${experiment.surface === 'alpha-opaque'}:${experiment.antialias}:${experiment.dpr}` : 'production';
+  return <LanyardScene key={key} {...props} experiment={experiment} />;
+}
+
+function LanyardScene({
   position = [0, 0, 30],
   gravity = [0, -40, 0],
   fov = 20,
@@ -211,35 +225,51 @@ export default function Lanyard({
   paused = false,
   interactionEnabled = true,
   artworkLanguage,
-  onReady
-}: LanyardProps) {
+  onReady,
+  experiment,
+}: LanyardProps & { experiment: GpuExperiment }) {
   const frameRuntime = useRef<LanyardFrameRuntime>(createFrameRuntime());
   const cameraConfig = useMemo(
     () => ({ position, fov }),
     [fov, position[0], position[1], position[2]],
   );
-  const glOptions = useMemo(() => ({
-    alpha: true,
-    antialias: true,
-    powerPreference: 'high-performance' as const,
-  }), []);
+  const glOptions = useMemo(() => {
+    const options = { alpha: true, antialias: import.meta.env.DEV ? experiment.antialias : true, powerPreference: 'high-performance' as const };
+    if (import.meta.env.DEV && experiment.surface === 'alpha-opaque') {
+      // Three r185 requests alpha:true internally even when its constructor
+      // alpha option is false. Supply an actual opaque context for this test.
+      return (parameters: THREE.WebGLRendererParameters) => {
+        const canvas = parameters.canvas as HTMLCanvasElement;
+        const context = canvas.getContext('webgl2', { ...options, alpha: false, preserveDrawingBuffer: false });
+        if (!context) throw new Error('Opaque WebGL2 diagnostic context unavailable');
+        return new THREE.WebGLRenderer({ ...parameters, ...options, alpha: false, context });
+      };
+    }
+    return options;
+  }, [experiment.antialias, experiment.surface === 'alpha-opaque']);
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" data-lanyard-canvas-surface>
       <Canvas
         aria-label="Interactive employee identification badge"
         camera={cameraConfig}
-        dpr={1}
-        frameloop="demand"
+        dpr={import.meta.env.DEV ? experiment.dpr : 1}
+        frameloop="never"
+        events={import.meta.env.DEV && readLanyardIsolation(window.location.search) === 'no-events' ? disconnectedLanyardEvents : undefined}
         eventSource={eventSource ?? undefined}
         eventPrefix="client"
         gl={glOptions}
-        onCreated={({ gl }) => gl.setClearColor(CANVAS_CLEAR_COLOR, transparent ? 0 : 1)}
+        onCreated={({ gl }) => {
+          const opaque = import.meta.env.DEV && experiment.surface === 'alpha-opaque';
+          const surface = opaque ? getComputedStyle(document.documentElement).getPropertyValue('--stanza-page-bg').trim() : '';
+          gl.setClearColor(surface || CANVAS_CLEAR_COLOR, opaque ? 1 : transparent ? 0 : 1);
+        }}
       >
         <LanyardCanvasLifecycle frameRuntime={frameRuntime} paused={paused} />
         <ambientLight intensity={2.2} />
         <directionalLight intensity={2.4} position={[-3, 4, 8]} />
         <Physics gravity={gravity} timeStep={1 / 60} interpolate paused={paused}>
+          {import.meta.env.DEV && <LanyardPhysicsProbe />}
           <Band
             frontImage={frontImage}
             backImage={backImage}
@@ -266,12 +296,41 @@ function LanyardCanvasLifecycle({
   frameRuntime: MutableRefObject<LanyardFrameRuntime>;
   paused: boolean;
 }) {
-  const { gl, invalidate } = useThree();
+  const { gl, advance, clock, get } = useThree();
+  useEffect(() => import.meta.env.DEV ? registerLanyardIsolationAudit(get) : undefined, [get]);
+  useEffect(() => import.meta.env.DEV ? registerDevCanvasAudit(gl) : undefined, [gl]);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const update = () => frameRuntime.current.requestFrame('passive');
+    window.addEventListener('stanza-gpu-experiment', update);
+    return () => window.removeEventListener('stanza-gpu-experiment', update);
+  }, [frameRuntime]);
   const pausedRef = useRef(paused);
+  const schedulerRef = useRef<ReturnType<typeof createLanyardFrameScheduler> | null>(null);
+  const qualityRef = useRef(getDevLanyardQuality());
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const updateQuality = () => { qualityRef.current = getDevLanyardQuality(); };
+    window.addEventListener('stanza-lanyard-quality', updateQuality);
+    const render = gl.render;
+    gl.render = function (...args) {
+      const start = performance.now();
+      try { return render.apply(this, args); }
+      finally { recordDevLanyardWork('render', performance.now() - start); }
+    };
+    return () => { gl.render = render; window.removeEventListener('stanza-lanyard-quality', updateQuality); };
+  }, [gl]);
+
+  useFrame((_state, delta) => {
+    if (import.meta.env.DEV) recordDevLanyardWork('frame', delta * 1000);
+  }, -100);
 
   useEffect(() => {
     pausedRef.current = paused;
-    frameRuntime.current.requestFrame(paused ? 'settled' : 'passive');
+    const blocked = paused || document.visibilityState !== 'visible';
+    schedulerRef.current?.setPaused(blocked);
+    setDevLanyardFrameTier(blocked ? 'paused' : frameRuntime.current.tier);
   }, [frameRuntime, paused]);
 
   useEffect(() => {
@@ -291,7 +350,9 @@ function LanyardCanvasLifecycle({
     };
     const handleVisibilityChange = () => {
       if (import.meta.env.DEV) console.debug('[lanyard] visibility', document.visibilityState);
-      if (document.visibilityState === 'visible') frameRuntime.current.requestFrame('passive');
+      const blocked = pausedRef.current || document.visibilityState !== 'visible';
+      schedulerRef.current?.setPaused(blocked);
+      setDevLanyardFrameTier(blocked ? 'paused' : frameRuntime.current.tier);
     };
 
     canvas.addEventListener('webglcontextlost', handleContextLost);
@@ -310,40 +371,50 @@ function LanyardCanvasLifecycle({
   }, [frameRuntime, gl]);
 
   useEffect(() => {
-    let frameTimer: number | undefined;
-    let disposed = false;
-
-    const clearFrameTimer = () => {
-      if (frameTimer !== undefined) window.clearTimeout(frameTimer);
-      frameTimer = undefined;
-    };
-
-    const requestFrame = (requestedTier = frameRuntime.current.tier) => {
-      frameRuntime.current.tier = requestedTier;
-      setDevLanyardFrameTier(requestedTier);
-      clearFrameTimer();
-      if (disposed || pausedRef.current || requestedTier === 'settled' || document.visibilityState !== 'visible') return;
-
-      const frameRate = requestedTier === 'active'
-        ? ACTIVE_FRAME_RATE
-        : PASSIVE_FRAME_RATE;
-      frameTimer = window.setTimeout(() => {
-        frameTimer = undefined;
-        if (disposed || pausedRef.current || document.visibilityState !== 'visible') return;
-        invalidate();
-      }, 1000 / frameRate);
-    };
-
-    frameRuntime.current.requestFrame = requestFrame;
-    if (!paused) requestFrame('passive');
-
+    const scheduler = createLanyardFrameScheduler({
+      host: {
+        now: () => performance.now(),
+        timeout: (callback, delay) => window.setTimeout(callback, delay),
+        clearTimeout: (handle) => window.clearTimeout(handle),
+        raf: (callback) => requestAnimationFrame(callback),
+        cancelRaf: (handle) => cancelAnimationFrame(handle),
+      },
+      initialTime: clock.elapsedTime,
+      initialTier: frameRuntime.current.tier,
+      rates: () => import.meta.env.DEV && qualityRef.current === 'chromium-lightweight' ? LIGHT_LANYARD_RATES : import.meta.env.DEV && qualityRef.current === 'very-light' ? VERY_LIGHT_LANYARD_RATES : FULL_LANYARD_RATES,
+      advance: (simulationTime) => {
+        const advanceStarted = import.meta.env.DEV ? performance.now() : 0;
+        // R3F 9.6.1's never-loop subtracts clock.elapsedTime from this value,
+        // then assigns it back. Supply cumulative simulation SECONDS, not RAF
+        // milliseconds. false confines effects to this canvas.
+        advance(simulationTime, false);
+        if (import.meta.env.DEV) recordDevLanyardWork('advance', performance.now() - advanceStarted);
+      },
+      onTier: (tier, previous) => {
+        frameRuntime.current.tier = tier;
+        setDevLanyardFrameTier(schedulerRef.current?.snapshot().paused ? 'paused' : tier);
+        if (previous === 'settled') recordDevLanyardWork('wake');
+      },
+      onPending: import.meta.env.DEV ? setDevLanyardPending : undefined,
+    });
+    schedulerRef.current = scheduler;
+    frameRuntime.current.requestFrame = (tier) => scheduler.request(import.meta.env.DEV && getDevGpuExperiment().forceActive ? 'active' : tier);
+    scheduler.setPaused(pausedRef.current || document.visibilityState !== 'visible');
+    scheduler.request();
     return () => {
-      disposed = true;
-      clearFrameTimer();
+      scheduler.dispose();
+      schedulerRef.current = null;
       frameRuntime.current.requestFrame = () => undefined;
     };
-  }, [frameRuntime, invalidate, paused]);
+  }, [frameRuntime, advance, clock]);
 
+  return null;
+}
+
+function LanyardPhysicsProbe() {
+  const started = useRef(0);
+  useBeforePhysicsStep(() => { started.current = performance.now(); });
+  useAfterPhysicsStep(() => recordDevLanyardWork('physics', performance.now() - started.current));
   return null;
 }
 
@@ -446,7 +517,8 @@ function Band({
   const lastAppliedAnchor = useRef<THREE.Vector3 | null>(null);
   const lastValidAnchorWorld = useRef(new THREE.Vector3(0, 4, 0));
   const onReadyRef = useRef(onReady);
-  const { camera, gl, invalidate, size } = useThree();
+  const { camera, gl, size } = useThree();
+  const requestArtworkFrame = useCallback(() => frameRuntime.current.requestFrame('passive'), [frameRuntime]);
 
   const anchorWorld = useMemo(() => {
     if (!anchorNdc || !Number.isFinite(anchorNdc.x) || !Number.isFinite(anchorNdc.y)) {
@@ -497,8 +569,8 @@ function Band({
   }, []);
   // Rasterize self-contained SVG artwork before it reaches WebGL. This avoids
   // browser-specific SVG texture decoding differences, notably in Firefox.
-  const frontTex = useRasterizedBadgeArtwork(frontImage, gl, invalidate);
-  const backTex = useRasterizedBadgeArtwork(backImage, gl, invalidate);
+  const frontTex = useRasterizedBadgeArtwork(frontImage, gl, requestArtworkFrame);
+  const backTex = useRasterizedBadgeArtwork(backImage, gl, requestArtworkFrame);
   const { faceGeometry, edgeGeometry } = useMemo(
     () => splitCardGeometry(nodes.card.geometry as THREE.BufferGeometry),
     [nodes.card.geometry]
@@ -588,7 +660,6 @@ function Band({
     visibleMaterial.needsUpdate = true;
     activeCardMap.current = cardMap;
     frameRuntime.current.requestFrame('passive');
-    invalidate();
 
     if (import.meta.env.DEV) {
       console.debug('[lanyard] texture apply', artworkLanguage, {
@@ -597,7 +668,7 @@ function Band({
     }
 
     if (previousMap !== cardMap && previousMap !== materials.base.map) previousMap.dispose();
-  }, [artworkLanguage, cardMap, faceMaterial, frameRuntime, invalidate, materials.base.map]);
+  }, [artworkLanguage, cardMap, faceMaterial, frameRuntime, materials.base.map]);
 
   useEffect(() => () => {
     const currentMap = activeCardMap.current;
@@ -626,8 +697,7 @@ function Band({
       .forEach((map) => configureTexture(map, true));
     configureTexture(texture, false);
     frameRuntime.current.requestFrame('passive');
-    invalidate();
-  }, [backTex, cardMap, frameRuntime, frontTex, gl, invalidate, texture]);
+  }, [backTex, cardMap, frameRuntime, frontTex, gl, texture]);
   const [curve] = useState(
     () =>
       new THREE.CatmullRomCurve3([
@@ -649,12 +719,16 @@ function Band({
 
   const endDrag = useCallback(() => {
     const gesture = pointerGestureRef.current;
+    // Window blur and effect cleanup also call this. They must not wake an
+    // already settled badge when the user was interacting with ordinary DOM.
+    if (!gesture && !isDraggingRef.current) return;
+    if (import.meta.env.DEV && isDraggingRef.current) recordDevLanyardWork('drag-end');
     const pointerTarget = pointerTargetRef.current;
+    pointerGestureRef.current = null;
+    isDraggingRef.current = false;
     if (gesture && pointerTarget?.hasPointerCapture(gesture.pointerId)) {
       pointerTarget.releasePointerCapture(gesture.pointerId);
     }
-    isDraggingRef.current = false;
-    pointerGestureRef.current = null;
     pointerTargetRef.current = null;
     document.documentElement.classList.remove('stanza-lanyard-dragging');
     interactionElement?.classList.remove('stanza-lanyard-interacting');
@@ -771,6 +845,7 @@ function Band({
       markDevPerformance('startup:lanyard-first-frame', undefined, true);
     }
     if (isDraggingRef.current && dragged && typeof dragged !== 'boolean') {
+      const pointerStarted = import.meta.env.DEV ? performance.now() : 0;
       vec.set(state.pointer.x, state.pointer.y, 0.5).unproject(state.camera);
       dir.copy(vec).sub(state.camera.position).normalize();
       vec.add(dir.multiplyScalar(state.camera.position.length()));
@@ -778,6 +853,7 @@ function Band({
       nextCardTranslation.y = vec.y - dragged.y;
       nextCardTranslation.z = vec.z - dragged.z;
       card.current?.setNextKinematicTranslation(nextCardTranslation);
+      if (import.meta.env.DEV) recordDevLanyardWork('pointer-target', performance.now() - pointerStarted);
     }
     if (
       !fixed.current ||
@@ -792,7 +868,7 @@ function Band({
       return;
     }
 
-    const safeDelta = Math.min(delta, 1 / 30);
+    const safeDelta = Math.min(delta, MAX_LANYARD_DELTA_SECONDS);
     const smoothing = 1 - Math.exp(-ROPE_SMOOTHING_RATE * safeDelta);
     const bodiesSleeping = card.current.isSleeping() && j1.current.isSleeping() && j2.current.isSleeping() && j3.current.isSleeping() && j4.current.isSleeping();
     const shouldUpdateRope = !ropeInitialized.current || isDraggingRef.current || !bodiesSleeping;
@@ -908,7 +984,7 @@ function Band({
       settledElapsed.current >= SETTLED_STABLE_DURATION_SECONDS &&
       idleVisualSettled;
     const nextFrameTier: LanyardFrameTier =
-      isDraggingRef.current || isFlipActive || !readyReported.current
+      Boolean(pointerGestureRef.current) || isDraggingRef.current || isFlipActive || !readyReported.current
         ? 'active'
         : sceneSettled
           ? 'settled'
@@ -957,6 +1033,8 @@ function Band({
             onPointerOver={() => hover(true)}
             onPointerOut={() => hover(false)}
             onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+              const pointerStarted = import.meta.env.DEV ? performance.now() : 0;
+              try {
               if (!interactionEnabledRef.current) return;
               const gesture = pointerGestureRef.current;
               if (!gesture || gesture.pointerId !== e.pointerId || gesture.moved) return;
@@ -966,11 +1044,13 @@ function Band({
 
               gesture.moved = true;
               isDraggingRef.current = true;
+              if (import.meta.env.DEV) recordDevLanyardWork('drag-start');
               document.documentElement.classList.add('stanza-lanyard-dragging');
               interactionElement?.classList.add('stanza-lanyard-interacting');
               [card, j1, j2, j3, j4].forEach(ref => ref.current?.wakeUp());
               drag(gesture.dragOffset);
               frameRuntime.current.requestFrame('active');
+              } finally { if (import.meta.env.DEV) recordDevLanyardWork('pointer', performance.now() - pointerStarted); }
             }}
             onPointerUp={(e: ThreeEvent<PointerEvent>) => {
               if (!interactionEnabledRef.current) {

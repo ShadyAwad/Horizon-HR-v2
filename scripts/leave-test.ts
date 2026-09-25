@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [migration, approvalMigration, conflictMigration, routes, resolver, scopedPermissions, registry, audit, server, leaveWorkspace, dashboard, packageJson] = await Promise.all([
+const [migration, approvalMigration, conflictMigration, routes, resolver, scopedPermissions, registry, audit, server, rosterRoutes, leaveWorkspace, dashboard, packageJson] = await Promise.all([
   readFile('src/db/migrations/20260729_add_leave_self_service.sql', 'utf8'),
   readFile('src/db/migrations/20260729_add_leave_approval_context.sql', 'utf8'),
   readFile('src/db/migrations/20260729_add_leave_roster_conflicts.sql', 'utf8'),
@@ -11,6 +11,7 @@ const [migration, approvalMigration, conflictMigration, routes, resolver, scoped
   readFile('src/server/organisation/permission-registry.ts', 'utf8'),
   readFile('src/server/audit/audit-events.ts', 'utf8'),
   readFile('server.ts', 'utf8'),
+  readFile('src/server/roster/roster-shift-routes.ts', 'utf8'),
   readFile('src/components/roster/LeaveWorkspace.tsx', 'utf8'),
   readFile('src/pages/Dashboard.tsx', 'utf8'),
   readFile('package.json', 'utf8'),
@@ -150,21 +151,21 @@ assert.match(routes, /schedulerAttentionRequired/);
 assert.match(routes, /conflictingShifts/);
 assert.match(routes, /shift\.start_time,shift\.end_time,shift\.status AS shift_status/);
 assert.doesNotMatch(routes.match(/function conflictSummary[\s\S]*?\n\}/)?.[0] || '', /reason|approval_note|salary|email/);
-assert.match(server, /resolveScopedPermission/);
-assert.match(server, /async function rosterScopeAccess/);
-assert.match(server, /targetEmployeeId/);
-assert.match(server, /permissionKeys = requireManage \? \['roster\.manage'\] : \['roster\.manage', 'roster\.view_all'\]/);
-assert.match(server, /approved_leave\.leave_request_id/);
-assert.match(server, /request\.status='approved'/);
-assert.match(server, /AS approved_leave/);
-assert.match(server, /AS has_roster_conflict/);
-assert.match(server, /leave_start_date/);
-assert.match(server, /leave_end_date/);
-assert.match(server, /recordApprovedLeaveConflictsForShift/);
-assert.match(server, /notification\.leave_roster_conflict/);
-assert.match(server, /ON CONFLICT \(tenant_id,leave_request_id,roster_shift_id\)/);
+assert.match(rosterRoutes, /resolveScopedPermission/);
+assert.match(rosterRoutes, /async function rosterScopeAccess/);
+assert.match(rosterRoutes, /targetEmployeeId/);
+assert.match(rosterRoutes, /permissionKeys = requireManage \? \['roster\.manage'\] : \['roster\.manage', 'roster\.view_all'\]/);
+assert.match(rosterRoutes, /approved_leave\.leave_request_id/);
+assert.match(rosterRoutes, /request\.status='approved'/);
+assert.match(rosterRoutes, /AS approved_leave/);
+assert.match(rosterRoutes, /AS has_roster_conflict/);
+assert.match(rosterRoutes, /leave_start_date/);
+assert.match(rosterRoutes, /leave_end_date/);
+assert.match(rosterRoutes, /recordApprovedLeaveConflictsForShift/);
+assert.match(rosterRoutes, /notification\.leave_roster_conflict/);
+assert.match(rosterRoutes, /ON CONFLICT \(tenant_id,leave_request_id,roster_shift_id\)/);
 assert.doesNotMatch(
-  server.match(/LEFT JOIN LATERAL \(\s*SELECT request\.id AS leave_request_id[\s\S]*?\) approved_leave ON true/)?.[0] || '',
+  rosterRoutes.match(/LEFT JOIN LATERAL \(\s*SELECT request\.id AS leave_request_id[\s\S]*?\) approved_leave ON true/)?.[0] || '',
   /reason|approval_note/,
 );
 assert.match(audit, /'leave\.requested'/);
