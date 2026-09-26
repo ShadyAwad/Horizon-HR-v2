@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv { readonly LOGIN_AUTOFILL_DIAGNOSTIC: boolean; }
+interface ImportMetaEnv { readonly LOGIN_ANIMATION_AUDIT: boolean; }
+
 declare module '*.glb' {
   const assetUrl: string;
   export default assetUrl;

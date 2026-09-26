@@ -8,6 +8,14 @@ import {
 } from './lib/StanzaPreferencesContext';
 import { markDevPerformance } from './lib/dev-performance';
 
+if (import.meta.env.LOGIN_AUTOFILL_DIAGNOSTIC) {
+  void import('./diagnostics/login-autofill').then(({ installLoginAutofillDiagnostic }) => installLoginAutofillDiagnostic());
+}
+
+if (import.meta.env.LOGIN_ANIMATION_AUDIT) {
+  void import('./diagnostics/login-animation-audit').then(({ installLoginAnimationAudit }) => installLoginAnimationAudit());
+}
+
 markDevPerformance('startup:react-bootstrap-start', undefined, true);
 initializeStanzaPreferences();
 

@@ -21,9 +21,12 @@ const clockClasses = dashboard.slice(dashboard.indexOf('data-geo-interaction="cl
 assert.doesNotMatch(clockClasses, /hover:scale|active:scale|transition-transform/);
 assert.match(css, /button\.stanza-geo-clock:not\(:disabled\):is\(:hover, :active\),\s*button\.stanza-geo-break-primary:not\(:disabled\):is\(:hover, :active\)\s*\{\s*transform: none;\s*scale: none;/);
 
-async function mount(source: string, reduced = false, trace = false, staticMode = false) {
-  const output = await build({ stdin: { contents: source, resolveDir: process.cwd() + '/src/components', loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], define: { 'import.meta.env.DEV': 'true' } });
+async function mount(source: string, reduced = false, trace = false, staticMode = false, production = false) {
+  const output = await build({ stdin: { contents: source, resolveDir: process.cwd() + '/src/components', loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], define: { 'import.meta.env.DEV': String(!production) } });
   let reads = 0, tokens = 0, parses = 0, classReads = 0, dark = true, nextId = 1;
+  let frameTime: number | undefined;
+  let clock = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
   const drawing: string[] = [];
   const record = (...args: unknown[]) => { if (trace) drawing.push(JSON.stringify(args)); };
   const effects: (() => void | (() => void))[] = [], cleanups: (() => void)[] = [];
@@ -38,12 +41,14 @@ async function mount(source: string, reduced = false, trace = false, staticMode 
     set(target, key, value) { record('set', key, value === gradient ? 'gradient' : value); target[key] = value; return true; },
   });
   const canvas = { parentElement: { getBoundingClientRect: () => ({ width: 1920, height: 1080 }) }, style: {}, getContext: () => context };
-  const react = { useRef: (current: unknown) => ({ current }), useEffect: (fn: any) => effects.push(fn) };
+  const refs: { current: any }[] = [];
+  let refIndex = 0;
+  const react = { useRef: (current: unknown) => refs[refIndex++] ?? (refs[refIndex - 1] = { current }), useEffect: (fn: any) => effects.push(fn) };
   const jsx = (_type: unknown, props: any) => { if (_type === 'canvas') props.ref.current = canvas; return null; };
   const root = { classList: { contains: () => { classReads++; return dark; } } };
   const document = { hidden: false, documentElement: root, addEventListener: (name: string, fn: () => void) => listeners.set(name, fn), removeEventListener: (name: string) => listeners.delete(name) };
-  const window: any = { devicePixelRatio: 1, matchMedia: () => ({ matches: reduced }), setTimeout, clearTimeout };
-  const sandbox: any = { module: { exports: {} }, Number: class extends Number { static parseInt(value: string, radix?: number) { parses++; return Number.parseInt(value, radix); } }, performance, window, document, console,
+  const window: any = { location: { search: '' }, devicePixelRatio: 1, matchMedia: () => ({ matches: reduced }), setTimeout: (callback: () => void, delay: number) => { const id = nextId++; timers.set(id, { at: (frameTime ?? clock) + delay, callback }); return id; }, clearTimeout: (id: number) => timers.delete(id) };
+  const sandbox: any = { module: { exports: {} }, Number: class extends Number { static parseInt(value: string, radix?: number) { parses++; return Number.parseInt(value, radix); } }, performance: { now: () => frameTime ?? clock }, URLSearchParams, window, document, console,
     require: (name: string) => name === 'react' ? react : { jsx, jsxs: jsx },
     getComputedStyle: () => { reads++; return { getPropertyValue: (key: string) => { tokens++; return colors[key] || ''; } }; },
     requestAnimationFrame: (fn: (time: number) => void) => { const id = nextId++; raf.set(id, fn); return id; },
@@ -55,13 +60,19 @@ async function mount(source: string, reduced = false, trace = false, staticMode 
   sandbox.module.exports.FingerprintCanvas({ pulseState: 'idle', staticMode });
   for (const fn of effects) { const cleanup = fn(); if (cleanup) cleanups.push(cleanup); }
   return {
-    raf, window, mutations, resizes, context, drawing,
+    raf, timers, window, mutations, resizes, context, drawing,
     get parses() { return parses; }, get classReads() { return classReads; },
     get reads() { return reads; }, get tokens() { return tokens; },
-    frame(time: number) { const callbacks = [...raf.values()]; raf.clear(); assert.equal(callbacks.length, 1); const start = performance.now(); callbacks[0](time); return performance.now() - start; },
+    frame(time: number) { clock = time; frameTime = time; for (const [id, timer] of [...timers]) if (timer.at <= time) { timers.delete(id); timer.callback(); } const callbacks = [...raf.values()]; raf.clear(); assert.equal(callbacks.length, 1); const start = performance.now(); callbacks[0](time); frameTime = undefined; return performance.now() - start; },
+    state(pulseState: string, start: number, onPulseComplete: () => void) {
+      frameTime = start; refIndex = 0; effects.length = 0;
+      sandbox.module.exports.FingerprintCanvas({ pulseState, staticMode, onPulseComplete });
+      effects[0](); frameTime = undefined;
+    },
     theme() { dark = false; colors = { '--stanza-auth-background': '#ffffff', '--stanza-auth-ring-rgb': '99, 102, 241', '--stanza-auth-pulse-rgb': '120, 130, 250' }; mutations[0].callback(); },
+    resize(width: number, height: number) { resizes[0].callback([{ contentRect: { width, height } }]); },
     visibility(hidden: boolean) { document.hidden = hidden; listeners.get('visibilitychange')?.(); },
-    cleanup() { cleanups.forEach(fn => fn()); assert.equal(raf.size, 0); assert.ok(mutations.every(x => x.disconnected)); assert.ok(resizes.every(x => x.disconnected)); assert.equal(listeners.size, 0); },
+    cleanup() { cleanups.forEach(fn => fn()); assert.equal(raf.size, 0); assert.equal(timers.size, 0); assert.ok(mutations.every(x => x.disconnected)); assert.ok(resizes.every(x => x.disconnected)); assert.equal(listeners.size, 0); },
   };
 }
 const currentSource = readFileSync('src/components/FingerprintCanvas.tsx', 'utf8');
@@ -71,7 +82,7 @@ const previous = await mount(historicalSource);
 const current = await mount(currentSource);
 assert.equal(current.reads, 1);
 const before: number[] = [], after: number[] = [];
-for (let i = 0; i < 120; i++) { before.push(previous.frame(i * 16.667)); after.push(current.frame(i * 16.667)); }
+for (let i = 0; i < 120; i++) { before.push(previous.frame(i * 50)); after.push(current.frame(i * 50)); }
 console.log('120-frame callback CPU, Node VM with Canvas2D stub, NOT Chrome:', JSON.stringify({ before: { average: before.reduce((a,b)=>a+b,0)/120, worst: Math.max(...before) }, after: { average: after.reduce((a,b)=>a+b,0)/120, worst: Math.max(...after) } }));
 assert.equal(previous.reads, 120); assert.equal(previous.tokens, 360);
 assert.equal(current.reads, 1); assert.equal(current.tokens, 3);
@@ -82,13 +93,13 @@ assert.equal(measured.frames, 120); assert.equal(measured.colorParses, 2);
 assert.equal(measured.legacyEquivalentColorParses, 120 * 69 * 2);
 assert.ok(current.mutations[0].options.attributeFilter.includes('style'));
 current.theme(); assert.equal(current.parses, 12); assert.equal(current.reads, 2); assert.equal(measured.colorParses, 4);
-assert.equal(current.raf.size, 1); current.frame(2016.667);
+assert.equal(current.raf.size, 1); current.frame(6016.667);
 assert.equal(current.context.fillStyle !== '#020604', true);
 current.visibility(true); assert.equal(current.raf.size, 0);
 current.theme(); assert.equal(current.raf.size, 0);
 current.visibility(false); current.visibility(false); assert.equal(current.raf.size, 1);
-current.frame(100000); assert.equal(current.raf.size, 1);
-for (let i = 0; i < 600; i++) current.frame(100020 + i * 16.667);
+current.frame(100000); assert.equal(current.raf.size, 0); assert.equal(current.timers.size, 1);
+for (let i = 0; i < 600; i++) current.frame(100050 + i * 50);
 assert.equal(measured.frames, 600); assert.equal(measured.stopped, true);
 console.log('Bounded fixed callback measurement (Node VM, Canvas2D stub; NOT Chrome paint/GPU):', JSON.stringify(measured));
 previous.cleanup(); current.cleanup();
@@ -103,6 +114,38 @@ const newArtwork = await mount(currentSource, false, true);
 oldArtwork.frame(1000); newArtwork.frame(1000);
 assert.deepEqual(newArtwork.drawing, oldArtwork.drawing);
 oldArtwork.cleanup(); newArtwork.cleanup();
+const referenceArtwork = await mount(currentSource, false, true);
+const optimizedArtwork = await mount(currentSource, false, true, false, true);
+referenceArtwork.frame(1000); optimizedArtwork.frame(1000);
+assert.deepEqual(optimizedArtwork.drawing, referenceArtwork.drawing);
+assert.equal(optimizedArtwork.raf.size, 0);
+optimizedArtwork.theme(); referenceArtwork.theme();
+referenceArtwork.frame(2000); optimizedArtwork.frame(2000);
+assert.deepEqual(optimizedArtwork.drawing, referenceArtwork.drawing);
+let referenceComplete = 0, optimizedComplete = 0;
+for (const state of ['loading', 'success', 'error']) {
+  referenceArtwork.state(state, 2100, () => { referenceComplete++; });
+  optimizedArtwork.state(state, 2100, () => { optimizedComplete++; });
+  referenceArtwork.frame(2200); optimizedArtwork.frame(2200);
+  assert.deepEqual(optimizedArtwork.drawing, referenceArtwork.drawing);
+  assert.equal(optimizedArtwork.raf.size, 1);
+  referenceArtwork.frame(4000); optimizedArtwork.frame(4000);
+  assert.deepEqual(optimizedArtwork.drawing, referenceArtwork.drawing);
+  assert.equal(optimizedArtwork.raf.size, state === 'loading' ? 1 : 0);
+}
+assert.equal(referenceComplete, 2); assert.equal(optimizedComplete, 2);
+referenceArtwork.resize(390, 667); optimizedArtwork.resize(390, 667);
+referenceArtwork.frame(5000); optimizedArtwork.frame(5000);
+assert.deepEqual(optimizedArtwork.drawing, referenceArtwork.drawing);
+optimizedArtwork.visibility(true); assert.equal(optimizedArtwork.raf.size, 0);
+optimizedArtwork.theme(); assert.equal(optimizedArtwork.raf.size, 0);
+optimizedArtwork.visibility(false); assert.equal(optimizedArtwork.raf.size, 1);
+referenceArtwork.cleanup(); optimizedArtwork.cleanup();
+const optimizedReduced = await mount(currentSource, true, false, false, true);
+optimizedReduced.frame(0); assert.equal(optimizedReduced.raf.size, 0);
+optimizedReduced.theme(); optimizedReduced.frame(100); assert.equal(optimizedReduced.raf.size, 0);
+optimizedReduced.cleanup();
+console.log('PASS: optimized renderer command parity at identical timestamps in both themes; reduced-motion redraws.');
 console.log('PASS: identical Canvas2D drawing commands/styles at the same timestamp and palette.');
 
 const frozen = await mount(currentSource, false, false, true);
@@ -110,4 +153,4 @@ frozen.frame(1000); assert.equal(frozen.raf.size, 0);
 frozen.theme(); assert.equal(frozen.raf.size, 1);
 frozen.frame(2000); assert.equal(frozen.raf.size, 0);
 frozen.cleanup();
-console.log('PASS: freeze-canvas isolation retains drawing but stops idle RAF; palette refresh draws once.');
+console.log('PASS: explicit static rendering retains artwork without recurring work.');

@@ -29,6 +29,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins,
+    define: {
+      'import.meta.env.LOGIN_AUTOFILL_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_AUTOFILL_DIAGNOSTIC === 'true'),
+      'import.meta.env.LOGIN_ANIMATION_AUDIT': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_ANIMATION_AUDIT === 'true'),
+    },
 
     // Must be a top-level Vite option.
     assetsInclude: ['**/*.glb'],

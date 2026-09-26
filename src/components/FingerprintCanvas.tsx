@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { resolveLoginCanvasPalette } from '../lib/login-canvas-palette';
 import { createLoginCanvasMeasurement } from '../lib/dev-login-canvas';
 import type { AuthVisualState } from '../auth/auth-contract';
+import { createCanvasCadence } from '../lib/login-canvas-scheduler';
+import { createCanvasSchedulerCounters } from '../lib/dev-login-canvas-counters';
 
 interface FingerprintCanvasProps {
   pulseState: AuthVisualState;
@@ -37,6 +39,8 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     onPulseCompleteRef.current = onPulseComplete;
     staticModeRef.current = staticMode;
 
+    requestStaticRedrawRef.current();
+
     if (reducedMotionRef.current && (pulseState === 'success' || pulseState === 'error') && onPulseComplete) {
       const timeoutId = window.setTimeout(onPulseComplete, 150);
       return () => window.clearTimeout(timeoutId);
@@ -57,22 +61,25 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     measurement?.palette();
     let disposed = false;
     let hiddenAt: number | null = document.hidden ? performance.now() : null;
-    let animationFrameId: number | undefined;
     let drawFrame: ((time: number) => void) | undefined;
+    const counters = import.meta.env.DEV ? createCanvasSchedulerCounters() : undefined;
+    const cadence = createCanvasCadence({
+      now: () => performance.now(), raf: (callback) => requestAnimationFrame(callback),
+      cancelRaf: (id) => cancelAnimationFrame(id),
+      timer: (callback, delay) => window.setTimeout(callback, delay),
+      cancelTimer: (id) => window.clearTimeout(id), hidden: () => document.hidden,
+    }, (time) => { counters?.raf(); drawFrame?.(time); }, () => pulseStateRef.current);
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     reducedMotionRef.current = prefersReducedMotion;
 
-    const scheduleFrame = () => {
-      if (disposed || document.hidden || animationFrameId !== undefined || !drawFrame) return;
-      animationFrameId = requestAnimationFrame(drawFrame);
-    };
+    const scheduleFrame = (immediate = true) => cadence.request(immediate);
     const scheduleStaticRedraw = () => scheduleFrame();
     requestStaticRedrawRef.current = scheduleStaticRedraw;
     const onVisibilityChange = () => {
+      counters?.visibility();
       if (document.hidden) {
+        cadence.cancel();
         hiddenAt = performance.now();
-        if (animationFrameId !== undefined) cancelAnimationFrame(animationFrameId);
-        animationFrameId = undefined;
       } else {
         if (hiddenAt !== null && pulseStartTimeRef.current !== null) {
           pulseStartTimeRef.current += performance.now() - Math.max(hiddenAt, pulseStartTimeRef.current);
@@ -118,14 +125,14 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     });
 
     drawFrame = (time: number) => {
-      animationFrameId = undefined;
       if (disposed || document.hidden) return;
+      const drawStarted = counters?.draw();
       const started = measurement?.active ? performance.now() : undefined;
       const { width, height } = dimensionsRef.current;
       
       // Safety check: skip render cycles if dimensions haven't been captured yet
       if (width === 0 || height === 0) {
-        scheduleFrame();
+        // ResizeObserver requests the first frame once dimensions are available.
         return;
       }
 
@@ -137,6 +144,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
         ctx.fillStyle = authBackground;
         ctx.fillRect(0, 0, width, height);
         if (started !== undefined) measurement?.frame(performance.now() - started, 0);
+        if (drawStarted !== undefined) counters?.redrawn(drawStarted);
         return;
       }
       const cx = width / 2;
@@ -240,7 +248,8 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       }
 
       if (started !== undefined) measurement?.frame(performance.now() - started, ringsCount);
-      if (!staticModeRef.current) scheduleFrame();
+      if (drawStarted !== undefined) counters?.redrawn(drawStarted);
+      if (!staticModeRef.current) scheduleFrame(false);
     };
 
     scheduleFrame();
@@ -248,10 +257,9 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     return () => {
       disposed = true;
       measurement?.stop();
+      cadence.stop();
+      counters?.stop();
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      if (animationFrameId !== undefined) {
-        cancelAnimationFrame(animationFrameId);
-      }
       resizeObserver.disconnect();
       themeObserver.disconnect();
       requestStaticRedrawRef.current = () => undefined;
