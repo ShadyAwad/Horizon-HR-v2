@@ -1,21 +1,20 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
 import { useStanzaPreferences } from '../lib/StanzaPreferencesContext';
 import { useTheme } from '../lib/ThemeContext';
 import { useLanguage } from '../lib/LanguageContext';
-import { CURSOR_EFFECTS, DEFAULT_CUSTOM_THEME, deriveCustomTheme, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from '../lib/custom-theme';
-import CustomCursorEffect from './CustomCursorEffect';
+import { DEFAULT_CUSTOM_THEME, deriveCustomTheme, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from '../lib/custom-theme';
+import PointerStudio from './PointerStudio';
 
-const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint', 'cursorColor'] as const;
+const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint'] as const;
 
 export default function CustomThemeEditor() {
   const { customTheme, setCustomTheme } = useStanzaPreferences();
   const { theme } = useTheme();
   const { t, isRtl } = useLanguage();
   const id = useId();
-  const preview = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(customTheme);
   useEffect(() => setDraft(customTheme), [customTheme]);
-  const valid = COLOR_FIELDS.every((field) => draft[field] === null || normaliseCustomAccent(draft[field]) !== null);
+  const valid = [...COLOR_FIELDS, 'cursorColor', 'pointerColor'].every((field) => draft[field] === null || normaliseCustomAccent(draft[field]) !== null);
   const normalized = useMemo(() => normaliseCustomTheme(draft, customTheme.accent), [draft, customTheme.accent]);
   const palette = useMemo(() => deriveCustomTheme(normalized, theme), [normalized, theme]);
   const previewStyle = useMemo(() => Object.fromEntries(Object.entries(palette.tokens).map(([key, value]) => [`--stanza-${key}`, value])) as CSSProperties, [palette]);
@@ -42,33 +41,19 @@ export default function CustomThemeEditor() {
     <p>{t('studio.help')}</p>
     <details className="stanza-studio-section" open>
       <summary>{t('studio.colors')}</summary>
-      <div className="stanza-studio-fields">{COLOR_FIELDS.filter((field) => field !== 'cursorColor').map(colorControl)}</div>
+      <div className="stanza-studio-fields">{COLOR_FIELDS.map(colorControl)}</div>
     </details>
-    <details className="stanza-studio-section">
-      <summary>{t('studio.pointer')}</summary>
-      <div className="stanza-studio-fields">
-        <label className="stanza-studio-setting">{t('studio.effect')}<select value={draft.cursorEffect} onChange={(event) => update('cursorEffect', event.target.value as CustomThemeConfig['cursorEffect'])}>
-          {CURSOR_EFFECTS.map((effect) => <option key={effect} value={effect}>{t(`studio.${effect}`)}</option>)}
-        </select></label>
-        <p>{t('studio.pointerHelp')}</p>
-        {draft.cursorEffect !== 'none' && <>
-          {colorControl('cursorColor')}
-          <label className="stanza-studio-setting" htmlFor={`${id}-intensity`}>{t('studio.intensity')}<output>{draft.cursorTrailIntensity}%</output><input id={`${id}-intensity`} type="range" min="10" max="80" step="1" value={draft.cursorTrailIntensity} onChange={(event) => update('cursorTrailIntensity', Number(event.target.value))} /></label>
-          <label className="stanza-studio-setting" htmlFor={`${id}-length`}>{t('studio.length')}<output>{draft.cursorTrailLength}</output><input id={`${id}-length`} type="range" min="3" max="12" step="1" disabled={draft.cursorEffect === 'glow'} value={draft.cursorTrailLength} onChange={(event) => update('cursorTrailLength', Number(event.target.value))} /></label>
-        </>}
-      </div>
-    </details>
+    <PointerStudio draft={draft} onChange={setDraft} />
     {!valid && <p id={`${id}-error`} role="alert">{t('background.invalidColor')}</p>}
     {valid && palette.adjusted && <p role="status">{t('background.contrastAdjusted')}</p>}
     <h4>{t('background.preview')}</h4>
-    <div ref={preview} data-custom-cursor-preview className="stanza-custom-preview" style={previewStyle} aria-label={t('background.preview')}>
+    <div className="stanza-custom-preview" style={previewStyle} aria-label={t('background.preview')}>
       <div className="stanza-custom-preview-nav">{t('background.previewSelected')}</div>
       <div className="stanza-custom-preview-content"><strong>{t('background.previewText')}</strong><p>{t('background.previewBody')}</p>
         <div className="stanza-studio-preview-actions"><button type="button" className="stanza-custom-preview-primary">{t('background.previewButton')}</button>
           <button type="button" className="stanza-custom-preview-secondary">{t('studio.secondaryAction')}</button></div>
         <label className="stanza-studio-preview-input">{t('studio.focusPreview')}<input readOnly value={t('studio.sampleInput')} /></label>
       </div>
-      {draft.cursorEffect !== 'none' && <CustomCursorEffect config={normalized} previewTarget={preview} />}
     </div>
     <p>{t('studio.previewHelp')}</p>
     <div className="stanza-studio-actions">

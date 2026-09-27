@@ -15,7 +15,7 @@ import { readTutorialProgress } from '../components/tutorials/tutorial-state';
 import type { TutorialProgress } from '../components/tutorials/tutorial-types';
 import { applyBackgroundPreset, normaliseBackgroundPreset, type BackgroundPresetId } from './background-presets';
 
-import { applyCustomAccent, DEFAULT_CUSTOM_ACCENT, DEFAULT_CUSTOM_THEME, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from './custom-theme';
+import { applyCustomAccent, hasCustomCursor, DEFAULT_CUSTOM_ACCENT, DEFAULT_CUSTOM_THEME, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from './custom-theme';
 import CustomCursorEffect from '../components/CustomCursorEffect';
 
 export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
@@ -317,7 +317,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   }), [preferences, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}
-    {preferences.backgroundPreset === 'custom' && preferences.customTheme.cursorEffect !== 'none'
+    {preferences.backgroundPreset === 'custom' && hasCustomCursor(preferences.customTheme)
       && <CustomCursorEffect config={preferences.customTheme} />}
   </StanzaPreferencesContext.Provider>;
 }

@@ -1,6 +1,8 @@
 export const DEFAULT_CUSTOM_ACCENT = '#6366F1';
 
-export const CURSOR_EFFECTS = ['none', 'glow', 'dot-trail', 'lerp-trail'] as const;
+export const CURSOR_EFFECTS = ['none', 'glow', 'dot-trail', 'lerp-trail', 'portfolio-trail', 'comet', 'ribbon', 'sparks', 'orbit'] as const;
+export const CURSOR_APPEARANCES = ['system', 'dot', 'ring', 'dot-ring', 'crosshair', 'orb', 'minimal-arrow'] as const;
+export type CursorAppearance = (typeof CURSOR_APPEARANCES)[number];
 export type CustomThemeConfig = {
   accent: string;
   primaryAction: string | null;
@@ -11,11 +13,25 @@ export type CustomThemeConfig = {
   cursorColor: string | null;
   cursorTrailIntensity: number;
   cursorTrailLength: number;
+  cursorAppearance: CursorAppearance;
+  pointerColor: string | null;
+  pointerSize: number;
+  pointerOpacity: number;
+  pointerOutline: number;
+  pointerGlow: number;
+  cursorTrailSize: number;
+  cursorTrailGlow: number;
+  cursorSmoothness: number;
+  cursorFadeSpeed: number;
+  cursorVelocityResponse: number;
 };
 export const DEFAULT_CUSTOM_THEME: Readonly<CustomThemeConfig> = Object.freeze({
   accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
   surfaceTint: null, backgroundTint: null, cursorEffect: 'none', cursorColor: null,
   cursorTrailIntensity: 40, cursorTrailLength: 6,
+  cursorAppearance: 'system', pointerColor: null, pointerSize: 16, pointerOpacity: 90,
+  pointerOutline: 2, pointerGlow: 0, cursorTrailSize: 6, cursorTrailGlow: 0,
+  cursorSmoothness: 50, cursorFadeSpeed: 50, cursorVelocityResponse: 40,
 });
 
 export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): CustomThemeConfig {
@@ -28,6 +44,17 @@ export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): Cu
     primaryAction: normaliseCustomAccent(raw.primaryAction), secondaryAction: normaliseCustomAccent(raw.secondaryAction),
     surfaceTint: normaliseCustomAccent(raw.surfaceTint), backgroundTint: normaliseCustomAccent(raw.backgroundTint),
     cursorColor: normaliseCustomAccent(raw.cursorColor),
+    cursorAppearance: CURSOR_APPEARANCES.includes(raw.cursorAppearance as CursorAppearance) ? raw.cursorAppearance as CursorAppearance : 'system',
+    pointerColor: normaliseCustomAccent(raw.pointerColor),
+    pointerSize: bounded(raw.pointerSize, 16, 6, 32),
+    pointerOpacity: bounded(raw.pointerOpacity, 90, 35, 100),
+    pointerOutline: bounded(raw.pointerOutline, 2, 1, 4),
+    pointerGlow: bounded(raw.pointerGlow, 0, 0, 80),
+    cursorTrailSize: bounded(raw.cursorTrailSize, 6, 2, 14),
+    cursorTrailGlow: bounded(raw.cursorTrailGlow, 0, 0, 80),
+    cursorSmoothness: bounded(raw.cursorSmoothness, 50, 0, 100),
+    cursorFadeSpeed: bounded(raw.cursorFadeSpeed, 50, 0, 100),
+    cursorVelocityResponse: bounded(raw.cursorVelocityResponse, 40, 0, 100),
     cursorEffect: CURSOR_EFFECTS.includes(raw.cursorEffect as CustomThemeConfig['cursorEffect'])
       ? raw.cursorEffect as CustomThemeConfig['cursorEffect'] : 'none',
     cursorTrailIntensity: bounded(raw.cursorTrailIntensity, 40, 10, 80),
@@ -129,3 +156,21 @@ export function applyCustomAccent(accent: string | CustomThemeConfig) {
   document.documentElement.dataset.customSecondary = String(config.secondaryAction !== null);
   for (const [name, value] of Object.entries(customThemeVariables(accent))) document.documentElement.style.setProperty(name, value);
 }
+
+export const POINTER_PRESETS = ['system', 'minimal', 'neon', 'portfolio', 'precision', 'soft-glow', 'cyber'] as const;
+export type PointerPreset = (typeof POINTER_PRESETS)[number];
+export function applyPointerPreset(config: CustomThemeConfig, preset: PointerPreset): CustomThemeConfig {
+  // Reset only pointer settings; all theme colors and action overrides are retained.
+  const defaults = Object.fromEntries(Object.entries(DEFAULT_CUSTOM_THEME).filter(([key]) => key.startsWith('cursor') || key.startsWith('pointer')));
+  const choices: Record<PointerPreset, Partial<CustomThemeConfig>> = {
+    system: {},
+    minimal: { cursorAppearance: 'dot', pointerSize: 6, pointerOpacity: 90 },
+    neon: { cursorAppearance: 'ring', pointerSize: 20, pointerGlow: 55, cursorEffect: 'comet', cursorTrailGlow: 50 },
+    portfolio: { cursorEffect: 'portfolio-trail', cursorTrailSize: 3, cursorTrailLength: 12, cursorTrailIntensity: 65, cursorTrailGlow: 30, cursorSmoothness: 60, cursorVelocityResponse: 75 },
+    precision: { cursorAppearance: 'crosshair', pointerSize: 20, pointerOutline: 1 },
+    'soft-glow': { cursorAppearance: 'orb', pointerSize: 12, pointerGlow: 25, cursorEffect: 'glow', cursorTrailIntensity: 25 },
+    cyber: { cursorAppearance: 'dot-ring', pointerSize: 20, pointerGlow: 25, cursorEffect: 'orbit', cursorTrailSize: 3, cursorTrailLength: 3 },
+  };
+  return normaliseCustomTheme({ ...config, ...defaults, ...choices[preset] });
+}
+export const hasCustomCursor = (config: CustomThemeConfig) => config.cursorAppearance !== 'system' || config.cursorEffect !== 'none';

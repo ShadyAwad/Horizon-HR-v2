@@ -284,7 +284,7 @@ assert.match(customEditor, /aria-invalid=\{invalid\}/);
 assert.match(customEditor, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
 assert.match(customEditor, /onClick=\{commit\}/);
 assert.match(customEditor, /setDraft\(\(current\) =>/);
-assert.match(customEditor, /data-custom-cursor-preview/);
+assert.match(await readFile('src/components/PointerStudio.tsx', 'utf8'), /data-custom-cursor-preview/);
 assert.doesNotMatch(customEditor, /setBackgroundPreset|localStorage|querySelectorAll|insertRule/);
 console.log(`Custom contrast: minimum button ${lowestButton.toFixed(2)}:1, text ${lowestText.toFixed(2)}:1 across ${samples.length * 2} palettes`);
 console.log('Original preset snapshots, Custom contrast/persistence, light intensity, accessibility, and cross-role contracts passed');
@@ -336,3 +336,11 @@ for (const color of samples) for (const tint of samples) for (const mode of ['li
 }
 assert.equal(deriveCustomTheme(configured, 'light').adjusted, true);
 console.log('Theme Studio migration, malformed input, readback, legacy parity and 200 expanded contrast palettes passed');
+
+const extendedCursor = readStanzaPreferences(JSON.stringify({ customAccent: '#abcdef', customTheme: { cursorAppearance: 'ring', pointerColor: '#123456', pointerSize: 24, cursorEffect: 'portfolio-trail', cursorColor: '#654321', cursorTrailLength: 12 } }));
+assert.equal(extendedCursor.customTheme.accent, '#ABCDEF');
+assert.equal(extendedCursor.customTheme.cursorAppearance, 'ring');
+assert.equal(extendedCursor.customTheme.cursorEffect, 'portfolio-trail');
+assert.equal(extendedCursor.customTheme.pointerSize, 24);
+assert.deepEqual(readStanzaPreferences(JSON.stringify(extendedCursor)), extendedCursor);
+console.log('Expanded pointer settings persist through the existing preference reader');

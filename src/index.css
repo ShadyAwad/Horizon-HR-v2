@@ -1314,8 +1314,32 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 .stanza-studio-preview-input { display: grid; gap: .3rem; margin-top: .75rem; color: var(--stanza-text-secondary); }
 .stanza-studio-preview-input input { width: 100%; min-width: 0; outline: 2px solid var(--stanza-focus-ring); outline-offset: 2px; }
 /* Tiny particles sit below the existing z-40 modal layer. No full-screen layer or filter. */
-.stanza-cursor-particle { top: 0; left: 0; z-index: 35; width: 7px; height: 7px; border-radius: 50%; background: currentColor; pointer-events: none; opacity: 0; }
-.stanza-cursor-glow { width: 36px; height: 36px; background: radial-gradient(circle, currentColor, transparent 70%); }
+.stanza-cursor-particle, .stanza-custom-pointer { top: 0; left: 0; z-index: 35; pointer-events: none; opacity: 0; }
+.stanza-cursor-particle { width: 1px; height: 1px; border-radius: 50%; background: currentColor; transform-origin: center; }
+.stanza-cursor-glow { background: radial-gradient(circle, currentColor, transparent 70%); }
+.stanza-cursor-portfolio-trail, .stanza-cursor-comet { border-radius: 1px; }
+.stanza-cursor-ribbon { border-radius: 0; }
+.stanza-cursor-sparks { border-radius: 0; }
+.stanza-custom-pointer { box-sizing: border-box; border-radius: 50%; background: currentColor; }
+.stanza-pointer-ring, .stanza-pointer-dot-ring { background: transparent; border: var(--pointer-outline) solid currentColor; }
+.stanza-pointer-dot-ring::after { content: ''; position: absolute; inset: 35%; border-radius: 50%; background: currentColor; }
+.stanza-pointer-crosshair { border-radius: 0; background: linear-gradient(currentColor, currentColor) center / var(--pointer-outline) 100% no-repeat, linear-gradient(currentColor, currentColor) center / 100% var(--pointer-outline) no-repeat; }
+.stanza-pointer-orb { background: radial-gradient(circle at 35% 30%, white, currentColor 35%, transparent 75%); }
+.stanza-pointer-minimal-arrow { border-radius: 0; clip-path: polygon(0 0, 100% 65%, 58% 67%, 42% 100%); transform-origin: top left; }
+[data-stanza-hide-pointer] { cursor: none !important; }
+/* Native text/form/drag affordances remain usable even when an ancestor is hidden. */
+[data-stanza-hide-pointer] :is(input, textarea, select, [contenteditable], [draggable="true"], [role="dialog"], [role="dialog"] *, [role="alertdialog"], [role="alertdialog"] *) { cursor: revert !important; }
+.stanza-pointer-presets { display: flex; flex-wrap: wrap; gap: .4rem; }
+.stanza-pointer-presets button, .stanza-pointer-preview button { border: 1px solid var(--stanza-border-accent); border-radius: .4rem; padding: .45rem .7rem; min-height: 2.5rem; }
+.stanza-pointer-presets button:hover, .stanza-pointer-preview button:hover { background: var(--stanza-hover-surface); }
+.stanza-pointer-ranges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem 1rem; }
+.stanza-pointer-tuning { border-top: 1px solid var(--stanza-border-subtle); }
+.stanza-pointer-preview { position: relative; isolation: isolate; overflow: hidden; min-height: 10rem; border: 1px dashed var(--stanza-border-accent); border-radius: .65rem; padding: 1rem; background: var(--stanza-page-bg); }
+.stanza-pointer-preview p { margin-bottom: .7rem; }
+.stanza-pointer-preview a { margin-inline-start: 1rem; text-decoration: underline; color: var(--stanza-accent); }
+.stanza-pointer-preview label { display: grid; gap: .3rem; margin-top: .65rem; }
+.stanza-pointer-preview input { min-width: 0; width: 100%; }
+@media (max-width: 420px) { .stanza-pointer-ranges { grid-template-columns: 1fr; } }
 @media (max-width: 420px) {
   .stanza-custom-preview { grid-template-columns: 1fr; }
   .stanza-studio-color { grid-template-columns: minmax(4rem, 1fr) 2.5rem 5rem 2.6rem; gap: .25rem; }
