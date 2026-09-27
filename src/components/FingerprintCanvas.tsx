@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { resolveLoginCanvasPalette } from '../lib/login-canvas-palette';
 import { createLoginCanvasMeasurement } from '../lib/dev-login-canvas';
 import type { AuthVisualState } from '../auth/auth-contract';
+import { createIdleCanvasDiagnostic } from '../diagnostics/login-idle-canvas';
 import { createCanvasCadence } from '../lib/login-canvas-scheduler';
 import { createCanvasSchedulerCounters } from '../lib/dev-login-canvas-counters';
 
@@ -63,12 +64,13 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
     let hiddenAt: number | null = document.hidden ? performance.now() : null;
     let drawFrame: ((time: number) => void) | undefined;
     const counters = import.meta.env.DEV ? createCanvasSchedulerCounters() : undefined;
+    const idleDiagnostic = import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC ? createIdleCanvasDiagnostic() : undefined;
     const cadence = createCanvasCadence({
       now: () => performance.now(), raf: (callback) => requestAnimationFrame(callback),
       cancelRaf: (id) => cancelAnimationFrame(id),
       timer: (callback, delay) => window.setTimeout(callback, delay),
       cancelTimer: (id) => window.clearTimeout(id), hidden: () => document.hidden,
-    }, (time) => { counters?.raf(); drawFrame?.(time); }, () => pulseStateRef.current);
+    }, (time) => { counters?.raf(); idleDiagnostic?.raf(); drawFrame?.(time); }, () => pulseStateRef.current);
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     reducedMotionRef.current = prefersReducedMotion;
 
@@ -145,6 +147,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
         ctx.fillRect(0, 0, width, height);
         if (started !== undefined) measurement?.frame(performance.now() - started, 0);
         if (drawStarted !== undefined) counters?.redrawn(drawStarted);
+        idleDiagnostic?.redrawn();
         return;
       }
       const cx = width / 2;
@@ -249,7 +252,11 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
 
       if (started !== undefined) measurement?.frame(performance.now() - started, ringsCount);
       if (drawStarted !== undefined) counters?.redrawn(drawStarted);
-      if (!staticModeRef.current) scheduleFrame(false);
+      idleDiagnostic?.redrawn();
+      if (!staticModeRef.current) {
+        if (idleDiagnostic) idleDiagnostic.nextFrame(scheduleFrame, currentPulseState, pulseStateRef.current);
+        else scheduleFrame(false);
+      }
     };
 
     scheduleFrame();
@@ -258,6 +265,7 @@ export function FingerprintCanvas({ pulseState, onPulseComplete, staticMode = fa
       disposed = true;
       measurement?.stop();
       cadence.stop();
+      idleDiagnostic?.stop();
       counters?.stop();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       resizeObserver.disconnect();

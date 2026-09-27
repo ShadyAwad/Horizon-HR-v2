@@ -414,6 +414,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
             <label className="text-xs font-medium text-emerald-700/80 dark:text-emerald-100/70 tracking-wide uppercase px-1">{t('login.corporateId')}</label>
             <input 
               ref={emailInputRef}
+              data-login-transition-target={import.meta.env.LOGIN_CONTROL_DIAGNOSTIC ? 'corporate-id' : undefined}
               type="email" 
               required
               aria-invalid={showEmailError}
@@ -522,6 +523,7 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
             <button
               type="button"
               onClick={handlePasskeySignIn}
+              data-login-transition-target={import.meta.env.LOGIN_CONTROL_DIAGNOSTIC ? 'passkey' : undefined}
               disabled={isLoading || isPasskeyLoading || pulseState === 'success' || isOffline}
               className="w-full rounded-lg border border-emerald-500/20 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-300 dark:hover:text-emerald-200"
             >

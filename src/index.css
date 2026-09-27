@@ -609,6 +609,8 @@
     --stanza-login-input-text: #ecfdf5;
   }
 
+  /* Keep autofill static: long background transitions keep Chrome producing
+     animation frames even when the form and canvas are otherwise idle. */
   .stanza-login-input:-webkit-autofill,
   .stanza-login-input:-webkit-autofill:hover,
   .stanza-login-input:-webkit-autofill:focus,
@@ -621,7 +623,7 @@
     color: var(--stanza-login-input-text) !important;
     caret-color: var(--stanza-login-input-text) !important;
     filter: none !important;
-    transition: background-color 9999s ease-in-out 0s !important;
+    transition: none !important;
   }
 
   .stanza-login-input:-webkit-autofill:focus {
@@ -640,7 +642,7 @@
     color: var(--stanza-login-input-text) !important;
     caret-color: var(--stanza-login-input-text) !important;
     filter: none !important;
-    transition: background-color 9999s ease-in-out 0s !important;
+    transition: none !important;
   }
 
   /* Keep Firefox's password-manager preview selector isolated: Firefox builds
@@ -653,7 +655,7 @@
     color: var(--stanza-login-input-text) !important;
     caret-color: var(--stanza-login-input-text) !important;
     filter: none !important;
-    transition: background-color 9999s ease-in-out 0s !important;
+    transition: none !important;
   }
 
   .stanza-login-input:-moz-autofill:focus {
@@ -675,7 +677,7 @@
     color: var(--stanza-login-input-text) !important;
     caret-color: var(--stanza-login-input-text) !important;
     filter: none !important;
-    transition: background-color 9999s ease-in-out 0s !important;
+    transition: none !important;
   }
 
   .stanza-login-input:autofill:focus {
@@ -1281,23 +1283,74 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
   border-color: color-mix(in srgb, var(--color-emerald-500) 25%, transparent) !important;
 }
 :root[data-background-preset="custom"][data-theme="light"] [data-stanza-status="success"] { color: var(--color-emerald-700) !important; }
+/* Theme Studio stays local until Apply; only explicit Custom overrides affect actions. */
 .stanza-custom-editor { display: grid; gap: .75rem; margin-top: 1rem; font-size: .8rem; color: var(--stanza-text-primary); }
-.stanza-custom-editor h3 { font-weight: 700; }
+.stanza-custom-editor h3, .stanza-custom-editor h4, .stanza-studio-section summary { font-weight: 700; }
 .stanza-custom-editor p { color: var(--stanza-text-secondary); }
-.stanza-custom-inputs { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; }
-.stanza-custom-inputs label { display: grid; gap: .35rem; }
-.stanza-custom-inputs input[type="color"] { width: 3rem; height: 2.75rem; padding: .2rem; cursor: pointer; }
-.stanza-custom-inputs input[type="text"] { width: 9rem; min-height: 2.75rem; padding: .5rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; font-family: monospace; }
-.stanza-custom-editor > button, .stanza-custom-inputs button { justify-self: start; min-height: 2.75rem; padding: .5rem .75rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; }
-.stanza-custom-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .75rem; border: 1px solid var(--stanza-border-accent); border-radius: .6rem; padding: .75rem; background: var(--stanza-page-bg); color: var(--stanza-text-primary); }
-.stanza-custom-preview-nav { align-self: start; background: var(--stanza-selected-surface); color: var(--stanza-nav-active-foreground); border-inline-start: 3px solid var(--stanza-accent); padding: .5rem; border-radius: .3rem; }
-.stanza-custom-preview-content { background: var(--stanza-surface); padding: .5rem; border-radius: .3rem; }
-.stanza-custom-preview-primary { background: var(--stanza-accent); color: var(--stanza-accent-foreground); border-radius: .3rem; padding: .5rem; margin-top: .5rem; min-height: 2.75rem; }
-.stanza-custom-preview-primary:hover { background: var(--stanza-accent-hover); }
-.stanza-custom-preview-primary:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
-@media (max-width: 420px) { .stanza-custom-preview { grid-template-columns: 1fr; } }
+.stanza-studio-section { border: 1px solid var(--stanza-border-subtle); border-radius: .65rem; }
+.stanza-studio-section summary { cursor: pointer; padding: .7rem; min-height: 2.75rem; }
+.stanza-studio-fields { display: grid; gap: .65rem; padding: 0 .7rem .7rem; }
+.stanza-studio-color { display: grid; grid-template-columns: minmax(5rem, 1fr) 2.5rem 6rem 3rem; align-items: center; gap: .4rem; }
+.stanza-studio-color label small { display: block; color: var(--stanza-text-muted); font-size: .65rem; font-weight: 400; }
+.stanza-studio-color input[type="color"] { width: 2.5rem; min-height: 2.5rem; padding: .15rem; cursor: pointer; }
+.stanza-studio-color input[type="text"] { width: 100%; min-width: 0; font-family: monospace; }
+.stanza-custom-editor :is(input:not([type="range"]), select) { min-height: 2.5rem; padding: .4rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; background: var(--stanza-input-bg); color: var(--stanza-text-primary); }
+.stanza-custom-editor :is(input, select, button, summary):focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 2px; }
+.stanza-custom-editor input[aria-invalid="true"] { border-style: dashed; border-width: 2px; }
+.stanza-studio-derived { min-height: 2.5rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; }
+.stanza-custom-editor :disabled { opacity: .5; cursor: not-allowed; }
+.stanza-studio-setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.stanza-studio-setting input[type="range"] { width: 100%; }
+.stanza-studio-actions, .stanza-studio-preview-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.stanza-studio-actions button { min-height: 2.75rem; padding: .5rem .75rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; }
+.stanza-custom-preview { position: relative; isolation: isolate; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .75rem; border: 1px solid var(--stanza-border-accent); border-radius: .6rem; padding: .75rem; background: repeating-radial-gradient(ellipse at 0 100%, transparent 0 17px, color-mix(in srgb, var(--stanza-topography-color) 12%, transparent) 18px 19px, transparent 20px 30px), var(--stanza-page-bg); color: var(--stanza-text-primary); }
+.stanza-custom-preview-nav { align-self: start; background: var(--stanza-selected-surface); color: var(--stanza-nav-active-foreground); border-inline-start: 3px solid var(--stanza-border-accent); padding: .5rem; border-radius: .3rem; }
+.stanza-custom-preview-content { background: var(--stanza-surface); padding: .65rem; border-radius: .4rem; min-width: 0; }
+.stanza-custom-preview :is(.stanza-custom-preview-primary, .stanza-custom-preview-secondary) { border-radius: .3rem; padding: .5rem; margin-top: .5rem; min-height: 2.75rem; }
+.stanza-custom-preview-primary { background: var(--stanza-primary-action); color: var(--stanza-primary-action-foreground); }
+.stanza-custom-preview-primary:hover { background: var(--stanza-primary-action-hover); }
+.stanza-custom-preview-secondary { color: var(--stanza-secondary-action); border: 1px solid var(--stanza-secondary-action); }
+.stanza-custom-preview-secondary:hover { background: var(--stanza-secondary-action-soft); }
+.stanza-studio-preview-input { display: grid; gap: .3rem; margin-top: .75rem; color: var(--stanza-text-secondary); }
+.stanza-studio-preview-input input { width: 100%; min-width: 0; outline: 2px solid var(--stanza-focus-ring); outline-offset: 2px; }
+/* Tiny particles sit below the existing z-40 modal layer. No full-screen layer or filter. */
+.stanza-cursor-particle { top: 0; left: 0; z-index: 35; width: 7px; height: 7px; border-radius: 50%; background: currentColor; pointer-events: none; opacity: 0; }
+.stanza-cursor-glow { width: 36px; height: 36px; background: radial-gradient(circle, currentColor, transparent 70%); }
+@media (max-width: 420px) {
+  .stanza-custom-preview { grid-template-columns: 1fr; }
+  .stanza-studio-color { grid-template-columns: minmax(4rem, 1fr) 2.5rem 5rem 2.6rem; gap: .25rem; }
+}
+:root[data-background-preset="custom"]:not([data-theme="light"]) {
+  --stanza-primary-action: var(--stanza-custom-dark-primary-action);
+  --stanza-primary-action-hover: var(--stanza-custom-dark-primary-action-hover);
+  --stanza-primary-action-foreground: var(--stanza-custom-dark-primary-action-foreground);
+  --stanza-secondary-action: var(--stanza-custom-dark-secondary-action);
+  --stanza-secondary-action-soft: var(--stanza-custom-dark-secondary-action-soft);
+}
+:root[data-background-preset="custom"][data-theme="light"] {
+  --stanza-primary-action: var(--stanza-custom-light-primary-action);
+  --stanza-primary-action-hover: var(--stanza-custom-light-primary-action-hover);
+  --stanza-primary-action-foreground: var(--stanza-custom-light-primary-action-foreground);
+  --stanza-secondary-action: var(--stanza-custom-light-secondary-action);
+  --stanza-secondary-action-soft: var(--stanza-custom-light-secondary-action-soft);
+}
+:root[data-background-preset="custom"][data-custom-primary="true"] :is(.stanza-primary-action, .stanza-theme-primary):not(.stanza-destructive-action) {
+  background: linear-gradient(135deg, var(--stanza-primary-action), var(--stanza-primary-action-hover)) var(--stanza-primary-action) !important;
+  color: var(--stanza-primary-action-foreground) !important;
+  border-color: var(--stanza-primary-action) !important;
+  box-shadow: 0 0 26px color-mix(in srgb, var(--stanza-primary-action) 34%, transparent);
+}
+:root[data-background-preset="custom"][data-custom-primary="true"] :is(.stanza-primary-action, .stanza-theme-primary):not(.stanza-destructive-action):not(:disabled):hover {
+  background: var(--stanza-primary-action-hover) !important;
+}
+:root[data-background-preset="custom"][data-custom-secondary="true"] :is(.stanza-secondary-action, .stanza-theme-outline):not(.stanza-destructive-action) {
+  border-color: var(--stanza-secondary-action) !important;
+  color: var(--stanza-secondary-action) !important;
+}
+:root[data-background-preset="custom"][data-custom-secondary="true"] :is(.stanza-secondary-action, .stanza-theme-outline):not(.stanza-destructive-action):not(:disabled):hover {
+  background-color: var(--stanza-secondary-action-soft) !important;
+}
 
-/* Custom is additive: original preset declarations above remain unchanged. */
 :root[data-background-preset="custom"]:not([data-theme="light"]) {
   --stanza-accent: var(--stanza-custom-dark-accent);
   --stanza-accent-hover: var(--stanza-custom-dark-accent-hover);

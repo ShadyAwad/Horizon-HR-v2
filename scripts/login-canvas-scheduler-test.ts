@@ -42,7 +42,7 @@ hidden = false; cadence.request(); assert.equal(frames.size, 1);
 cadence.stop(); cadence.request(); assert.equal(frames.size + timers.size, 0);
 const output = await build({ entryPoints: ['src/components/FingerprintCanvas.tsx'], bundle: true,
   write: false, format: 'esm', minify: true, external: ['react', 'react/jsx-runtime'],
-  define: { 'import.meta.env.DEV': 'false' } });
+  define: { 'import.meta.env.DEV': 'false', 'import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC': 'false' } });
 assert.doesNotMatch(output.outputFiles[0].text, /loginCanvasScheduler|__stanzaCanvasSchedulers|rafPerSecond|drawFramePerSecond|loginCanvasTest|LOGIN_CANVAS_DIAGNOSTIC/);
 assert.match(output.outputFiles[0].text, /41\.666666666666664/);
 console.log('PASS: invalidation, active states, settle, hidden/resume, disposal, production exclusion.');

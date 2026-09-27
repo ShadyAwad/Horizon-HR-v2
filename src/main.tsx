@@ -16,6 +16,10 @@ if (import.meta.env.LOGIN_ANIMATION_AUDIT) {
   void import('./diagnostics/login-animation-audit').then(({ installLoginAnimationAudit }) => installLoginAnimationAudit());
 }
 
+if (import.meta.env.LOGIN_CONTROL_DIAGNOSTIC) {
+  void import('./diagnostics/login-control-transitions').then(({ installLoginControlTransitions }) => installLoginControlTransitions());
+}
+
 markDevPerformance('startup:react-bootstrap-start', undefined, true);
 initializeStanzaPreferences();
 

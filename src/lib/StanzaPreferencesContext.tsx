@@ -15,7 +15,8 @@ import { readTutorialProgress } from '../components/tutorials/tutorial-state';
 import type { TutorialProgress } from '../components/tutorials/tutorial-types';
 import { applyBackgroundPreset, normaliseBackgroundPreset, type BackgroundPresetId } from './background-presets';
 
-import { applyCustomAccent, DEFAULT_CUSTOM_ACCENT, normaliseCustomAccent } from './custom-theme';
+import { applyCustomAccent, DEFAULT_CUSTOM_ACCENT, DEFAULT_CUSTOM_THEME, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from './custom-theme';
+import CustomCursorEffect from '../components/CustomCursorEffect';
 
 export const STANZA_PREFERENCES_KEY = 'stanza.preferences.v1';
 export const MIN_INTERFACE_SCALE = 0.85;
@@ -42,6 +43,7 @@ export type StanzaPreferences = {
   desktopNavigationMode: DesktopNavigationMode;
   backgroundPreset: BackgroundPresetId;
   customAccent: string;
+  customTheme: CustomThemeConfig;
   tutorialsEnabled: boolean;
   tutorialsAutoStart: boolean;
   completedTutorials: Record<string, number>;
@@ -62,6 +64,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   desktopNavigationMode: 'launcher',
   backgroundPreset: 'emerald',
   customAccent: DEFAULT_CUSTOM_ACCENT,
+  customTheme: { ...DEFAULT_CUSTOM_THEME },
   tutorialsEnabled: true,
   tutorialsAutoStart: true,
   completedTutorials: {},
@@ -100,6 +103,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
     if (!stored) return DEFAULT_PREFERENCES;
 
     const parsed = JSON.parse(stored) as Partial<StanzaPreferences>;
+    const customTheme = normaliseCustomTheme(parsed.customTheme, parsed.customAccent);
     const tutorials = readTutorialProgress(parsed);
     return {
       lanyardEnabled: typeof parsed.lanyardEnabled === 'boolean'
@@ -130,7 +134,8 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
         ? 'rail'
         : 'launcher',
       backgroundPreset: normaliseBackgroundPreset(parsed.backgroundPreset),
-      customAccent: normaliseCustomAccent(parsed.customAccent) ?? DEFAULT_CUSTOM_ACCENT,
+      customAccent: customTheme.accent,
+      customTheme,
       ...tutorials,
     };
   } catch {
@@ -152,7 +157,7 @@ export function initializeStanzaPreferences() {
   const preferences = readStanzaPreferences();
   applyInterfaceScale(preferences.interfaceScale);
   applyLightIntensity(preferences.lightIntensity);
-  applyCustomAccent(preferences.customAccent);
+  applyCustomAccent(preferences.customTheme);
   applyBackgroundPreset(preferences.backgroundPreset);
   return preferences;
 }
@@ -173,6 +178,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setDesktopNavigationMode: (mode: DesktopNavigationMode) => void;
   setBackgroundPreset: (preset: BackgroundPresetId) => void;
   setCustomAccent: (accent: string) => void;
+  setCustomTheme: (config: CustomThemeConfig) => void;
   updateTutorialProgress: (next: Partial<TutorialProgress>) => void;
 };
 
@@ -186,7 +192,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   }, [preferences.interfaceScale]);
   useEffect(() => applyLightIntensity(preferences.lightIntensity), [preferences.lightIntensity]);
   useEffect(() => applyBackgroundPreset(preferences.backgroundPreset), [preferences.backgroundPreset]);
-  useEffect(() => applyCustomAccent(preferences.customAccent), [preferences.customAccent]);
+  useEffect(() => applyCustomAccent(preferences.customTheme), [preferences.customTheme]);
   useEffect(() => {
     try {
       window.localStorage.setItem(STANZA_PREFERENCES_KEY, JSON.stringify(preferences));
@@ -202,7 +208,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       applyInterfaceScale(nextPreferences.interfaceScale);
       applyLightIntensity(nextPreferences.lightIntensity);
       applyBackgroundPreset(nextPreferences.backgroundPreset);
-      applyCustomAccent(nextPreferences.customAccent);
+      applyCustomAccent(nextPreferences.customTheme);
       setPreferences(nextPreferences);
     };
 
@@ -274,7 +280,13 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   }, []);
   const setCustomAccent = useCallback((value: string) => {
     const customAccent = normaliseCustomAccent(value);
-    if (customAccent) setPreferences((current) => current.customAccent === customAccent ? current : { ...current, customAccent });
+    if (customAccent) setPreferences((current) => current.customAccent === customAccent ? current : {
+      ...current, customAccent, customTheme: { ...current.customTheme, accent: customAccent },
+    });
+  }, []);
+  const setCustomTheme = useCallback((value: CustomThemeConfig) => {
+    const customTheme = normaliseCustomTheme(value);
+    setPreferences((current) => ({ ...current, customTheme, customAccent: customTheme.accent }));
   }, []);
   const updateTutorialProgress = useCallback((next: Partial<TutorialProgress>) => {
     setPreferences((current) => ({
@@ -300,10 +312,14 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setDesktopNavigationMode,
     setBackgroundPreset,
     setCustomAccent,
+    setCustomTheme,
     updateTutorialProgress,
-  }), [preferences, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
+  }), [preferences, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
-  return <StanzaPreferencesContext.Provider value={value}>{children}</StanzaPreferencesContext.Provider>;
+  return <StanzaPreferencesContext.Provider value={value}>{children}
+    {preferences.backgroundPreset === 'custom' && preferences.customTheme.cursorEffect !== 'none'
+      && <CustomCursorEffect config={preferences.customTheme} />}
+  </StanzaPreferencesContext.Provider>;
 }
 
 export function useStanzaPreferences() {

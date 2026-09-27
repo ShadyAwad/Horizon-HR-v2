@@ -21,8 +21,8 @@ const clockClasses = dashboard.slice(dashboard.indexOf('data-geo-interaction="cl
 assert.doesNotMatch(clockClasses, /hover:scale|active:scale|transition-transform/);
 assert.match(css, /button\.stanza-geo-clock:not\(:disabled\):is\(:hover, :active\),\s*button\.stanza-geo-break-primary:not\(:disabled\):is\(:hover, :active\)\s*\{\s*transform: none;\s*scale: none;/);
 
-async function mount(source: string, reduced = false, trace = false, staticMode = false, production = false) {
-  const output = await build({ stdin: { contents: source, resolveDir: process.cwd() + '/src/components', loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], define: { 'import.meta.env.DEV': String(!production) } });
+async function mount(source: string, reduced = false, trace = false, staticMode = false, production = false, idleMode: string | undefined = undefined) {
+  const output = await build({ stdin: { contents: source, resolveDir: process.cwd() + '/src/components', loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], define: { 'import.meta.env.DEV': String(!production), 'import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC': String(idleMode !== undefined) } });
   let reads = 0, tokens = 0, parses = 0, classReads = 0, dark = true, nextId = 1;
   let frameTime: number | undefined;
   let clock = 0;
@@ -56,6 +56,10 @@ async function mount(source: string, reduced = false, trace = false, staticMode 
     MutationObserver: class { record: any; constructor(callback: () => void) { this.record = { callback, disconnected: false }; mutations.push(this.record); } observe(_root: any, options: any) { this.record.options = options; } disconnect() { this.record.disconnected = true; } },
     ResizeObserver: class { record: any; constructor(callback: any) { this.record = { callback, disconnected: false }; resizes.push(this.record); } observe() { this.record.callback([{ contentRect: { width: 1920, height: 1080 } }]); } disconnect() { this.record.disconnected = true; } },
   };
+  if (idleMode !== undefined) {
+    (window as any).location = { search: '?loginIdleCanvas=' + idleMode };
+    (sandbox as any).URLSearchParams = URLSearchParams;
+  }
   vm.runInNewContext(output.outputFiles[0].text, sandbox);
   sandbox.module.exports.FingerprintCanvas({ pulseState: 'idle', staticMode });
   for (const fn of effects) { const cleanup = fn(); if (cleanup) cleanups.push(cleanup); }
@@ -76,6 +80,45 @@ async function mount(source: string, reduced = false, trace = false, staticMode 
   };
 }
 const currentSource = readFileSync('src/components/FingerprintCanvas.tsx', 'utf8');
+for (const mode of ['baseline', 'idle-static']) {
+  const subject = await mount(currentSource, false, true, false, true, mode);
+  const reference = await mount(currentSource, false, true, false, true);
+  subject.frame(0); reference.frame(0);
+  assert.deepEqual(subject.drawing, reference.drawing, 'diagnostic must preserve complete initial artwork');
+  reference.cleanup();
+  const audit = () => (subject.window as any).__STANZA_IDLE_CANVAS__();
+  if (mode === 'baseline') {
+    assert.equal(subject.timers.size, 1);
+    subject.frame(50); assert.equal(audit().redraws, 2);
+  } else {
+    const settled = audit();
+    assert.equal(subject.raf.size + subject.timers.size, 0, 'no scheduled work throughout sustained idle');
+    assert.equal(settled.rafCallbacks, 1); assert.equal(settled.redraws, 1);
+    for (const invalidate of [() => subject.resize(1920, 1080), () => subject.theme(), () => subject.visibility(false)]) {
+      invalidate(); assert.equal(subject.raf.size, 1);
+      subject.frame(50); assert.equal(subject.raf.size + subject.timers.size, 0);
+    }
+    subject.visibility(true); subject.theme();
+    assert.equal(subject.raf.size + subject.timers.size, 0);
+    subject.visibility(false); subject.frame(100); assert.equal(subject.raf.size + subject.timers.size, 0);
+    subject.state('loading', 200, () => undefined);
+    for (const t of [200, 216.667, 233.334]) { subject.frame(t); assert.equal(subject.raf.size, 1); assert.equal(subject.timers.size, 0); }
+    subject.state('idle', 250, () => undefined); subject.frame(250);
+    assert.equal(subject.raf.size + subject.timers.size, 0);
+    for (const state of ['success', 'error']) {
+      let completions = 0;
+      subject.state(state, 1000, () => { completions++; });
+      subject.frame(1000); subject.frame(1016.667);
+      assert.equal(subject.raf.size, 1); assert.equal(subject.timers.size, 0);
+      subject.frame(4000); assert.equal(completions, 1);
+      assert.equal(subject.raf.size, 1, 'completion requests final idle artwork');
+      subject.frame(4016.667);
+      assert.equal(subject.raf.size + subject.timers.size, 0, 'final idle draw settles');
+    }
+    console.log('PASS: diagnostic idle-static has zero pending RAF/timers at sustained idle; full artwork parity, resize/theme/resume, loading, success/error completion and final idle frame.');
+  }
+  subject.cleanup(); assert.equal(audit().stopped, true);
+}
 // Read-only historical source, compiled in memory. No checkout or filesystem restoration.
 const historicalSource = execFileSync('git', ['show', '1725157:src/components/FingerprintCanvas.tsx'], { encoding: 'utf8' });
 const previous = await mount(historicalSource);

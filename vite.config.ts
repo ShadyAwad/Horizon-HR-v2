@@ -30,6 +30,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins,
     define: {
+      'import.meta.env.LOGIN_CONTROL_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_CONTROL_DIAGNOSTIC === 'true'),
+      'import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_IDLE_CANVAS_DIAGNOSTIC === 'true'),
       'import.meta.env.LOGIN_AUTOFILL_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_AUTOFILL_DIAGNOSTIC === 'true'),
       'import.meta.env.LOGIN_ANIMATION_AUDIT': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_ANIMATION_AUDIT === 'true'),
     },

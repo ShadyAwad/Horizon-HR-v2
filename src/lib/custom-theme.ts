@@ -1,5 +1,40 @@
 export const DEFAULT_CUSTOM_ACCENT = '#6366F1';
 
+export const CURSOR_EFFECTS = ['none', 'glow', 'dot-trail', 'lerp-trail'] as const;
+export type CustomThemeConfig = {
+  accent: string;
+  primaryAction: string | null;
+  secondaryAction: string | null;
+  surfaceTint: string | null;
+  backgroundTint: string | null;
+  cursorEffect: (typeof CURSOR_EFFECTS)[number];
+  cursorColor: string | null;
+  cursorTrailIntensity: number;
+  cursorTrailLength: number;
+};
+export const DEFAULT_CUSTOM_THEME: Readonly<CustomThemeConfig> = Object.freeze({
+  accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
+  surfaceTint: null, backgroundTint: null, cursorEffect: 'none', cursorColor: null,
+  cursorTrailIntensity: 40, cursorTrailLength: 6,
+});
+
+export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): CustomThemeConfig {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+  const bounded = (value: unknown, fallback: number, min: number, max: number) =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
+  return {
+    accent: normaliseCustomAccent(raw.accent) ?? normaliseCustomAccent(legacyAccent) ?? DEFAULT_CUSTOM_ACCENT,
+    primaryAction: normaliseCustomAccent(raw.primaryAction), secondaryAction: normaliseCustomAccent(raw.secondaryAction),
+    surfaceTint: normaliseCustomAccent(raw.surfaceTint), backgroundTint: normaliseCustomAccent(raw.backgroundTint),
+    cursorColor: normaliseCustomAccent(raw.cursorColor),
+    cursorEffect: CURSOR_EFFECTS.includes(raw.cursorEffect as CustomThemeConfig['cursorEffect'])
+      ? raw.cursorEffect as CustomThemeConfig['cursorEffect'] : 'none',
+    cursorTrailIntensity: bounded(raw.cursorTrailIntensity, 40, 10, 80),
+    cursorTrailLength: bounded(raw.cursorTrailLength, 6, 3, 12),
+  };
+}
+
 export function normaliseCustomAccent(value: unknown): string | null {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim().toUpperCase() : null;
 }
@@ -28,22 +63,33 @@ function readableAccent(base: string, surfaces: string[], light: boolean) {
   return light ? '#000000' : '#FFFFFF';
 }
 
-export function deriveCustomTheme(value: string, mode: 'light' | 'dark') {
-  const base = normaliseCustomAccent(value) ?? DEFAULT_CUSTOM_ACCENT;
+export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'light' | 'dark') {
+  const config = normaliseCustomTheme(typeof value === 'string' ? { accent: value } : value);
+  const base = config.accent;
   const light = mode === 'light';
-  const page = mixColor(light ? '#F8FAFC' : '#0B1018', base, light ? .035 : .04);
-  const surface = mixColor(light ? '#FFFFFF' : '#151D29', base, .035);
-  const raised = mixColor(light ? '#FFFFFF' : '#1D2735', base, .035);
+  const background = config.backgroundTint ?? base;
+  const page = mixColor(light ? '#F8FAFC' : '#0B1018', background, light ? .035 : .04);
+  const surface = mixColor(light ? '#FFFFFF' : '#151D29', config.surfaceTint ?? base, .035);
+  const raised = mixColor(light ? '#FFFFFF' : '#1D2735', config.surfaceTint ?? base, .035);
   const selected = mixColor(surface, base, light ? .12 : .17);
   const hover = mixColor(surface, base, light ? .07 : .10);
-  const accent = readableAccent(base, [page, surface, raised, selected, hover], light);
+  const secondarySoft = mixColor(surface, config.secondaryAction ?? base, .10);
+  const surfaces = [page, surface, raised, selected, hover];
+  if (config.secondaryAction) surfaces.push(secondarySoft);
+  const accent = readableAccent(base, surfaces, light);
   const accentHover = mixColor(accent, light ? '#000000' : '#FFFFFF', .08);
   const foreground = light ? '#FFFFFF' : '#000000';
   const primary = light ? '#172033' : '#F1F5F9';
   const secondary = light ? '#39465A' : '#CBD5E1';
   const muted = light ? '#4B586D' : '#B1BDCE';
   const soft = mixColor(surface, base, .10);
+  const action = readableAccent(config.primaryAction ?? base, surfaces, light);
+  const secondaryAction = readableAccent(config.secondaryAction ?? base, surfaces, light);
+  const topography = readableAccent(background, surfaces, light);
   const tokens: Record<string, string> = {
+    'primary-action': action, 'primary-action-hover': mixColor(action, light ? '#000000' : '#FFFFFF', .08),
+    'primary-action-foreground': foreground,
+    'secondary-action': secondaryAction, 'secondary-action-soft': secondarySoft,
     'accent': accent, 'accent-hover': accentHover, 'accent-active': accentHover,
     'accent-soft': soft, 'accent-muted': soft, 'accent-border': accent,
     'accent-foreground': foreground, 'accent-contrast': foreground,
@@ -52,29 +98,34 @@ export function deriveCustomTheme(value: string, mode: 'light' | 'dark') {
     'navigation-surface': surface, 'sidebar-surface': surface,
     'hover-surface': hover, 'selected-surface': selected, 'subtle-accent-surface': soft,
     'border-subtle': mixColor(surface, primary, .20), 'border-default': mixColor(surface, primary, .30),
-    'border-strong': mixColor(surface, primary, .45), 'border-accent': accent,
+    'border-strong': mixColor(surface, primary, .45), 'border-accent': config.secondaryAction ? secondaryAction : accent,
     'text-primary': primary, 'text-secondary': secondary, 'text-muted': muted, 'icon-muted': muted,
     'nav-active-foreground': primary, 'control-selected-foreground': foreground,
     'input-bg': page, 'dropdown-bg': raised, 'editor-toolbar-bg': raised,
     'auth-background': page, 'auth-text': primary,
     'auth-ring-rgb': rgb(accent).join(', '), 'auth-pulse-rgb': rgb(accentHover).join(', '),
-    'dark-atmosphere': `radial-gradient(circle at top left, ${base}24, transparent 34%), radial-gradient(circle at bottom right, ${base}14, transparent 42%), ${page}`,
-    'topography-color': accent, 'dark-glow-strong': `${base}1A`, 'dark-glow-soft': `${base}0D`,
-    'light-atmosphere': `radial-gradient(circle at top left, ${base}12, transparent 45%), ${page}`,
-    'light-topography': `${accent}18`, 'light-glow-top': `${base}24`, 'light-glow-bottom': `${base}14`,
+    'dark-atmosphere': `radial-gradient(circle at top left, ${background}24, transparent 34%), radial-gradient(circle at bottom right, ${background}14, transparent 42%), ${page}`,
+    'topography-color': topography, 'dark-glow-strong': `${background}1A`, 'dark-glow-soft': `${background}0D`,
+    'light-atmosphere': `radial-gradient(circle at top left, ${background}12, transparent 45%), ${page}`,
+    'light-topography': `${topography}18`, 'light-glow-top': `${background}24`, 'light-glow-bottom': `${background}14`,
   };
-  return { base, adjusted: accent !== base, tokens };
+  return { base, adjusted: accent !== base || (config.primaryAction !== null && action !== config.primaryAction)
+    || (config.secondaryAction !== null && secondaryAction !== config.secondaryAction), tokens };
 }
 
-export function customThemeVariables(accent: string) {
-  const values: Record<string, string> = { '--stanza-custom-base': normaliseCustomAccent(accent) ?? DEFAULT_CUSTOM_ACCENT };
+export function customThemeVariables(accent: string | CustomThemeConfig) {
+  const config = normaliseCustomTheme(typeof accent === 'string' ? { accent } : accent);
+  const values: Record<string, string> = { '--stanza-custom-base': config.accent };
   for (const mode of ['light', 'dark'] as const) {
     for (const [token, value] of Object.entries(deriveCustomTheme(accent, mode).tokens)) values[`--stanza-custom-${mode}-${token}`] = value;
   }
   return values;
 }
 
-export function applyCustomAccent(accent: string) {
+export function applyCustomAccent(accent: string | CustomThemeConfig) {
   if (typeof document === 'undefined') return;
+  const config = normaliseCustomTheme(typeof accent === 'string' ? { accent } : accent);
+  document.documentElement.dataset.customPrimary = String(config.primaryAction !== null);
+  document.documentElement.dataset.customSecondary = String(config.secondaryAction !== null);
   for (const [name, value] of Object.entries(customThemeVariables(accent))) document.documentElement.style.setProperty(name, value);
 }

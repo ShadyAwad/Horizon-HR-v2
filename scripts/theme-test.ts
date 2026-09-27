@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   DEFAULT_LIGHT_INTENSITY,
@@ -7,7 +8,7 @@ import {
   resolveLightIntensityStop,
 } from '../src/lib/StanzaPreferencesContext';
 import { BACKGROUND_PRESET_IDS, backgroundPresets, normaliseBackgroundPreset } from '../src/lib/background-presets';
-import { contrastRatio, DEFAULT_CUSTOM_ACCENT, deriveCustomTheme, mixColor, normaliseCustomAccent } from '../src/lib/custom-theme';
+import { contrastRatio, DEFAULT_CUSTOM_ACCENT, deriveCustomTheme, mixColor, normaliseCustomAccent, normaliseCustomTheme, DEFAULT_CUSTOM_THEME } from '../src/lib/custom-theme';
 
 const [preferences, css, dashboard, translations, indexHtml, themeBootstrap, richTextEditor, leaveWorkspace, organisationPanel, locationsPanel, quickActionSettings, authShell, fingerprintCanvas, expensesPanel, shiftSwapsPanel, commandPalette] = await Promise.all([
   readFile('src/lib/StanzaPreferencesContext.tsx', 'utf8'),
@@ -279,10 +280,11 @@ for (const color of samples) for (const mode of ['light', 'dark'] as const) {
 }
 const customEditor = await readFile('src/components/CustomThemeEditor.tsx', 'utf8');
 assert.match(customEditor, /type="color"/);
-assert.match(customEditor, /aria-invalid=\{!valid\}/);
+assert.match(customEditor, /aria-invalid=\{invalid\}/);
 assert.match(customEditor, /dir=\{isRtl \? 'rtl' : 'ltr'\}/);
-assert.match(customEditor, /onChange=\{\(event\) => setDraft\(event.target.value\)\}/, 'Picker input only changes the local preview');
-assert.match(customEditor, /onBlur=\{commit\}/);
+assert.match(customEditor, /onClick=\{commit\}/);
+assert.match(customEditor, /setDraft\(\(current\) =>/);
+assert.match(customEditor, /data-custom-cursor-preview/);
 assert.doesNotMatch(customEditor, /setBackgroundPreset|localStorage|querySelectorAll|insertRule/);
 console.log(`Custom contrast: minimum button ${lowestButton.toFixed(2)}:1, text ${lowestText.toFixed(2)}:1 across ${samples.length * 2} palettes`);
 console.log('Original preset snapshots, Custom contrast/persistence, light intensity, accessibility, and cross-role contracts passed');
@@ -302,3 +304,35 @@ for (const path of ['src/components/navigation/DashboardNavigation.tsx', 'src/co
   assert.match(await readFile(path, 'utf8'), /stanza-close-action/, path);
 }
 console.log('Semantic primary Passkey and transparent close glyph interaction contracts passed');
+
+// Existing custom palettes retain their exact values when new fields are unset.
+const legacyTokens = samples.flatMap((color) => (['light', 'dark'] as const).map((mode) =>
+  Object.fromEntries(Object.entries(deriveCustomTheme(color, mode).tokens).filter(([key]) => !key.startsWith('primary-action') && !key.startsWith('secondary-action')))));
+assert.equal(createHash('sha256').update(JSON.stringify(legacyTokens)).digest('hex'), '34ff665118583a9f0f4d00ce33a39e6bae25fbb7b49072747be5e264e8eb835b');
+const migrated = readStanzaPreferences(JSON.stringify({ customAccent: '#2563eb', backgroundPreset: 'custom' }));
+assert.deepEqual(migrated.customTheme, { ...DEFAULT_CUSTOM_THEME, accent: '#2563EB' });
+for (const malformed of [null, [], 'invalid', 7, { accent: 'bad', primaryAction: 'red', cursorEffect: 'anything', cursorTrailLength: Infinity, cursorTrailIntensity: '90' }]) {
+  assert.deepEqual(normaliseCustomTheme(malformed), DEFAULT_CUSTOM_THEME);
+}
+const configured = normaliseCustomTheme({ accent: '#ffffff', primaryAction: '#ffff00', secondaryAction: '#00ff00', surfaceTint: '#000000', backgroundTint: '#FFFFFF', cursorColor: '#aabbcc', cursorEffect: 'lerp-trail', cursorTrailLength: 999, cursorTrailIntensity: -10 });
+assert.equal(configured.cursorTrailLength, 12); assert.equal(configured.cursorTrailIntensity, 10);
+assert.equal(configured.cursorColor, '#AABBCC');
+const persisted = readStanzaPreferences(JSON.stringify({ ...migrated, customTheme: configured }));
+assert.deepEqual(persisted.customTheme, configured);
+assert.equal(persisted.customAccent, configured.accent, 'Legacy alias stays synchronized');
+assert.deepEqual(readStanzaPreferences(JSON.stringify(persisted)), persisted, 'Persistence readback is stable');
+assert.match(preferences, /applyCustomAccent\(nextPreferences.customTheme\)/, 'Cross-tab changes apply the full configuration');
+assert.match(preferences, /applyCustomAccent\(preferences.customTheme\)/, 'Pre-render initialization uses the configuration');
+for (const color of samples) for (const tint of samples) for (const mode of ['light', 'dark'] as const) {
+  const config = { ...DEFAULT_CUSTOM_THEME, accent: color, primaryAction: tint, secondaryAction: tint, surfaceTint: tint, backgroundTint: tint };
+  const { tokens } = deriveCustomTheme(config, mode);
+  for (const surface of ['page-bg', 'surface', 'surface-elevated', 'selected-surface', 'hover-surface', 'secondary-action-soft']) {
+    for (const text of ['text-primary', 'text-secondary', 'text-muted', 'accent', 'secondary-action']) {
+      assert.ok(contrastRatio(tokens[surface], tokens[text]) >= 4.5, `${mode} ${color} ${tint} ${text} on ${surface}`);
+    }
+    assert.ok(contrastRatio(tokens[surface], tokens['focus-ring']) >= 3);
+  }
+  for (const state of ['primary-action', 'primary-action-hover']) assert.ok(contrastRatio(tokens[state], tokens['primary-action-foreground']) >= 4.5);
+}
+assert.equal(deriveCustomTheme(configured, 'light').adjusted, true);
+console.log('Theme Studio migration, malformed input, readback, legacy parity and 200 expanded contrast palettes passed');
