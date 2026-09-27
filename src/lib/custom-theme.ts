@@ -3,7 +3,9 @@ export const DEFAULT_CUSTOM_ACCENT = '#6366F1';
 export const CURSOR_EFFECTS = ['none', 'glow', 'dot-trail', 'lerp-trail', 'portfolio-trail', 'comet', 'ribbon', 'sparks', 'orbit'] as const;
 export const CURSOR_APPEARANCES = ['system', 'dot', 'ring', 'dot-ring', 'crosshair', 'orb', 'minimal-arrow'] as const;
 export type CursorAppearance = (typeof CURSOR_APPEARANCES)[number];
+export type LanyardStyle = { cardColor: string | null; accentColor: string | null; strapColor: string | null };
 export type CustomThemeConfig = {
+  lanyardStyle: LanyardStyle;
   accent: string;
   primaryAction: string | null;
   secondaryAction: string | null;
@@ -26,6 +28,7 @@ export type CustomThemeConfig = {
   cursorVelocityResponse: number;
 };
 export const DEFAULT_CUSTOM_THEME: Readonly<CustomThemeConfig> = Object.freeze({
+  lanyardStyle: { cardColor: null, accentColor: null, strapColor: null },
   accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
   surfaceTint: null, backgroundTint: null, cursorEffect: 'none', cursorColor: null,
   cursorTrailIntensity: 40, cursorTrailLength: 6,
@@ -40,6 +43,7 @@ export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): Cu
   const bounded = (value: unknown, fallback: number, min: number, max: number) =>
     typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
   return {
+    lanyardStyle: normaliseLanyardStyle(raw.lanyardStyle),
     accent: normaliseCustomAccent(raw.accent) ?? normaliseCustomAccent(legacyAccent) ?? DEFAULT_CUSTOM_ACCENT,
     primaryAction: normaliseCustomAccent(raw.primaryAction), secondaryAction: normaliseCustomAccent(raw.secondaryAction),
     surfaceTint: normaliseCustomAccent(raw.surfaceTint), backgroundTint: normaliseCustomAccent(raw.backgroundTint),
@@ -174,3 +178,14 @@ export function applyPointerPreset(config: CustomThemeConfig, preset: PointerPre
   return normaliseCustomTheme({ ...config, ...defaults, ...choices[preset] });
 }
 export const hasCustomCursor = (config: CustomThemeConfig) => config.cursorAppearance !== 'system' || config.cursorEffect !== 'none';
+
+export function normaliseLanyardStyle(value: unknown): LanyardStyle {
+  const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return { cardColor: normaliseCustomAccent(raw.cardColor), accentColor: normaliseCustomAccent(raw.accentColor), strapColor: normaliseCustomAccent(raw.strapColor) };
+}
+export function resolveLanyardColors(style: LanyardStyle) {
+  const card = style.cardColor ?? '#061B13';
+  const text = contrastRatio(card, '#FFFFFF') >= contrastRatio(card, '#000000') ? '#FFFFFF' : '#000000';
+  const accent = readableAccent(style.accentColor ?? '#18C98B', [card], text === '#000000');
+  return { card, text, accent };
+}

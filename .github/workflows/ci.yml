@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Deterministic tests (no external infrastructure)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suite in hiring live-employees hr-background assets performance lanyard editor feed-submission company-feed organisation shift-swaps roster-goals leave theme locations pwa document-extraction expenses qr navigation tutorials command-palette architecture; do
+            npm run "test:$suite"
+          done

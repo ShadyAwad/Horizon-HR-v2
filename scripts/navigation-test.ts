@@ -18,7 +18,7 @@ import {
 } from '../src/components/navigation/mobile-shortcut-order';
 
 const root = process.cwd();
-const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
+const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 const dashboard = read('src/pages/Dashboard.tsx');
 const nav = read('src/components/navigation/DashboardNavigation.tsx');
 const shortcuts = read('src/components/navigation/MobileShortcutSettings.tsx');
@@ -169,7 +169,7 @@ const checks: Array<[string, boolean]> = [
   ['drag movement highlights one target and commits only once on pointer release', /setTargetId\(candidate\)/.test(shortcutOrder) && /onPointerUp/.test(shortcutOrder) && /onSwapRef\.current/.test(shortcutOrder) && !/onPointerMove[\s\S]{0,900}onSwapRef\.current/.test(shortcutOrder)],
   ['selected-only order rows expose named drag handles, logical RTL-safe controls, and polite announcements', /data-mobile-shortcut-order-id/.test(shortcuts) && /Reorder \$\{item\.label\}/.test(shortcuts) && /aria-live="polite"/.test(shortcuts) && /\\u0646\\u0642\\u0644/.test(shortcuts)],
   ['launcher search is not focused automatically when navigation opens', !/querySelector<HTMLInputElement>\('input'\)\?\.focus/.test(nav)],
-  ['demo account accordion keeps its lightweight content mounted behind a stable opaque surface', /id="demo-account-panel"/.test(login) && /bg-\[#061f17\]/.test(login) && /transition-\[grid-template-rows,opacity\]/.test(login) && /duration-\[180ms\]/.test(login) && !/backdrop-blur/.test(login.slice(login.indexOf('demo-account-panel') - 900, login.indexOf('demo-account-panel') + 2200))],
+  ['demo account accordion keeps its lightweight content mounted behind a stable opaque surface', /id="demo-account-panel"/.test(login) && /bg-\[#061f17\]/.test(login) && /transition-\[grid-template-rows\]/.test(login) && /opacity-100/.test(login) && /duration-\[180ms\]/.test(login) && !/backdrop-blur/.test(login.slice(login.indexOf('demo-account-panel') - 900, login.indexOf('demo-account-panel') + 2200))],
   ['shortcut sheet and selected ordering area are content-sized before deliberate scrolling caps apply', /data-mobile-shortcut-sheet/.test(shortcutEditor) && /h-auto/.test(shortcutEditor) && !/flex max-h-full/.test(shortcutEditor) && /order-1 mt-3/.test(shortcuts) && /order-2 mt-4/.test(shortcuts) && /max-h-\[min\(30dvh,15rem\)\]/.test(shortcuts) && !/max-h-56/.test(shortcuts)],
   ['touch reorder begins only from a labelled handle and keeps a visible offset preview with bounded list scrolling', /Reorder \$\{item\.label\}/.test(shortcuts) && /data-mobile-shortcut-drag-preview/.test(shortcuts) && /previewPoint\.y - \(drag\.previewPoint\.touch \? 48 : 18\)/.test(shortcuts) && /scrollContainerRef/.test(shortcutOrder) && /const edge = 36/.test(shortcutOrder) && /scrollTop \+= step/.test(shortcutOrder)],
   ['launcher uses restrained transform-only interaction polish with reduced-motion fallback', /transition-\[transform,box-shadow,background-color,border-color\]/.test(nav) && /hover:scale-\[1\.015\]/.test(nav) && /active:scale-\[\.97\]/.test(nav) && /scale-\[1\.025\]/.test(nav) && /motion-reduce:transform-none/.test(nav)],

@@ -179,6 +179,8 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setBackgroundPreset: (preset: BackgroundPresetId) => void;
   setCustomAccent: (accent: string) => void;
   setCustomTheme: (config: CustomThemeConfig) => void;
+  lanyardPreview: CustomThemeConfig["lanyardStyle"] | null;
+  setLanyardPreview: (style: CustomThemeConfig["lanyardStyle"] | null) => void;
   updateTutorialProgress: (next: Partial<TutorialProgress>) => void;
 };
 
@@ -295,8 +297,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     }));
   }, []);
 
+  const [lanyardPreview, setLanyardPreview] = useState<CustomThemeConfig["lanyardStyle"] | null>(null);
   const value = useMemo<StanzaPreferencesContextValue>(() => ({
     ...preferences,
+    lanyardPreview, setLanyardPreview,
     setLanyardEnabled,
     setInterfaceScale,
     resetInterfaceScale,
@@ -314,7 +318,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setCustomAccent,
     setCustomTheme,
     updateTutorialProgress,
-  }), [preferences, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
+  }), [preferences, lanyardPreview, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}
     {preferences.backgroundPreset === 'custom' && hasCustomCursor(preferences.customTheme)

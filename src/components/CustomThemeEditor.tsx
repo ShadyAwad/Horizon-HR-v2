@@ -8,14 +8,16 @@ import PointerStudio from './PointerStudio';
 const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint'] as const;
 
 export default function CustomThemeEditor() {
-  const { customTheme, setCustomTheme } = useStanzaPreferences();
+  const { customTheme, setCustomTheme, setLanyardPreview } = useStanzaPreferences();
   const { theme } = useTheme();
   const { t, isRtl } = useLanguage();
   const id = useId();
   const [draft, setDraft] = useState(customTheme);
   useEffect(() => setDraft(customTheme), [customTheme]);
-  const valid = [...COLOR_FIELDS, 'cursorColor', 'pointerColor'].every((field) => draft[field] === null || normaliseCustomAccent(draft[field]) !== null);
+  const valid = [...COLOR_FIELDS, 'cursorColor', 'pointerColor'].every((field) => draft[field] === null || normaliseCustomAccent(draft[field]) !== null)
+    && Object.values(draft.lanyardStyle).every((value) => value === null || normaliseCustomAccent(value) !== null);
   const normalized = useMemo(() => normaliseCustomTheme(draft, customTheme.accent), [draft, customTheme.accent]);
+  useEffect(() => { setLanyardPreview(normalized.lanyardStyle); return () => setLanyardPreview(null); }, [normalized.lanyardStyle, setLanyardPreview]);
   const palette = useMemo(() => deriveCustomTheme(normalized, theme), [normalized, theme]);
   const previewStyle = useMemo(() => Object.fromEntries(Object.entries(palette.tokens).map(([key, value]) => [`--stanza-${key}`, value])) as CSSProperties, [palette]);
   const changed = JSON.stringify(normalized) !== JSON.stringify(customTheme);
@@ -42,6 +44,20 @@ export default function CustomThemeEditor() {
     <details className="stanza-studio-section" open>
       <summary>{t('studio.colors')}</summary>
       <div className="stanza-studio-fields">{COLOR_FIELDS.map(colorControl)}</div>
+    </details>
+    <details className="stanza-studio-section">
+      <summary>{t('studio.lanyard')}</summary>
+      <p>{t('studio.lanyardHelp')}</p>
+      <div className="stanza-studio-fields">{(['cardColor', 'accentColor', 'strapColor'] as const).map((field) => <div className="stanza-studio-color" key={field}>
+        <label htmlFor={`${id}-lanyard-hex-${field}`}>{t(`studio.${field}`)}</label>
+        <input id={`${id}-lanyard-${field}`} type="color" aria-label={`${t(`studio.${field}`)} — ${t('background.colorPicker')}`} value={normaliseCustomAccent(draft.lanyardStyle[field]) ?? (field === 'cardColor' ? '#061b13' : field === 'strapColor' ? '#d7f5e9' : '#18c98b')}
+          onChange={(event) => update('lanyardStyle', { ...draft.lanyardStyle, [field]: event.target.value })} />
+        <input id={`${id}-lanyard-hex-${field}`} type="text" dir="ltr" maxLength={7} spellCheck={false} value={draft.lanyardStyle[field] ?? ''} placeholder={t('studio.auto')}
+          aria-invalid={draft.lanyardStyle[field] !== null && !normaliseCustomAccent(draft.lanyardStyle[field])}
+          onChange={(event) => update('lanyardStyle', { ...draft.lanyardStyle, [field]: event.target.value || null })} />
+        <button type="button" className="stanza-studio-derived" disabled={draft.lanyardStyle[field] === null}
+          aria-label={`${t('studio.auto')}: ${t(`studio.${field}`)}`} onClick={() => update('lanyardStyle', { ...draft.lanyardStyle, [field]: null })}>{t('studio.auto')}</button>
+      </div>)}</div>
     </details>
     <PointerStudio draft={draft} onChange={setDraft} />
     {!valid && <p id={`${id}-error`} role="alert">{t('background.invalidColor')}</p>}

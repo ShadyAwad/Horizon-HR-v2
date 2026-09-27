@@ -156,3 +156,13 @@ assert.deepEqual(readTutorialProgress({ tutorialsAutoStart: false, completedTuto
 assert.deepEqual(readTutorialProgress({ completedTutorials: { 'bad key': 9 } }).completedTutorials, {});
 
 console.log('Tutorial contracts passed.');
+
+const { clampTutorialPosition } = await import('../src/components/tutorials/tutorial-drag');
+assert.deepEqual(clampTutorialPosition({ x: -100, y: 900 }, { width: 320, height: 240 }, { width: 800, height: 600 }), { x: 12, y: 348 });
+assert.deepEqual(clampTutorialPosition({ x: 180, y: 150 }, { width: 320, height: 240 }, { width: 800, height: 600 }), { x: 180, y: 150 });
+const dragSource = await readFile('src/components/tutorials/TutorialOverlay.tsx', 'utf8');
+assert.match(dragSource, /\[tutorialId, stepIndex\]/, 'Manual placement resets on each step');
+assert.match(dragSource, /style.translate =/, 'Drag applies translation without per-pixel React state');
+assert.match(dragSource, /setPointerCapture/);
+assert.match(dragSource, /manualPosition \?\? \(isCompactViewport/, 'Automatic mobile/desktop positioning remains');
+console.log('PASS tutorial drag clamp, step reset, capture and automatic positioning contracts');

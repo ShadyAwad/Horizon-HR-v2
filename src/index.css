@@ -1490,3 +1490,39 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
   button.stanza-close-action, button.stanza-close-action > svg { transition: none; }
   button.stanza-close-action:is(:hover, :active) > svg { transform: none; }
 }
+
+/* Interaction polish: finite, scoped, and dormant while idle. */
+.stanza-tutorial-drag-handle { cursor: grab; touch-action: none; flex: 1; }
+.stanza-tutorial-dialog[data-dragging] { user-select: none; }
+.stanza-tutorial-dialog[data-dragging] .stanza-tutorial-drag-handle { cursor: grabbing; }
+.stanza-lanyard-view { position: absolute; inset-inline-end: 1rem; bottom: 1rem; border: 1px solid var(--stanza-border-default); border-radius: .5rem; padding: .4rem .65rem; font-size: .7rem; color: var(--stanza-text-primary); background: var(--stanza-surface); }
+.stanza-lanyard-view:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
+.stanza-id-dialog { margin: auto; padding: 0; border: 0; background: transparent; overflow: visible; width: min(26rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); color: var(--id-text); }
+.stanza-id-dialog::backdrop { background: rgb(0 0 0 / .65); animation: stanza-id-backdrop 180ms ease-out; }
+.stanza-id-details { position: relative; overflow: auto; max-height: calc(100dvh - 2rem); padding: 3.5rem 2rem 2rem; border: 1px solid var(--id-accent); border-radius: 1.5rem; background: var(--id-card); animation: stanza-id-arrive 240ms cubic-bezier(.2,.8,.2,1); overflow-wrap: anywhere; }
+.stanza-id-details h2 { font-size: 1.6rem; font-weight: 800; }
+.stanza-id-details p { margin-top: .65rem; }
+.stanza-id-details dl { border-top: 1px solid var(--id-accent); margin-top: 1.5rem; padding-top: 1rem; }
+.stanza-id-details dt { font-size: .75rem; font-weight: 700; }
+.stanza-id-details dd { font: .8rem monospace; margin-top: .4rem; }
+.stanza-id-close { position: absolute; inset-inline-end: .75rem; top: .75rem; padding: .5rem; }
+.stanza-id-portrait { width: 5rem; height: 5rem; border-radius: 50%; object-fit: cover; margin-bottom: 1rem; }
+@keyframes stanza-id-arrive { from { opacity: 0; transform: perspective(900px) translate(var(--id-from-x, 0px), var(--id-from-y, 24px)) rotateX(8deg) scale(.78); } to { opacity: 1; transform: none; } }
+@keyframes stanza-id-backdrop { from { opacity: 0; } to { opacity: 1; } }
+.geo-operations-content button:not(.stanza-geo-clock):not(.stanza-geo-break-primary) { transition: transform 160ms cubic-bezier(.2,.8,.2,1), border-color 160ms ease, background-color 180ms ease, color 160ms ease; }
+@media (hover: hover) {
+  .geo-operations-content button:not(.stanza-geo-clock):not(.stanza-geo-break-primary):not(:disabled):hover { transform: translateY(-1px); }
+}
+.geo-operations-content button:not(.stanza-geo-clock):not(.stanza-geo-break-primary):not(:disabled):active { transform: translateY(1px) scale(.98); transition-duration: 80ms; }
+.geo-operations-content button[aria-pressed="true"] { border-color: var(--stanza-accent); }
+.geo-operations-content button:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
+.stanza-geo-action-content { display: inline-block; }
+.stanza-geo-clock > div, .stanza-geo-action-content { transition: scale 160ms cubic-bezier(.2,.8,.2,1); }
+.stanza-geo-clock:not(:disabled):hover > div, .stanza-geo-break-primary:not(:disabled):hover .stanza-geo-action-content { scale: 1.02; }
+.stanza-geo-clock:not(:disabled):active > div, .stanza-geo-break-primary:not(:disabled):active .stanza-geo-action-content { scale: .97; transition-duration: 80ms; }
+@media (prefers-reduced-motion: reduce) {
+  .stanza-id-details, .stanza-id-dialog::backdrop { animation: none; }
+  .geo-operations-content button, .stanza-geo-clock > div, .stanza-geo-action-content { transition: none !important; scale: none !important; transform: none !important; }
+}
+
+.stanza-id-brand { display: flex; align-items: center; gap: .6rem; color: var(--id-accent); font-weight: 800; margin-bottom: 1.25rem; }

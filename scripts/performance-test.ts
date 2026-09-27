@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
-const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
+const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 const sourceFiles = (directory: string): string[] => readdirSync(resolve(root, directory), { withFileTypes: true }).flatMap((entry) => {
   const path = `${directory}/${entry.name}`;
   return entry.isDirectory() ? sourceFiles(path) : [path];
@@ -267,7 +267,7 @@ lanyard.includes("? 'settled'"));
 check('lanyard visibility does not pause its initial demand frames',
 !dashboardLanyard.includes('hidden: boolean') &&
 !dashboardLanyard.includes('paused={hidden || paused}') &&
-dashboardLanyard.includes('paused={paused}'));
+dashboardLanyard.includes('paused={paused || expanded}'));
 const lanyardCapabilitySource = dashboard.slice(dashboard.indexOf('const reducedMotionQuery'), dashboard.indexOf('const shouldMountLanyard'));
 check('desktop lanyard capability uses WebGL without browser, CPU, memory, or pointer heuristics',
 lanyardCapabilitySource.includes("window.matchMedia('(min-width: 1024px)')") &&

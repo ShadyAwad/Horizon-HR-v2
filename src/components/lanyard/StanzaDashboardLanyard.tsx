@@ -1,4 +1,7 @@
-import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
+import { useStanzaPreferences } from '../../lib/StanzaPreferencesContext';
+import { useLanguage } from '../../lib/LanguageContext';
+import { LanyardDetails } from './LanyardDetails';
+import { Component, useEffect, useMemo, useState, useRef, type ErrorInfo, type ReactNode } from 'react';
 import type { AuthUser } from '../../auth/auth-contract';
 import { apiFetch, apiUrl } from '../../lib/api';
 import Lanyard from './Lanyard';
@@ -48,8 +51,15 @@ export default function StanzaDashboardLanyard({
   anchorSide: 'left' | 'right';
   user: AuthUser;
 }) {
+  const { customTheme, lanyardPreview } = useStanzaPreferences();
+  const { t } = useLanguage();
+  const style = lanyardPreview ?? customTheme.lanyardStyle;
+  const [expanded, setExpanded] = useState(false);
+  const viewButton = useRef<HTMLButtonElement>(null);
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
+  const expand = (point?: { x: number; y: number }) => { setOrigin(point ?? null); setExpanded(true); };
   const [profileImageDataUrl, setProfileImageDataUrl] = useState<string | null>(null);
-  const stanzaFrontImage = useMemo(() => buildStanzaFrontBadgeSvg({ language, direction }), [direction, language]);
+  const stanzaFrontImage = useMemo(() => buildStanzaFrontBadgeSvg({ language, direction, style }), [direction, language, style]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -73,8 +83,8 @@ export default function StanzaDashboardLanyard({
   }, [user.profileImageUrl]);
 
   const stanzaBackImage = useMemo(
-    () => buildStanzaBackBadgeSvg({ ...user, profileImageDataUrl }, { language, direction }),
-    [direction, language, profileImageDataUrl, user.email, user.id, user.jobTitle, user.name, user.role, user.tenant, user.tenantId]
+    () => buildStanzaBackBadgeSvg({ ...user, profileImageDataUrl }, { language, direction, style }),
+    [style, direction, language, profileImageDataUrl, user.email, user.id, user.jobTitle, user.name, user.role, user.tenant, user.tenantId]
   );
 
   useEffect(() => {
@@ -96,8 +106,10 @@ export default function StanzaDashboardLanyard({
           fov={20}
           anchorNdc={anchorNdc}
           eventSource={eventSource}
-          paused={paused}
-          interactionEnabled={interactionEnabled}
+          paused={paused || expanded}
+          onExpand={expand}
+          strapColor={style.strapColor}
+          interactionEnabled={interactionEnabled && !expanded}
           artworkLanguage={language}
           frontImage={stanzaFrontImage}
           backImage={stanzaBackImage}
@@ -105,6 +117,8 @@ export default function StanzaDashboardLanyard({
           transparent
         />
       </LanyardRuntimeBoundary>
+      {interactionEnabled && <button ref={viewButton} type="button" className="stanza-lanyard-view pointer-events-auto" onClick={() => expand()}>{t('lanyard.view')}</button>}
+      {expanded && <LanyardDetails origin={origin} user={user} portrait={profileImageDataUrl} style={style} returnFocus={viewButton.current} onClose={() => setExpanded(false)} />}
     </div>
   );
 }

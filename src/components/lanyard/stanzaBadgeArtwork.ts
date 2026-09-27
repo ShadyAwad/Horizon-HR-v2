@@ -1,3 +1,4 @@
+import { resolveLanyardColors, type LanyardStyle } from '../../lib/custom-theme';
 import { STANZA_FINGERPRINT_GROOVES, STANZA_FINGERPRINT_VIEW_BOX } from '../stanzaFingerprintGeometry';
 
 export type StanzaBadgeUser = {
@@ -12,7 +13,7 @@ export type StanzaBadgeUser = {
 };
 
 export type StanzaBadgeLanguage = 'en' | 'ar';
-type StanzaBadgeArtworkOptions = { language?: StanzaBadgeLanguage; direction?: 'ltr' | 'rtl' };
+type StanzaBadgeArtworkOptions = { language?: StanzaBadgeLanguage; direction?: 'ltr' | 'rtl'; style?: LanyardStyle };
 
 const escapeXml = (value: string) => value
   .replaceAll('&', '&amp;')
@@ -75,7 +76,7 @@ export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}
   const isRtl = (options.direction || (language === 'ar' ? 'rtl' : 'ltr')) === 'rtl';
   const secureWorkforce = isRtl ? 'منصة القوى العاملة' : 'SECURE WORKFORCE';
   const verifiedAccess = isRtl ? 'وصول موثق' : 'VERIFIED ACCESS';
-  return `
+  return styleBadge(`
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -105,7 +106,7 @@ export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}
       <circle cx="300" cy="819" r="5" fill="#42E8AD"/>
       <text x="322" y="827" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="${isRtl ? '1' : '3'}">${verifiedAccess}</text>
     </svg>
-  `;
+  `, options.style);
 }
 
 export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBadgeArtworkOptions = {}) {
@@ -142,7 +143,7 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
     ? `<defs><clipPath id="portraitClip"><circle cx="${portraitCenterX}" cy="288" r="58"/></clipPath></defs><circle cx="${portraitCenterX}" cy="288" r="62" fill="#04110d" stroke="#34d399" stroke-opacity="0.65" stroke-width="4"/><image href="${escapeXml(user.profileImageDataUrl)}" x="${portraitCenterX - 58}" y="230" width="116" height="116" preserveAspectRatio="xMidYMid slice" clip-path="url(#portraitClip)"/>`
     : '';
 
-  return `
+  return styleBadge(`
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -183,5 +184,18 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
       ${barcodeBars(user.id || tenant.identifier)}
       <text x="${textX}" y="944" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">${labels.propertyOf} ${companyUpper}</text>
     </svg>
-  `;
+  `, options.style);
+}
+
+function styleBadge(svg: string, style?: LanyardStyle) {
+  if (!style || (!style.cardColor && !style.accentColor)) return svg;
+  const colors = resolveLanyardColors(style);
+  // Match paint attributes only: never replace user text or embedded portrait data.
+  const backgrounds = new Set(['#020604', '#061b13', '#020a07', '#041c15', '#071a13', '#04110d']);
+  return svg.replace(/(fill|stroke|stop-color)="(#[0-9a-f]{6})"/gi, (attribute, kind, color) => {
+    // Custom palettes use the chosen base for gradient layers too, preventing
+    // a bright accent header from undermining the calculated text contrast.
+    const next = kind === 'stop-color' ? colors.card : backgrounds.has(color.toLowerCase()) ? (style.cardColor ? colors.card : color) : colors.accent;
+    return `${kind}="${next}"`;
+  }).replace(/(<text[^>]*?)fill="#[0-9a-f]{6}"/gi, `$1fill="${colors.text}"`);
 }

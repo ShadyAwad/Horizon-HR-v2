@@ -1,5 +1,6 @@
 /* eslint-disable react/no-unknown-property */
 'use client';
+import { createLanyardClickArbiter } from './lanyard-click';
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Canvas, extend, useFrame, useThree, type ThreeElement, type ThreeEvent } from '@react-three/fiber';
 import { useGLTF, useTexture } from '@react-three/drei';
@@ -185,6 +186,8 @@ interface LanyardProps {
   interactionEnabled?: boolean;
   artworkLanguage?: string;
   onReady?: () => void;
+  onExpand?: (point: { x: number; y: number }) => void;
+  strapColor?: string | null;
 }
 
 type LanyardFrameRuntime = {
@@ -225,6 +228,8 @@ function LanyardScene({
   paused = false,
   interactionEnabled = true,
   artworkLanguage,
+  onExpand,
+  strapColor,
   onReady,
   experiment,
 }: LanyardProps & { experiment: GpuExperiment }) {
@@ -282,6 +287,9 @@ function LanyardScene({
             artworkLanguage={artworkLanguage}
             frameRuntime={frameRuntime}
             onReady={onReady}
+            paused={paused}
+            onExpand={onExpand}
+            strapColor={strapColor}
           />
         </Physics>
       </Canvas>
@@ -419,6 +427,7 @@ function LanyardPhysicsProbe() {
 }
 
 interface BandProps {
+  paused?: boolean;
   frontImage?: string | null;
   backImage?: string | null;
   imageFit?: 'cover' | 'contain';
@@ -430,6 +439,8 @@ interface BandProps {
   artworkLanguage?: string;
   frameRuntime: MutableRefObject<LanyardFrameRuntime>;
   onReady?: () => void;
+  onExpand?: (point: { x: number; y: number }) => void;
+  strapColor?: string | null;
 }
 
 type LanyardRigidBody = RapierRigidBody & {
@@ -481,6 +492,7 @@ const splitCardGeometry = (source: THREE.BufferGeometry) => {
 };
 
 function Band({
+  paused = false,
   frontImage = null,
   backImage = null,
   imageFit = 'cover',
@@ -490,6 +502,8 @@ function Band({
   interactionElement = null,
   interactionEnabled = true,
   artworkLanguage,
+  onExpand,
+  strapColor,
   frameRuntime,
   onReady
 }: BandProps) {
@@ -503,6 +517,14 @@ function Band({
   const interactionPivot = useRef<THREE.Group>(null!);
   const idleMotionPivot = useRef<THREE.Group>(null!);
   const flipTargetRef = useRef(0);
+  const clickPosition = useRef({ x: 0, y: 0 });
+  const expandRef = useRef(onExpand);
+  expandRef.current = onExpand;
+  const clickArbiter = useMemo(() => createLanyardClickArbiter(() => {
+    flipTargetRef.current = flipTargetRef.current === 0 ? Math.PI : 0;
+    frameRuntime.current.requestFrame('active');
+  }, () => expandRef.current?.(clickPosition.current)), [frameRuntime]);
+  useEffect(() => { if (!interactionEnabled) clickArbiter.cancel(); return clickArbiter.cancel; }, [clickArbiter, interactionEnabled]);
   const pointerGestureRef = useRef<PointerGesture | null>(null);
   const pointerTargetRef = useRef<Element | null>(null);
   const readyFrames = useRef(0);
@@ -517,7 +539,7 @@ function Band({
   const lastAppliedAnchor = useRef<THREE.Vector3 | null>(null);
   const lastValidAnchorWorld = useRef(new THREE.Vector3(0, 4, 0));
   const onReadyRef = useRef(onReady);
-  const { camera, gl, size } = useThree();
+  const { camera, gl, size, scene } = useThree();
   const requestArtworkFrame = useCallback(() => frameRuntime.current.requestFrame('passive'), [frameRuntime]);
 
   const anchorWorld = useMemo(() => {
@@ -698,6 +720,13 @@ function Band({
     configureTexture(texture, false);
     frameRuntime.current.requestFrame('passive');
   }, [backTex, cardMap, frameRuntime, frontTex, gl, texture]);
+  // Settings pauses simulation. A changed appearance still needs one render,
+  // without waking physics or the recurring frame scheduler.
+  useEffect(() => {
+    if (!paused || document.visibilityState !== 'visible') return;
+    const frame = requestAnimationFrame(() => gl.render(scene, camera));
+    return () => cancelAnimationFrame(frame);
+  }, [paused, cardMap, strapColor, gl, scene, camera]);
   const [curve] = useState(
     () =>
       new THREE.CatmullRomCurve3([
@@ -1048,6 +1077,7 @@ function Band({
               document.documentElement.classList.add('stanza-lanyard-dragging');
               interactionElement?.classList.add('stanza-lanyard-interacting');
               [card, j1, j2, j3, j4].forEach(ref => ref.current?.wakeUp());
+              clickArbiter.cancel();
               drag(gesture.dragOffset);
               frameRuntime.current.requestFrame('active');
               } finally { if (import.meta.env.DEV) recordDevLanyardWork('pointer', performance.now() - pointerStarted); }
@@ -1067,15 +1097,15 @@ function Band({
                   deltaX * deltaX + deltaY * deltaY <= CLICK_MOVE_THRESHOLD * CLICK_MOVE_THRESHOLD &&
                   elapsed <= CLICK_TIME_THRESHOLD_MS;
                 if (isClick) {
-                  flipTargetRef.current = flipTargetRef.current === 0 ? Math.PI : 0;
-                  frameRuntime.current.requestFrame('active');
+                  clickPosition.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
+                  clickArbiter.click();
                 }
               }
               const target = e.target as Element;
               if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
               endDrag();
             }}
-            onPointerCancel={endDrag}
+            onPointerCancel={() => { clickArbiter.cancel(); endDrag(); }}
             onLostPointerCapture={endDrag}
             onPointerDown={(e: ThreeEvent<PointerEvent>) => {
               if (!interactionEnabledRef.current) return;
@@ -1109,7 +1139,7 @@ function Band({
       <mesh ref={band}>
         <meshLineGeometry />
         <meshLineMaterial
-          color="#d7f5e9"
+          color={strapColor ?? "#d7f5e9"}
           depthTest={false}
           resolution={[1000, 1000]}
           useMap

@@ -5791,6 +5791,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                {['10', '15', '30', '45', '60'].map((minutes) => (
                                  <button
                                    key={minutes}
+                                   aria-pressed={breakRequestForm.durationMinutes === minutes}
                                    type="button"
                                    onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: minutes }))}
                                    disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
@@ -5810,6 +5811,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[130px_minmax(0,1fr)]">
                                <button
                                  type="button"
+                                 aria-pressed={breakRequestForm.durationMinutes === 'custom'}
                                  onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: 'custom' }))}
                                  disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
                                  className={cn(
@@ -5852,7 +5854,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                  disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
                                  className="stanza-theme-primary stanza-geo-break-primary rounded-lg px-4 py-2 text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-55"
                                >
-                                 {breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}
+                                 <span className="stanza-geo-action-content">{breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}</span>
                                </button>
                                {pendingOwnBreakRequest && (
                                  <button
