@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { readCoordinates } from '../src/server/attendance/attendance-policy';
+assert.throws(()=>readCoordinates({},'required'),/required/);
+assert.throws(()=>readCoordinates({latitude:null,longitude:null},'required'),/required/);
+assert.throws(()=>readCoordinates({latitude:91,longitude:0},'optional'),/Latitude/);
+assert.throws(()=>readCoordinates({latitude:true,longitude:0},'optional'),/Invalid/);
+assert.equal(readCoordinates({},'optional'),null);
+assert.equal(readCoordinates({latitude:30,longitude:31},'disabled'),null);
+assert.deepEqual(readCoordinates({latitude:30,longitude:31},'required'),{latitude:30,longitude:31});
+const ui=readFileSync('src/components/attendance/AttendanceWorkspace.tsx','utf8');
+assert.match(ui,/stanza-theme-primary stanza-geo-break-primary/);
+assert.match(ui,/document.hidden/);
+assert.match(ui,/clearInterval/);
+assert.doesNotMatch(ui,/requestAnimationFrame/);
+assert.match(ui,/r.canReview/);
+assert.match(ui,/maximum_uses/);
+console.log('PASS attendance coordinate validation, disabled privacy and finite UI lifecycle contracts');

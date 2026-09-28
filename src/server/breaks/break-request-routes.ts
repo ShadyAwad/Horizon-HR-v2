@@ -1,3 +1,5 @@
+import { attendancePolicy, lockAttendancePolicy } from '../attendance/attendance-policy';
+import { resolveScopedPermission } from '../organisation/scoped-permissions';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 
@@ -7,6 +9,7 @@ type CreateBreakRequestBody = {
   requestedStartTime?: string | null;
   durationMinutes?: number | string;
   reason?: string | null;
+  breakPolicyId?: string;
 };
 
 type ReviewBreakRequestBody = {
@@ -16,6 +19,7 @@ type ReviewBreakRequestBody = {
 
 type BreakRequestRouteDependencies = {
   standardAuth: express.RequestHandler;
+  mutationGuard: express.RequestHandler;
   requirePermission: (permission: string) => express.RequestHandler;
 };
 
@@ -33,16 +37,17 @@ function normalizeOptionalTimestamp(value: string | null | undefined) {
 
 export function registerBreakRequestRoutes(
   app: express.Express,
-  { standardAuth: demoAuth, requirePermission }: BreakRequestRouteDependencies,
+  { standardAuth: demoAuth, requirePermission, mutationGuard }: BreakRequestRouteDependencies,
 ) {
   app.post(
     '/api/break-requests',
     demoAuth,
+    mutationGuard,
     requirePermission('break_requests.create'),
     async (req, res) => {
       const tenantId = req.authUser!.tenantId;
       const employeeId = req.authUser!.employeeId;
-      const { requestedStartTime, durationMinutes, reason } = req.body as CreateBreakRequestBody;
+      const { requestedStartTime, durationMinutes, reason, breakPolicyId } = req.body as CreateBreakRequestBody;
   
       const normalizedDuration = typeof durationMinutes === 'string'
         ? Number(durationMinutes)
@@ -64,26 +69,17 @@ export function registerBreakRequestRoutes(
   
       try {
         const breakRequest = await withTenant(tenantId, async (client) => {
-          await client.query('BEGIN');
+
   
           try {
-            const existing = await client.query<{ id: string }>(
-              `
-                SELECT id
-                FROM break_requests
-                WHERE tenant_id = $1
-                  AND employee_id = $2
-                  AND status = 'pending'
-                LIMIT 1
-              `,
-              [tenantId, employeeId],
-            );
-  
-            if (existing.rows[0]) {
-              await client.query('ROLLBACK');
-              return { duplicatePending: true as const };
+            await lockAttendancePolicy(client,tenantId);
+            if (!breakPolicyId && !(await attendancePolicy(client,tenantId)).allowCustomBreaks) throw Object.assign(new Error('Custom breaks are disabled by company policy.'),{statusCode:403});
+            let policy: {requires_approval:boolean;duration_minutes:number}|undefined;
+            if (breakPolicyId) {
+              if (!isUuid(breakPolicyId)) throw Object.assign(new Error('Invalid break policy.'),{statusCode:400});
+              policy=(await client.query('SELECT requires_approval,duration_minutes FROM attendance_break_policies WHERE tenant_id=$1 AND id=$2 AND active=true',[tenantId,breakPolicyId])).rows[0];
+              if (!policy || policy.duration_minutes!==normalizedDuration) throw Object.assign(new Error('Use the configured duration for this active break policy.'),{statusCode:400});
             }
-  
             const result = await client.query<{
               id: string;
               employee_id: string;
@@ -101,7 +97,7 @@ export function registerBreakRequestRoutes(
                   requested_start_time,
                   requested_end_time,
                   duration_minutes,
-                  reason
+                  reason, break_policy_id, status
                 )
                 VALUES (
                   $1,
@@ -112,7 +108,7 @@ export function registerBreakRequestRoutes(
                     ELSE $3::timestamptz + ($4::int * INTERVAL '1 minute')
                   END,
                   $4::int,
-                  $5::text
+                  $5::text, $6::uuid, $7::varchar
                 )
                 RETURNING
                   id,
@@ -124,7 +120,7 @@ export function registerBreakRequestRoutes(
                   status,
                   created_at
               `,
-              [tenantId, employeeId, normalizedStartTime, normalizedDuration, normalizedReason],
+              [tenantId, employeeId, normalizedStartTime, normalizedDuration, normalizedReason, breakPolicyId || null, policy && !policy.requires_approval ? 'approved' : 'pending'],
             );
   
             const requestRow = result.rows[0];
@@ -162,7 +158,7 @@ export function registerBreakRequestRoutes(
               [tenantId, employeeId],
             );
   
-            if (recipients.rows.length > 0) {
+            if (requestRow.status === 'pending' && recipients.rows.length > 0) {
               await client.query(
                 `
                   INSERT INTO outbox_events (tenant_id, event_type, payload)
@@ -198,10 +194,10 @@ export function registerBreakRequestRoutes(
               ],
             );
   
-            await client.query('COMMIT');
+
             return requestRow;
           } catch (error) {
-            await client.query('ROLLBACK');
+
             throw error;
           }
         });
@@ -213,7 +209,7 @@ export function registerBreakRequestRoutes(
         res.status(201).json({ success: true, breakRequest });
       } catch (error) {
         console.error('[Break Requests] Failed to create break request:', error);
-        res.status(500).json({ success: false, error: 'Unable to create break request' });
+        res.status((error as any).statusCode || 500).json({ success: false, error: (error as any).statusCode ? (error as Error).message : 'Unable to create break request' });
       }
     },
   );
@@ -291,7 +287,9 @@ export function registerBreakRequestRoutes(
             [tenantId],
           );
   
-          return result.rows;
+          const visible = [];
+          for (const row of result.rows) if ((await resolveScopedPermission(client,{tenantId,actorEmployeeId:req.authUser!.employeeId,permissionKey:'break_requests.view_all',targetEmployeeId:row.employee_id})).allowed) visible.push(row);
+          return visible;
         });
   
         res.json({ success: true, breakRequests });
@@ -305,6 +303,7 @@ export function registerBreakRequestRoutes(
   app.patch(
     '/api/break-requests/:id/review',
     demoAuth,
+    mutationGuard,
     requirePermission('break_requests.review'),
     async (req, res) => {
       const { id } = req.params;
@@ -327,9 +326,11 @@ export function registerBreakRequestRoutes(
   
       try {
         const breakRequest = await withTenant(tenantId, async (client) => {
-          await client.query('BEGIN');
+
   
           try {
+            const target = (await client.query('SELECT employee_id FROM break_requests WHERE tenant_id=$1 AND id=$2',[tenantId,id])).rows[0];
+            if (!target || !(await resolveScopedPermission(client,{tenantId,actorEmployeeId:reviewerId,permissionKey:'break_requests.review',targetEmployeeId:target.employee_id})).allowed) throw Object.assign(new Error('Break request is outside your review scope.'),{statusCode:403});
             const result = await client.query<{
               id: string;
               employee_id: string;
@@ -355,7 +356,7 @@ export function registerBreakRequestRoutes(
   
             const requestRow = result.rows[0];
             if (!requestRow) {
-              await client.query('ROLLBACK');
+
               return null;
             }
   
@@ -407,10 +408,10 @@ export function registerBreakRequestRoutes(
               ],
             );
   
-            await client.query('COMMIT');
+
             return requestRow;
           } catch (error) {
-            await client.query('ROLLBACK');
+
             throw error;
           }
         });
@@ -422,7 +423,7 @@ export function registerBreakRequestRoutes(
         res.json({ success: true, breakRequest });
       } catch (error) {
         console.error('[Break Requests] Failed to review break request:', error);
-        res.status(500).json({ success: false, error: 'Unable to review break request' });
+        res.status((error as any).statusCode || 500).json({ success: false, error: (error as any).statusCode ? (error as Error).message : 'Unable to review break request' });
       }
     },
   );
@@ -430,6 +431,7 @@ export function registerBreakRequestRoutes(
   app.patch(
     '/api/break-requests/:id/cancel',
     demoAuth,
+    mutationGuard,
     requirePermission('break_requests.view_own'),
     async (req, res) => {
       const { id } = req.params;
@@ -446,7 +448,7 @@ export function registerBreakRequestRoutes(
   
       try {
         const breakRequest = await withTenant(tenantId, async (client) => {
-          await client.query('BEGIN');
+
   
           try {
             const result = await client.query<{ id: string; status: BreakRequestStatus }>(
@@ -464,7 +466,7 @@ export function registerBreakRequestRoutes(
   
             const requestRow = result.rows[0];
             if (!requestRow) {
-              await client.query('ROLLBACK');
+
               return null;
             }
   
@@ -483,10 +485,10 @@ export function registerBreakRequestRoutes(
               ],
             );
   
-            await client.query('COMMIT');
+
             return requestRow;
           } catch (error) {
-            await client.query('ROLLBACK');
+
             throw error;
           }
         });

@@ -1,3 +1,4 @@
+import { registerFlexibleAttendanceRoutes } from './src/server/attendance/flexible-attendance-routes';
 import { config as loadDotenv } from 'dotenv';
 import express from 'express';
 import compression from 'compression';
@@ -623,6 +624,7 @@ async function seedTenantRolesAndPermissions(
         ('locations.read', 'Read locations', 'View company locations.'),
         ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
         ('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.'),
+        ('attendance.policy.manage', 'Manage attendance policy', 'Configure company attendance and break policies.'),
         ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
         ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
         ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
@@ -3101,6 +3103,7 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
   // ST_DWithin(employee_location, geofence.boundary, radius)
 registerAttendanceClockInRoute(app, {
   authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured,
+  mutationGuard: isSameOriginSessionMutation,
 });
 
 registerCompanyLocationCompatibilityRoutes(app, {
@@ -3110,10 +3113,14 @@ registerCompanyLocationCompatibilityRoutes(app, {
 
 registerAttendanceStatusRoutes(app, {
   authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured,
+  mutationGuard: isSameOriginSessionMutation,
 });
+
+registerFlexibleAttendanceRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
 
 registerBreakRequestRoutes(app, {
   standardAuth: demoAuth,
+  mutationGuard: isSameOriginSessionMutation,
   requirePermission,
 });
 

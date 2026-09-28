@@ -140,7 +140,7 @@ export async function enqueueAttendanceRollup(data: AttendanceRollupJobData) {
     backoff: { type: 'exponential', delay: 5_000 },
     removeOnComplete: 100,
     removeOnFail: 500,
-    jobId: getAttendanceRollupJobId(data),
+    // Every durable event gets a new job; the worker serializes and upserts each day.
   });
 }
 

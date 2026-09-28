@@ -42,6 +42,7 @@ export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
   definePermission('locations.read', 'View locations', 'View company locations.', 'Locations', 'low'),
   definePermission('locations.manage', 'Manage locations', 'Create and update company locations and geofences.', 'Locations', 'high', companyScope, false),
   definePermission('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.', 'Locations', 'high', companyScope, false),
+  definePermission('attendance.policy.manage', 'Manage attendance policy', 'Configure company attendance and break policies.', 'Attendance', 'high', companyScope, false),
   definePermission('attendance.clock', 'Clock attendance', 'Clock in and out.', 'Attendance', 'low', ['self']),
   definePermission('attendance.view', 'View attendance', 'View attendance records and summaries.', 'Attendance', 'medium', peopleScopes),
   definePermission('attendance.view_live', 'View live employees', 'View employees with open attendance shifts.', 'Attendance', 'medium', peopleScopes),

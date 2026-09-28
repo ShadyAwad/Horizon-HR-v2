@@ -4,6 +4,8 @@ import { assertHttpMutationSafety } from './mutation-safety';
 
 type RecordValue = Record<string, any>;
 const source = await readFile(new URL('../server.ts', import.meta.url), 'utf8');
+const guards = await readFile(new URL('../src/server/organisation/legacy-role-routes.ts', import.meta.url), 'utf8');
+assert(source.includes('registerLegacyRoleMutationRoutes(app'), 'Legacy authorization routes are not mounted.');
 const baseUrl = assertHttpMutationSafety(process.env.AUTHZ_TEST_BASE_URL || 'http://localhost:3000', 'Authorization test');
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -15,10 +17,10 @@ function pass(message: string) {
 }
 
 assert(source.includes("'roles.assign_privileged'"), 'Privileged assignment permission is not defined.');
-assert(source.includes('targetLevel > actorLevel'), 'Server-side privilege rank check is missing.');
-assert(source.includes('employeeId === actorEmployeeId && targetLevel > actorLevel'), 'Self-escalation protection is missing.');
-assert(source.includes('Only an authorized tenant administrator may assign HR Admin.'), 'HR Admin assignment boundary is missing.');
-assert(source.includes('You cannot remove your own privileged role.'), 'Self-removal protection is missing.');
+assert(guards.includes('targetLevel > actorLevel'), 'Server-side privilege rank check is missing.');
+assert(guards.includes('employeeId === actorEmployeeId && targetLevel > actorLevel'), 'Self-escalation protection is missing.');
+assert(guards.includes('Only an authorized tenant administrator may assign HR Admin.'), 'HR Admin assignment boundary is missing.');
+assert(guards.includes('You cannot remove your own privileged role.'), 'Self-removal protection is missing.');
 pass('Privileged role authorization guards are present in server source');
 
 const adminEmail = process.env.AUTHZ_ADMIN_EMAIL;
@@ -46,6 +48,7 @@ async function login(email: string, password: string) {
 async function api(path: string, session: { cookie: string }, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set('Cookie', session.cookie);
+  headers.set('Origin', baseUrl);
   if (init.body) headers.set('Content-Type', 'application/json');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   const body = await response.json().catch(() => ({})) as RecordValue;

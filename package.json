@@ -21,6 +21,8 @@
     "test:hiring:integration": "tsx scripts/hiring-integration-test.ts",
     "test:live-employees": "tsx scripts/live-employees-test.ts",
     "test:audit": "tsx scripts/audit-test.ts",
+    "test:attendance": "tsx scripts/attendance-rules-test.ts",
+    "test:attendance:integration": "tsx scripts/attendance-integration-test.ts",
     "test:hr-background": "tsx scripts/hr-background-test.ts",
     "test:sessions": "tsx scripts/sessions-test.ts",
     "test:assets": "tsx scripts/assets-test.ts",

@@ -70,23 +70,11 @@ export function registerLiveEmployeesRoutes(
                 ON employee.tenant_id = time_log.tenant_id
                AND employee.id = time_log.employee_id
               LEFT JOIN LATERAL (
-                SELECT
-                  break_request.requested_start_time,
-                  GREATEST(
-                    break_request.created_at,
-                    break_request.updated_at,
-                    COALESCE(break_request.reviewed_at, break_request.updated_at)
-                  ) AS activity_at
-                FROM break_requests AS break_request
-                WHERE break_request.tenant_id = time_log.tenant_id
-                  AND break_request.employee_id = time_log.employee_id
-                  AND break_request.status = 'approved'
-                  AND break_request.requested_start_time IS NOT NULL
-                  AND break_request.requested_end_time IS NOT NULL
-                  AND NOW() >= break_request.requested_start_time
-                  AND NOW() < break_request.requested_end_time
-                ORDER BY break_request.requested_start_time DESC, break_request.id
-                LIMIT 1
+                SELECT actual.started_at AS requested_start_time,actual.started_at AS activity_at
+                FROM attendance_breaks actual
+                WHERE actual.tenant_id=time_log.tenant_id AND actual.time_log_id=time_log.id
+                  AND actual.employee_id=time_log.employee_id AND actual.ended_at IS NULL
+                ORDER BY actual.started_at DESC LIMIT 1
               ) AS active_break ON TRUE
               LEFT JOIN LATERAL (
                 SELECT location.name

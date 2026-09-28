@@ -91,7 +91,7 @@ test('query is tenant scoped and excludes inactive or closed-shift employees', (
 });
 
 test('query resolves break and geofence data without N+1 route queries', () => {
-  assert.match(routeSource, /LEFT JOIN LATERAL[\s\S]+break_requests/);
+  assert.match(routeSource, /LEFT JOIN LATERAL[\s\S]+attendance_breaks/);
   assert.match(routeSource, /LEFT JOIN LATERAL[\s\S]+company_locations/);
   assert.equal((routeSource.match(/client\.query/g) || []).length, 1);
 });

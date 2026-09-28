@@ -1,3 +1,4 @@
+import { AttendanceWorkspace } from '../components/attendance/AttendanceWorkspace';
 import CustomThemeEditor from '../components/CustomThemeEditor';
 import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { 
@@ -912,6 +913,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [assetCreateSignal, setAssetCreateSignal] = useState(0);
   const [organisationCommandView, setOrganisationCommandView] = useState<OrganisationPanelView | null>(null);
   const [organisationCommandSignal, setOrganisationCommandSignal] = useState(0);
+  const [attendanceLocationStatus, setAttendanceLocationStatus] = useState<string>('');
+  const [attendanceOnBreak, setAttendanceOnBreak] = useState(false);
+  const [attendanceLocationMode, setAttendanceLocationMode] = useState<'required' | 'optional' | 'disabled'>('required');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
   const [clockWarning, setClockWarning] = useState('');
@@ -2435,6 +2439,15 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       return;
     }
 
+    let mode = attendanceLocationMode;
+    try {
+      const response = await apiFetch(apiUrl('/api/attendance/policy'));
+      if (!response.ok) throw new Error('Unable to load attendance policy.');
+      mode = (await response.json()).attendanceLocationMode;
+      setAttendanceLocationMode(mode);
+    } catch (error) { setClockInState('failed'); setClockMessage((error as Error).message); resetClockStatusSoon(); return; }
+    if (mode === 'disabled' || (mode === 'optional' && !navigator.geolocation)) { await verifyClockIn(); return; }
+
     if (!navigator.geolocation) {
       setClockInState('failed');
       setClockMessage(
@@ -2463,6 +2476,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       updateClockAccuracyNotice(coords.accuracy);
       await verifyClockIn(coords);
     } catch (error) {
+      if (mode === 'optional') { await verifyClockIn(); return; }
       setClockInState('failed');
       setClockMessage((error as Error).message || t('dash.locationDenied'));
       setClockWarning('');
@@ -2607,9 +2621,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
   }, [notificationSettings, schedule]);
 
-  const verifyClockIn = async (coords: DeviceCoordinates) => {
+  const verifyClockIn = async (coords?: DeviceCoordinates) => {
     setClockInState('verifying');
-    setClockMessage(t('dash.validatingGeofence'));
+    setClockMessage(attendanceLocationMode === 'required' ? t('dash.validatingGeofence') : (isRtl ? 'جار تسجيل الحضور' : 'Recording attendance'));
     try {
         const res = await fetch(apiUrl('/api/clock-in'), {
             method: 'POST',
@@ -2617,9 +2631,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             body: JSON.stringify({
               tenantId: user.tenantId,
               employeeId: user.id,
-              latitude: coords.lat,
-              longitude: coords.lng,
-              accuracy: coords.accuracy,
+              latitude: coords?.lat,
+              longitude: coords?.lng,
+              accuracy: coords?.accuracy,
             })
         });
         const data = await res.json();
@@ -2627,6 +2641,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         if (res.ok && data.success) {
             setClockInState('success');
             setIsClockedIn(true);
+            setAttendanceLocationStatus(data.locationStatus || '');
             if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
             setActiveTimeLogId(data.timeLogId || null);
             setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
@@ -2866,6 +2881,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         setIsClockedIn(nextIsClockedIn);
         if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
         setActiveTimeLogId(data.timeLogId || null);
+        setAttendanceLocationStatus(data.locationStatus || '');
         if (data.clockedIn) {
           setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
         } else if (!preserveLastEvent) {
@@ -3713,12 +3729,6 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       loadNotificationSettings();
     }
   }, [activeTab, showPayrollPanel, showGrievancesPanel, hasAuthenticatedDashboardUser, user.id, user.tenantId]);
-
-  useEffect(() => {
-    if (hasAuthenticatedDashboardUser && activeTab === 'geofence') {
-      loadBreakRequests(false);
-    }
-  }, [activeTab, hasAuthenticatedDashboardUser, user.id, user.role, user.tenantId]);
 
   useEffect(() => {
     if (!showControlCenter) return;
@@ -5651,14 +5661,16 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <MapPin className="w-5 h-5 text-emerald-500" />
-                                {t('dash.perimeter')}
+                                {attendanceLocationMode === 'required' ? t('dash.perimeter') : (isRtl ? 'الحضور' : 'Attendance')}
                                </h2>
-                               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-transparent font-mono border border-emerald-200 dark:border-emerald-500/30 px-2 py-0.5 rounded uppercase tracking-widest">{t('dash.hqSecure')}</p>
+                               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-transparent font-mono border border-emerald-200 dark:border-emerald-500/30 px-2 py-0.5 rounded uppercase tracking-widest">{attendanceLocationMode === 'required' ? t('dash.hqSecure') : attendanceLocationMode === 'optional' ? (isRtl ? 'الموقع اختياري' : 'LOCATION OPTIONAL') : (isRtl ? 'الموقع معطل' : 'LOCATION DISABLED')}</p>
                            </div>
                        </div>
                        
-                       <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-[calc(100dvh-260px)] w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-0 md:h-[360px] md:px-6 md:py-8">
-                           <div className="relative mb-5 flex h-48 min-h-48 w-48 min-w-48 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-40 md:min-h-40 md:w-40 md:min-w-40">
+                       <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-0 w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-[220px] md:px-6 md:py-8">
+                           <p className="mb-3 text-sm font-bold" role="status">{attendanceOnBreak ? (isRtl ? 'في استراحة' : 'On break') : hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</p>
+                           {hasActiveShift && attendanceLocationStatus && <p className="mb-2 text-xs">{attendanceLocationStatus === 'verified' ? (isRtl ? 'الموقع معتمد' : 'Location verified') : attendanceLocationStatus === 'outside' ? (isRtl ? 'خارج الموقع — مسموح اختيارياً' : 'Outside geofence — optional policy') : attendanceLocationStatus === 'disabled' ? (isRtl ? 'الموقع معطل' : 'Location disabled') : (isRtl ? 'تم الحضور دون موقع' : 'Clocked in without location')}</p>}
+                           <div className="relative mb-5 flex h-32 min-h-32 w-32 min-w-32 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-32 md:min-h-32 md:w-32 md:min-w-32">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                type="button"
@@ -5666,9 +5678,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                onClick={(event) => recordDevInteraction('attendance:clock-action', () => {
                                  void handleClockAction(event);
                                })}
-                               disabled={isOffline || clockInState === 'locating' || clockInState === 'verifying'}
+                               disabled={!hasPermission(user, 'attendance.clock') || isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                                className={cn(
-                                   "relative z-10 flex h-40 min-h-40 w-40 min-w-40 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter stanza-geo-clock md:h-36 md:min-h-36 md:w-36 md:min-w-36",
+                                   "relative z-10 flex h-28 min-h-28 w-28 min-w-28 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter stanza-geo-clock",
                                    clockInState === 'idle' && hasActiveShift ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
                                    clockInState === 'idle' ? "stanza-theme-primary stanza-geo-clock-primary" :
                                    clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
@@ -5767,244 +5779,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
 
-                       <div className={cn("geo-operations-summary-grid relative z-10 mt-4 grid w-full grid-cols-1 gap-3", canCreateBreakRequests && "md:grid-cols-2", isRtl ? "text-right" : "text-left")}>
-                         {canCreateBreakRequests && (
-                           <div data-tutorial-target="geo-breaks" className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                               <div>
-                                 <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                   <Coffee className="h-4 w-4 text-emerald-500" />
-                                   {t('dash.requestBreak')}
-                                 </h3>
-                                 <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                   {t('dash.breakRequestHelp')}
-                                 </p>
-                               </div>
-                               {pendingOwnBreakRequest && (
-                                 <span className={cn("w-fit rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(pendingOwnBreakRequest.status))}>
-                                   {t('dash.pending')}
-                                 </span>
-                               )}
-                             </div>
-
-                             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                               {['10', '15', '30', '45', '60'].map((minutes) => (
-                                 <button
-                                   key={minutes}
-                                   aria-pressed={breakRequestForm.durationMinutes === minutes}
-                                   type="button"
-                                   onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: minutes }))}
-                                   disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                   className={cn(
-                                     "rounded-lg border px-2 py-2 text-xs font-bold transition-colors",
-                                     breakRequestForm.durationMinutes === minutes
-                                       ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
-                                       : "border-emerald-500/15 bg-white/60 text-slate-600 hover:border-emerald-500/30 dark:bg-black/35 dark:text-emerald-100/65",
-                                     (pendingOwnBreakRequest || breakRequestSubmitting) && "cursor-not-allowed opacity-60"
-                                   )}
-                                 >
-                                   {minutes}m
-                                 </button>
-                               ))}
-                             </div>
-
-                             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[130px_minmax(0,1fr)]">
-                               <button
-                                 type="button"
-                                 aria-pressed={breakRequestForm.durationMinutes === 'custom'}
-                                 onClick={() => setBreakRequestForm((current) => ({ ...current, durationMinutes: 'custom' }))}
-                                 disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 className={cn(
-                                   "rounded-lg border px-3 py-2 text-xs font-bold uppercase tracking-widest transition-colors",
-                                   breakRequestForm.durationMinutes === 'custom'
-                                     ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
-                                     : "border-emerald-500/15 bg-white/60 text-slate-600 hover:border-emerald-500/30 dark:bg-black/35 dark:text-emerald-100/65"
-                                 )}
-                               >
-                                   {t('dash.custom')}
-                               </button>
-                               <input
-                                 type="number"
-                                 min={5}
-                                 max={180}
-                                 value={breakRequestForm.customDuration}
-                                 onChange={(event) => setBreakRequestForm((current) => ({ ...current, customDuration: event.target.value, durationMinutes: 'custom' }))}
-                                 disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 placeholder={t('dash.breakDurationPlaceholder')}
-                                 className="rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                               />
-                             </div>
-
-                             <textarea
-                               value={breakRequestForm.reason}
-                               onChange={(event) => setBreakRequestForm((current) => ({ ...current, reason: event.target.value }))}
-                               disabled={Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                               rows={3}
-                               placeholder={t('dash.optionalReason')}
-                               className="mt-3 w-full resize-none rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                             />
-
-                             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                               <button
-                                 type="button"
-                                 data-geo-interaction="break"
-                                 onClick={() => recordDevInteraction('break-request:submit', () => {
-                                   void submitBreakRequest();
-                                 })}
-                                 disabled={isOffline || Boolean(pendingOwnBreakRequest) || breakRequestSubmitting}
-                                 className="stanza-theme-primary stanza-geo-break-primary rounded-lg px-4 py-2 text-xs font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-55"
-                               >
-                                 <span className="stanza-geo-action-content">{breakRequestSubmitting ? t('dash.sending') : pendingOwnBreakRequest ? t('dash.pendingApproval') : t('dash.requestBreak')}</span>
-                               </button>
-                               {pendingOwnBreakRequest && (
-                                 <button
-                                   type="button"
-                                   onClick={() => cancelBreakRequest(pendingOwnBreakRequest.id)}
-                                   disabled={isOffline || breakRequestReviewingId === pendingOwnBreakRequest.id}
-                                   className="rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-600 transition-colors hover:border-red-500/35 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-100/65"
-                                 >
-                                   {t('dash.cancelRequest')}
-                                 </button>
-                               )}
-                             </div>
-                           </div>
-                         )}
-
-                         <div className="rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                             <div>
-                               <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                 {t('dash.breakStatus')}
-                               </h3>
-                               <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                 {t('dash.breakStatusHelp')}
-                               </p>
-                             </div>
-                             <button
-                               type="button"
-                               onClick={() => loadBreakRequests()}
-                               disabled={breakRequestsLoading || isOffline}
-                               className="w-fit rounded-lg border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-emerald-300"
-                             >
-                               {breakRequestsLoading ? t('dash.loading') : t('dash.refresh')}
-                             </button>
-                           </div>
-
-                           {breakRequestMessage && (
-                             <p className={cn(
-                               "mt-3 rounded-lg border px-3 py-2 text-xs font-medium",
-                               breakRequestMessageType === 'success'
-                                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                 : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300"
-                             )}>
-                               {breakRequestMessage}
-                             </p>
-                           )}
-
-                           <div className="mt-3 space-y-2">
-                             {breakRequests.slice(0, 3).map((request) => (
-                               <div key={request.id} className="rounded-xl border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/35">
-                                 <div className="flex items-start justify-between gap-3">
-                                   <div>
-                                     <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                                       <span dir="ltr">{request.duration_minutes}</span> {t('dash.minutes')}
-                                     </p>
-                                     <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500 dark:text-emerald-100/45">
-                                       {t('dash.requested')} <span dir="ltr">{formatShortDateTime(request.created_at)}</span>
-                                     </p>
-                                   </div>
-                                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
-                                     {displayEnum(request.status)}
-                                   </span>
-                                 </div>
-                                 {request.reason && (
-                                   <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{request.reason}</p>
-                                 )}
-                                 {request.review_note && (
-                                   <p className="mt-2 rounded-lg bg-black/5 px-2 py-1.5 text-[10px] text-slate-600 dark:bg-emerald-500/5 dark:text-emerald-100/55">
-                                     {t('dash.reviewNote')}: {request.review_note}
-                                   </p>
-                                 )}
-                               </div>
-                             ))}
-
-                             {!breakRequestsLoading && breakRequests.length === 0 && (
-                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45">
-                                 {t('dash.noBreakRequests')}
-                               </p>
-                             )}
-                           </div>
-                         </div>
-                       </div>
-
-                       {canReviewBreakRequests && (
-                         <div data-tutorial-target="geo-break-approvals" className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
-                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                             <div>
-                               <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                 {t('dash.breakApprovalQueue')}
-                               </h3>
-                               <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                 {t('dash.reviewPendingBreakRequests')}
-                               </p>
-                             </div>
-                             <span className="w-fit rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                               {pendingBreakRequests.length} {t('dash.pending')}
-                             </span>
-                           </div>
-
-                           <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                             {pendingBreakRequests.map((request) => (
-                               <div key={request.id} className="rounded-xl border border-emerald-500/10 bg-white/60 p-3 dark:bg-black/35">
-                                 <div className="flex items-start justify-between gap-3">
-                                   <div>
-                                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{request.full_name || request.email || t('dash.employee')}</p>
-                                     <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-                                       <span dir="ltr">{request.duration_minutes}</span> {t('dash.minutes')} - <span dir="ltr">{formatShortDateTime(request.created_at)}</span>
-                                     </p>
-                                   </div>
-                                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest", getBreakStatusClass(request.status))}>
-                                     {displayEnum(request.status)}
-                                   </span>
-                                 </div>
-                                 {request.reason && (
-                                   <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{request.reason}</p>
-                                 )}
-                                 <input
-                                   value={breakReviewNotes[request.id] || ''}
-                                   onChange={(event) => setBreakReviewNotes((current) => ({ ...current, [request.id]: event.target.value }))}
-                                   placeholder={t('dash.optionalReviewNote')}
-                                   className="mt-3 w-full rounded-lg border border-emerald-500/15 bg-white/70 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                 />
-                                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                   <button
-                                     type="button"
-                                     onClick={() => reviewBreakRequest(request.id, 'approved')}
-                                     disabled={isOffline || breakRequestReviewingId === request.id}
-                                     className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
-                                   >
-                                     {t('dash.approve')}
-                                   </button>
-                                   <button
-                                     type="button"
-                                     onClick={() => reviewBreakRequest(request.id, 'rejected')}
-                                     disabled={isOffline || breakRequestReviewingId === request.id}
-                                     className="rounded-lg border border-red-500/25 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:text-red-300"
-                                   >
-                                     {t('dash.reject')}
-                                   </button>
-                                 </div>
-                               </div>
-                             ))}
-
-                             {!breakRequestsLoading && pendingBreakRequests.length === 0 && (
-                               <p className="rounded-lg border border-emerald-500/15 p-4 text-center text-xs text-neutral-500 dark:text-emerald-100/45 lg:col-span-2">
-                                 {t('dash.noPendingBreakRequests')}
-                               </p>
-                             )}
-                           </div>
-                         </div>
-                       )}
+                       <AttendanceWorkspace employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />
 
                        <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -6014,7 +5789,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                {t('dash.companyLocations')}
                              </h3>
                              <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                               {t('dash.clockInValidLocations')}
+                               {attendanceLocationMode === 'required' ? t('dash.clockInValidLocations') : (isRtl ? 'مواقع الشركة المسجلة. تحدد سياسة الحضور ما إذا كان الموقع مطلوباً.' : 'Registered company locations. Your attendance policy controls whether location is required.')}
                              </p>
                            </div>
                            <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">

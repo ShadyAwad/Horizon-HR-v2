@@ -1,3 +1,5 @@
+import { hasPermissionClaim } from '../auth/permission-claims';
+import { attendancePolicy, lockAttendancePolicy, readCoordinates, attendanceAudit, type AttendanceLocationMode } from './attendance-policy';
 import crypto from 'crypto';
 import type express from 'express';
 import {
@@ -25,6 +27,7 @@ type DemoTimeLog = {
 
 type AttendanceRouteDependencies = {
   authWhenDatabaseConfigured: express.RequestHandler;
+  mutationGuard: express.RequestHandler;
 };
 
 const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
@@ -101,20 +104,23 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
 
 export function registerAttendanceClockInRoute(
   app: express.Express,
-  { authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured }: AttendanceRouteDependencies,
+  { authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured, mutationGuard }: AttendanceRouteDependencies,
 ) {
-  app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, async (req, res) => {
+  app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, mutationGuard, async (req, res) => {
+      if (hasDatabaseConfig() && !hasPermissionClaim(req.authUser,'attendance.clock')) return res.status(403).json({success:false,error:'Attendance permission required.'});
       const body = req.body as ClockInBody;
       const tenantId = req.authUser?.tenantId || body.tenantId;
       const employeeId = req.authUser?.employeeId || body.employeeId;
-      const latitude = Number(body.latitude);
-      const longitude = Number(body.longitude);
+      let latitude = Number(body.latitude);
+      let longitude = Number(body.longitude);
+      let attendanceLocationMode: AttendanceLocationMode = 'required';
+      let locationStatus = 'unavailable';
       
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      if (!hasDatabaseConfig() && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
         return res.status(400).json({ success: false, error: 'Geolocation required for clock-in.' });
       }
   
-      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      if (!hasDatabaseConfig() && (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)) {
         return res.status(400).json({ success: false, error: 'Latitude must be -90 to 90 and longitude must be -180 to 180.' });
       }
   
@@ -137,7 +143,12 @@ export function registerAttendanceClockInRoute(
   
         try {
           const timeLog = await withTenant(tenantId, async (client) => {
-            const activeLocations = await client.query<{ count: string }>(
+            await lockAttendancePolicy(client, tenantId);
+            attendanceLocationMode = (await attendancePolicy(client, tenantId)).attendanceLocationMode;
+            const coords = readCoordinates(body, attendanceLocationMode);
+            latitude = coords?.latitude ?? NaN;
+            longitude = coords?.longitude ?? NaN;
+            const activeLocations = attendanceLocationMode === 'required' ? await client.query<{ count: string }>(
               `
                 SELECT COUNT(*)::text AS count
                 FROM company_locations
@@ -145,13 +156,13 @@ export function registerAttendanceClockInRoute(
                   AND is_active = true
               `,
               [tenantId],
-            );
+            ) : { rows: [] };
   
-            if (Number(activeLocations.rows[0]?.count || 0) === 0) {
+            if (attendanceLocationMode === 'required' && Number(activeLocations.rows[0]?.count || 0) === 0) {
               throw Object.assign(new Error('No active company location found for this workspace.'), { statusCode: 404 });
             }
   
-            const locationResult = await client.query<{
+            const locationResult = coords ? await client.query<{
               id: string;
               name: string;
               location_type: string;
@@ -168,8 +179,8 @@ export function registerAttendanceClockInRoute(
                 ORDER BY is_primary DESC, created_at ASC
                 LIMIT 1
               `,
-              [tenantId, longitude, latitude],
-            );
+              [tenantId, coords.longitude, coords.latitude],
+            ) : { rows: [] };
   
             const location = locationResult.rows[0];
             isWithinGeofence = Boolean(location);
@@ -181,7 +192,8 @@ export function registerAttendanceClockInRoute(
                 }
               : undefined;
   
-            if (!isWithinGeofence) {
+            locationStatus = attendanceLocationMode === 'disabled' ? 'disabled' : !coords ? 'unavailable' : isWithinGeofence ? 'verified' : 'outside';
+            if (attendanceLocationMode === 'required' && !isWithinGeofence) {
               throw Object.assign(new Error('You are outside the allowed worksite geofence.'), { statusCode: 403 });
             }
   
@@ -192,20 +204,21 @@ export function registerAttendanceClockInRoute(
                   employee_id,
                   clock_in_time,
                   clock_in_location,
-                  is_valid_geofence
+                  is_valid_geofence, attendance_location_mode, location_status
                 )
                 VALUES (
                   $1,
                   $2,
                   $3,
                   ST_SetSRID(ST_MakePoint($4, $5), 4326),
-                  $6
+                  $6, $7, $8
                 )
                 RETURNING id, clock_in_time
               `,
-              [tenantId, employeeId, clockedIn, longitude, latitude, isWithinGeofence],
+              [tenantId, employeeId, clockedIn, coords?.longitude ?? null, coords?.latitude ?? null, isWithinGeofence, attendanceLocationMode, locationStatus],
             );
   
+            await attendanceAudit(client,tenantId,employeeId,'attendance.clock_in',result.rows[0].id,{attendanceLocationMode,locationStatus});
             return result.rows[0];
           });
   
@@ -227,6 +240,7 @@ export function registerAttendanceClockInRoute(
                 metadata: {
                   latitude,
                   longitude,
+                  attendanceLocationMode, locationStatus,
                   locationValid: isWithinGeofence,
                   matchedLocation,
                   workDate,
@@ -250,13 +264,14 @@ export function registerAttendanceClockInRoute(
             locationValid: isWithinGeofence,
             isValidGeofence: isWithinGeofence,
             matchedLocation,
+            attendanceLocationMode, locationStatus,
             recognition,
-            message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.',
+            message: locationStatus === 'disabled' ? 'Clock-in recorded. Location is disabled.' : locationStatus === 'unavailable' ? 'Clock-in recorded without location.' : isWithinGeofence ? 'Clock-in secured.' : 'Clock-in recorded outside geofenced perimeter under optional location policy.',
           });
         } catch (error) {
           const statusCode = Number((error as { statusCode?: number }).statusCode);
-          if (statusCode === 404) {
-            return res.status(404).json({
+          if (statusCode === 404 || statusCode === 400) {
+            return res.status(statusCode).json({
               success: false,
               error: (error as Error).message,
             });
@@ -306,14 +321,14 @@ export function registerAttendanceClockInRoute(
         clockedIn: clockedIn.toISOString(),
         locationValid: isWithinGeofence,
         isValidGeofence: isWithinGeofence,
-        message: isWithinGeofence ? 'Clock-in secured.' : 'Warning: Clock-in recorded outside geofenced perimeter.'
+        message: locationStatus === 'disabled' ? 'Clock-in recorded. Location is disabled.' : locationStatus === 'unavailable' ? 'Clock-in recorded without location.' : isWithinGeofence ? 'Clock-in secured.' : 'Clock-in recorded outside geofenced perimeter under optional location policy.'
       });
     });
 }
 
 export function registerAttendanceStatusRoutes(
   app: express.Express,
-  { authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured }: AttendanceRouteDependencies,
+  { authWhenDatabaseConfigured: demoAuthWhenDatabaseConfigured, mutationGuard }: AttendanceRouteDependencies,
 ) {
   app.get('/api/clock-status', demoAuthWhenDatabaseConfigured, async (req, res) => {
     const tenantId = req.authUser?.tenantId || (typeof req.query.tenantId === 'string' ? req.query.tenantId : undefined);
@@ -347,9 +362,10 @@ export function registerAttendanceStatusRoutes(
         const result = await client.query<{
           id: string;
           clock_in_time: Date;
+          location_status: string;
         }>(
           `
-            SELECT id, clock_in_time
+            SELECT id, clock_in_time, location_status
             FROM time_logs
             WHERE tenant_id = $1
               AND employee_id = $2
@@ -368,6 +384,7 @@ export function registerAttendanceStatusRoutes(
         isClockedIn: Boolean(openLog),
         timeLogId: openLog?.id || null,
         clockedIn: openLog?.clock_in_time || null,
+        locationStatus: openLog?.location_status || null,
       });
     } catch (error) {
       console.error('[Clock-Status] Failed to load active shift:', error);
@@ -375,7 +392,8 @@ export function registerAttendanceStatusRoutes(
     }
   });
   
-  app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, async (req, res) => {
+  app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, mutationGuard, async (req, res) => {
+    if (hasDatabaseConfig() && !hasPermissionClaim(req.authUser,'attendance.clock')) return res.status(403).json({success:false,error:'Attendance permission required.'});
     const body = req.body as { tenantId?: string; employeeId?: string };
     const tenantId = req.authUser?.tenantId || body.tenantId;
     const employeeId = req.authUser?.employeeId || body.employeeId;
@@ -388,7 +406,7 @@ export function registerAttendanceStatusRoutes(
     }
   
     try {
-      const clockOutTime = new Date();
+      let clockOutTime = new Date();
   
       if (!hasDatabaseConfig()) {
         if (!isDemoEnvironment()) {
@@ -402,6 +420,12 @@ export function registerAttendanceStatusRoutes(
       }
   
       const updatedLog = await withTenant(tenantId, async (client) => {
+        const locked = (await client.query('SELECT id FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[tenantId,employeeId])).rows[0];
+        if (!locked) return null;
+        clockOutTime = (await client.query('SELECT clock_timestamp() AS now')).rows[0].now;
+        const ended = await client.query("UPDATE attendance_breaks SET ended_at=GREATEST(started_at+INTERVAL '1 microsecond',$3) WHERE tenant_id=$1 AND time_log_id=$2 AND ended_at IS NULL RETURNING id",[tenantId,locked.id,clockOutTime]);
+        for (const row of ended.rows) await attendanceAudit(client,tenantId,employeeId,'attendance.break.ended_on_clock_out',row.id,{timeLogId:locked.id});
+        await attendanceAudit(client,tenantId,employeeId,'attendance.clock_out',locked.id,{clockOutTime});
         const result = await client.query<{
           id: string;
           clock_in_time: Date;

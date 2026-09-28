@@ -1,3 +1,4 @@
+import { rollupAttendanceDailySummary } from '../server/attendance/attendance-rollup';
 import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import {
@@ -14,64 +15,6 @@ import { QrTokenService } from '../server/qr/qr-token-service';
 console.log(
   `[Worker Engine] Initializing connection to Redis at ${redisConnectionLabel}...`,
 );
-
-async function rollupAttendanceDailySummary(data: AttendanceRollupJobData) {
-  await withTenant(data.tenantId, async (client) => {
-    const result = await client.query(
-      `
-        INSERT INTO attendance_daily_summaries (
-          tenant_id,
-          employee_id,
-          work_date,
-          first_clock_in,
-          last_clock_out,
-          total_minutes,
-          invalid_geofence_count,
-          generated_at,
-          updated_at
-        )
-        SELECT
-          tenant_id,
-          employee_id,
-          $3::date AS work_date,
-          MIN(clock_in_time) AS first_clock_in,
-          MAX(clock_out_time) FILTER (WHERE clock_out_time IS NOT NULL) AS last_clock_out,
-          COALESCE(
-            SUM(
-              CASE
-                WHEN clock_out_time IS NULL THEN 0
-                ELSE FLOOR(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)::int
-              END
-            ),
-            0
-          ) AS total_minutes,
-          COUNT(*) FILTER (WHERE is_valid_geofence = false)::int AS invalid_geofence_count,
-          NOW() AS generated_at,
-          NOW() AS updated_at
-        FROM time_logs
-        WHERE tenant_id = $1
-          AND employee_id = $2
-          AND clock_in_time >= $3::date
-          AND clock_in_time < ($3::date + INTERVAL '1 day')
-        GROUP BY tenant_id, employee_id
-        ON CONFLICT (tenant_id, employee_id, work_date)
-        DO UPDATE SET
-          first_clock_in = EXCLUDED.first_clock_in,
-          last_clock_out = EXCLUDED.last_clock_out,
-          total_minutes = EXCLUDED.total_minutes,
-          invalid_geofence_count = EXCLUDED.invalid_geofence_count,
-          updated_at = NOW()
-      `,
-      [data.tenantId, data.employeeId, data.workDate],
-    );
-
-    if (result.rowCount === 0) {
-      console.warn(
-        `[Attendance] No time logs found for tenant=${data.tenantId}, employee=${data.employeeId}, date=${data.workDate}`,
-      );
-    }
-  });
-}
 
 async function writeAuditLog(data: AuditLogJobData) {
   await withTenant(data.tenantId, async (client) => {
