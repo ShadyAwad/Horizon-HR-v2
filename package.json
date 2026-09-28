@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev:server": "tsx server.ts",
+    "dev:server": "tsx watch server.ts",
     "dev:worker": "tsx watch src/workers/hr-worker.ts",
     "dev": "concurrently -n \"Server,Worker\" -c \"cyan,green\" \"npm:dev:server\" \"npm:dev:worker\"",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
@@ -23,6 +23,7 @@
     "test:audit": "tsx scripts/audit-test.ts",
     "test:attendance": "tsx scripts/attendance-rules-test.ts",
     "test:attendance:integration": "tsx scripts/attendance-integration-test.ts",
+    "test:api-routing": "tsx scripts/api-routing-test.ts",
     "test:hr-background": "tsx scripts/hr-background-test.ts",
     "test:sessions": "tsx scripts/sessions-test.ts",
     "test:assets": "tsx scripts/assets-test.ts",

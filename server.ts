@@ -3171,6 +3171,10 @@ registerCompanyFeedRoutes(app, {
   registerSystemRoutes(app);
 
   app.use('/api', apiErrorHandler);
+  // API misses must never reach either Vite's or production's SPA fallback.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, code: 'API_ROUTE_NOT_FOUND', error: 'API route not found' });
+  });
 
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
   if (process.env.NODE_ENV !== 'production') {

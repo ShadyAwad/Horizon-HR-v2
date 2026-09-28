@@ -13,6 +13,7 @@ import { useDeferredPwaInstallPrompt } from '../lib/pwa-install-prompt';
 import { useTheme } from '../lib/ThemeContext';
 import { StanzaFingerprintMark } from '../components/StanzaFingerprintMark';
 import { apiFetch, apiUrl } from '../lib/api';
+import { ApiResponseError, readApiJson } from '../lib/api-response';
 import { FEED_EDITOR_FORMAT, FEED_EDITOR_SCHEMA_VERSION } from '../lib/feed-editor-contract';
 import {
   createFeedSubmissionController,
@@ -2442,8 +2443,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     let mode = attendanceLocationMode;
     try {
       const response = await apiFetch(apiUrl('/api/attendance/policy'));
-      if (!response.ok) throw new Error('Unable to load attendance policy.');
-      mode = (await response.json()).attendanceLocationMode;
+      mode = (await readApiJson(response)).attendanceLocationMode;
       setAttendanceLocationMode(mode);
     } catch (error) { setClockInState('failed'); setClockMessage((error as Error).message); resetClockStatusSoon(); return; }
     if (mode === 'disabled' || (mode === 'optional' && !navigator.geolocation)) { await verifyClockIn(); return; }
@@ -2636,7 +2636,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               accuracy: coords?.accuracy,
             })
         });
-        const data = await res.json();
+        const data = await readApiJson(res, 'Attendance service', { allowErrorResponse: true });
         
         if (res.ok && data.success) {
             setClockInState('success');
@@ -2662,7 +2662,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         }
     } catch(err) {
         setClockInState('failed');
-        setClockMessage(t('dash.clockInTryAgain'));
+        setClockMessage(err instanceof ApiResponseError ? err.message : t('dash.clockInTryAgain'));
     }
     
     // Reset state after 4 seconds
@@ -2686,7 +2686,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           timeLogId: activeTimeLogId,
         }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Attendance service', { allowErrorResponse: true });
 
       if (res.ok && data.success) {
         setClockInState('clocked_out');
@@ -2701,9 +2701,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         setClockInState('failed');
         setClockMessage(res.status === 404 ? t('dash.noActiveShift') : data.error || t('dash.clockOutError'));
       }
-    } catch {
+    } catch (error) {
       setClockInState('failed');
-      setClockMessage(t('dash.clockOutError'));
+      setClockMessage(error instanceof ApiResponseError ? error.message : t('dash.clockOutError'));
     }
 
     setTimeout(() => {
@@ -2874,7 +2874,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     try {
       const res = await fetch(apiUrl('/api/clock-status'), { headers: payrollHeaders });
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (res.ok && data.success) {
         const nextIsClockedIn = Boolean(data.isClockedIn);
@@ -4073,7 +4073,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     const loadCompanyLocations = async () => {
       try {
         const res = await fetch(apiUrl('/api/company-locations'), { headers: payrollHeaders });
-        const data = await res.json();
+        const data = await readApiJson(res);
 
         if (res.ok && data.success) {
           setCompanyLocations(data.locations || []);

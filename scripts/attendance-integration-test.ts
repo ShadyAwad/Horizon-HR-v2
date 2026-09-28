@@ -13,6 +13,7 @@ const tenants:string[]=[];const password=crypto.randomBytes(20).toString('base64
 type Person={id:string;tenantId:string;email:string;cookie:string};
 async function call(u:Person|null,path:string,body?:unknown,method='POST',origin=base) {
  const r=await fetch(base+path,{method:body===undefined?'GET':method,headers:{...(u?{Cookie:u.cookie}:{}),Origin:origin,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+ assert.match(r.headers.get('content-type') || '', /^application\/json\b/, `${path} must return API JSON, not the SPA document`);
  return {status:r.status,body:await r.json()};
 }
 async function ok(u:Person,path:string,body?:unknown,method='POST') {const r=await call(u,path,body,method);assert(r.status<300,`${path}: ${r.status} ${JSON.stringify(r.body)}`);return r.body;}

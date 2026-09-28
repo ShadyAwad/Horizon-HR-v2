@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiUrl } from '../../lib/api';
+import { readApiJson } from '../../lib/api-response';
 import { useLanguage } from '../../lib/LanguageContext';
 
 type Mode = 'required' | 'optional' | 'disabled';
@@ -8,8 +9,10 @@ type Policy = { attendanceLocationMode: Mode; allowUnfiledBreaks: boolean; allow
 const input = 'min-h-11 min-w-0 rounded-lg border border-[var(--stanza-border-subtle)] bg-[var(--stanza-input-bg)] px-3 py-2 text-sm text-[color:var(--stanza-text-primary)]';
 const button = 'stanza-secondary-action min-h-11 rounded-lg border border-[var(--stanza-border-subtle)] px-3 py-2 text-sm font-bold disabled:opacity-50';
 async function api(path: string, body?: unknown, method = 'POST') {
-  const res=await apiFetch(apiUrl(path),body===undefined?{cache:'no-store'}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await res.json(); if(!res.ok) throw new Error(data.error || 'Request failed.'); return data;
+  let res: Response;
+  try { res=await apiFetch(apiUrl(path),body===undefined?{cache:'no-store'}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  catch { throw new Error('Unable to reach the attendance service. Check your connection and try again.'); }
+  return readApiJson(res);
 }
 export function AttendanceWorkspace({ employeeId, hasShift, canRequest, canTeam, offline, onPolicy, onBreakState }: {
   employeeId:string; hasShift:boolean; canRequest:boolean; canTeam:boolean; offline:boolean; onPolicy:(mode:Mode)=>void; onBreakState:(active:boolean)=>void;
@@ -27,7 +30,7 @@ export function AttendanceWorkspace({ employeeId, hasShift, canRequest, canTeam,
   const [employeeFilter,setEmployeeFilter]=useState(''),[state,setState]=useState(''),[exceptions,setExceptions]=useState(false);
   const load=useCallback(async()=>{
     try { const [p,b]=await Promise.all([api('/api/attendance/policy'),api('/api/attendance/breaks?team='+canTeam)]);
-      setPolicy(p);onPolicy(p.attendanceLocationMode);setBreaks(b.breaks);setRequests(b.requests);setNow(Date.now());
+      setPolicy(p);onPolicy(p.attendanceLocationMode);setBreaks(b.breaks);setRequests(b.requests);setNow(Date.now());setError('');
     } catch(e) {setError((e as Error).message);}
   },[canTeam,onPolicy]);
   useEffect(()=>{void load();},[load,hasShift]);
