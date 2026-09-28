@@ -544,12 +544,12 @@ export function ExpensesPanel({
       const payload = await response.json() as ExtractionResponse;
       if (!response.ok || !payload.success) {
         const code = errorCode(payload);
-        const mapped = response.status === 429 || code.includes('RATE') ? t('expenses.extractionRateLimit')
+        const mapped = code === 'EXTRACTION_PROVIDER_UNAVAILABLE' ? t('extraction.notConfigured') : response.status === 429 || code.includes('RATE') ? t('expenses.extractionRateLimit')
           : code.includes('TYPE') ? t('expenses.unsupportedFile')
             : code.includes('SIZE') ? t('expenses.fileTooLarge')
               : code.includes('TIMEOUT') ? t('expenses.extractionTimeout')
                 : code.includes('EXPIRED') ? t('expenses.extractionExpired')
-                : t('expenses.extractionUnavailable');
+                : t('extraction.requestFailed');
         throw new Error(mapped);
       }
       if (prior && prior !== payload.extractionId) {

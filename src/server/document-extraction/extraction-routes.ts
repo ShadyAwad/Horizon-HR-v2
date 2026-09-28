@@ -45,15 +45,15 @@ function parseUpload(req: express.Request, res: express.Response) {
 function sendError(res: express.Response, error: unknown) {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ success: false, code: 'FILE_TOO_LARGE', message: 'The selected file must be 10 MB or smaller.' });
+      return res.status(413).json({ success: false, code: 'FILE_TOO_LARGE', state: 'unsupported_file', message: 'The selected file must be 10 MB or smaller.' });
     }
     return res.status(400).json({ success: false, code: 'INVALID_MULTIPART', message: 'Send exactly one file and one extraction mode.' });
   }
   if (error instanceof ExtractionError) {
-    return res.status(error.statusCode).json({ success: false, code: error.code, message: error.message });
+    return res.status(error.statusCode).json({ success: false, code: error.code, state: error.code === 'EXTRACTION_PROVIDER_UNAVAILABLE' ? 'unavailable' : /TYPE|IMAGE|SIZE|COMPLEX/.test(error.code) ? 'unsupported_file' : 'request_failed', message: error.message });
   }
   if (process.env.NODE_ENV !== 'production') console.error('[document-extraction failed]', error);
-  return res.status(500).json({ success: false, code: 'EXTRACTION_FAILED', message: 'The document could not be extracted.' });
+  return res.status(500).json({ success: false, code: 'EXTRACTION_FAILED', state: 'request_failed', message: 'The document could not be extracted.' });
 }
 
 function requireModePermission(req: express.Request, res: express.Response, mode: ExtractionMode) {
@@ -70,6 +70,13 @@ export function registerDocumentExtractionRoutes(
   app: express.Express,
   { standardAuth, mutationGuard, rateLimiter, service = new DocumentExtractionService() }: Dependencies,
 ) {
+  app.get('/api/document-extractions/status', standardAuth, (req, res) => {
+    if (!Object.values(MODE_PERMISSIONS).some(permission => req.authUser?.permissions?.includes(permission))) {
+      return res.status(403).json({ success: false, code: 'EXTRACTION_PERMISSION_DENIED' });
+    }
+    return res.json({ success: true, ...service.getStatus() });
+  });
+
   app.post('/api/document-extractions', rateLimiter, standardAuth, mutationGuard, async (req, res) => {
     try {
       const file = await parseUpload(req, res);

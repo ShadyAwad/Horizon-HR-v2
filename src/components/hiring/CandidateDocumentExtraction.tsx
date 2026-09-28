@@ -159,6 +159,7 @@ export function CandidateDocumentExtraction({
   const mapError = (status: number, payload: unknown, aborted: boolean) => {
     if (aborted) return t('hiring.extractionTimeout');
     const code = responseCode(payload);
+    if (code === 'EXTRACTION_PROVIDER_UNAVAILABLE') return t('extraction.notConfigured');
     if (status === 429 || code.includes('RATE')) return t('hiring.extractionRateLimit');
     if (status === 403 || code.includes('PERMISSION')) return t('hiring.extractionPermission');
     if (code.includes('TYPE') || code.includes('MODE')) return t('hiring.extractionUnsupported');
@@ -166,7 +167,7 @@ export function CandidateDocumentExtraction({
     if (code.includes('INVALID_IMAGE') || code.includes('MALFORMED') || code.includes('COMPLEX')) return t('hiring.extractionUnreadable');
     if (code.includes('TIMEOUT')) return t('hiring.extractionTimeout');
     if (status === 404 || code.includes('EXPIRED') || code.includes('NOT_FOUND')) return t('hiring.extractionExpired');
-    return t('hiring.extractionUnavailable');
+    return t('extraction.requestFailed');
   };
 
   const completeExtraction = (payload: ExtractionPayload) => {

@@ -1,3 +1,4 @@
+import { ASSET_CATEGORIES } from '../../lib/asset-categories';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { LoaderCircle, X } from 'lucide-react';
@@ -44,7 +45,7 @@ type Props = {
   onSaved: () => Promise<void>;
 };
 
-const categories = ['laptop', 'desktop', 'monitor', 'phone', 'tablet', 'accessory', 'badge', 'furniture', 'other'];
+const categories = ASSET_CATEGORIES;
 const conditions = ['new', 'good', 'fair', 'damaged', 'unusable'];
 const inputClass = 'mt-1 w-full rounded-lg border border-emerald-500/20 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500/30 dark:bg-black/35 dark:text-emerald-50';
 
@@ -189,6 +190,7 @@ export function AssetFormDialog({ asset, canExtract, canManageQr = false, onClos
       };
       const response = await apiFetch(apiUrl(asset ? `/api/hr/assets/${asset.id}` : '/api/hr/assets'), {
         method: asset ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => ({}));

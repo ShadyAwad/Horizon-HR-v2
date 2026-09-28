@@ -131,6 +131,7 @@ export function AssetLabelExtraction({
   const mapError = (status: number, payload: unknown, aborted = false) => {
     if (aborted) return t('assets.extractionTimeout');
     const code = codeOf(payload);
+    if (code === 'EXTRACTION_PROVIDER_UNAVAILABLE') return t('extraction.notConfigured');
     if (status === 429 || code.includes('RATE')) return t('assets.extractionRateLimit');
     if (status === 403 || code.includes('PERMISSION')) return t('assets.extractionPermission');
     if (code.includes('TYPE') || code.includes('MODE')) return t('assets.extractionUnsupported');
@@ -138,7 +139,7 @@ export function AssetLabelExtraction({
     if (code.includes('INVALID_IMAGE') || code.includes('COMPLEX')) return t('assets.extractionUnreadable');
     if (code.includes('TIMEOUT')) return t('assets.extractionTimeout');
     if (status === 404 || code.includes('EXPIRED') || code.includes('NOT_FOUND')) return t('assets.extractionExpired');
-    return t('assets.extractionUnavailable');
+    return t('extraction.requestFailed');
   };
 
   const extract = async () => {

@@ -214,6 +214,7 @@ const resultFor = (mode: ExtractionMode, extractionId = EXTRACTION_A): Extractio
 };
 
 const fakeService = {
+  getStatus: () => ({ configured: true, state: 'configured' }),
   create: async (_identity: StubIdentity, mode: ExtractionMode) => resultFor(mode),
   getOwn: async (identity: StubIdentity, extractionId: string) => {
     if (identity.employeeId !== EMPLOYEE_A || extractionId === EXTRACTION_OTHER) {
@@ -273,6 +274,10 @@ function imageForm(mode: string, filename = 'receipt.png') {
 }
 
 try {
+  assert.equal((await request('/api/document-extractions/status')).response.status, 401);
+  const configuredStatus = await request('/api/document-extractions/status', { headers: { 'x-test-auth': 'true', 'x-test-permissions': MODE_PERMISSIONS.expense_receipt } });
+  assert.equal(configuredStatus.response.status, 200);
+  assert.equal(configuredStatus.body.state, 'configured');
   const anonymous = await request(`/api/document-extractions/${EXTRACTION_A}`);
   assert.equal(anonymous.response.status, 401);
 
@@ -494,3 +499,9 @@ assert.equal(writes.length, 1);
 pass('Audit projection and writer exclude OCR text, extracted values, PII, and storage paths');
 
 console.log(`\nDocument extraction contracts passed: ${passes.length}`);
+
+const { DocumentExtractionService: ExtractionServiceImplementation } = await import('../src/server/document-extraction/extraction-service');
+const unavailableService = new ExtractionServiceImplementation(createConfiguredExtractionProvider({ NODE_ENV: 'production' }));
+assert.equal(unavailableService.getStatus().state, 'unavailable');
+await expectExtractionError(unavailableService.create({ tenantId: TENANT_A, employeeId: EMPLOYEE_A }, 'asset_label', upload(png, 'image/png', 'label.png')), 'EXTRACTION_PROVIDER_UNAVAILABLE');
+console.log('PASS unconfigured provider fails before storage/database work and reports unavailable');

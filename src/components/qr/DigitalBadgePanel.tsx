@@ -12,6 +12,7 @@ type Badge = {
   canRotate: boolean;
   canRevoke: boolean;
   requiresRotation: boolean;
+  verificationUnavailable?: boolean;
   verificationUrl: string | null;
   issuedAt: string | null;
   lastUpdatedAt: string | null;
@@ -94,7 +95,7 @@ export function DigitalBadgePanel({ offline = false }: { offline?: boolean }) {
             <div className={cn('mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-black', badge.state === 'active' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-200')}><span aria-hidden="true">{badge.state === 'active' ? '●' : '!'}</span>{t(`badge.state.${badge.state}` as const)}</div>
             {timestamp && <p className="mt-3 text-xs text-neutral-500 dark:text-emerald-100/45">{t('badge.lastUpdated')} <span dir="ltr">{timestamp}</span></p>}
             {badge.requiresRotation && <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">{t('badge.rotationRequired')}</p>}
-            <p className="mt-4 text-xs leading-5 text-neutral-500 dark:text-emerald-100/50">{t('badge.shareSafety')}</p>
+            <p className="mt-4 text-xs leading-5 text-neutral-500 dark:text-emerald-100/50">{t('badge.shareSafety')}</p><p className="mt-2 text-xs leading-5">{t('badge.lifetime')}</p>{badge.verificationUnavailable && <p role="status" className="mt-2 text-xs">{t('badge.originUnavailable')}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
               {badge.canIssue && <ActionButton action="issue" busy={busy} offline={offline} onClick={(event) => { triggerRef.current = event.currentTarget; setConfirmation('issue'); }} label={t('badge.issue')} />}
               {badge.canRotate && <ActionButton action="rotate" busy={busy} offline={offline} onClick={(event) => { triggerRef.current = event.currentTarget; setConfirmation('rotate'); }} label={t('badge.rotate')} />}
@@ -103,7 +104,7 @@ export function DigitalBadgePanel({ offline = false }: { offline?: boolean }) {
             </div>
           </div>
           <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-emerald-500/15 bg-[#f8fffc] p-3 text-center">
-            {badge.verificationUrl ? <div><QRCodeSVG value={badge.verificationUrl} size={184} level="M" marginSize={4} bgColor="#ffffff" fgColor="#061411" aria-label={t('badge.qrAlt')} /><p className="mt-3 text-xs font-bold text-[#061411]">{t('badge.scanToVerify')}</p><a href={badge.verificationUrl} className="sr-only">{t('badge.openVerification')}</a></div> : <div className="max-w-[180px] text-xs leading-5 text-neutral-600">{badge.state === 'inactive' ? t('badge.inactiveHelp') : t('badge.noActiveBadge')}</div>}
+            {badge.verificationUrl ? <div><QRCodeSVG value={badge.verificationUrl} size={184} level="M" marginSize={4} bgColor="#ffffff" fgColor="#061411" aria-label={t('badge.qrAlt')} /><p className="mt-3 text-xs font-bold text-[#061411]">{t('badge.scanToVerify')}</p><a href={badge.verificationUrl} className="mt-2 block break-all text-xs underline">{t('badge.openVerification')}</a></div> : <div className="max-w-[180px] text-xs leading-5 text-neutral-600">{badge.state === 'inactive' ? t('badge.inactiveHelp') : t('badge.noActiveBadge')}</div>}
           </div>
         </div>
       ) : <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200" role="status">{message || t('badge.loadError')}<button type="button" onClick={() => void load()} className="ms-3 underline">{t('badge.retry')}</button></div>}

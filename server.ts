@@ -820,7 +820,7 @@ async function demoAuth(
   if (!sessionIdentity && !allowDevAuthHeaders()) {
     return res.status(401).json({
       success: false,
-      error: 'Authentication token required.',
+      code: 'AUTH_SESSION_REQUIRED', error: 'Your session is unavailable or expired. Please sign in again.',
     });
   }
 

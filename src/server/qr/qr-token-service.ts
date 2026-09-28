@@ -252,16 +252,22 @@ export class QrTokenService {
       const activeEmployee = employee.isActive && employee.employmentStatus === 'active';
       const isActiveToken = token?.status === 'active';
       const rawToken = isActiveToken ? decryptQrToken(token?.token_ciphertext) : null;
-      const origin = rawToken ? getCanonicalQrOrigin() : null;
+      let origin: string | null = null;
+      let verificationUnavailable = false;
+      try { origin = getCanonicalQrOrigin(); } catch (error) {
+        if (!(error instanceof QrTokenError) || error.code !== 'QR_ORIGIN_INVALID') throw error;
+        verificationUnavailable = true;
+      }
       const verificationUrl = rawToken && origin
         ? `${origin}${QR_PURPOSE_CONFIG.employee_verification.publicPath}/${rawToken}`
         : null;
       return {
         state: !activeEmployee ? 'inactive' : isActiveToken ? 'active' : token?.status === 'revoked' ? 'revoked' : 'not_issued',
-        canIssue: activeEmployee && !isActiveToken,
-        canRotate: activeEmployee && isActiveToken,
+        canIssue: activeEmployee && !isActiveToken && !verificationUnavailable,
+        canRotate: activeEmployee && isActiveToken && !verificationUnavailable,
         canRevoke: isActiveToken,
-        requiresRotation: Boolean(isActiveToken && !verificationUrl),
+        requiresRotation: Boolean(isActiveToken && !rawToken),
+        verificationUnavailable,
         verificationUrl,
         issuedAt: token ? new Date(token.issuedAt).toISOString() : null,
         lastUpdatedAt: token ? new Date(token.lastUpdatedAt).toISOString() : null,

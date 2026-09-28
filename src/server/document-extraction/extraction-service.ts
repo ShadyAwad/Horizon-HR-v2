@@ -134,8 +134,16 @@ export class DocumentExtractionService {
     this.retentionHours = Math.min(24, Math.max(1, retentionHours));
   }
 
+  getStatus() {
+    const configured = this.provider.id !== 'unconfigured';
+    return { configured, state: configured ? 'configured' : 'unavailable',
+      reason: configured ? null : 'No production extraction provider is installed or configured.',
+      supportedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] };
+  }
+
   async create(identity: AuthIdentity, mode: ExtractionMode, file: UploadInput) {
     const prepared = await validateAndPrepareImage(file);
+    if (!this.getStatus().configured) throw new ExtractionError('EXTRACTION_PROVIDER_UNAVAILABLE', 'Document extraction is not configured. Continue manually.', 503);
     const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
     await this.storage.cleanupExpired();
     const storageKey = await this.storage.write(prepared.buffer);

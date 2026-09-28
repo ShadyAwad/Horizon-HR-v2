@@ -1,3 +1,4 @@
+import { ASSET_CATEGORIES } from '../../lib/asset-categories';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -7,7 +8,7 @@ type Dependencies = { demoAuth: express.RequestHandler; requirePermission: (key:
 type AssetStatus = 'available' | 'assigned' | 'maintenance' | 'lost' | 'retired';
 const uuidPattern = new RegExp('^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$', 'i');
 const uuid = (value: unknown): value is string => typeof value === 'string' && uuidPattern.test(value);
-const categories = new Set(['laptop', 'desktop', 'monitor', 'phone', 'tablet', 'accessory', 'badge', 'furniture', 'other']);
+const categories = new Set<string>(ASSET_CATEGORIES);
 const statuses = new Set<AssetStatus>(['available', 'assigned', 'maintenance', 'lost', 'retired']);
 const conditions = new Set(['new', 'good', 'fair', 'damaged', 'unusable']);
 
