@@ -1,6 +1,8 @@
 import type { TranslationKey } from '../lib/LanguageContext';
 
 export type DashboardWorkspaceId =
+  | 'communications'
+  | 'composer'
   | 'geofence'
   | 'roster'
   | 'expenses'
@@ -21,6 +23,7 @@ export type DashboardWorkspaceId =
 export type DashboardTabId = Exclude<DashboardWorkspaceId, 'payroll' | 'grievances'>;
 export type WorkspaceGroup = 'workspace' | 'peopleOperations' | 'administration';
 export type WorkspaceVisibilityKey =
+  | 'communications'
   | 'hiring'
   | 'performance'
   | 'organisation'
@@ -71,6 +74,8 @@ export type WorkspaceDescriptor = {
 };
 
 export const WORKSPACE_REGISTRY: readonly WorkspaceDescriptor[] = [
+  { id:'communications', targetTab:'communications', labelKey:'communications.title', group:'workspace', icon:'message', visibility:'communications', helpArticleId:'communications', tutorialId:'communications', aliases:['email','meetings','templates'], mobileEligible:true, quickActionEligible:true },
+  { id: 'composer', targetTab: 'composer', labelKey: 'composer.title', group: 'workspace', icon: 'network', helpArticleId: 'workspace-composer', tutorialId: 'workspace-composer', aliases: ['custom workspace', 'widgets', 'operations', 'مساحة مخصصة'], mobileEligible: true, quickActionEligible: true },
   { id: 'geofence', targetTab: 'geofence', labelKey: 'dash.geoOp', group: 'workspace', icon: 'map', attention: 'breakRequests', helpArticleId: 'geo-operations', tutorialId: 'geo-operations', aliases: ['attendance', 'clock', 'clock in', 'location', 'geo', 'الحضور', 'الموقع'], mobileEligible: true, quickActionEligible: true },
   { id: 'roster', targetTab: 'roster', labelKey: 'dash.roster', group: 'workspace', icon: 'calendar', attention: 'leaveRequests', helpArticleId: 'weekly-roster', tutorialId: 'roster', aliases: ['schedule', 'shift', 'leave', 'roster', 'جدول', 'مناوبة', 'إجازة'], mobileEligible: true, quickActionEligible: true },
   { id: 'expenses', targetTab: 'expenses', labelKey: 'dash.expenses', group: 'workspace', icon: 'receipt', helpArticleId: 'expenses', tutorialId: 'expenses', aliases: ['claim', 'receipt', 'reimbursement', 'pay', 'مصروفات', 'مطالبة'], mobileEligible: true, quickActionEligible: true },

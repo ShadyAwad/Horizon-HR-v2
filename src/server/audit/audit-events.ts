@@ -19,6 +19,17 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
+  'communications.email.queued': {canonicalAction:'communications.email.queued',module:'communications',summary:'email queued',metadataKeys:['status','code']},
+  'communications.email.cancelled': {canonicalAction:'communications.email.cancelled',module:'communications',summary:'email cancelled',metadataKeys:['status','code']},
+  'communications.email.failed': {canonicalAction:'communications.email.failed',module:'communications',summary:'email failed',metadataKeys:['status','code']},
+  'communications.email.sent': {canonicalAction:'communications.email.sent',module:'communications',summary:'email sent',metadataKeys:['status','code']},
+  'communications.template.created': {canonicalAction:'communications.template.created',module:'communications',summary:'template created',metadataKeys:['status','code']},
+  'communications.template.updated': {canonicalAction:'communications.template.updated',module:'communications',summary:'template updated',metadataKeys:['status','code']},
+  'communications.template.deactivated': {canonicalAction:'communications.template.deactivated',module:'communications',summary:'template deactivated',metadataKeys:['status','code']},
+  'communications.meeting.created': {canonicalAction:'communications.meeting.created',module:'communications',summary:'meeting created',metadataKeys:['status','code']},
+  'communications.meeting.updated': {canonicalAction:'communications.meeting.updated',module:'communications',summary:'meeting updated',metadataKeys:['status','code']},
+  'communications.meeting.cancelled': {canonicalAction:'communications.meeting.cancelled',module:'communications',summary:'meeting cancelled',metadataKeys:['status','code']},
+
   'asset.created': { canonicalAction: 'asset.created', module: 'assets', summary: 'Asset created', metadataKeys: ['assetTag', 'category'] },
   'asset.assigned': { canonicalAction: 'asset.assigned', module: 'assets', summary: 'Asset assigned', metadataKeys: ['assetTag', 'targetEmployeeId'] },
   'asset.returned': { canonicalAction: 'asset.returned', module: 'assets', summary: 'Asset returned', metadataKeys: ['assetTag', 'condition'] },
@@ -160,6 +171,7 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
 const SECRET_KEY_PATTERN = /(password|secret|token|cookie|authorization|database.?url|redis.?url|api.?key|private.?key|reset|credential|passkey|latitude|longitude|coordinates?|salary|amount|balance|description|reason|body|content|headers?|ip.?address)/i;
 
 export const AUDIT_MODULES = [
+  'communications',
   'auth',
   'attendance',
   'assets',
@@ -245,6 +257,17 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
+  'communications.email.queued':['status','code'],
+  'communications.email.cancelled':['status','code'],
+  'communications.email.failed':['status','code'],
+  'communications.email.sent':['status','code'],
+  'communications.template.created':['status','code'],
+  'communications.template.updated':['status','code'],
+  'communications.template.deactivated':['status','code'],
+  'communications.meeting.created':['status','code'],
+  'communications.meeting.updated':['status','code'],
+  'communications.meeting.cancelled':['status','code'],
+
   'asset.created': ['assetTag', 'category'],
   'asset.assigned': ['assetTag', 'targetEmployeeId'],
   'asset.returned': ['assetTag', 'condition'],

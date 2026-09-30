@@ -7,6 +7,7 @@ export type LanyardStyle = { cardColor: string | null; accentColor: string | nul
 export type CustomThemeConfig = {
   lanyardStyle: LanyardStyle;
   accent: string;
+  textColor: string | null;
   primaryAction: string | null;
   secondaryAction: string | null;
   surfaceTint: string | null;
@@ -29,7 +30,7 @@ export type CustomThemeConfig = {
 };
 export const DEFAULT_CUSTOM_THEME: Readonly<CustomThemeConfig> = Object.freeze({
   lanyardStyle: { cardColor: null, accentColor: null, strapColor: null },
-  accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
+  textColor: null, accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
   surfaceTint: null, backgroundTint: null, cursorEffect: 'none', cursorColor: null,
   cursorTrailIntensity: 40, cursorTrailLength: 6,
   cursorAppearance: 'system', pointerColor: null, pointerSize: 16, pointerOpacity: 90,
@@ -47,6 +48,7 @@ export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): Cu
     accent: normaliseCustomAccent(raw.accent) ?? normaliseCustomAccent(legacyAccent) ?? DEFAULT_CUSTOM_ACCENT,
     primaryAction: normaliseCustomAccent(raw.primaryAction), secondaryAction: normaliseCustomAccent(raw.secondaryAction),
     surfaceTint: normaliseCustomAccent(raw.surfaceTint), backgroundTint: normaliseCustomAccent(raw.backgroundTint),
+    textColor: normaliseCustomAccent(raw.textColor),
     cursorColor: normaliseCustomAccent(raw.cursorColor),
     cursorAppearance: CURSOR_APPEARANCES.includes(raw.cursorAppearance as CursorAppearance) ? raw.cursorAppearance as CursorAppearance : 'system',
     pointerColor: normaliseCustomAccent(raw.pointerColor),
@@ -110,9 +112,12 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
   const accent = readableAccent(base, surfaces, light);
   const accentHover = mixColor(accent, light ? '#000000' : '#FFFFFF', .08);
   const foreground = light ? '#FFFFFF' : '#000000';
-  const primary = light ? '#172033' : '#F1F5F9';
-  const secondary = light ? '#39465A' : '#CBD5E1';
-  const muted = light ? '#4B586D' : '#B1BDCE';
+  const requestedText = config.textColor ?? (light ? '#172033' : '#F1F5F9');
+  // Bound Glass contrast even when its 8% transparency overlays extreme content.
+  const textSurfaces = [...surfaces, mixColor(surface, light ? '#000000' : '#FFFFFF', .08)];
+  const primary = readableAccent(requestedText, textSurfaces, light);
+  const secondary = readableAccent(config.textColor ? mixColor(primary, surface, .18) : light ? '#39465A' : '#CBD5E1', textSurfaces, light);
+  const muted = readableAccent(config.textColor ? mixColor(primary, surface, .28) : light ? '#4B586D' : '#B1BDCE', textSurfaces, light);
   const soft = mixColor(surface, base, .10);
   const action = readableAccent(config.primaryAction ?? base, surfaces, light);
   const secondaryAction = readableAccent(config.secondaryAction ?? base, surfaces, light);
@@ -130,7 +135,7 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
     'hover-surface': hover, 'selected-surface': selected, 'subtle-accent-surface': soft,
     'border-subtle': mixColor(surface, primary, .20), 'border-default': mixColor(surface, primary, .30),
     'border-strong': mixColor(surface, primary, .45), 'border-accent': config.secondaryAction ? secondaryAction : accent,
-    'text-primary': primary, 'text-secondary': secondary, 'text-muted': muted, 'icon-muted': muted,
+    'text-disabled': muted, 'text-primary': primary, 'text-secondary': secondary, 'text-muted': muted, 'icon-muted': muted,
     'nav-active-foreground': primary, 'control-selected-foreground': foreground,
     'input-bg': page, 'dropdown-bg': raised, 'editor-toolbar-bg': raised,
     'auth-background': page, 'auth-text': primary,
@@ -140,7 +145,7 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
     'light-atmosphere': `radial-gradient(circle at top left, ${background}12, transparent 45%), ${page}`,
     'light-topography': `${topography}18`, 'light-glow-top': `${background}24`, 'light-glow-bottom': `${background}14`,
   };
-  return { base, adjusted: accent !== base || (config.primaryAction !== null && action !== config.primaryAction)
+  return { base, textAdjusted: primary !== requestedText, adjusted: primary !== requestedText || accent !== base || (config.primaryAction !== null && action !== config.primaryAction)
     || (config.secondaryAction !== null && secondaryAction !== config.secondaryAction), tokens };
 }
 

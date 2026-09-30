@@ -5,6 +5,10 @@ type Language = 'en' | 'ar';
 
 const translations = {
   en: {
+    'communications.title': 'Communications',
+    'communications.description': 'Company email, private drafts and internal meetings.',
+    'composer.title': 'Workspace Composer',
+    'composer.description': 'Build personal operational screens from authorized widgets.',
     'rosterGoals.title': 'Goals / Tasks',
     'rosterGoals.description': 'Optional weekly goals linked to the selected employee and roster week.',
     'rosterGoals.loading': 'Loading roster goals...',
@@ -943,6 +947,8 @@ const translations = {
   'studio.help': 'Personalize Custom. Preview changes here, then apply them to your workspace.',
   'studio.colors': 'Colors',
   'studio.pointer': 'Pointer effects',
+  'expenses.selectCurrency': 'Choose currency',
+  'studio.textColor': 'Text',
   'studio.accent': 'Accent',
   'studio.primaryAction': 'Primary action',
   'studio.secondaryAction': 'Secondary action',
@@ -1901,6 +1907,10 @@ const translations = {
     'hiring.note.handoff': 'Handoff',
   },
   ar: {
+    'communications.title': 'التواصل',
+    'communications.description': 'بريد الشركة والاجتماعات.',
+    'composer.title': 'منشئ مساحات العمل',
+    'composer.description': 'أنشئ شاشات تشغيلية شخصية من اللوحات المصرح بها.',
     'rosterGoals.title': 'الأهداف / المهام',
     'rosterGoals.description': 'أهداف أسبوعية اختيارية مرتبطة بالموظف وأسبوع الجدول المحددين.',
     'rosterGoals.loading': 'جارٍ تحميل أهداف الجدول...',
@@ -2884,6 +2894,8 @@ const arabicOverrides: Partial<Record<TranslationKey, string>> = {
   'studio.help': 'خصص مظهرك. عاين التغييرات هنا ثم طبقها على مساحة العمل.',
   'studio.colors': 'الألوان',
   'studio.pointer': 'تأثيرات المؤشر',
+  'expenses.selectCurrency': 'اختر العملة',
+  'studio.textColor': 'النص',
   'studio.accent': 'اللون الرئيسي',
   'studio.primaryAction': 'الإجراء الأساسي',
   'studio.secondaryAction': 'الإجراء الثانوي',

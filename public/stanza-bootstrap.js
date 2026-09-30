@@ -8,6 +8,10 @@
       storedPreferences = {};
     }
 
+    const fontScales = [0.95, 1, 1.1, 1.2];
+    document.documentElement.style.setProperty('--stanza-font-scale', String(fontScales.includes(storedPreferences.fontScale) ? storedPreferences.fontScale : 1));
+    const uiScale = storedPreferences.interfaceScale;
+    document.documentElement.style.setProperty('--stanza-ui-scale', String(typeof uiScale === 'number' && Number.isFinite(uiScale) ? Math.min(1.2, Math.max(.85, uiScale)) : 1));
     const legacyIntensity = { bright: 15, balanced: 50, deep: 85 };
     const numericIntensity = typeof storedPreferences.lightIntensity === 'number'
       ? storedPreferences.lightIntensity

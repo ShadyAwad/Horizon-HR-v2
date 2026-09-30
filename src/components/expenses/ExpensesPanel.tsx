@@ -1,3 +1,4 @@
+import { Input, Select, Textarea } from '../ui/FormControls';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -94,6 +95,7 @@ type ClaimHistory = {
 };
 
 type ClaimListResponse = {
+  defaultCurrency?: string;
   success: boolean;
   claims: Claim[];
   total: number;
@@ -154,7 +156,7 @@ const initialForm: ClaimForm = {
   merchantName: '',
   expenseDate: '',
   amount: '',
-  currency: 'EGP',
+  currency: '',
   category: '',
   businessReason: '',
 };
@@ -238,7 +240,7 @@ function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-2xl border border-emerald-500/20 bg-white p-4 text-slate-900 shadow-2xl dark:bg-[#07110d] dark:text-emerald-50 sm:max-w-3xl sm:rounded-2xl sm:p-6"
+        className="stanza-expense-dialog max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-2xl border border-emerald-500/20 bg-white p-4 text-slate-900 shadow-2xl dark:bg-[#07110d] dark:text-emerald-50 sm:max-w-3xl sm:rounded-2xl sm:p-6"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -317,6 +319,7 @@ export function ExpensesPanel({
   const [successMessage, setSuccessMessage] = useState('');
   const [claimFlowOpen, setClaimFlowOpen] = useState(false);
   const [claimStep, setClaimStep] = useState<1 | 2 | 3 | 4>(1);
+  const [defaultCurrency, setDefaultCurrency] = useState('');
   const [form, setForm] = useState<ClaimForm>(initialForm);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -371,6 +374,11 @@ export function ExpensesPanel({
       const response = await apiFetch(apiUrl(`/api/me/expense-claims?${ownQuery}`));
       const payload = await response.json() as ClaimListResponse;
       if (!response.ok || !payload.success) throw new Error(readError(payload, t('expenses.loadError')));
+      if (payload.defaultCurrency) {
+        const currency = payload.defaultCurrency.toUpperCase();
+        setDefaultCurrency(currency);
+        if (!dirtyFieldsRef.current.has('currency')) setForm(current => ({...current, currency: current.currency || currency}));
+      }
       setClaims(payload.claims || []);
       setClaimsTotal(payload.total || 0);
     } catch (error) {
@@ -495,7 +503,7 @@ export function ExpensesPanel({
     setClaimFlowOpen(false);
     setActiveView('claims');
     setClaimStep(1);
-    setForm(initialForm);
+    setForm({...initialForm, currency: defaultCurrency});
     setFormError('');
     setReceiptFile(null);
     setExtractionId(null);
@@ -504,7 +512,7 @@ export function ExpensesPanel({
     setExtractionError('');
     setDuplicateWarning(false);
     setIdempotencyKey(requestKey());
-  }, []);
+  }, [defaultCurrency]);
 
   const openFlow = () => {
     submittedRef.current = false;
@@ -884,25 +892,25 @@ export function ExpensesPanel({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs font-bold text-slate-600 dark:text-emerald-100/70">
                 {t('expenses.status')}
-                <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setClaimsPage(1); }} className="stanza-select mt-1 w-full">
+                <Select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setClaimsPage(1); }} className="stanza-select mt-1 w-full">
                   <option value="">{t('expenses.allStatuses')}</option>
                   {EXPENSE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
-                </select>
+                </Select>
               </label>
               <label className="text-xs font-bold text-slate-600 dark:text-emerald-100/70">
                 {t('expenses.category')}
-                <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setClaimsPage(1); }} className="stanza-select mt-1 w-full">
+                <Select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setClaimsPage(1); }} className="stanza-select mt-1 w-full">
                   <option value="">{t('expenses.allCategories')}</option>
                   {EXPENSE_CATEGORIES.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}
-                </select>
+                </Select>
               </label>
               <label className="text-xs font-bold text-slate-600 dark:text-emerald-100/70">
                 {t('expenses.fromDate')}
-                <input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setClaimsPage(1); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
+                <Input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setClaimsPage(1); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
               </label>
               <label className="text-xs font-bold text-slate-600 dark:text-emerald-100/70">
                 {t('expenses.toDate')}
-                <input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setClaimsPage(1); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
+                <Input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setClaimsPage(1); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
               </label>
             </div>
             {claimsLoading ? (
@@ -935,7 +943,7 @@ export function ExpensesPanel({
               <label className="relative block w-full sm:max-w-xs">
                 <span className="sr-only">{t('expenses.search')}</span>
                 <Search className="pointer-events-none absolute start-3 top-3 h-4 w-4 text-slate-400" />
-                <input value={financeSearch} onChange={(event) => { setFinanceSearch(event.target.value); setFinancePage(1); }} placeholder={t('expenses.search')} className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pe-3 ps-9 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
+                <Input value={financeSearch} onChange={(event) => { setFinanceSearch(event.target.value); setFinancePage(1); }} placeholder={t('expenses.search')} className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pe-3 ps-9 text-sm dark:border-emerald-500/20 dark:bg-black/20" />
               </label>
             </div>
             {financeLoading ? (
@@ -1031,13 +1039,13 @@ export function ExpensesPanel({
           {actionDialog.kind !== 'cancel' && (
             <label className="mt-4 block text-sm font-bold">
               {t('expenses.noteOptional')}
-              <textarea value={actionNote} onChange={(event) => setActionNote(event.target.value)} maxLength={1000} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-normal dark:border-emerald-500/20 dark:bg-black/20" />
+              <Textarea value={actionNote} onChange={(event) => setActionNote(event.target.value)} maxLength={1000} rows={3} className="mt-1 w-full font-normal" />
             </label>
           )}
           {actionDialog.kind === 'reimburse' && (
             <label className="mt-4 block text-sm font-bold">
               {t('expenses.externalReference')}
-              <input value={externalReference} onChange={(event) => setExternalReference(event.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-normal dark:border-emerald-500/20 dark:bg-black/20" />
+              <Input value={externalReference} onChange={(event) => setExternalReference(event.target.value)} maxLength={120} className="mt-1 w-full font-normal" />
             </label>
           )}
           {actionError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{actionError}</p>}
@@ -1122,14 +1130,14 @@ export function ExpensesPanel({
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-bold">{t('expenses.merchant')}<input required maxLength={200} value={form.merchantName} onChange={(event) => updateField('merchantName', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-normal dark:border-emerald-500/20 dark:bg-black/20" /></label>
-                <label className="text-sm font-bold">{t('expenses.expenseDate')}<input required type="date" value={form.expenseDate} onChange={(event) => updateField('expenseDate', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-normal dark:border-emerald-500/20 dark:bg-black/20" /></label>
-                <label className="text-sm font-bold">{t('expenses.amount')}<input required type="text" inputMode="decimal" pattern="(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?" value={form.amount} onChange={(event) => updateField('amount', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-mono font-normal dark:border-emerald-500/20 dark:bg-black/20" /></label>
-                <label className="text-sm font-bold">{t('expenses.currency')}<select required value={form.currency} onChange={(event) => updateField('currency', event.target.value)} className="stanza-select mt-1 w-full">{EXPENSE_CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></label>
-                <label className="text-sm font-bold sm:col-span-2">{t('expenses.category')}<select required value={form.category} onChange={(event) => updateField('category', event.target.value as ExpenseCategory)} className="stanza-select mt-1 w-full"><option value="">{t('expenses.selectCategory')}</option>{EXPENSE_CATEGORIES.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}</select></label>
-                <label className="text-sm font-bold sm:col-span-2">{t('expenses.businessReason')}<textarea required maxLength={2000} rows={4} value={form.businessReason} onChange={(event) => updateField('businessReason', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 font-normal dark:border-emerald-500/20 dark:bg-black/20" /></label>
+                <label className="text-sm font-bold">{t('expenses.merchant')}<Input required maxLength={200} value={form.merchantName} onChange={(event) => updateField('merchantName', event.target.value)} className="mt-1 w-full font-normal" /></label>
+                <label className="text-sm font-bold">{t('expenses.expenseDate')}<Input required type="date" value={form.expenseDate} onChange={(event) => updateField('expenseDate', event.target.value)} className="mt-1 w-full font-normal" /></label>
+                <label className="text-sm font-bold">{t('expenses.amount')}<Input required type="text" inputMode="decimal" pattern="(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?" value={form.amount} onChange={(event) => updateField('amount', event.target.value)} className="mt-1 w-full font-mono font-normal" /></label>
+                <label className="text-sm font-bold">{t('expenses.currency')}<Select required value={form.currency} onChange={(event) => updateField('currency', event.target.value)} className="stanza-select mt-1 w-full"><option value="">{t('expenses.selectCurrency')}</option>{[...new Set([...(defaultCurrency && EXPENSE_CURRENCIES.includes(defaultCurrency as typeof EXPENSE_CURRENCIES[number]) ? [defaultCurrency] : []), ...EXPENSE_CURRENCIES])].map((currency) => <option key={currency} value={currency}>{currency}</option>)}</Select></label>
+                <label className="text-sm font-bold sm:col-span-2">{t('expenses.category')}<Select aria-invalid={!!formError && !form.category} aria-describedby={formError ? "expense-form-error" : undefined} required value={form.category} onChange={(event) => updateField('category', event.target.value as ExpenseCategory)} className="stanza-select mt-1 w-full"><option value="">{t('expenses.selectCategory')}</option>{EXPENSE_CATEGORIES.map((category) => <option key={category} value={category}>{categoryLabel(category)}</option>)}</Select></label>
+                <label className="text-sm font-bold sm:col-span-2">{t('expenses.businessReason')}<Textarea required maxLength={2000} rows={4} value={form.businessReason} onChange={(event) => updateField('businessReason', event.target.value)} className="mt-1 w-full font-normal" /></label>
               </div>
-              {formError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{formError}</p>}
+              {formError && <p id="expense-form-error" role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{formError}</p>}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <button type="button" onClick={() => setClaimStep(1)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold dark:border-emerald-500/20">{t('expenses.back')}</button>
                 <button type="button" onClick={moveToReview} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white">{t('expenses.reviewClaim')}</button>

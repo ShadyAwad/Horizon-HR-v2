@@ -26,6 +26,8 @@ const moduleTutorial = ({ id, module, titleKey, descriptionKey, helpArticleId }:
 };
 
 export const tutorialRegistry: readonly TutorialDefinition[] = [
+  { id:'communications', version:1, module:'communications', titleKey:'communications.title', descriptionKey:'communications.description', automatic:false, replayable:true, eligible:context=>hasModule(context,'communications'), steps:[{id:'communications',target:'module-communications',placement:'bottom',titleKey:'communications.title',bodyKey:'communications.description',helpAction:{labelKey:'tutorial.learnMore',action:{type:'open-article',articleId:'communications'}}}] },
+  { id:'workspace-composer', version:1, module:'composer', titleKey:'composer.title', descriptionKey:'composer.description', automatic:false, replayable:true, eligible:context=>hasModule(context,'composer'), steps:[{id:'composer',target:'module-composer',placement:'bottom',titleKey:'composer.title',bodyKey:'composer.description',helpAction:{labelKey:'tutorial.learnMore',action:{type:'open-article',articleId:'workspace-composer'}}}] },
   {
     id: 'welcome', version: 3, module: 'dashboard', titleKey: 'tutorial.welcome.title', descriptionKey: 'tutorial.welcome.description', automatic: true, replayable: true,
     eligible: () => true,

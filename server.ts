@@ -1,3 +1,4 @@
+import { registerCommunicationsRoutes } from './src/server/communications/communications-routes';
 import { registerFlexibleAttendanceRoutes } from './src/server/attendance/flexible-attendance-routes';
 import { config as loadDotenv } from 'dotenv';
 import express from 'express';
@@ -1402,6 +1403,7 @@ async function startServer() {
 
   // === HORIZON HR API ROUTES ===
 
+  registerCommunicationsRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerHiringRoutes(app, { demoAuth, requirePermission });
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
   registerAuditRoutes(app, { demoAuth, requirePermission });

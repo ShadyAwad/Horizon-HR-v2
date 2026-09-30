@@ -442,7 +442,8 @@ export function registerExpenseRoutes(
            ORDER BY submitted_at DESC,id DESC LIMIT $7 OFFSET $8`,
           [...values, pageSize, (page - 1) * pageSize],
         )).rows;
-        return { claims: rows.map((row) => safeClaim(row, true)), total, page, pageSize };
+        const defaultCurrency = (await client.query('SELECT default_currency FROM tenants WHERE id=$1', [identity.tenantId])).rows[0]?.default_currency;
+        return { claims: rows.map((row) => safeClaim(row, true)), total, page, pageSize, defaultCurrency };
       });
       return res.json({ success: true, ...result });
     } catch (error) {

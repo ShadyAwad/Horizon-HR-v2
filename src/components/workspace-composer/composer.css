@@ -1,0 +1,24 @@
+.composer {color:var(--stanza-text-primary);width:100%;min-width:0;padding:clamp(12px,2vw,28px)}
+.composer h2 {font-size:calc(1.6rem * var(--stanza-font-scale, 1));font-weight:800}.composer h3 {font-weight:700}
+.composer-heading {margin-bottom:20px}.composer-caption {font-size:calc(.78rem * var(--stanza-font-scale, 1));color:var(--stanza-text-muted);margin:8px 0 16px}
+.composer-toolbar,.composer-tools {display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.composer button,.composer select,.composer input,.composer-dialog button,.composer-dialog input,.composer-dialog select,.composer-launch {min-height:40px;border:1px solid var(--stanza-border-subtle);border-radius:8px;padding:7px 10px;color:var(--stanza-text-primary);background:var(--stanza-surface-elevated);font-size:calc(.82rem * var(--stanza-font-scale, 1))}
+.composer button:hover,.composer-dialog button:hover,.composer-launch:hover {border-color:var(--stanza-accent);background:var(--stanza-surface-hover)}
+.composer button:disabled,.composer-dialog button:disabled {opacity:.5;cursor:not-allowed}
+.composer :focus-visible,.composer-dialog :focus-visible {outline:2px solid var(--stanza-accent);outline-offset:3px}
+.composer label,.composer-dialog label {display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:calc(.8rem * var(--stanza-font-scale, 1))}
+.composer-grid {display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:52px;gap:12px;position:relative;align-content:start}
+.composer-widget {min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--stanza-border-subtle);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px #0000000a}
+.composer-widget[data-dragging] {z-index:5;user-select:none;border-color:var(--stanza-accent);backdrop-filter:none;box-shadow:0 5px 18px #0002}
+.composer-widget header {display:flex;justify-content:space-between;align-items:center;padding:10px 12px;gap:8px;border-bottom:1px solid var(--stanza-border-subtle)}
+.composer-widget h3 {min-width:0;font-size:calc(.9rem * var(--stanza-font-scale, 1))}.composer-widget .composer-drag {border:0;background:transparent;text-align:start;cursor:grab;touch-action:none;user-select:none}
+.composer-widget[data-dragging] .composer-drag {cursor:grabbing}.composer-tools {padding:6px 10px;margin:0}.composer-tools button,.composer-tools select {font-size:calc(.72rem * var(--stanza-font-scale, 1));min-height:36px}
+.composer-widget-body {flex:1;min-height:0;overflow:auto;padding:12px;font-size:calc(.85rem * var(--stanza-font-scale, 1));overflow-wrap:anywhere}
+.composer-widget footer {display:flex;justify-content:space-between;align-items:center;padding:6px 10px;gap:8px}.composer-resize {cursor:nwse-resize;touch-action:none;user-select:none}
+.composer-records li {padding:8px 0;border-bottom:1px solid var(--stanza-border-subtle)}.composer-records p {font-size:calc(.8rem * var(--stanza-font-scale, 1));color:var(--stanza-text-secondary);margin-top:4px}.composer-metric {font-size:calc(1.7rem * var(--stanza-font-scale, 1));font-weight:800;margin:8px 0 18px}
+.composer-grid[data-maximized] {display:flex}.composer-widget[data-maximized] {width:100%;height:min(75dvh,850px)}
+.composer-empty {padding:60px 20px;text-align:center;border:1px dashed var(--stanza-border-subtle);border-radius:16px}.composer-empty p {margin:12px}
+.composer-dialog {position:fixed;inset:0;margin:auto;width:min(620px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--stanza-border-subtle);border-radius:16px;padding:20px;background:var(--stanza-surface);color:var(--stanza-text-primary)}
+.composer-dialog::backdrop {background:#0008}.composer-dialog header {display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.composer-dialog h2 {font-weight:800;font-size:calc(1.2rem * var(--stanza-font-scale, 1))}.composer-dialog label {margin:12px 0}.composer-dialog input:not([type=checkbox]) {flex:1;min-width:100px}
+.composer-library {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:16px}.composer-library button {display:flex;flex-direction:column;align-items:start;text-align:start;gap:5px;padding:16px}.composer-library span {font-size:calc(.8rem * var(--stanza-font-scale, 1))}.composer-library small {color:var(--stanza-text-muted)}
+@media(max-width:899px) {.composer-grid {display:flex;flex-direction:column;min-height:0!important}.composer-widget {width:100%;height:360px;flex:none}.composer-widget[data-maximized] {height:75dvh}.composer-resize {display:none}.composer-widget .composer-drag {cursor:default;touch-action:auto}.composer-toolbar label {width:100%}.composer-toolbar select {max-width:100%}.composer-widget[data-surface=glass] {background:var(--stanza-surface);backdrop-filter:none}}

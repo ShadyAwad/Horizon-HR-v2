@@ -307,7 +307,7 @@ console.log('Semantic primary Passkey and transparent close glyph interaction co
 
 // Existing custom palettes retain their exact values when new fields are unset.
 const legacyTokens = samples.flatMap((color) => (['light', 'dark'] as const).map((mode) =>
-  Object.fromEntries(Object.entries(deriveCustomTheme(color, mode).tokens).filter(([key]) => !key.startsWith('primary-action') && !key.startsWith('secondary-action')))));
+  Object.fromEntries(Object.entries(deriveCustomTheme(color, mode).tokens).filter(([key]) => key !== 'text-disabled' && !key.startsWith('primary-action') && !key.startsWith('secondary-action')))));
 assert.equal(createHash('sha256').update(JSON.stringify(legacyTokens)).digest('hex'), '34ff665118583a9f0f4d00ce33a39e6bae25fbb7b49072747be5e264e8eb835b');
 const migrated = readStanzaPreferences(JSON.stringify({ customAccent: '#2563eb', backgroundPreset: 'custom' }));
 assert.deepEqual(migrated.customTheme, { ...DEFAULT_CUSTOM_THEME, accent: '#2563EB' });

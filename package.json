@@ -43,6 +43,9 @@
     "test:document-extraction": "tsx scripts/document-extraction-test.ts",
     "test:expenses": "tsx scripts/expenses-test.ts",
     "test:qr": "tsx scripts/qr-test.ts",
+    "test:communications:sessions": "tsx scripts/communications-session-test.ts",
+    "test:communications": "tsx scripts/communications-test.ts",
+    "test:workspace": "tsx scripts/workspace-test.ts && tsx scripts/workspace-data-test.ts",
     "test:navigation": "tsx scripts/navigation-test.ts",
     "test:tutorials": "tsx scripts/tutorials-test.ts",
     "test:command-palette": "tsx scripts/command-palette-test.ts",
@@ -55,7 +58,8 @@
     "analyze": "vite build --mode analyze",
     "security:audit": "npm audit",
     "check": "npm run lint && npm run build && npm audit",
-    "check:security": "npm run lint && npm run build && npm audit && npm run test:security"
+    "check:security": "npm run lint && npm run build && npm audit && npm run test:security",
+    "test:appearance": "tsx scripts/appearance-test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

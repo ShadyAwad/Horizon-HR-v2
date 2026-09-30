@@ -39,6 +39,13 @@ const definePermission = (
 
 // This is deliberately fixed: role APIs never turn arbitrary database strings into permissions.
 export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
+  definePermission('communications.view', 'View own communications', 'Read own messages and active templates.', 'Communications', 'low', companyScope, false),
+  definePermission('communications.send', 'Send communications', 'Queue HR/company messages.', 'Communications', 'high', companyScope, false),
+  definePermission('communications.templates.manage', 'Manage communication templates', 'Create, edit and deactivate templates.', 'Communications', 'high', companyScope, false),
+  definePermission('communications.history.view', 'View company communication history', 'Read non-draft company messages, including sensitive HR content.', 'Communications', 'high', companyScope, false),
+  definePermission('communications.meetings.view', 'View own meetings', 'Read meetings you organize or attend.', 'Communications', 'low', companyScope, false),
+  definePermission('communications.meetings.manage', 'Manage company meetings', 'Schedule and manage company meetings.', 'Communications', 'high', companyScope, false),
+
   definePermission('locations.read', 'View locations', 'View company locations.', 'Locations', 'low'),
   definePermission('locations.manage', 'Manage locations', 'Create and update company locations and geofences.', 'Locations', 'high', companyScope, false),
   definePermission('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.', 'Locations', 'high', companyScope, false),

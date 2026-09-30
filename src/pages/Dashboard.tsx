@@ -1,3 +1,6 @@
+import { FontSizeControl } from '../components/ui/FontSizeControl';
+import { ComposerPreferencesProvider } from '../components/workspace-composer/ComposerPreferences';
+import { AddToWorkspace } from '../components/workspace-composer/AddToWorkspace';
 import { AttendanceWorkspace } from '../components/attendance/AttendanceWorkspace';
 import CustomThemeEditor from '../components/CustomThemeEditor';
 import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
@@ -73,6 +76,8 @@ import {
   normalisePinnedQuickActionIds,
 } from '../components/command-palette/pinned-quick-actions';
 
+const CommunicationsPanel = lazy(() => import('../components/communications/CommunicationsPanel'));
+const WorkspaceComposer = lazy(() => import('../components/workspace-composer/WorkspaceComposer'));
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
 const StanzaDashboardLanyard = lazy(() => loadDevMeasured('startup:lanyard-dynamic-import', () => import('../components/lanyard/StanzaDashboardLanyard')));
 const ProfilePhotoCropDialog = lazy(() => import('../components/ProfilePhotoCropDialog').then((module) => ({ default: module.ProfilePhotoCropDialog })));
@@ -893,7 +898,7 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
+function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
   const [activeTab, setActiveTab] = useState<DashboardTabId>(initialTab || 'geofence');
   useEffect(() => {
     markDevPerformance('startup:dashboard-mounted', undefined, true);
@@ -1447,6 +1452,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canManageCompensation = hasPermission(user, 'compensation.manage');
   const canManageLoans = hasPermission(user, 'loans.manage');
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
+  const canViewCommunications = ['view','send','templates.manage','meetings.view','meetings.manage','history.view'].some(key=>hasPermission(user, `communications.${key}`));
   const canViewHiring = hasPermission(user, 'hiring.view');
   const canViewLiveEmployees = hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
@@ -1524,6 +1530,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     });
   }, []);
   const workspaceCapabilities = useMemo<Record<WorkspaceVisibilityKey, boolean>>(() => ({
+    communications: canViewCommunications,
     hiring: canViewHiring,
     performance: canViewPerformance,
     organisation: canViewOrganisation,
@@ -1538,6 +1545,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     canUsePayrollPanel,
     canViewAssets,
     canViewAudit,
+    canViewCommunications,
     canViewHiring,
     canViewLiveEmployees,
     canViewLocations,
@@ -1960,6 +1968,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   }, [
     canApproveShiftSwaps,
     canViewAssets,
+    canViewCommunications,
     canViewHiring,
     canViewOrganisation,
     explicitCommandPermissions,
@@ -4633,6 +4642,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <DesktopRailOrderSettings items={navigationItems} order={desktopRailOrder} onChange={setDesktopRailOrder} />
           )}
 
+          <FontSizeControl />
+
           <QuickActionSettings
             commands={commandPaletteCommands}
             selectedIds={quickActionIds}
@@ -5593,6 +5604,8 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 </div>}
 
                 {/* Tab Contents */}
+                {activeTab === 'communications' && canViewCommunications && <Suspense fallback={<p>Loading Communications...</p>}><CommunicationsPanel /></Suspense>}
+                {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} openCreateSignal={hiringCreateSignal} />
@@ -5667,6 +5680,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
                        
+                       <div className="relative z-10 mb-3"><AddToWorkspace widgetId="attendance" user={user} /></div>
                        <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-0 w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-[220px] md:px-6 md:py-8">
                            <p className="mb-3 text-sm font-bold" role="status">{attendanceOnBreak ? (isRtl ? 'في استراحة' : 'On break') : hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</p>
                            {hasActiveShift && attendanceLocationStatus && <p className="mb-2 text-xs">{attendanceLocationStatus === 'verified' ? (isRtl ? 'الموقع معتمد' : 'Location verified') : attendanceLocationStatus === 'outside' ? (isRtl ? 'خارج الموقع — مسموح اختيارياً' : 'Outside geofence — optional policy') : attendanceLocationStatus === 'disabled' ? (isRtl ? 'الموقع معطل' : 'Location disabled') : (isRtl ? 'تم الحضور دون موقع' : 'Clocked in without location')}</p>}
@@ -6117,6 +6131,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
                 {activeTab === 'feed' && (
                   <CompanyFeedBoundary onDiscardLocal={feedDraft.clearLocal}>
+                   <AddToWorkspace widgetId="feed" user={user} />
                    <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -6877,7 +6892,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             {t('demo.grievances')}
                           </p>
 
-                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
+                          <div className="stanza-grievance-submission rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                               <input
                                 value={grievanceForm.title}
@@ -6893,6 +6908,7 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                               />
                               <select
                                 value={grievanceForm.priority}
+                                aria-label={t('dash.priority')}
                                 onChange={(event) => updateGrievanceForm('priority', event.target.value)}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
                               >
@@ -6905,14 +6921,14 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                 value={grievanceForm.description}
                                 onChange={(event) => updateGrievanceForm('description', event.target.value)}
                                 placeholder={t('dash.description')}
-                                rows={4}
+                                rows={6}
                                 className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
                               />
                               <button
                                 type="button"
                                 onClick={submitGrievance}
                                 disabled={isOffline || grievanceSubmitting}
-                                className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4"
+                                className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4 justify-self-start max-w-full"
                               >
                                 {grievanceSubmitting ? t('dash.submitting') : grievanceForm.category === 'leave_request' ? t('dash.submitLeaveRequest') : t('dash.submitGrievance')}
                               </button>
@@ -7323,4 +7339,9 @@ export function Dashboard({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       {PerformanceIsolationPanel && <Suspense fallback={null}><PerformanceIsolationPanel value={performanceIsolation} onChange={updatePerformanceIsolation} onTransientChange={updateTransientPerformanceIsolation} activePreset={backgroundPreset} module={activeTab} settingsOpen={showControlCenter} lanyardMounted={Boolean(launcherLanyard)} /></Suspense>}
     </div>
   );
+}
+
+/** User/tenant-scoped layout preferences never enter the shared display preference key. */
+export function Dashboard(props: Parameters<typeof DashboardContent>[0]) {
+  return <ComposerPreferencesProvider user={props.user}><DashboardContent {...props} /></ComposerPreferencesProvider>;
 }

@@ -37,28 +37,31 @@ function escapeHtml(value: string) {
   })[character] || character);
 }
 
-async function sendEmail(input: { to: string; subject: string; html: string; text: string }) {
-  const config = getConfig();
-
-  if (!config) {
-    console.error('[Email] RESEND_API_KEY and EMAIL_FROM must be configured for transactional delivery.');
-    return { delivered: false, developmentFallback: !isProduction() };
-  }
-
+export function emailProviderConfigured() { return Boolean(getConfig()); }
+let provider: { key: string; client: Resend } | undefined;
+export type ProviderResult = { ok: true; id: string } | { ok: false; kind: 'unconfigured' | 'transient' | 'permanent'; code: string };
+export async function deliverEmail(input: { to: string | string[]; subject: string; text: string; html: string; attachments?: Array<{filename:string;content:Buffer}> }, idempotencyKey?: string): Promise<ProviderResult> {
+  const config=getConfig();
+  if(!config)return {ok:false,kind:'unconfigured',code:'PROVIDER_NOT_CONFIGURED'};
+  provider ??= {key:config.apiKey,client:new Resend(config.apiKey)};
+  if(provider.key!==config.apiKey)provider={key:config.apiKey,client:new Resend(config.apiKey)};
   try {
-    const resend = new Resend(config.apiKey);
-    const result = await resend.emails.send({ from: config.from, ...input });
-
-    if (result.error) {
-      console.error('[Email] Resend delivery failed:', result.error.message);
-      return { delivered: false, developmentFallback: false };
+    const result=await provider.client.emails.send({from:config.from,...input},idempotencyKey?{idempotencyKey}:undefined);
+    if(result.error){
+      const status=Number(result.error.statusCode||0);
+      const retryableNames=new Set(['rate_limit_exceeded','concurrent_idempotent_requests','application_error','internal_server_error']);
+      const transient=status===429||status>=500||retryableNames.has(result.error.name);
+      return {ok:false,kind:transient?'transient':'permanent',code:result.error.name==='rate_limit_exceeded'?'PROVIDER_RATE_LIMIT':transient?'PROVIDER_TEMPORARY_ERROR':'PROVIDER_REJECTED'};
     }
-
-    return { delivered: true, developmentFallback: false };
-  } catch (error) {
-    console.error('[Email] Transactional delivery failed:', error);
-    return { delivered: false, developmentFallback: false };
-  }
+    if(!result.data?.id)return {ok:false,kind:'transient',code:'PROVIDER_EMPTY_RESPONSE'};
+    return {ok:true,id:result.data.id};
+  }catch{return {ok:false,kind:'transient',code:'PROVIDER_NETWORK_ERROR'};}
+}
+async function sendEmail(input: { to: string; subject: string; html: string; text: string }): Promise<EmailDeliveryResult> {
+  const result=await deliverEmail(input);
+  if(result.ok === true)return {delivered:true,developmentFallback:false};
+  console.error('[Email] Transactional delivery failed:',result.code);
+  return {delivered:false,developmentFallback:result.kind==='unconfigured'&&!isProduction()};
 }
 
 export async function sendWelcomeEmail({ to, name, workspaceName, includeWorkspaceName, includeLoginEmail }: WelcomeEmailInput): Promise<EmailDeliveryResult> {

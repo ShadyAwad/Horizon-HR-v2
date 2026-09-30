@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { WIDGETS, canUseWidget, widgetPath } from '../src/components/workspace-composer/widget-catalog';
+import { defaultPreferences, normalizePreferences, readPreferences, reduceComposer, createWidget, overlap, settle, boundGeometry, stackedOrder, storageKey } from '../src/components/workspace-composer/workspace-model';
+import type { AuthUser } from '../src/auth/auth-contract';
+const user:AuthUser={id:'u',tenantId:'t',email:'test@example.invalid',name:'Test',role:'employee',permissions:['attendance.clock','roster.goals.view_self']};
+assert.equal(new Set(WIDGETS.map(w=>w.id)).size,WIDGETS.length);
+assert(canUseWidget(user,WIDGETS.find(w=>w.id==='attendance')!));assert(!canUseWidget(user,WIDGETS.find(w=>w.id==='hiring')!));
+assert(!canUseWidget({...user,permissions:[]},WIDGETS.find(w=>w.id==='attendance')!),'revoking claims removes saved widget access');
+assert(!canUseWidget(user,WIDGETS.find(w=>w.id==='grievances')!));
+for(const w of WIDGETS){assert(widgetPath(w.id).startsWith('/api/'));assert(w.minWidth<=w.defaultWidth);assert(w.minHeight<=w.defaultHeight);}
+let state=defaultPreferences();state=reduceComposer(state,{type:'create',id:'morning',name:'HR Morning'});assert.equal(state.workspaces.length,2);assert.equal(state.activeId,'morning');
+state=reduceComposer(state,{type:'rename',id:'morning',name:'Morning Operations'});assert.equal(state.workspaces[1].name,'Morning Operations');
+const a={...createWidget('attendance'),instanceId:'a'},b={...createWidget('feed'),instanceId:'b'};
+state=reduceComposer(state,{type:'add',id:'morning',widget:a});state=reduceComposer(state,{type:'add',id:'morning',widget:b});
+assert(!overlap(...state.workspaces[1].widgets as [typeof a,typeof b]));
+state=reduceComposer(state,{type:'update',id:'morning',instanceId:'b',patch:{x:6,y:0,width:6,height:5}});
+assert.equal(state.workspaces[1].widgets[1].x,6);assert.equal(state.workspaces[1].widgets[1].y,0);
+const resized=boundGeometry({...a,x:99,y:-1,width:1,height:100});assert.equal(resized.width,4);assert.equal(resized.x,8);assert.equal(resized.y,0);assert.equal(resized.height,12);
+state=reduceComposer(state,{type:'surface',value:'glass'});state=reduceComposer(state,{type:'update',id:'morning',instanceId:'a',patch:{surfaceOverride:'solid',config:{compact:true,limit:10}}});
+assert.deepEqual(readPreferences(JSON.stringify(state)),state,'persistence/readback preserves positions, options and surfaces');
+state=reduceComposer(state,{type:'duplicate',id:'morning',newId:'copy'});assert.equal(state.workspaces.length,3);assert.notEqual(state.workspaces[1].widgets[0].instanceId,state.workspaces[2].widgets[0].instanceId);
+state=reduceComposer(state,{type:'remove',id:'copy',instanceId:'copy-0'});assert.equal(state.workspaces[2].widgets.length,1);
+state=reduceComposer(state,{type:'reset',id:'copy'});assert.equal(state.workspaces[2].widgets.length,0);
+state=reduceComposer(state,{type:'delete',id:'copy'});assert.equal(state.activeId,'my-workspace');
+state=reduceComposer(state,{type:'select',id:'morning'});assert.equal(state.activeId,'morning');
+assert.notEqual(storageKey('t','u'),storageKey('other','u'));assert.notEqual(storageKey('t','u'),storageKey('t','other'));
+for(const raw of [null,42,{},'{',JSON.stringify({version:999,workspaces:[]})])assert.deepEqual(readPreferences(typeof raw==='string'?raw:JSON.stringify(raw)),defaultPreferences());
+const poisoned=normalizePreferences({version:1,workspaces:[{id:'a',name:'a',widgets:[{...a,width:NaN,secret:'not serialized',config:{html:'not allowed'},surfaceOverride:'invalid'},{...a},{...a,instanceId:'unknown',widgetId:'made-up'}]}]});
+assert.equal(poisoned.workspaces[0].widgets.length,1);assert(!('secret' in poisoned.workspaces[0].widgets[0]));assert.equal(poisoned.workspaces[0].widgets[0].surfaceOverride,'auto');
+for(let seed=1;seed<100;seed++){
+ const widgets=Array.from({length:20},(_,i)=>({...a,instanceId:String(i),x:(i*seed)%12,y:(i+seed)%8,width:4+(seed%9),height:4+(i%9)}));
+ const stable=settle(widgets);assert.deepEqual(settle(stable),stable);
+ for(let i=0;i<stable.length;i++)for(let j=i+1;j<stable.length;j++)assert(!overlap(stable[i],stable[j]));
+}
+const desktop=JSON.stringify(state);stackedOrder(state.workspaces[1].widgets);assert.equal(JSON.stringify(state),desktop,'mobile ordering never mutates desktop geometry');
+const frame=fs.readFileSync('src/components/workspace-composer/WidgetFrame.tsx','utf8');
+assert(frame.includes('setPointerCapture')&&frame.includes('releasePointerCapture'));assert(frame.includes('onPointerCancel')&&frame.includes('onLostPointerCapture'));assert(frame.includes('onUpdate({x:next.x'));
+assert(!frame.includes('setState('));assert(!frame.includes('requestAnimationFrame'));assert(frame.includes("removeEventListener('keydown'"));
+const composer=fs.readFileSync('src/components/workspace-composer/WorkspaceComposer.tsx','utf8');assert(composer.includes('setMaximized(selectedMax?null:widget.instanceId)'));assert(!composer.includes("type:'maximize'"));assert(composer.includes('canUseWidget(user,definition)'));
+const data=fs.readFileSync('src/components/workspace-composer/useWidgetData.ts','utf8');assert(data.includes('new Set(paths)'));assert(data.includes('controller.abort()'));assert(!data.includes('setInterval'));assert(!data.includes('setTimeout'));
+const css=fs.readFileSync('src/components/workspace-composer/composer.css','utf8');assert(fs.readFileSync('src/index.css','utf8').includes('prefers-reduced-transparency:reduce'));assert(css.includes('@media(max-width:899px)'));
+console.log('PASS widget registry, permissions/revocation, workspace CRUD, clone IDs, layout commits/bounds/collisions, persistence/malformed/version handling, account isolation, surfaces, mobile geometry preservation, maximize separation and gesture/request cleanup contracts');
+// Additional persisted-input boundaries and first-fit placement contracts.
+assert.deepEqual(readPreferences(' '.repeat(200_001)),defaultPreferences());
+const duplicateLayouts=normalizePreferences({version:1,activeId:'missing',workspaces:[{id:'one',name:'First',widgets:[]},{id:'one',name:'Duplicate',widgets:[]}]});
+assert.equal(duplicateLayouts.workspaces.length,1);assert.equal(duplicateLayouts.activeId,'one');
+assert.deepEqual(reduceComposer(defaultPreferences(),{type:'delete',id:'my-workspace'}),defaultPreferences());
+let firstFit=reduceComposer(defaultPreferences(),{type:'add',id:'my-workspace',widget:a});
+firstFit=reduceComposer(firstFit,{type:'add',id:'my-workspace',widget:b});
+assert.equal(firstFit.workspaces[0].widgets[1].x,6);assert.equal(firstFit.workspaces[0].widgets[1].y,0);
+assert(composer.indexOf('const allowed=visible.filter')<composer.indexOf('const results=useWidgetData'));
+assert(composer.includes('authorized&&<Component'),'restricted content never mounts');
+console.log('PASS oversized input, duplicate layout IDs, missing/deleted active layout, first-fit placement and pre-fetch/render authorization boundary');

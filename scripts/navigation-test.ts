@@ -20,6 +20,7 @@ import {
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 const dashboard = read('src/pages/Dashboard.tsx');
+const attendanceWorkspace = read('src/components/attendance/AttendanceWorkspace.tsx');
 const nav = read('src/components/navigation/DashboardNavigation.tsx');
 const shortcuts = read('src/components/navigation/MobileShortcutSettings.tsx');
 const shortcutEditor = read('src/components/navigation/MobileShortcutEditor.tsx');
@@ -121,8 +122,8 @@ const checks: Array<[string, boolean]> = [
   ['legacy rail cannot reserve layout width or create a second navigation landmark', /\{false && <aside[\s\S]*?<\/aside>\}/.test(dashboard)],
   ['desktop rail occupies the sole predictable layout column while the panel overlays content', /md:static/.test(nav) && /fixed z-30/.test(nav) && /md:start-\[5\.5rem\]/.test(nav)],
   ['main content has no legacy sidebar offset and the contextual header keeps wordmark, module, and workspace on one desktop row', /<main[^>]*className="min-w-0 w-full max-w-full flex-1/.test(dashboard) && /activeNavigationLabel/.test(dashboard) && /md:flex-nowrap/.test(dashboard) && /shrink truncate whitespace-nowrap/.test(dashboard) && /shrink-0 whitespace-nowrap rounded/.test(dashboard)],
-  ['Geo Operations uses the shared dashboard workspace width with aligned summary and full-width sections', /geo-operations-content dashboard-workspace-content relative flex[\s\S]*max-w-full/.test(dashboard) && !/geo-operations-content[\s\S]{0,220}max-w-\[72rem\]/.test(dashboard) && /geo-operations-summary-grid[\s\S]*canCreateBreakRequests && "md:grid-cols-2"/.test(dashboard) && (dashboard.match(/geo-operations-full-section/g) || []).length === 2],
-  ['Geo Operations retains a responsive single-column fallback with RTL-safe logical centering', /geo-operations-summary-grid[\s\S]*grid-cols-1[\s\S]*md:grid-cols-2/.test(dashboard) && /isRtl \? "text-right" : "text-left"/.test(dashboard) && /overflow-x-hidden/.test(dashboard)],
+  ['Geo Operations uses shared width and the unified attendance workspace', /geo-operations-content dashboard-workspace-content relative flex[\s\S]*max-w-full/.test(dashboard) && /<AttendanceWorkspace/.test(dashboard) && /w-full space-y-4 text-start/.test(attendanceWorkspace)],
+  ['Geo Operations unified attendance remains responsive, scrollable and RTL-aware', /md:grid-cols-2/.test(attendanceWorkspace) && /overflow-x-auto/.test(attendanceWorkspace) && /dir=\{isRtl\?'rtl':'ltr'\}/.test(attendanceWorkspace) && /text-start/.test(attendanceWorkspace)],
   ['registry-backed rail and launcher are rendered', /<DashboardNavigation[\s\S]*items=\{navigationItems\}/.test(dashboard) && /aria-expanded/.test(nav)],
   ['one launcher focus target is shared by mobile, rail, and the desktop fixed assembly', (nav.match(/id="stanza-control-center-trigger"/g) || []).length === 1 && /data-stanza-launcher-assembly/.test(nav) && /isMobileLayout/.test(nav)],
   ['launcher owns navigation and Settings stays separate', /onOpenControlCenter/.test(nav) && /Settings/.test(nav) && !/showControlCenter/.test(nav)],

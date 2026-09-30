@@ -9,6 +9,19 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --text-xs: calc(0.75rem * var(--stanza-font-scale, 1));
+  --text-sm: calc(0.875rem * var(--stanza-font-scale, 1));
+  --text-base: calc(1rem * var(--stanza-font-scale, 1));
+  --text-lg: calc(1.125rem * var(--stanza-font-scale, 1));
+  --text-xl: calc(1.25rem * var(--stanza-font-scale, 1));
+  --text-2xl: calc(1.5rem * var(--stanza-font-scale, 1));
+  --text-3xl: calc(1.875rem * var(--stanza-font-scale, 1));
+  --text-4xl: calc(2.25rem * var(--stanza-font-scale, 1));
+  --text-5xl: calc(3rem * var(--stanza-font-scale, 1));
+  --text-6xl: calc(3.75rem * var(--stanza-font-scale, 1));
+  --text-7xl: calc(4.5rem * var(--stanza-font-scale, 1));
+  --text-8xl: calc(6rem * var(--stanza-font-scale, 1));
+  --text-9xl: calc(8rem * var(--stanza-font-scale, 1));
   --font-sans: "Inter", "Geist", "SF Pro", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
@@ -23,6 +36,7 @@
 @layer base {
   :root {
     --stanza-ui-scale: 1;
+    --stanza-font-scale: 1;
     --stanza-border-width: max(1px, calc(1px * var(--stanza-ui-scale)));
     --stanza-radius-sm: calc(0.5rem * var(--stanza-ui-scale));
     --stanza-radius-md: calc(0.75rem * var(--stanza-ui-scale));
@@ -1234,7 +1248,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   select,
   textarea {
-    font-size: 16px;
+    font-size: max(16px, var(--text-base));
   }
 }
 
@@ -1284,14 +1298,14 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 }
 :root[data-background-preset="custom"][data-theme="light"] [data-stanza-status="success"] { color: var(--color-emerald-700) !important; }
 /* Theme Studio stays local until Apply; only explicit Custom overrides affect actions. */
-.stanza-custom-editor { display: grid; gap: .75rem; margin-top: 1rem; font-size: .8rem; color: var(--stanza-text-primary); }
+.stanza-custom-editor { display: grid; gap: .75rem; margin-top: 1rem; font-size: calc(.8rem * var(--stanza-font-scale, 1)); color: var(--stanza-text-primary); }
 .stanza-custom-editor h3, .stanza-custom-editor h4, .stanza-studio-section summary { font-weight: 700; }
 .stanza-custom-editor p { color: var(--stanza-text-secondary); }
 .stanza-studio-section { border: 1px solid var(--stanza-border-subtle); border-radius: .65rem; }
 .stanza-studio-section summary { cursor: pointer; padding: .7rem; min-height: 2.75rem; }
 .stanza-studio-fields { display: grid; gap: .65rem; padding: 0 .7rem .7rem; }
 .stanza-studio-color { display: grid; grid-template-columns: minmax(5rem, 1fr) 2.5rem 6rem 3rem; align-items: center; gap: .4rem; }
-.stanza-studio-color label small { display: block; color: var(--stanza-text-muted); font-size: .65rem; font-weight: 400; }
+.stanza-studio-color label small { display: block; color: var(--stanza-text-muted); font-size: calc(.65rem * var(--stanza-font-scale, 1)); font-weight: 400; }
 .stanza-studio-color input[type="color"] { width: 2.5rem; min-height: 2.5rem; padding: .15rem; cursor: pointer; }
 .stanza-studio-color input[type="text"] { width: 100%; min-width: 0; font-family: monospace; }
 .stanza-custom-editor :is(input:not([type="range"]), select) { min-height: 2.5rem; padding: .4rem; border: 1px solid var(--stanza-border-default); border-radius: .4rem; background: var(--stanza-input-bg); color: var(--stanza-text-primary); }
@@ -1495,15 +1509,15 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
 .stanza-tutorial-drag-handle { cursor: grab; touch-action: none; flex: 1; }
 .stanza-tutorial-dialog[data-dragging] { user-select: none; }
 .stanza-tutorial-dialog[data-dragging] .stanza-tutorial-drag-handle { cursor: grabbing; }
-.stanza-lanyard-view { position: absolute; inset-inline-end: 1rem; bottom: 1rem; border: 1px solid var(--stanza-border-default); border-radius: .5rem; padding: .4rem .65rem; font-size: .7rem; color: var(--stanza-text-primary); background: var(--stanza-surface); }
+.stanza-lanyard-view { position: absolute; inset-inline-end: 1rem; bottom: 1rem; border: 1px solid var(--stanza-border-default); border-radius: .5rem; padding: .4rem .65rem; font-size: calc(.7rem * var(--stanza-font-scale, 1)); color: var(--stanza-text-primary); background: var(--stanza-surface); }
 .stanza-lanyard-view:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
 .stanza-id-dialog { margin: auto; padding: 0; border: 0; background: transparent; overflow: visible; width: min(26rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); color: var(--id-text); }
 .stanza-id-dialog::backdrop { background: rgb(0 0 0 / .65); animation: stanza-id-backdrop 180ms ease-out; }
 .stanza-id-details { position: relative; overflow: auto; max-height: calc(100dvh - 2rem); padding: 3.5rem 2rem 2rem; border: 1px solid var(--id-accent); border-radius: 1.5rem; background: var(--id-card); animation: stanza-id-arrive 240ms cubic-bezier(.2,.8,.2,1); overflow-wrap: anywhere; }
-.stanza-id-details h2 { font-size: 1.6rem; font-weight: 800; }
+.stanza-id-details h2 { font-size: calc(1.6rem * var(--stanza-font-scale, 1)); font-weight: 800; }
 .stanza-id-details p { margin-top: .65rem; }
 .stanza-id-details dl { border-top: 1px solid var(--id-accent); margin-top: 1.5rem; padding-top: 1rem; }
-.stanza-id-details dt { font-size: .75rem; font-weight: 700; }
+.stanza-id-details dt { font-size: calc(.75rem * var(--stanza-font-scale, 1)); font-weight: 700; }
 .stanza-id-details dd { font: .8rem monospace; margin-top: .4rem; }
 .stanza-id-close { position: absolute; inset-inline-end: .75rem; top: .75rem; padding: .5rem; }
 .stanza-id-portrait { width: 5rem; height: 5rem; border-radius: 50%; object-fit: cover; margin-bottom: 1rem; }
@@ -1526,3 +1540,41 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
 }
 
 .stanza-id-brand { display: flex; align-items: center; gap: .6rem; color: var(--id-accent); font-weight: 800; margin-bottom: 1.25rem; }
+
+/* Shared presentation: Auto is opaque; Glass is an explicit, static opt-in. */
+.stanza-surface {background:var(--stanza-surface);color:var(--stanza-text-primary);border:1px solid var(--stanza-border-subtle);border-radius:var(--stanza-radius-md);min-width:0;backdrop-filter:none}
+@supports (backdrop-filter:blur(4px)) {@media(min-width:900px) and (prefers-reduced-motion:no-preference) and (prefers-reduced-transparency:no-preference) {.stanza-surface[data-surface=glass]:not([data-dragging]) {background:color-mix(in srgb,var(--stanza-surface) 92%,transparent);backdrop-filter:blur(4px)}}}
+@media(prefers-reduced-motion:reduce),(prefers-reduced-transparency:reduce),(max-width:899px){.stanza-surface[data-surface=glass]{background:var(--stanza-surface);backdrop-filter:none}}
+.stanza-form-control {width:100%;min-width:0;max-width:100%;min-height:var(--stanza-control-height);padding:.65rem .75rem;border:1px solid var(--stanza-border-default);border-radius:var(--stanza-radius-sm);background:var(--stanza-input-bg);color:var(--stanza-text-primary);font-size:var(--text-sm);line-height:1.5;text-align:start}
+.stanza-form-control:hover:not(:disabled){border-color:var(--stanza-border-strong)}
+.stanza-form-control:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:2px}
+.stanza-form-control:disabled{color:var(--stanza-text-disabled,var(--stanza-text-muted));cursor:not-allowed}
+.stanza-form-control[aria-invalid=true]{border-color:var(--color-red-500);border-style:dashed}
+.stanza-form-control option{background:var(--stanza-dropdown-bg);color:var(--stanza-text-primary)}
+.stanza-font-settings{display:grid;gap:.6rem;padding:.75rem;border:1px solid var(--stanza-border-default);border-radius:var(--stanza-radius-sm);color:var(--stanza-text-primary);min-width:0}
+.stanza-font-settings label{display:grid;gap:.4rem;font-size:var(--text-sm);font-weight:700}
+.stanza-font-settings>p{font-size:var(--text-xs);color:var(--stanza-text-secondary)}
+.stanza-typography-preview{padding:.75rem;background:var(--stanza-surface);border-radius:var(--stanza-radius-sm);overflow-wrap:anywhere}
+.stanza-typography-preview h4{font-size:var(--text-xl);font-weight:700}.stanza-typography-preview p{font-size:var(--text-base)}
+.stanza-typography-preview .secondary{color:var(--stanza-text-secondary);font-size:var(--text-sm)}.stanza-typography-preview small{color:var(--stanza-text-muted);font-size:var(--text-xs)}
+.stanza-expense-dialog{background:var(--stanza-surface)!important;color:var(--stanza-text-primary)!important;border-color:var(--stanza-border-default)!important;overflow-wrap:anywhere}
+.stanza-expense-dialog label{min-width:0}.stanza-expense-dialog button{white-space:normal}
+.stanza-grievance-submission{width:100%;max-width:48rem;margin-inline:auto;min-width:0}.stanza-grievance-submission textarea{min-height:10rem;resize:vertical}
+.stanza-grievance-submission :is(input,textarea){min-width:0}.stanza-grievance-submission button{white-space:normal}
+:root:not([data-background-preset=custom]){--stanza-text-disabled:var(--stanza-text-muted)}
+:root[data-background-preset]:not([data-background-preset=custom]):not([data-theme=light]){--stanza-text-primary:#F1F5F9;--stanza-text-secondary:#DBE6ED;--stanza-text-muted:#CBD5E1}
+:root[data-background-preset]:not([data-background-preset=custom])[data-theme=light]{--stanza-text-primary:#172033;--stanza-text-secondary:#26354A;--stanza-text-muted:#334155}
+:root[data-background-preset=custom]:not([data-theme=light]){--stanza-text-disabled:var(--stanza-custom-dark-text-disabled)}
+:root[data-background-preset=custom][data-theme=light]{--stanza-text-disabled:var(--stanza-custom-light-text-disabled)}
+body{font-size:var(--text-base)}
+/* Legacy compact labels participate in the same hierarchy. */
+@layer utilities {
+  .text-\[9px\] { font-size: calc(.5625rem * var(--stanza-font-scale, 1)); }
+  .text-\[10px\] { font-size: calc(.625rem * var(--stanza-font-scale, 1)); }
+  .text-\[11px\] { font-size: calc(.6875rem * var(--stanza-font-scale, 1)); }
+}
+@media(max-width:899px){.stanza-form-control{font-size:max(16px,var(--text-sm))}}
+/* Keep important shared navigation and command labels readable at larger fonts. */
+:is(#stanza-navigation-panel,.stanza-navigation-item,.stanza-command-palette,.stanza-preference-surface) .truncate {
+  white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;
+}

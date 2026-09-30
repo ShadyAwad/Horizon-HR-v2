@@ -59,7 +59,8 @@ const admin = await login(adminEmail, adminPassword);
 const manager = await login(managerEmail, managerPassword);
 const roles = await api('/api/roles', admin);
 assert(roles.response.ok, `Unable to load roles: HTTP ${roles.response.status}.`);
-const hrRole = (roles.body.roles || []).find((role: RecordValue) => role.systemKey === 'hr_admin');
+// The legacy /api/roles contract returns PostgreSQL snake_case fields.
+const hrRole = (roles.body.roles || []).find((role: RecordValue) => role.system_key === 'hr_admin');
 assert(hrRole?.id, 'HR Admin system role was not returned.');
 
 const managerAttempt = await api(`/api/employees/${manager.user.id}/roles`, manager, {

@@ -32,6 +32,7 @@ type RichTextEditorProps = {
   onImageUploadPendingChange?: (pending: boolean) => void;
   placeholder?: string;
   readOnly?: boolean;
+  allowImages?: boolean;
   className?: string;
 };
 
@@ -341,8 +342,10 @@ function ImageUploadControl({
 }
 
 function EditorToolbar({
+  allowImages = true,
   onImageUploadPendingChange,
 }: {
+  allowImages?: boolean;
   onImageUploadPendingChange?: (pending: boolean) => void;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -656,7 +659,7 @@ function EditorToolbar({
           </div>
         )}
       </div>
-      <ImageUploadControl onPendingChange={onImageUploadPendingChange} />
+      {allowImages && <ImageUploadControl onPendingChange={onImageUploadPendingChange} />}
       <div className="relative">
         <button
           type="button"
@@ -812,6 +815,7 @@ export function RichTextEditor({
   onImageUploadPendingChange,
   placeholder,
   readOnly = false,
+  allowImages = true,
   className,
 }: RichTextEditorProps) {
   const { t, isRtl } = useLanguage();
@@ -854,7 +858,7 @@ export function RichTextEditor({
         'max-w-full overflow-visible rounded border border-emerald-500/20 bg-white/90 text-sm text-neutral-800 shadow-inner shadow-neutral-200/40 focus-within:border-emerald-500/60 dark:border-emerald-500/15 dark:bg-black/40 dark:text-emerald-50 dark:shadow-black/20',
         className,
       )}>
-        {!readOnly && <EditorToolbar onImageUploadPendingChange={onImageUploadPendingChange} />}
+        {!readOnly && <EditorToolbar allowImages={allowImages} onImageUploadPendingChange={onImageUploadPendingChange} />}
         <div className={cn('relative', readOnly ? 'min-h-0' : 'min-h-[150px]')}>
           <RichTextPlugin
             contentEditable={(

@@ -1,5 +1,6 @@
-import { rollupAttendanceDailySummary } from '../server/attendance/attendance-rollup';
 import 'dotenv/config';
+import { startCommunicationsWorker } from '../server/communications/communications-queue';
+import { rollupAttendanceDailySummary } from '../server/attendance/attendance-rollup';
 import { Worker, Job } from 'bullmq';
 import {
   HR_QUEUE_NAME,
@@ -83,3 +84,9 @@ hrWorker.on('completed', (job) => {
 hrWorker.on('failed', (job, err) => {
   console.error(`[Worker Engine] Job ${job?.id} failed with error:`, err.message);
 });
+
+const communicationsWorker = startCommunicationsWorker();
+let shuttingDown=false;
+async function shutdownWorkers(){if(shuttingDown)return;shuttingDown=true;try{await Promise.all([hrWorker.close(),communicationsWorker.close()]);process.exit(0);}catch{console.error('[Worker Engine] Shutdown failed.');process.exit(1);}}
+process.once('SIGTERM',()=>{void shutdownWorkers();});
+process.once('SIGINT',()=>{void shutdownWorkers();});
