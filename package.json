@@ -59,7 +59,8 @@
     "security:audit": "npm audit",
     "check": "npm run lint && npm run build && npm audit",
     "check:security": "npm run lint && npm run build && npm audit && npm run test:security",
-    "test:appearance": "tsx scripts/appearance-test.ts"
+    "test:appearance": "tsx scripts/appearance-test.ts",
+    "test:grievances": "tsx scripts/grievances-migration-test.ts && tsx scripts/grievances-test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

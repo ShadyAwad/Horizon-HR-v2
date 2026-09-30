@@ -657,7 +657,17 @@ async function seedTenantRolesAndPermissions(
         ('loans.view_self', 'View own loans', 'View personal employee loans.'),
         ('loans.manage', 'Manage loans', 'Create and update employee loans.'),
         ('grievances.create', 'Create grievances', 'File grievance cases.'),
-        ('grievances.review', 'Review grievances', 'Review tenant grievance cases.'),
+        ('grievances.review', 'Review grievances', 'Review scoped grievance cases.'),
+        ('grievances.view_own', 'Grievances view own', 'Authorized grievance case access.'),
+        ('grievances.view', 'Grievances view', 'Authorized grievance case access.'),
+        ('grievances.triage', 'Grievances triage', 'Authorized grievance case access.'),
+        ('grievances.assign', 'Grievances assign', 'Authorized grievance case access.'),
+        ('grievances.respond', 'Grievances respond', 'Authorized grievance case access.'),
+        ('grievances.internal_notes', 'Grievances internal notes', 'Authorized grievance case access.'),
+        ('grievances.resolve', 'Grievances resolve', 'Authorized grievance case access.'),
+        ('grievances.close', 'Grievances close', 'Authorized grievance case access.'),
+        ('grievances.confidential', 'Grievances confidential', 'Authorized grievance case access.'),
+        ('grievances.configure', 'Grievances configure', 'Authorized grievance case access.'),
         ('resignations.create', 'Create resignation requests', 'Submit resignation requests.'),
         ('resignations.view_own', 'View own resignation requests', 'View personal resignation requests.'),
         ('resignations.view_all', 'View all resignation requests', 'View tenant resignation requests.'),
@@ -705,6 +715,7 @@ async function seedTenantRolesAndPermissions(
           ('employee', 'payroll.export_pdf'),
           ('employee', 'loans.view_self'),
           ('employee', 'grievances.create'),
+          ('employee', 'grievances.view_own'),
           ('employee', 'resignations.create'),
           ('employee', 'resignations.view_own'),
           ('employee', 'feed.read'),
@@ -730,6 +741,13 @@ async function seedTenantRolesAndPermissions(
           ('manager', 'payroll.export_pdf'),
           ('manager', 'loans.view_self'),
           ('manager', 'grievances.review'),
+          ('manager', 'grievances.view'),
+          ('manager', 'grievances.triage'),
+          ('manager', 'grievances.assign'),
+          ('manager', 'grievances.respond'),
+          ('manager', 'grievances.internal_notes'),
+          ('manager', 'grievances.resolve'),
+          ('manager', 'grievances.close'),
           ('manager', 'resignations.view_all'),
           ('manager', 'resignations.review'),
           ('manager', 'feed.read')
@@ -3151,10 +3169,7 @@ registerPayrollRoutes(app, {
   requirePermission,
 });
 
-registerGrievanceRoutes(app, {
-  standardAuth: demoAuth,
-  requireRole,
-});
+registerGrievanceRoutes(app, {standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
 
 registerPayrollExportRoute(app, {
   standardAuth: demoAuth,

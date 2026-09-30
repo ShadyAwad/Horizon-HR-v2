@@ -96,3 +96,9 @@ validation. It uses an HttpOnly session cookie, never prints credentials or toke
 and labels generated records `Smoke Test`. It cancels its temporary break
 request; feed drafts and low-priority grievances remain as harmless fixtures
 because those routes do not provide deletion endpoints.
+
+## Grievance case management
+
+See [implementation and operations](docs/grievance-case-management.md) and
+[validation report](docs/grievance-case-management-validation.md) for Prompt 6,
+including migration order, permissions, private attachment storage and current limits.

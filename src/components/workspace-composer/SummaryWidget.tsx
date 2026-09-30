@@ -1,3 +1,4 @@
+import {GRIEVANCE_COPY} from '../../lib/grievance-copy';
 import { useLanguage } from '../../lib/LanguageContext';
 import type { WidgetInstance } from './workspace-model';
 import type { WidgetResult } from './useWidgetData';
@@ -15,9 +16,9 @@ export default function SummaryWidget({widget,result}:{widget:WidgetInstance;res
  case 'leave':rows=(data.requests||[]).map((r:any)=>({title:r.employee?.name||r.employeeName||r.leaveType,detail:`${r.startDate} → ${r.endDate}`}));break;
  case 'expenses':rows=(data.claims||[]).map((r:any)=>({title:r.merchantName,detail:`${r.amount} ${r.currency} · ${r.status}`}));break;
  case 'goals':rows=[...(data.overdueGoals||[]),...(data.goals||[])].map((r:any)=>({title:r.title,detail:r.status}));break;
- case 'grievances':rows=(data.grievances||[]).map((r:any)=>({title:r.title,detail:r.status}));break;
+ case 'grievances':rows=(data.grievances||[]).map((r:any)=>({title:`${r.case_number} · ${r.title}`,detail:GRIEVANCE_COPY[r.status as keyof typeof GRIEVANCE_COPY]?.[isRtl?1:0]||r.status}));break;
  case 'hiring':rows=(data.applicants||[]).map((r:any)=>({title:r.positionTitle,detail:`${r.fullName} · ${r.stage}`}));break;
  case 'feed':rows=(data.posts||[]).map((r:any)=>({title:r.title,detail:(r.content_text||r.contentText||'').slice(0,180)}));break;
  }
- return <>{typeof data.total==='number'&&<p>{data.total} {text('matching records','سجلاً مطابقاً')}</p>}{rows.length?<ul className="composer-records">{rows.slice(0,widget.config.limit||5).map((r,i)=><li key={i}><strong>{r.title}</strong><p>{r.detail}</p></li>)}</ul>:<p>{text('No items to show.','لا توجد عناصر.')}</p>}<p className="composer-caption">{text('Snapshot · Open the module for full details and actions.','لقطة حالية · افتح القسم للتفاصيل والإجراءات.')}</p></>;
+ return <>{widget.widgetId==='grievances'&&data.summary&&<p>{text('Unassigned','غير مسندة')}: {data.summary.unassigned} · {text('High / urgent','عالية / عاجلة')}: {data.summary.high} · {text('Waiting','بانتظار رد')}: {data.summary.waiting} · {text('Assigned to me','مسندة لي')}: {data.summary.mine}</p>}{typeof data.total==='number'&&<p>{data.total} {text('matching records','سجلاً مطابقاً')}</p>}{rows.length?<ul className="composer-records">{rows.slice(0,widget.config.limit||5).map((r,i)=><li key={i}><strong>{r.title}</strong><p>{r.detail}</p></li>)}</ul>:<p>{text('No items to show.','لا توجد عناصر.')}</p>}<p className="composer-caption">{text('Snapshot · Open the module for full details and actions.','لقطة حالية · افتح القسم للتفاصيل والإجراءات.')}</p></>;
 }

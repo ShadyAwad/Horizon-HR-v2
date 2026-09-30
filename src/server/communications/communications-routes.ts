@@ -1,5 +1,6 @@
 import type { CommunicationMessage, CommunicationTemplate, CommunicationMeeting, CommunicationPerson, TemplateValues } from '../../lib/communications-contract';
 import type express from 'express';
+import {caseAccess,caseAction,handlerVisibilitySql} from '../grievances/grievance-policy';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
 import { emailProviderConfigured } from '../../lib/email';
@@ -34,35 +35,38 @@ async function categoryAccess(c: PoolClient, u: Actor, value: string) { const ke
 async function related(c: PoolClient, u: Actor, value: unknown) {
     const input = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     if (input == null || !input.type)
-        return { employee: null, candidate: null, meeting: null };
+        return { employee: null, candidate: null, meeting: null, grievance: null, reporter: null };
     const id = safeId(input.id);
     const type = input.type;
     if (type === 'employee') {
         if (!(await c.query('SELECT id FROM employees WHERE tenant_id=$1 AND id=$2', [u.tenantId, id])).rowCount)
             throw fail(400, 'INVALID_ENTITY', 'Related employee is unavailable.');
-        return { employee: id, candidate: null, meeting: null };
+        return { employee: id, candidate: null, meeting: null, grievance: null, reporter: null };
     }
     if (type === 'candidate') {
         await requirePermission(c, u, 'hiring.view');
         if (!(await c.query('SELECT id FROM hiring_applicants WHERE tenant_id=$1 AND id=$2', [u.tenantId, id])).rowCount)
             throw fail(400, 'INVALID_ENTITY', 'Related candidate is unavailable.');
-        return { employee: null, candidate: id, meeting: null };
+        return { employee: null, candidate: id, meeting: null, grievance: null, reporter: null };
     }
     if (type === 'meeting') {
         await requirePermission(c, u, 'communications.meetings.manage');
         if (!(await c.query('SELECT id FROM communication_meetings WHERE tenant_id=$1 AND id=$2', [u.tenantId, id])).rowCount)
             throw fail(400, 'INVALID_ENTITY', 'Related meeting is unavailable.');
-        return { employee: null, candidate: null, meeting: id };
+        return { employee: null, candidate: null, meeting: id, grievance: null, reporter: null };
     }
-    throw fail(400, 'INVALID_ENTITY', 'Supported links are employee, candidate and meeting.');
+    if(type==='grievance'){const row=await caseAccess(c,u,id);await caseAction(c,u,row,'grievances.respond');return {employee:null,candidate:null,meeting:null,grievance:id,reporter:row.employee_id as string};}
+    throw fail(400, 'INVALID_ENTITY', 'Supported links are employee, candidate, meeting and grievance.');
 }
 async function draftInput(c: PoolClient, u: Actor, b: Record<string, unknown>) {
     const kind = category(b.category || 'custom');
-    await categoryAccess(c, u, kind);
-    const ids = recipients(b.recipientIds || []);
-    await employeeEmails(c, u, ids);
-    let subject = text(b.subject ?? '', 'Subject', 200, false), body = text(b.body ?? '', 'Body', 20000, false), bodyJson = null;
-    const link = await related(c, u, b.related);
+    const link = await related(c,u,b.related);
+    if(!link.grievance)await categoryAccess(c,u,kind);
+    else if(kind!=='grievance_update')throw fail(400,'INVALID_CATEGORY','Linked grievance messages must use grievance_update.');
+    const ids=recipients(b.recipientIds||[]);
+    await employeeEmails(c,u,ids);
+    if(link.grievance&&(ids.length!==1||ids[0]!==link.reporter))throw fail(400,'INVALID_RECIPIENT','A grievance message may only be sent to its reporter.');
+    let subject=text(b.subject??'','Subject',200,false),body=text(b.body??'','Body',20000,false),bodyJson=null;
     let templateId: string | null = null;
     const vars: TemplateValues = {};
     if (b.variables && typeof b.variables === 'object')
@@ -90,6 +94,7 @@ async function draftInput(c: PoolClient, u: Actor, b: Record<string, unknown>) {
     variablesIn(body);
     return { kind, ids, subject, body, bodyJson, link, templateId, vars };
 }
+export async function createCommunicationDraft(c:PoolClient,u:Actor,body:Record<string,unknown>){await requirePermission(c, u, 'communications.send'); const d = await draftInput(c, u, body); const row = (await c.query('INSERT INTO communication_messages(tenant_id,sender_id,subject,body,body_json,category,recipient_ids,template_id,related_employee_id,related_candidate_id,related_meeting_id,variables,related_grievance_id) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12::jsonb,$13) RETURNING *', [u.tenantId, u.employeeId, d.subject, d.body, JSON.stringify(d.bodyJson), d.kind, d.ids, d.templateId, d.link.employee, d.link.candidate, d.link.meeting, JSON.stringify(d.vars),d.link.grievance])).rows[0]; return { message: row };}
 export function registerCommunicationsRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter, providerConfigured = emailProviderConfigured, dispatch = enqueueMessage }: Dependencies) {
     const route = (method: 'get' | 'post' | 'put', path: string, handler: (req: express.Request, c: PoolClient, u: Actor) => Promise<Record<string, unknown>>) => {
         app[method]('/api/communications' + path, standardAuth, ...(method === 'get' ? [] : [mutationGuard, rateLimiter]), async (req, res) => { try {
@@ -145,9 +150,9 @@ export function registerCommunicationsRoutes(app: express.Express, { standardAut
     route('post', '/templates/:id/preview', async (req, c, u) => { if (!await permitted(c, u, 'communications.view') && !await permitted(c, u, 'communications.send') && !await permitted(c, u, 'communications.templates.manage'))
         throw fail(403, 'PERMISSION_DENIED', 'Communications are unavailable.'); const t = (await c.query<CommunicationTemplate>('SELECT * FROM communication_templates WHERE tenant_id=$1 AND id=$2', [u.tenantId, safeId(req.params.id)])).rows[0]; if (!t)
         throw fail(404, 'NOT_FOUND', 'Template not found.'); await categoryAccess(c, u, t.category); return { subject: renderTemplate(t.subject, req.body.variables || {}), body: renderTemplate(t.body, req.body.variables || {}) }; });
-    route('post', '/drafts', async (req, c, u) => { await requirePermission(c, u, 'communications.send'); const d = await draftInput(c, u, req.body || {}); const row = (await c.query('INSERT INTO communication_messages(tenant_id,sender_id,subject,body,body_json,category,recipient_ids,template_id,related_employee_id,related_candidate_id,related_meeting_id,variables) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING *', [u.tenantId, u.employeeId, d.subject, d.body, JSON.stringify(d.bodyJson), d.kind, d.ids, d.templateId, d.link.employee, d.link.candidate, d.link.meeting, JSON.stringify(d.vars)])).rows[0]; return { message: row }; });
-    route('put', '/drafts/:id', async (req, c, u) => { await requirePermission(c, u, 'communications.send'); const current = (await c.query('SELECT invitation_ics FROM communication_messages WHERE tenant_id=$1 AND id=$2 AND sender_id=$3', [u.tenantId, safeId(req.params.id), u.employeeId])).rows[0]; if (current?.invitation_ics)
-        throw fail(409, 'INVITATION_LOCKED', 'Calendar invitations are snapshots. Edit the meeting and prepare a new invitation instead.'); const d = await draftInput(c, u, req.body || {}); const row = (await c.query("UPDATE communication_messages SET subject=$4,body=$5,body_json=$6::jsonb,category=$7,recipient_ids=$8,template_id=$9,related_employee_id=$10,related_candidate_id=$11,related_meeting_id=$12,variables=$13::jsonb,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND sender_id=$3 AND status='draft' AND version=$14 RETURNING *", [u.tenantId, safeId(req.params.id), u.employeeId, d.subject, d.body, JSON.stringify(d.bodyJson), d.kind, d.ids, d.templateId, d.link.employee, d.link.candidate, d.link.meeting, JSON.stringify(d.vars), req.body.version])).rows[0]; if (!row)
+    route('post','/drafts',async(req,c,u)=>createCommunicationDraft(c,u,req.body||{}));
+    route('put', '/drafts/:id', async (req, c, u) => { await requirePermission(c, u, 'communications.send'); const current = (await c.query('SELECT invitation_ics,related_grievance_id FROM communication_messages WHERE tenant_id=$1 AND id=$2 AND sender_id=$3', [u.tenantId, safeId(req.params.id), u.employeeId])).rows[0]; if (current?.invitation_ics)
+        throw fail(409, 'INVITATION_LOCKED', 'Calendar invitations are snapshots. Edit the meeting and prepare a new invitation instead.'); if(current?.related_grievance_id){await caseAction(c,u,await caseAccess(c,u,current.related_grievance_id),'grievances.respond');if(req.body.related?.type!=='grievance'||req.body.related?.id!==current.related_grievance_id)throw fail(409,'CASE_LINK_LOCKED','A grievance draft must retain its case link.');} const d = await draftInput(c, u, req.body || {}); const row = (await c.query("UPDATE communication_messages SET subject=$4,body=$5,body_json=$6::jsonb,category=$7,recipient_ids=$8,template_id=$9,related_employee_id=$10,related_candidate_id=$11,related_meeting_id=$12,variables=$13::jsonb,related_grievance_id=$15,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND sender_id=$3 AND status='draft' AND version=$14 RETURNING *", [u.tenantId, safeId(req.params.id), u.employeeId, d.subject, d.body, JSON.stringify(d.bodyJson), d.kind, d.ids, d.templateId, d.link.employee, d.link.candidate, d.link.meeting, JSON.stringify(d.vars), req.body.version,d.link.grievance])).rows[0]; if (!row)
         throw fail(409, 'DRAFT_CONFLICT', 'Draft changed, was queued, or is unavailable. Reopen it.'); return { message: row }; });
     route('get', '/messages', async (req, c, u) => {
         if (!await permitted(c, u, 'communications.view') && !await permitted(c, u, 'communications.send') && !await permitted(c, u, 'communications.history.view'))
@@ -164,12 +169,12 @@ export function registerCommunicationsRoutes(app: express.Express, { standardAut
         if ([req.query.related, req.query.employee, req.query.sender].some(value => value && !uuid(value)))
             throw fail(400, 'VALIDATION_ERROR', 'Invalid related record ID.');
         const params = [u.tenantId, u.employeeId, company, from.toISOString(), to.toISOString(), String(req.query.q || '').slice(0, 120), String(req.query.status || ''), String(req.query.category || ''), uuid(req.query.sender) ? req.query.sender : null, uuid(req.query.employee) ? req.query.employee : null, req.query.related || null, 20, (page - 1) * 20];
-        const where = `m.tenant_id=$1 AND (m.sender_id=$2 OR ($3 AND m.status<>'draft' AND m.queued_at IS NOT NULL)) AND m.created_at >= $4 AND m.created_at < $5 AND ($6='' OR m.subject ILIKE '%'||$6||'%' OR array_to_string(m.recipients,',') ILIKE '%'||$6||'%') AND ($7='' OR m.status=$7) AND ($8='' OR m.category=$8) AND ($9::uuid IS NULL OR m.sender_id=$9) AND ($10::uuid IS NULL OR m.related_employee_id=$10 OR $10=ANY(m.recipient_ids)) AND ($11::uuid IS NULL OR m.related_employee_id=$11 OR m.related_candidate_id=$11 OR m.related_meeting_id=$11)`;
-        return { messages: (await c.query(`SELECT m.id,m.subject,m.category,m.status,m.recipients,m.recipient_ids,m.sender_id,e.full_name AS sender_name,m.template_id,m.related_employee_id,m.related_candidate_id,m.related_meeting_id,m.created_at,m.queued_at,m.sent_at,m.scheduled_at,m.failure_code FROM communication_messages m JOIN employees e ON e.tenant_id=m.tenant_id AND e.id=m.sender_id WHERE ${where} ORDER BY m.created_at DESC LIMIT $12 OFFSET $13`, params)).rows, total: Number((await c.query(`SELECT count(*) FROM communication_messages m WHERE ${where}`, params.slice(0, 11))).rows[0].count), page };
+        const where = `m.tenant_id=$1 AND (m.related_grievance_id IS NULL OR EXISTS(SELECT 1 FROM grievances g WHERE g.tenant_id=m.tenant_id AND g.id=m.related_grievance_id AND ${handlerVisibilitySql()})) AND (m.sender_id=$2 OR ($3 AND m.status<>'draft' AND m.queued_at IS NOT NULL)) AND m.created_at >= $4 AND m.created_at < $5 AND ($6='' OR m.subject ILIKE '%'||$6||'%' OR array_to_string(m.recipients,',') ILIKE '%'||$6||'%') AND ($7='' OR m.status=$7) AND ($8='' OR m.category=$8) AND ($9::uuid IS NULL OR m.sender_id=$9) AND ($10::uuid IS NULL OR m.related_employee_id=$10 OR $10=ANY(m.recipient_ids)) AND ($11::uuid IS NULL OR m.related_employee_id=$11 OR m.related_candidate_id=$11 OR m.related_meeting_id=$11 OR m.related_grievance_id=$11)`;
+        return { messages: (await c.query(`SELECT m.id,m.subject,m.category,m.status,m.recipients,m.recipient_ids,m.sender_id,e.full_name AS sender_name,m.template_id,m.related_employee_id,m.related_candidate_id,m.related_meeting_id,m.related_grievance_id,m.created_at,m.queued_at,m.sent_at,m.scheduled_at,m.failure_code FROM communication_messages m JOIN employees e ON e.tenant_id=m.tenant_id AND e.id=m.sender_id WHERE ${where} ORDER BY m.created_at DESC LIMIT $12 OFFSET $13`, params)).rows, total: Number((await c.query(`SELECT count(*) FROM communication_messages m WHERE ${where}`, params.slice(0, 11))).rows[0].count), page };
     });
     route('get', '/messages/:id', async (req, c, u) => { if (!await permitted(c, u, 'communications.view') && !await permitted(c, u, 'communications.send') && !await permitted(c, u, 'communications.history.view'))
         throw fail(403, 'PERMISSION_DENIED', 'Communications are unavailable.'); const company = await permitted(c, u, 'communications.history.view'); const row = (await c.query<CommunicationMessage>("SELECT * FROM communication_messages WHERE tenant_id=$1 AND id=$2 AND (sender_id=$3 OR ($4 AND status<>'draft' AND queued_at IS NOT NULL))", [u.tenantId, safeId(req.params.id), u.employeeId, company])).rows[0]; if (!row)
-        throw fail(404, 'NOT_FOUND', 'Message not found.'); if (!company)
+        throw fail(404, 'NOT_FOUND', 'Message not found.'); if(row.related_grievance_id){const access=await caseAccess(c,u,row.related_grievance_id);if(!access.handler)throw fail(404,'NOT_FOUND','Message not found.');} if (!company)
         delete row.provider_id; row.sender_name = (await c.query('SELECT full_name FROM employees WHERE tenant_id=$1 AND id=$2', [u.tenantId, row.sender_id])).rows[0]?.full_name; return { message: row, events: (await c.query('SELECT status,code,created_at FROM communication_message_events WHERE tenant_id=$1 AND message_id=$2 ORDER BY id', [u.tenantId, row.id])).rows }; });
     // Persist the immutable snapshot before dispatch; queued messages can safely retry dispatch after Redis interruption.
     app.post('/api/communications/messages/:id/send', standardAuth, mutationGuard, rateLimiter, async (req, res) => {
@@ -182,11 +187,12 @@ export function registerCommunicationsRoutes(app: express.Express, { standardAut
                 const current = (await c.query<CommunicationMessage>('SELECT * FROM communication_messages WHERE tenant_id=$1 AND id=$2 AND sender_id=$3 FOR UPDATE', [u.tenantId, safeId(req.params.id), u.employeeId])).rows[0];
                 if (!current)
                     throw fail(404, 'NOT_FOUND', 'Message not found.');
+                if(current.related_grievance_id){const access=await caseAccess(c,u,current.related_grievance_id);await caseAction(c,u,access,'grievances.respond');if(current.recipient_ids.length!==1||current.recipient_ids[0]!==access.employee_id)throw fail(400,'INVALID_RECIPIENT','A grievance message may only be sent to its reporter.');}
                 if (['queued', 'sending', 'sent'].includes(current.status))
                     return current;
                 if (current.status !== 'draft')
                     throw fail(409, 'MESSAGE_LOCKED', 'This message cannot be sent again.');
-                await categoryAccess(c, u, current.category);
+                if(!current.related_grievance_id)await categoryAccess(c, u, current.category);
                 if (current.template_id) {
                     const t = (await c.query('SELECT category FROM communication_templates WHERE tenant_id=$1 AND id=$2 AND active', [u.tenantId, current.template_id])).rows[0];
                     if (!t)
@@ -243,7 +249,7 @@ export function registerCommunicationsRoutes(app: express.Express, { standardAut
             res.status(e.statusCode || 500).json({ success: false, code: e.statusCode ? e.code : 'COMMUNICATIONS_ERROR', error: e.statusCode ? e.message : 'Unable to queue message.' });
         }
     });
-    route('post', '/messages/:id/cancel', async (req, c, u) => { await requirePermission(c, u, 'communications.send'); const row = (await c.query("UPDATE communication_messages SET status='cancelled',updated_at=now() WHERE tenant_id=$1 AND id=$2 AND sender_id=$3 AND status IN ('draft','queued') RETURNING *", [u.tenantId, safeId(req.params.id), u.employeeId])).rows[0]; if (!row)
+    route('post', '/messages/:id/cancel', async (req, c, u) => { await requirePermission(c, u, 'communications.send'); const row = (await c.query(`UPDATE communication_messages SET status='cancelled',updated_at=now() WHERE tenant_id=$1 AND id=$2 AND sender_id=$3 AND status IN ('draft','queued') AND (related_grievance_id IS NULL OR EXISTS(SELECT 1 FROM grievances g WHERE g.tenant_id=communication_messages.tenant_id AND g.id=communication_messages.related_grievance_id AND ${handlerVisibilitySql('g','$3')})) RETURNING *`, [u.tenantId, safeId(req.params.id), u.employeeId])).rows[0]; if (!row)
         throw fail(409, 'MESSAGE_LOCKED', 'Only your draft or not-yet-sending message can be cancelled.'); await c.query("INSERT INTO communication_message_events(tenant_id,message_id,status) VALUES($1,$2,'cancelled')", [u.tenantId, row.id]); await audit(c, u, 'email.cancelled', row.id, 'cancelled'); return { message: row }; });
     registerMeetings(route);
 }

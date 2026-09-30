@@ -19,6 +19,21 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
+ 'grievance.department_changed': {canonicalAction:'grievance.department_changed',module:'grievances',summary:'Grievance department changed',metadataKeys:['previousDepartment','department']},
+ 'grievance.submitted': {canonicalAction:'grievance.submitted',module:'grievances',summary:'Grievance submitted',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.triaged': {canonicalAction:'grievance.triaged',module:'grievances',summary:'Grievance triaged',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.assigned': {canonicalAction:'grievance.assigned',module:'grievances',summary:'Grievance assigned',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.reassigned': {canonicalAction:'grievance.reassigned',module:'grievances',summary:'Grievance reassigned',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.priority_changed': {canonicalAction:'grievance.priority_changed',module:'grievances',summary:'Grievance priority changed',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.confidentiality_changed': {canonicalAction:'grievance.confidentiality_changed',module:'grievances',summary:'Grievance confidentiality changed',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.internal_note_added': {canonicalAction:'grievance.internal_note_added',module:'grievances',summary:'Grievance internal note added',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.employee_response': {canonicalAction:'grievance.employee_response',module:'grievances',summary:'Grievance employee response',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.employee_follow_up': {canonicalAction:'grievance.employee_follow_up',module:'grievances',summary:'Grievance employee follow up',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.attachment_added': {canonicalAction:'grievance.attachment_added',module:'grievances',summary:'Grievance attachment added',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.resolved': {canonicalAction:'grievance.resolved',module:'grievances',summary:'Grievance resolved',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.reopened': {canonicalAction:'grievance.reopened',module:'grievances',summary:'Grievance reopened',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.closed': {canonicalAction:'grievance.closed',module:'grievances',summary:'Grievance closed',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
+ 'grievance.department_configured': {canonicalAction:'grievance.department_configured',module:'grievances',summary:'Grievance department configured',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
   'communications.email.queued': {canonicalAction:'communications.email.queued',module:'communications',summary:'email queued',metadataKeys:['status','code']},
   'communications.email.cancelled': {canonicalAction:'communications.email.cancelled',module:'communications',summary:'email cancelled',metadataKeys:['status','code']},
   'communications.email.failed': {canonicalAction:'communications.email.failed',module:'communications',summary:'email failed',metadataKeys:['status','code']},
@@ -257,6 +272,7 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
+  ...Object.fromEntries(Object.entries(DEFINITIONS).filter(([key]) => key.startsWith('grievance.')).map(([key, value]) => [key, value.metadataKeys || []])),
   'communications.email.queued':['status','code'],
   'communications.email.cancelled':['status','code'],
   'communications.email.failed':['status','code'],

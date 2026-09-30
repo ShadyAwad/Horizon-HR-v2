@@ -1,4 +1,5 @@
 import type express from 'express';
+import {handlerVisibilitySql} from '../grievances/grievance-policy';
 import type { RequestHandler } from 'express';
 import { withTenant } from '../../lib/hr-background';
 import {
@@ -99,8 +100,9 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
 
       const tenantId = req.authUser!.tenantId;
       const result = await withTenant(tenantId, async (client) => {
-        const values: unknown[] = [tenantId];
-        const conditions = ['audit_logs.tenant_id = $1'];
+        const auditVisibility = `(audit_logs.entity_type<>'grievance' OR EXISTS(SELECT 1 FROM grievances g WHERE g.tenant_id=audit_logs.tenant_id AND g.id=audit_logs.entity_id AND ${handlerVisibilitySql('g','$2')}))`;
+        const values: unknown[] = [tenantId,req.authUser!.employeeId];
+        const conditions = ['audit_logs.tenant_id = $1',auditVisibility];
         const add = (condition: (position: number) => string, value: unknown) => {
           values.push(value);
           conditions.push(condition(values.length));
@@ -177,15 +179,15 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
              COUNT(*) FILTER (WHERE action LIKE 'employee%' OR action LIKE '%role%' OR entity_type IN ('employee', 'employee_compensation_profile'))::text AS employee_changes,
              COUNT(*) FILTER (WHERE action ILIKE '%rejected%' OR action ILIKE '%failed%' OR metadata->>'status' = 'rejected')::text AS rejected_actions
            FROM audit_logs
-           WHERE tenant_id = $1`,
-          [tenantId],
+           WHERE tenant_id = $1 AND ${auditVisibility}`,
+          [tenantId,req.authUser!.employeeId],
         );
         const actionFacets = await client.query<{ action: string; entity_type: string }>(
           `SELECT DISTINCT action, entity_type
            FROM audit_logs
-           WHERE tenant_id = $1
+           WHERE tenant_id = $1 AND ${auditVisibility}
            ORDER BY action ASC`,
-          [tenantId],
+          [tenantId,req.authUser!.employeeId],
         );
         const actorFacets = await client.query<{ id: string; display_name: string; role: string }>(
           `SELECT DISTINCT employees.id, employees.full_name AS display_name, employees.role
@@ -193,9 +195,9 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
            INNER JOIN employees
              ON employees.tenant_id = audit_logs.tenant_id
             AND employees.id = audit_logs.actor_employee_id
-           WHERE audit_logs.tenant_id = $1
+           WHERE audit_logs.tenant_id = $1 AND ${auditVisibility}
            ORDER BY employees.full_name ASC`,
-          [tenantId],
+          [tenantId,req.authUser!.employeeId],
         );
 
         return {

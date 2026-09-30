@@ -1,4 +1,5 @@
 import type express from 'express';
+import {handlerVisibilitySql} from '../grievances/grievance-policy';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 import { hasPermissionClaim } from '../auth/permission-claims';
 
@@ -8,7 +9,7 @@ type AttentionRouteDependencies = {
 
 const dashboardAttentionStatuses = {
   breakRequests: ['pending'],
-  grievances: ['open', 'under_review'],
+  grievances: ['submitted', 'triaged', 'assigned', 'in_progress', 'waiting'],
   leaveRequests: ['pending'],
   payrollApproval: ['draft'],
   payrollPayment: ['approved'],
@@ -32,7 +33,7 @@ export function registerDashboardAttentionRoutes(
     // per-user read model intentionally remain zero instead of inferring unread work.
     const canReviewBreakRequests = hasPermissionClaim(authUser, 'break_requests.review')
       || hasPermissionClaim(authUser, 'break_requests.view_all');
-    const canReviewGrievances = authUser.role === 'manager' || authUser.role === 'hr_admin';
+    const canReviewGrievances = false;
     const canReviewLeaveRequests = authUser.role === 'manager' || authUser.role === 'hr_admin';
     const canReviewResignations = authUser.role === 'manager'
       || hasPermissionClaim(authUser, 'resignations.review');
@@ -115,7 +116,8 @@ export function registerDashboardAttentionRoutes(
             OR ($4::boolean AND a.stage='final_review' AND (a.current_owner_id IS NULL OR a.current_owner_id=$2))
           )
         `, [tenantId, authUser.employeeId, canManageHiring, canMakeHiringDecision])).rows[0]?.count || 0) : 0;
-        return { ...result.rows[0], hiring };
+        const grievances = Number((await client.query(`SELECT count(*)::int AS count FROM grievances g WHERE g.tenant_id=$1 AND g.status=ANY($3::varchar[]) AND ${handlerVisibilitySql()}`,[tenantId,authUser.employeeId,[...dashboardAttentionStatuses.grievances]])).rows[0].count);
+        return { ...result.rows[0], grievances, hiring };
       });
   
       res.json({

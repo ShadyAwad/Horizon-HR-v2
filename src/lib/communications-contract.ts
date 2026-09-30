@@ -4,7 +4,7 @@ export type CommunicationCategory = typeof COMMUNICATION_TYPES[number];
 export type TemplateVariable = typeof COMMUNICATION_VARIABLES[number];
 export type TemplateValues = Partial<Record<TemplateVariable, string>>;
 export type RelatedEntity = {
-    type: 'employee' | 'candidate' | 'meeting';
+    type: 'employee' | 'candidate' | 'meeting' | 'grievance';
     id: string;
 };
 export type MessageStatus = 'draft' | 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
@@ -21,6 +21,7 @@ export interface CommunicationMessage {
     status: MessageStatus;
     recipient_ids: string[];
     recipients: string[];
+    related_grievance_id?: string | null;
     related_employee_id: string | null;
     related_candidate_id: string | null;
     related_meeting_id: string | null;

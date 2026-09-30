@@ -12,13 +12,12 @@ export const WIDGETS: readonly WidgetDefinition[] = [
  define('leave','Leave Approvals','اعتماد الإجازات','Leave','roster',['leave.approve','leave.manage','leave.view.scoped'],'Pending requests you are authorized to review.'),
  define('expenses','Expense Approvals','اعتماد المصروفات','Finance','expenses',['expenses.approve','expenses.manage','expenses.view.scoped','expenses.reimburse'],'Pending expense claims within your authorized scope.'),
  define('goals','Goals / Tasks','الأهداف والمهام','Performance','roster',['roster.goals.view_self','roster.goals.view_scoped','roster.goals.manage'],'Your goals for this week and overdue tasks.'),
- define('grievances','Grievance Inbox','صندوق الشكاوى','Grievances','grievances',[],'Recent cases. Open the canonical inbox to review securely.'),
+ define('grievances','Grievance Inbox','صندوق الشكاوى','Grievances','grievances',['grievances.view','grievances.review'],'Recent cases. Open the canonical inbox to review securely.'),
  define('hiring','Hiring Pipeline Summary','ملخص التوظيف','Hiring','hiring',['hiring.view'],'Recent active applicants and their current stages.'),
  define('feed','Company Feed','أخبار الشركة','Communications','feed',[],'Recent company announcements visible to you.'),
 ];
 export function widgetDefinition(id: string) { return WIDGETS.find(w=>w.id===id); }
 export function canUseWidget(user: AuthUser, widget: WidgetDefinition) {
- if (widget.id==='grievances') return user.role==='manager'||user.role==='hr_admin';
  return widget.permissions.length===0 || (user.permissions ? widget.permissions.some(p=>user.permissions!.includes(p)) : user.role==='hr_admin');
 }
 export function widgetPath(id: WidgetId, now = new Date()) {

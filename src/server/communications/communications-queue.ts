@@ -4,6 +4,7 @@ import { redisConnection, withTenant } from '../../lib/hr-background';
 import { deliverEmail, type ProviderResult } from '../../lib/email';
 import { recordAuditEvent } from '../audit/audit-events';
 import { resolveScopedPermission } from '../organisation/scoped-permissions';
+import {caseAccess,caseAction} from '../grievances/grievance-policy';
 import { escapeHtml } from './communications-rules';
 const QUEUE = 'stanza-communications';
 let queue: Queue | undefined;
@@ -33,12 +34,13 @@ export async function processMessage(job: Pick<Job<CommunicationJob>, 'data' | '
         const current = (await client.query<CommunicationMessage>('SELECT * FROM communication_messages WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [tenantId, messageId])).rows[0];
         if (!current || !['queued', 'sending'].includes(current.status))
             return null;
-        if (!current.first_attempt_at) {
+        let caseAllowed=true;if(current.related_grievance_id){try{const access=await caseAccess(client,{tenantId,employeeId:current.sender_id},current.related_grievance_id);await caseAction(client,{tenantId,employeeId:current.sender_id},access,'grievances.respond');caseAllowed=current.recipient_ids.length===1&&current.recipient_ids[0]===access.employee_id;}catch{caseAllowed=false;}}
+        if (!current.first_attempt_at||!caseAllowed) {
             const actor = (await client.query("SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active AND employment_status='active'", [tenantId, current.sender_id])).rows[0];
             const categoryKey: Record<string, string> = { payroll_notice: 'payroll.view_all', grievance_update: 'grievances.review', hiring: 'hiring.view', leave_status: 'leave.view.scoped' };
-            const domainKey = categoryKey[current.category] || (current.related_candidate_id ? 'hiring.view' : null);
+            const domainKey = (current.related_grievance_id ? null : categoryKey[current.category]) || (current.related_candidate_id ? 'hiring.view' : null);
             const domainAllowed = !domainKey || (await resolveScopedPermission(client, { tenantId, actorEmployeeId: current.sender_id, permissionKey: domainKey })).allowed;
-            const allowed = domainAllowed && actor && (await resolveScopedPermission(client, { tenantId, actorEmployeeId: current.sender_id, permissionKey: 'communications.send' })).allowed;
+            const allowed = caseAllowed && domainAllowed && actor && (await resolveScopedPermission(client, { tenantId, actorEmployeeId: current.sender_id, permissionKey: 'communications.send' })).allowed;
             if (!allowed) {
                 await client.query("UPDATE communication_messages SET status='failed',failure_code='SEND_PERMISSION_REVOKED',failure_reason='Sender is inactive or no longer authorized.',updated_at=now() WHERE tenant_id=$1 AND id=$2", [tenantId, messageId]);
                 await client.query("INSERT INTO communication_message_events(tenant_id,message_id,status,code) VALUES($1,$2,'failed','SEND_PERMISSION_REVOKED')", [tenantId, messageId]);

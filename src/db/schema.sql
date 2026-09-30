@@ -1463,6 +1463,8 @@ WITH CHECK (
 -- 11. Grievances
 -- =========================================================
 
+-- After the organisation and Communications foundations, apply
+-- migrations/20260930_grievance_cases.sql for the additive durable case model.
 CREATE TABLE IF NOT EXISTS grievances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 

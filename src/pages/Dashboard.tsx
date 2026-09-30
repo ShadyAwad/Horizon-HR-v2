@@ -76,6 +76,7 @@ import {
   normalisePinnedQuickActionIds,
 } from '../components/command-palette/pinned-quick-actions';
 
+const GrievancesPanel = lazy(() => import('../components/grievances/GrievancesPanel'));
 const CommunicationsPanel = lazy(() => import('../components/communications/CommunicationsPanel'));
 const WorkspaceComposer = lazy(() => import('../components/workspace-composer/WorkspaceComposer'));
 const RichTextEditor = lazy(() => import('../components/RichTextEditor').then((module) => ({ default: module.RichTextEditor })));
@@ -470,34 +471,6 @@ type LoanFormState = {
   dueDate: string;
 };
 
-type GrievancePriority = 'low' | 'normal' | 'high' | 'urgent';
-type GrievanceStatus = 'open' | 'under_review' | 'resolved' | 'rejected' | 'closed';
-
-type GrievanceRecord = {
-  id: string;
-  employee_id: string;
-  full_name?: string;
-  email?: string;
-  assigned_to?: string | null;
-  assigned_to_name?: string | null;
-  assigned_to_email?: string | null;
-  title: string;
-  description: string;
-  category: string;
-  priority: GrievancePriority;
-  status: GrievanceStatus;
-  created_at: string;
-  updated_at: string;
-  resolved_at?: string | null;
-};
-
-type GrievanceFormState = {
-  title: string;
-  category: string;
-  priority: GrievancePriority;
-  description: string;
-};
-
 type CompanyLocationRecord = {
   id: string;
   name: string;
@@ -710,12 +683,6 @@ const defaultLoanForm: LoanFormState = {
   dueDate: '',
 };
 
-const defaultGrievanceForm: GrievanceFormState = {
-  title: '',
-  category: 'general',
-  priority: 'normal',
-  description: '',
-};
 
 const defaultFeedForm: FeedFormState = {
   title: '',
@@ -732,7 +699,6 @@ const defaultRoleForm: RoleFormState = {
   permissionKeys: [],
 };
 
-const grievanceStatuses: GrievanceStatus[] = ['open', 'under_review', 'resolved', 'rejected', 'closed'];
 
 function readStoredSchedule() {
   if (typeof window === 'undefined') return [];
@@ -983,15 +949,6 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
   const [showResignationsPanel, setShowResignationsPanel] = useState(false);
-  const [myGrievances, setMyGrievances] = useState<GrievanceRecord[]>([]);
-  const [tenantGrievances, setTenantGrievances] = useState<GrievanceRecord[]>([]);
-  const [grievanceLoading, setGrievanceLoading] = useState(false);
-  const [tenantGrievanceLoading, setTenantGrievanceLoading] = useState(false);
-  const [grievanceSubmitting, setGrievanceSubmitting] = useState(false);
-  const [grievanceUpdatingId, setGrievanceUpdatingId] = useState<string | null>(null);
-  const [grievanceMessage, setGrievanceMessage] = useState('');
-  const [grievanceMessageType, setGrievanceMessageType] = useState<'success' | 'error'>('success');
-  const [grievanceForm, setGrievanceForm] = useState<GrievanceFormState>(defaultGrievanceForm);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [adminFeedPosts, setAdminFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
@@ -1507,7 +1464,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       notifications: `${notificationLoading}:${notificationSaving}:${notificationSettings.length}`,
       passkeys: `${passkeysLoading}:${passkeySaving}:${passkeys.length}`,
       payroll: `${payrollLoading}:${payrollSubmitting}:${payrollRecords.length}`,
-      grievances: `${grievanceLoading}:${tenantGrievanceLoading}:${myGrievances.length}:${tenantGrievances.length}`,
+      grievances: String(showGrievancesPanel),
       feed: `${feedLoading}:${adminFeedLoading}:${feedSubmitting}:${feedPosts.length}:${adminFeedPosts.length}`,
       roles: `${rolesLoading}:${roleSaving}:${tenantRoles.length}:${roleEmployees.length}`,
       profilePhoto: `${Boolean(profilePhotoFile)}:${profilePhotoSaving}`,
@@ -2910,7 +2867,6 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     loadClockStatus();
   }, [hasAuthenticatedDashboardUser, user.id, user.tenantId]);
 
-  const canManageGrievances = user.role === 'hr_admin' || user.role === 'manager';
 
   const loadBreakRequests = async (clearMessage = true) => {
     if (!hasAuthenticatedDashboardUser) return;
@@ -3752,54 +3708,6 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [showControlCenter]);
 
-  const loadGrievances = async (clearMessage = true) => {
-    setGrievanceLoading(true);
-    setTenantGrievanceLoading(false);
-    if (clearMessage) {
-      setGrievanceMessage('');
-    }
-
-    try {
-      const myResponse = await fetch(apiUrl('/api/grievances/me'), { headers: payrollHeaders });
-      const myData = await myResponse.json();
-
-      if (!myResponse.ok || !myData.success) {
-        setGrievanceMessageType('error');
-        setGrievanceMessage(myData.error || t('dash.grievanceLoadError'));
-        return;
-      }
-
-      setMyGrievances(myData.grievances || []);
-      setGrievanceLoading(false);
-
-      if (canManageGrievances) {
-        setTenantGrievanceLoading(true);
-        const tenantResponse = await fetch(apiUrl('/api/grievances'), { headers: payrollHeaders });
-        const tenantData = await tenantResponse.json();
-
-        if (!tenantResponse.ok || !tenantData.success) {
-          setGrievanceMessageType('error');
-          setGrievanceMessage(tenantData.error || t('dash.tenantGrievanceLoadError'));
-          return;
-        }
-
-        setTenantGrievances(tenantData.grievances || []);
-      } else {
-        setTenantGrievances([]);
-      }
-    } catch {
-      setGrievanceMessageType('error');
-      setGrievanceMessage(t('dash.grievanceLoadServerError'));
-    } finally {
-      setGrievanceLoading(false);
-      setTenantGrievanceLoading(false);
-    }
-  };
-
-  const updateGrievanceForm = (field: keyof GrievanceFormState, value: string) => {
-    setGrievanceForm((current) => ({ ...current, [field]: value as GrievancePriority }));
-  };
-
   const openLeaveRequestFlow = () => {
     setActiveTab('roster');
     setRosterSubview('leave');
@@ -3808,81 +3716,6 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setShowResignationsPanel(false);
     setLeaveDeepLink(null);
     setLeaveRequestSignal((current) => current + 1);
-  };
-
-  const submitGrievance = async () => {
-    if (isOffline) {
-      setGrievanceMessageType('error');
-      setGrievanceMessage('You are offline. Some HR actions require connection.');
-      return;
-    }
-
-    if (grievanceSubmitting) return;
-
-    setGrievanceSubmitting(true);
-    setGrievanceMessage('');
-
-    try {
-      const res = await fetch(apiUrl('/api/grievances'), {
-        method: 'POST',
-        headers: payrollHeaders,
-        body: JSON.stringify(grievanceForm),
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setGrievanceForm(defaultGrievanceForm);
-        await loadGrievances(false);
-        await refreshAttentionCounts();
-        setGrievanceMessageType('success');
-        setGrievanceMessage(t('dash.grievanceFiled'));
-      } else {
-        setGrievanceMessageType('error');
-        setGrievanceMessage(data.error || t('dash.grievanceFileError'));
-      }
-    } catch {
-      setGrievanceMessageType('error');
-      setGrievanceMessage(t('dash.grievanceFileServerError'));
-    } finally {
-      setGrievanceSubmitting(false);
-    }
-  };
-
-  const updateGrievanceStatus = async (grievanceId: string, status: GrievanceStatus) => {
-    if (isOffline) {
-      setGrievanceMessageType('error');
-      setGrievanceMessage('You are offline. Some HR actions require connection.');
-      return;
-    }
-
-    if (grievanceUpdatingId) return;
-
-    setGrievanceUpdatingId(grievanceId);
-    setGrievanceMessage('');
-
-    try {
-      const res = await fetch(apiUrl(`/api/grievances/${grievanceId}/status`), {
-        method: 'PATCH',
-        headers: payrollHeaders,
-        body: JSON.stringify({ status }),
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        await loadGrievances(false);
-        await refreshAttentionCounts();
-        setGrievanceMessageType('success');
-        setGrievanceMessage(t('dash.grievanceStatusUpdated'));
-      } else {
-        setGrievanceMessageType('error');
-        setGrievanceMessage(data.error || t('dash.grievanceStatusUpdateError'));
-      }
-    } catch {
-      setGrievanceMessageType('error');
-      setGrievanceMessage(t('dash.grievanceStatusUpdateServerError'));
-    } finally {
-      setGrievanceUpdatingId(null);
-    }
   };
 
   const loadFeed = async (clearMessage = true) => {
@@ -4072,11 +3905,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     }
   }, [activeTab, user.id, user.role, user.tenantId]);
 
-  useEffect(() => {
-    if (activeTab === 'profile' && showGrievancesPanel) {
-      loadGrievances();
-    }
-  }, [activeTab, showGrievancesPanel, user.id, user.role, user.tenantId]);
+
 
   useEffect(() => {
     const loadCompanyLocations = async () => {
@@ -6864,200 +6693,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             onChanged={refreshAttentionCounts}
                           />
                         </Suspense>
-                      ) : activeTab === 'profile' && showGrievancesPanel ? (
-                        <div className="space-y-5">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                                <MessageSquare className="h-4 w-4 text-emerald-500" />
-                                {t('dash.grievances')}
-                              </h3>
-                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {grievanceForm.category === 'leave_request'
-                                  ? t('dash.grievancesSubtitleLeave')
-                                  : canManageGrievances ? t('dash.grievancesSubtitleAdmin') : t('dash.grievancesSubtitleSelf')}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowGrievancesPanel(false)}
-                              className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-emerald-500/15 dark:text-emerald-100/60"
-                            >
-                              Back
-                            </button>
-                          </div>
-
-                          <p className="flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
-                            {t('demo.grievances')}
-                          </p>
-
-                          <div className="stanza-grievance-submission rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                              <input
-                                value={grievanceForm.title}
-                                onChange={(event) => updateGrievanceForm('title', event.target.value)}
-                                placeholder={t('dash.title')}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
-                              />
-                              <input
-                                value={grievanceForm.category}
-                                onChange={(event) => updateGrievanceForm('category', event.target.value)}
-                                placeholder={t('dash.categoryLabel')}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                              />
-                              <select
-                                value={grievanceForm.priority}
-                                aria-label={t('dash.priority')}
-                                onChange={(event) => updateGrievanceForm('priority', event.target.value)}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                              >
-                                <option value="low">{t('enum.low')}</option>
-                                <option value="normal">{t('enum.normal')}</option>
-                                <option value="high">{t('enum.high')}</option>
-                                <option value="urgent">{t('enum.urgent')}</option>
-                              </select>
-                              <textarea
-                                value={grievanceForm.description}
-                                onChange={(event) => updateGrievanceForm('description', event.target.value)}
-                                placeholder={t('dash.description')}
-                                rows={6}
-                                className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-4"
-                              />
-                              <button
-                                type="button"
-                                onClick={submitGrievance}
-                                disabled={isOffline || grievanceSubmitting}
-                                className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-4 justify-self-start max-w-full"
-                              >
-                                {grievanceSubmitting ? t('dash.submitting') : grievanceForm.category === 'leave_request' ? t('dash.submitLeaveRequest') : t('dash.submitGrievance')}
-                              </button>
-                            </div>
-                          </div>
-
-                          {grievanceMessage && (
-                            <p className={cn(
-                              "rounded-lg border px-3 py-2 text-xs font-semibold",
-                              grievanceMessageType === 'success'
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-                                : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                            )}>
-                              {grievanceMessage}
-                            </p>
-                          )}
-
-                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.myGrievances')}</h4>
-                              <button
-                                type="button"
-                                onClick={() => loadGrievances()}
-                                disabled={isOffline || grievanceLoading || tenantGrievanceLoading}
-                                className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 transition hover:text-emerald-500 disabled:opacity-60 dark:text-emerald-300"
-                              >
-                                {t('dash.refresh')}
-                              </button>
-                            </div>
-
-                            <div className="space-y-3">
-                              {myGrievances.map((grievance) => (
-                                <div key={grievance.id} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/40">
-                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{grievance.title}</p>
-                                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{grievance.description}</p>
-                                    </div>
-                                    <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                                      {displayEnum(grievance.status)}
-                                    </span>
-                                  </div>
-                                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                    <span>{displayEnum(grievance.category)}</span>
-                                    <span>{displayEnum(grievance.priority)}</span>
-                                    <span dir="ltr">{formatShortDateTime(grievance.created_at)}</span>
-                                  </div>
-                                </div>
-                              ))}
-
-                              {!grievanceLoading && myGrievances.length === 0 && (
-                                <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                  {t('dash.noGrievances')}
-                                </p>
-                              )}
-
-                              {grievanceLoading && (
-                                <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                  {t('dash.loadingMyGrievances')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {canManageGrievances && (
-                            <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                              <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.tenantGrievances')}</h4>
-                              <div className="overflow-x-auto">
-                                <table className={cn("w-full min-w-[860px]", isRtl ? "text-right" : "text-left")}>
-                                  <thead>
-                                    <tr className="border-b border-emerald-500/15 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                                      <th className="p-3">{t('dash.employee')}</th>
-                                      <th className="p-3">{t('dash.case')}</th>
-                                      <th className="p-3">{t('dash.priority')}</th>
-                                      <th className="p-3">{t('dash.status')}</th>
-                                      <th className="p-3">{t('dash.created')}</th>
-                                      <th className="p-3">{t('dash.update')}</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="text-xs">
-                                    {tenantGrievances.map((grievance) => (
-                                      <tr key={grievance.id} className="border-b border-emerald-500/10 text-neutral-700 last:border-0 dark:border-emerald-500/10 dark:text-emerald-100/65">
-                                        <td className="p-3 font-semibold">
-                                          {grievance.full_name || t('dash.employee')}
-                                          <span className="block text-[10px] font-normal text-slate-500" dir="ltr">{grievance.email || grievance.employee_id}</span>
-                                        </td>
-                                        <td className="p-3">
-                                          <span className="block font-bold text-slate-800 dark:text-slate-100">{grievance.title}</span>
-                                          <span className="mt-1 block max-w-[280px] truncate text-[10px] text-slate-500">{grievance.description}</span>
-                                        </td>
-                                        <td className="p-3">{displayEnum(grievance.priority)}</td>
-                                        <td className="p-3">{displayEnum(grievance.status)}</td>
-                                        <td className="p-3 font-mono text-[11px]" dir="ltr">{formatShortDateTime(grievance.created_at)}</td>
-                                        <td className="p-3">
-                                          <select
-                                            value={grievance.status}
-                                            onChange={(event) => updateGrievanceStatus(grievance.id, event.target.value as GrievanceStatus)}
-                                            disabled={isOffline || grievanceUpdatingId !== null}
-                                            className="rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                          >
-                                            {grievanceStatuses.map((status) => (
-                                              <option key={status} value={status}>{displayEnum(status)}</option>
-                                            ))}
-                                          </select>
-                                        </td>
-                                      </tr>
-                                    ))}
-
-                                    {!tenantGrievanceLoading && tenantGrievances.length === 0 && (
-                                      <tr>
-                                        <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
-                                          {t('dash.noTenantGrievances')}
-                                        </td>
-                                      </tr>
-                                    )}
-
-                                    {tenantGrievanceLoading && (
-                                      <tr>
-                                        <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
-                                          {t('dash.loadingTenantGrievances')}
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                      ) : showGrievancesPanel ? (
+ <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
