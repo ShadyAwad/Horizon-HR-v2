@@ -1,3 +1,4 @@
+import { shouldUseSecureCookie } from '../src/server/auth/session-cookie-policy';
 import 'dotenv/config';
 
 import { execFileSync } from 'node:child_process';
@@ -577,12 +578,9 @@ async function run() {
   });
 
   await check('Loopback session cookies remain browser-usable without weakening public HTTPS', async () => {
-    const serverSource = await readFile(path.join(rootDir, 'server.ts'), 'utf8');
-    if (!serverSource.includes("function isLoopbackHostname(hostname: string | undefined)")
-      || !serverSource.includes("return req.secure || !isLoopbackHostname(req.hostname);")
-      || /const secure = isProduction\(\) \|\| req\.secure/.test(serverSource)) {
-      throw new Error('Session-cookie security does not distinguish loopback HTTP from public or HTTPS origins.');
-    }
+    const local={NODE_ENV:'production',APP_BASE_URL:'http://localhost:3000'};
+    for(const hostname of ['localhost','127.0.0.1','[::1]'])if(shouldUseSecureCookie({secure:false,hostname},local))throw Error('Local HTTP cookies must remain usable');
+    if(!shouldUseSecureCookie({secure:false,hostname:'stanza.example'},local)||!shouldUseSecureCookie({secure:true,hostname:'localhost'},local)||!shouldUseSecureCookie({secure:false,hostname:'localhost'},{NODE_ENV:'production',APP_BASE_URL:'https://stanza.example'}))throw Error('Public/HTTPS cookies must be Secure');
   });
 
   await check('Auth-required endpoints reject anonymous access', async () => {

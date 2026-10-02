@@ -9,7 +9,7 @@ import { withTenant } from '../../lib/hr-background';
 import { CASE_PRIORITIES, CASE_STATUSES, caseFail, CaseError, caseId, caseText, caseVersion, caseTransition, casePage, caseObject, type CaseStatus } from '../../lib/grievance-contract';
 import { resolveScopedPermission } from '../organisation/scoped-permissions';
 import { recordAuditEvent } from '../audit/audit-events';
-import { PrivateExtractionStorage } from '../document-extraction/extraction-storage';
+import { grievanceStorage } from '../storage/private-object-storage';
 import { detectImageMime } from '../document-extraction/extraction-validation';
 import { activeCaseActor, caseAccess, caseAction, casePermissionSql, handlerVisibilitySql, publicCase, type CaseActor, type CaseRow } from './grievance-policy';
 type Dependencies = {
@@ -17,7 +17,7 @@ type Dependencies = {
     mutationGuard: express.RequestHandler;
     rateLimiter: express.RequestHandler;
 };
-const storage = new PrivateExtractionStorage(path.resolve(process.env.GRIEVANCE_ATTACHMENT_DIRECTORY || 'uploads/private-grievances'), Infinity);
+const storage = grievanceStorage();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 1 } }).single('file');
 const identity = (req: express.Request): CaseActor => ({ tenantId: req.authUser!.tenantId, employeeId: req.authUser!.employeeId });
 async function ownPermission(c: PoolClient, u: CaseActor, key: string) { if (!(await resolveScopedPermission(c, { tenantId: u.tenantId, actorEmployeeId: u.employeeId, permissionKey: key, targetEmployeeId: u.employeeId })).allowed)

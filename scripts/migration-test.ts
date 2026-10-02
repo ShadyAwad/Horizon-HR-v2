@@ -1,3 +1,4 @@
+import path from 'node:path';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -37,7 +38,7 @@ async function stop(child: ChildProcess) {
 }
 async function withServer(script: string, args: string[], key: string) {
     const port = await freePort(), base = 'http://localhost:' + port;
-    const child = spawn(process.execPath, ['dist/server.cjs'], { env: { ...env, NODE_ENV: 'production', PORT: String(port), APP_BASE_URL: base, WEBAUTHN_ORIGIN: base }, stdio: ['ignore', 'ignore', 'inherit'] });
+    const child = spawn(process.execPath, ['--throw-deprecation', 'dist/server.cjs'], { env: { ...env, NODE_ENV: 'production', PORT: String(port), APP_BASE_URL: base, WEBAUTHN_ORIGIN: base, WEBAUTHN_RP_ID: 'localhost', QR_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), TRUST_PROXY_HOPS: '0', DATABASE_SSL: 'false', DATABASE_ALLOW_PLAINTEXT: 'true', PROFILE_IMAGE_DIRECTORY: path.resolve('uploads/profile-images'), COMPANY_FEED_IMAGE_DIRECTORY: path.resolve('uploads/company-feed'), ASSET_EVIDENCE_DIRECTORY: path.resolve('uploads/assets'), GRIEVANCE_ATTACHMENT_DIRECTORY: path.resolve('uploads/private-grievances') }, stdio: ['ignore', 'ignore', 'inherit'] });
     try {
         let ready = false;
         for (let i = 0; i < 100; i++) {
@@ -96,6 +97,13 @@ try {
     if (process.argv.includes('--with-smoke') || process.argv.includes('--with-integration')) {
         await withServer('scripts/smoke-test.ts', [], 'SMOKE_TEST_BASE_URL');
         await withServer('scripts/reliability-integration-test.ts', [], 'RELIABILITY_TEST_BASE_URL');
+    }
+    if (process.argv.includes('--operations')) {
+        if (!process.env.WORKER_SMOKE_REDIS_URL)
+            throw Error('Deployment test requires dedicated WORKER_SMOKE_REDIS_URL');
+        env.REDIS_URL = process.env.WORKER_SMOKE_REDIS_URL;
+        await withServer('scripts/deployment-http-test.ts', [], 'OPERATIONS_BASE_URL');
+        await deploymentProcesses();
     }
     if (process.argv.includes('--dev-smoke'))
         await devSmoke();
@@ -181,4 +189,84 @@ async function devSmoke() {
                 process.kill(-child.pid, 'SIGTERM');
         }
     }
+}
+async function deploymentProcesses() {
+    const config = { ...env, NODE_ENV: 'production', APP_BASE_URL: 'http://localhost:3000', WEBAUTHN_ORIGIN: 'http://localhost:3000', WEBAUTHN_RP_ID: 'localhost', QR_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), TRUST_PROXY_HOPS: '0', DATABASE_SSL: 'false', DATABASE_ALLOW_PLAINTEXT: 'true', PROFILE_IMAGE_DIRECTORY: path.resolve('uploads/profile-images'), COMPANY_FEED_IMAGE_DIRECTORY: path.resolve('uploads/company-feed'), ASSET_EVIDENCE_DIRECTORY: path.resolve('uploads/assets'), GRIEVANCE_ATTACHMENT_DIRECTORY: path.resolve('uploads/private-grievances') };
+    run('scripts/background-durability-test.ts', [], { REDIS_URL: 'redis://127.0.0.1:1' });
+    const worker = spawn(process.execPath, ['dist/worker.cjs'], { env: config, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    worker.stdout?.on('data', b => { output += b.toString(); });
+    worker.stderr?.on('data', b => { output += b.toString(); });
+    try {
+        const deadline = Date.now() + 15000;
+        while (!output.includes('Redis connection ready.') && Date.now() < deadline && worker.exitCode === null)
+            await new Promise(r => setTimeout(r, 100));
+        assert(output.includes('Redis connection ready.'), 'Production worker startup: ' + output);
+        console.log('PASS built production worker starts with Redis');
+        const completedDeadline = Date.now() + 15000;
+        let completed = false;
+        while (Date.now() < completedDeadline) {
+            const result = await pool.query("SELECT count(*)::int AS count FROM audit_logs WHERE action='operations_recovery_probe'");
+            if (result.rows[0].count === 1) {
+                completed = true;
+                break;
+            }
+            await new Promise(r => setTimeout(r, 200));
+        }
+        assert(completed, 'Pending dispatch must recover after worker starts');
+        const pending = await pool.query("SELECT count(*)::int AS count FROM outbox_events WHERE event_type='background.hr' AND processed_at IS NULL");
+        assert.equal(pending.rows[0].count, 0);
+        console.log('PASS worker recovers durable pending audit without duplication');
+    }
+    finally {
+        await stop(worker);
+    }
+    for (const patch of [{ REDIS_URL: 'redis://127.0.0.1:1' }, { DATABASE_URL: 'postgres://invalid:invalid@127.0.0.1:1/unavailable' }]) {
+        const port = await freePort();
+        const child = spawn(process.execPath, ['dist/server.cjs'], { env: { ...config, ...patch, PORT: String(port) }, stdio: 'ignore' });
+        try {
+            let live = false;
+            for (let i = 0; i < 50; i++) {
+                try {
+                    live = (await fetch('http://localhost:' + port + '/api/system/live', { signal: AbortSignal.timeout(1000) })).ok;
+                    if (live)
+                        break;
+                }
+                catch { }
+                await new Promise(r => setTimeout(r, 100));
+            }
+            assert(live, 'Liveness survives dependency outage');
+            const started = Date.now();
+            const result = await fetch('http://localhost:' + port + '/api/system/ready', { signal: AbortSignal.timeout(5000) });
+            assert.equal(result.status, 503);
+            assert(Date.now() - started < 5000);
+            assert.deepEqual(await result.json(), { success: false });
+        }
+        finally {
+            await stop(child);
+        }
+    }
+    const securePort = await freePort(), publicOrigin = 'https://stanza.example';
+    const secureWeb = spawn(process.execPath, ['dist/server.cjs'], { env: { ...config, PORT: String(securePort), APP_BASE_URL: publicOrigin, WEBAUTHN_ORIGIN: publicOrigin, WEBAUTHN_RP_ID: 'stanza.example' }, stdio: 'ignore' });
+    try {
+        let alive = false;
+        for (let i = 0; i < 50; i++) {
+            try {
+                alive = (await fetch('http://localhost:' + securePort + '/api/system/live')).ok;
+                if (alive)
+                    break;
+            }
+            catch { }
+            await new Promise(r => setTimeout(r, 100));
+        }
+        assert(alive);
+        const response = await fetch('http://localhost:' + securePort + '/api/auth/login', { method: 'POST', headers: { Origin: publicOrigin, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@stanza-demo.com', password: env.DEMO_PASSWORD }) });
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get('set-cookie') || '', /; Secure/i);
+        console.log('PASS canonical public HTTPS origin forces Secure cookies behind a local ingress');
+    }
+    finally {
+        await stop(secureWeb);
+    }
+    console.log('PASS bounded PostgreSQL/Redis readiness failures without infrastructure disclosure');
 }

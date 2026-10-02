@@ -1,3 +1,4 @@
+import { requestContext } from './request-context';
 /** Error metadata for operational logs; never serialize SQL details or request data. */
 export function safeErrorCode(error: unknown): string {
     const metadata = error && typeof error === 'object' ? error as {
@@ -11,5 +12,5 @@ export function safeErrorCode(error: unknown): string {
     return 'INTERNAL_ERROR';
 }
 export function logServerError(context: string, error: unknown) {
-    console.error(context, safeErrorCode(error));
+    console.error(JSON.stringify({ level: 'error', operation: context, code: safeErrorCode(error), requestId: requestContext.getStore()?.requestId }));
 }

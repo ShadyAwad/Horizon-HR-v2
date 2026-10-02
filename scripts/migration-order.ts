@@ -30,6 +30,7 @@ export function migrationOrder(directory = 'src/db/migrations') {
 export async function applyMigrations(pool: Pool, directory = 'src/db/migrations') {
     const client = await pool.connect();
     try {
+        await client.query('SELECT pg_advisory_lock(73190510)');
         for (const file of migrationOrder(directory)) {
             await client.query(fs.readFileSync(directory + '/' + file, 'utf8'));
             console.log('Applied migration:', file);
@@ -40,6 +41,7 @@ export async function applyMigrations(pool: Pool, directory = 'src/db/migrations
         throw error;
     }
     finally {
+        await client.query('SELECT pg_advisory_unlock(73190510)').catch(()=>undefined);
         client.release();
     }
 }

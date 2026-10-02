@@ -14,5 +14,6 @@ try {
 finally {
     console.error = original;
 }
-assert.deepEqual(captured, [['[Operation] Failed:', '23514']]);
+assert.deepEqual(JSON.parse(captured[0][0] as string), {level:'error',operation:'[Operation] Failed:',code:'23514'});
+assert.equal(captured.length,1);
 console.log('PASS operational errors expose only bounded codes and context, without SQL details, bodies or credentials.');

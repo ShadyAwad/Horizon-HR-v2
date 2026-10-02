@@ -1,3 +1,9 @@
+import { shouldUseSecureCookie } from './src/server/auth/session-cookie-policy';
+import { validateProductionConfig } from './src/lib/production-config';
+import { installShutdown } from './src/lib/runtime-lifecycle';
+import { requestIds } from './src/lib/request-context';
+import { closeCommunicationsQueue } from './src/server/communications/communications-queue';
+import { closeHrResources } from './src/lib/hr-background';
 import { logServerError } from './src/lib/server-logging';
 import { registerCommunicationsRoutes } from './src/server/communications/communications-routes';
 import { registerFlexibleAttendanceRoutes } from './src/server/attendance/flexible-attendance-routes';
@@ -11,7 +17,6 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import sharp from 'sharp';
-import { createServer as createViteServer } from 'vite';
 import type { PoolClient } from 'pg';
 import {
   generateAuthenticationOptions,
@@ -284,18 +289,13 @@ function getCookie(req: express.Request, name: string) {
   return null;
 }
 
-function isLoopbackHostname(hostname: string | undefined) {
-  const normalized = (hostname || '').trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
-}
-
 function shouldUseSecureSessionCookie(req: express.Request) {
   // A production build is routinely used for local verification at
   // http://localhost. Browsers correctly discard Secure cookies there, leaving
   // the dashboard profile visible but every authenticated action unauthenticated.
   // Public origins still fail closed: they receive Secure cookies unless the
   // request arrived through an HTTPS-aware trusted proxy.
-  return req.secure || !isLoopbackHostname(req.hostname);
+  return shouldUseSecureCookie(req);
 }
 
 function setAuthSessionCookie(req: express.Request, res: express.Response, token: string) {
@@ -488,8 +488,11 @@ function toWebAuthnCredential(row: WebAuthnCredentialRow): WebAuthnCredential {
   };
 }
 
+let lastLoginPrune=0;
 function checkLoginRateLimit(key: string) {
   const now = Date.now();
+  if(now-lastLoginPrune>60000){lastLoginPrune=now;for(const [storedKey,state] of loginAttemptStore)if((state.lockedUntil||state.firstFailedAt+LOGIN_WINDOW_MS)<now)loginAttemptStore.delete(storedKey);}
+  if(!loginAttemptStore.has(key)&&loginAttemptStore.size>=20000)return {locked:true as const,retryAfterSeconds:60};
   const attemptState = loginAttemptStore.get(key);
 
   if (!attemptState) {
@@ -1241,6 +1244,8 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
 }
 
 async function startServer() {
+  validateProductionConfig();
+  console.info(JSON.stringify({level:"info",operation:"web_starting"}));
   if (isProduction() && process.env.DEV_AUTH_HEADERS === 'true') {
     throw new Error('DEV_AUTH_HEADERS must be disabled in production.');
   }
@@ -1250,6 +1255,9 @@ async function startServer() {
   }
 
   const app = express();
+  let isStopping = () => false;
+  let closeVite: (()=>Promise<void>) | undefined;
+  app.use(requestIds);
   const PORT = Number.parseInt(process.env.PORT || '3000', 10);
   if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
     throw new Error('PORT must be a valid TCP port number.');
@@ -3116,7 +3124,7 @@ registerCompanyFeedRoutes(app, {
   isSameOriginRequest: isSameOriginSessionRequest,
 });
 
-  registerSystemRoutes(app);
+  registerSystemRoutes(app, () => isStopping());
 
   app.use('/api', apiErrorHandler);
   // API misses must never reach either Vite's or production's SPA fallback.
@@ -3126,19 +3134,21 @@ registerCompanyFeedRoutes(app, {
 
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
   if (process.env.NODE_ENV !== 'production') {
+    const {createServer:createViteServer}=await import('vite');
     const vite = await createViteServer({
       // Avoid temporary bundled config modules triggering the TypeScript watcher.
       configLoader: 'runner',
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    closeVite = () => vite.close();
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     const assetsPath = path.join(distPath, 'assets');
     const indexPath = path.join(distPath, 'index.html');
     app.use((req, res, next) => {
-      if (req.path.endsWith('.map')) return res.status(404).type('text/plain').send('Not found');
+      if (/\.(?:map|cjs|sql)$/i.test(req.path)) return res.status(404).type('text/plain').send('Not found');
       next();
     });
     app.use('/assets', express.static(assetsPath, {
@@ -3166,8 +3176,12 @@ registerCompanyFeedRoutes(app, {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Stanza] Server running on http://0.0.0.0:${PORT}`);
+  const httpServer = app.listen(PORT, '0.0.0.0', () => {
+    console.info(JSON.stringify({level:'info',operation:'http_listening',port:PORT}));
+  });
+  isStopping = installShutdown(async()=>{
+    await new Promise<void>((resolve,reject)=>{httpServer.close(error=>error?reject(error):resolve());httpServer.closeIdleConnections();});
+    await closeVite?.();await closeCommunicationsQueue();await closeHrResources();
   });
 }
 

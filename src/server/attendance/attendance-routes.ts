@@ -100,6 +100,7 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
     await task();
   } catch (error) {
     logServerError(`[Background Queue] Failed to enqueue ${label}:`, error);
+    throw Object.assign(new Error("Background persistence unavailable; the attendance event may already be recorded. Refresh before retrying."),{statusCode:503});
   }
 }
 

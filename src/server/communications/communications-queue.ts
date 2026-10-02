@@ -1,3 +1,4 @@
+import { boundedQueueOperation } from '../../lib/queue-bounds';
 import type { CommunicationMessage } from '../../lib/communications-contract';
 import { Queue, Worker, UnrecoverableError, type Job } from 'bullmq';
 import { redisConnection, withTenant } from '../../lib/hr-background';
@@ -17,7 +18,7 @@ export function communicationsQueue() { if (!queue) {
     queue.on('error', () => console.error('[Communications] Dispatch connection unavailable.'));
 } return queue; }
 export async function enqueueMessage(tenantId: string, messageId: string, scheduledAt?: string | null) {
-    return communicationsQueue().add('send', { tenantId, messageId }, { jobId: `message-${messageId}`, delay: Math.max(0, new Date(scheduledAt || 0).getTime() - Date.now()) });
+    return boundedQueueOperation(communicationsQueue().add('send', { tenantId, messageId }, { jobId: `message-${messageId}`, delay: Math.max(0, new Date(scheduledAt || 0).getTime() - Date.now()) }));
 }
 export function classifyDelivery(result: ProviderResult, attempt: number): {
     status: 'sent' | 'queued' | 'failed';
@@ -101,3 +102,5 @@ export function startCommunicationsWorker() {
         void reconcileFailedJob(job).catch(() => console.error('[Communications] Failed-job reconciliation unavailable.')); });
     return worker;
 }
+
+export async function closeCommunicationsQueue(){await queue?.close();}
