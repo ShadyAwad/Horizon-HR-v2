@@ -877,6 +877,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     return () => cancelAnimationFrame(frame);
   }, [activeTab]);
   const [rosterSubview, setRosterSubview] = useState<'schedule' | 'swaps' | 'approvals' | 'leave' | 'goals'>('schedule');
+  const [communicationsInitialView, setCommunicationsInitialView] = useState<'email' | 'meetings'>('email');
   const [expandedRosterDate, setExpandedRosterDate] = useState<string | null>(null);
   const [leaveRequestSignal, setLeaveRequestSignal] = useState(0);
   const [leaveDeepLink, setLeaveDeepLink] = useState<LeaveDeepLink | null>(null);
@@ -948,6 +949,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [loanDeductionsApplied, setLoanDeductionsApplied] = useState(0);
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
+  const [grievancesInitialView,setGrievancesInitialView] = useState<'mine'|'inbox'>('mine');
   const [showResignationsPanel, setShowResignationsPanel] = useState(false);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [adminFeedPosts, setAdminFeedPosts] = useState<FeedPost[]>([]);
@@ -1480,7 +1482,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     recordDevInteraction(`module-switch:${id}`, () => {
       setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
       if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
-      if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); return; }
+      if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); setGrievancesInitialView('mine'); return; }
       if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
       const workspace = getWorkspaceDescriptor(id);
       if (workspace) setActiveTab(workspace.targetTab);
@@ -1584,7 +1586,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       selectNavigationItem(navigationId);
       window.requestAnimationFrame(() => {
         const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        document.getElementById(elementId)?.scrollIntoView({
+        const element = document.getElementById(elementId);
+        if (element instanceof HTMLDetailsElement) element.open = true;
+        element?.scrollIntoView({
           block: 'center',
           behavior: reduceMotion ? 'auto' : 'smooth',
         });
@@ -1880,6 +1884,44 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           pinnable: true,
           recommendedPriority: 4,
           contextId: 'profile',
+        },
+        {
+          id: 'router:payslips', type: 'internal_view', group: 'quickActions',
+          label: text('My payslips', 'قسائم راتبي'), description: text('Open personal payroll statements.', 'فتح قسائم الراتب الشخصية.'),
+          keywords: ['payslips', 'مفردات المرتب'], icon: <User className="h-5 w-5" />,
+          execute: () => selectNavigationItem('payroll'), allowed: explicitCommandPermissions.has('payroll.view_self'), contextId: 'payroll',
+        },
+        {
+          id: 'router:my-assets', type: 'internal_view', group: 'quickActions',
+          label: text('My equipment', 'عهدتي'), description: text('Open equipment assigned to you.', 'فتح المعدات المسندة إليك.'),
+          keywords: ['my assets', 'my equipment', 'عهدتي'], icon: <User className="h-5 w-5" />,
+          execute: () => revealControl('profile', 'stanza-my-equipment'), allowed: true, contextId: 'profile',
+        },
+        {
+          id: 'router:grievance-inbox', type: 'internal_view', group: 'quickActions',
+          label: text('Grievance inbox', 'صندوق الشكاوى'), description: text('Open authorized case inbox.', 'فتح صندوق القضايا المصرح بها.'),
+          keywords: ['grievance inbox', 'صندوق الشكاوى'], icon: <User className="h-5 w-5" />,
+          execute: () => { selectNavigationItem('grievances'); setGrievancesInitialView('inbox'); },
+          allowed: ['grievances.view','grievances.review'].some(p=>explicitCommandPermissions.has(p)), contextId: 'grievances',
+        },
+        {
+          id: 'router:attendance', type: 'internal_view', group: 'quickActions',
+          label: text('Attendance history', 'سجل الحضور'), description: text('Open attendance history controls.', 'فتح أدوات سجل الحضور.'),
+          keywords: ['attendance history', 'سجل الحضور'], icon: <Calendar className="h-5 w-5" />,
+          execute: () => revealControl('geofence', 'stanza-attendance-history'), allowed: true, contextId: 'geofence',
+        },
+        {
+          id: 'router:goals', type: 'internal_view', group: 'quickActions',
+          label: text('My goals and tasks', 'أهدافي ومهامي'), description: text('Open roster goals.', 'فتح أهداف الجدول.'),
+          keywords: ['goals', 'tasks', 'مهامي'], icon: <Calendar className="h-5 w-5" />,
+          execute: () => openRosterView('goals'), allowed: explicitCommandPermissions.has('roster.goals.view_self'), contextId: 'roster',
+        },
+        {
+          id: 'router:meetings', type: 'internal_view', group: 'quickActions',
+          label: text('My meetings', 'اجتماعاتي'), description: text('Open communications meetings.', 'فتح اجتماعات التواصل.'),
+          keywords: ['meetings', 'اجتماعاتي'], icon: <Calendar className="h-5 w-5" />,
+          execute: () => { setCommunicationsInitialView('meetings'); selectNavigationItem('communications'); },
+          allowed: canViewCommunications && explicitCommandPermissions.has('communications.meetings.view'), contextId: 'communications',
         },
         {
           id: 'attendance:open-clock',
@@ -5433,7 +5475,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 </div>}
 
                 {/* Tab Contents */}
-                {activeTab === 'communications' && canViewCommunications && <Suspense fallback={<p>Loading Communications...</p>}><CommunicationsPanel /></Suspense>}
+                {activeTab === 'communications' && canViewCommunications && <Suspense fallback={<p>Loading Communications...</p>}><CommunicationsPanel initialView={communicationsInitialView} /></Suspense>}
                 {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
@@ -6694,10 +6736,10 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                           />
                         </Suspense>
                       ) : showGrievancesPanel ? (
- <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
+ <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} initialView={grievancesInitialView} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                         <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
+                         <div id="stanza-my-equipment" className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
                            <Suspense fallback={<div className="min-h-28 animate-pulse rounded-lg bg-emerald-500/5" />}>
                              <MyEquipmentPanel />
                            </Suspense>

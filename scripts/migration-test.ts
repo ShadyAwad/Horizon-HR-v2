@@ -83,6 +83,7 @@ try {
     console.log('PASS populated migration replay preserves business records');
     run('scripts/demo-seed-test.ts', [], { STANZA_DEMO_ENV: 'true' });
     if (process.argv.includes('--with-integration')) {
+        run('scripts/semantic-router-integration-test.ts');
         run('scripts/grievances-migration-test.ts');
         run('scripts/grievances-test.ts');
         run('scripts/communications-test.ts');

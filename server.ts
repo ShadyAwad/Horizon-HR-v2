@@ -60,6 +60,7 @@ import { registerAssetQrLabelRoutes } from './src/server/qr/asset-qr-label-route
 import { registerResignationRoutes } from './src/server/resignations/resignation-routes';
 import { registerNotificationSettingsRoutes } from './src/server/notifications/notification-settings-routes';
 import { registerGrievanceRoutes } from './src/server/grievances/grievance-routes';
+import { registerIntelligentRouterRoutes } from './src/server/intelligent-router/routes';
 import { registerSystemRoutes } from './src/server/system/system-routes';
 import { registerMapTileRoutes } from './src/server/system/map-tile-routes';
 import { registerCompanyFeedRoutes } from './src/server/feed/company-feed-routes';
@@ -3109,6 +3110,7 @@ registerPayrollRoutes(app, {
 });
 
 registerGrievanceRoutes(app, {standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
+registerIntelligentRouterRoutes(app, {standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
 
 registerPayrollExportRoute(app, {
   standardAuth: demoAuth,

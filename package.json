@@ -75,7 +75,11 @@
     "migrate:production": "node dist/migrate.cjs",
     "test:operations": "tsx scripts/operations-test.ts",
     "test:deployment": "tsx scripts/migration-test.ts --operations",
-    "test:containers": "node scripts/container-operations-test.mjs"
+    "test:containers": "node scripts/container-operations-test.mjs",
+    "test:semantic-router": "tsx scripts/semantic-router-test.ts && tsx scripts/semantic-router-client-test.ts && tsx scripts/semantic-router-evaluate.ts",
+    "evaluate:semantic-router": "tsx scripts/semantic-router-evaluate.ts",
+    "benchmark:semantic-router": "tsx scripts/semantic-router-benchmark.ts",
+    "db:seed:router": "tsx scripts/semantic-router-seed.ts"
   },
   "dependencies": {
     "@lexical/history": "^0.46.0",

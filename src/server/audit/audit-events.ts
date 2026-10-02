@@ -19,6 +19,8 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
+  'router.example_approved': {canonicalAction:'router.example_approved',module:'workspace',summary:'Routing example approved',metadataKeys:['intentKey','embeddingModel','embeddingVersion','duplicate']},
+  'router.example_rejected': {canonicalAction:'router.example_rejected',module:'workspace',summary:'Routing example rejected'},
  'grievance.department_changed': {canonicalAction:'grievance.department_changed',module:'grievances',summary:'Grievance department changed',metadataKeys:['previousDepartment','department']},
  'grievance.submitted': {canonicalAction:'grievance.submitted',module:'grievances',summary:'Grievance submitted',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
  'grievance.triaged': {canonicalAction:'grievance.triaged',module:'grievances',summary:'Grievance triaged',metadataKeys:['previousStatus','newStatus','previousAssignee','assignee','previousDepartment','department','previousPriority','priority','confidentiality','messageId','attachmentId','enabled']},
@@ -272,6 +274,8 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
+  'router.example_approved': ['intentKey','embeddingModel','embeddingVersion','duplicate'],
+  'router.example_rejected': [],
   ...Object.fromEntries(Object.entries(DEFINITIONS).filter(([key]) => key.startsWith('grievance.')).map(([key, value]) => [key, value.metadataKeys || []])),
   'communications.email.queued':['status','code'],
   'communications.email.cancelled':['status','code'],

@@ -16,6 +16,8 @@ import { cn } from '../../lib/utils';
 import { normaliseRecentCommandIds } from './command-palette-state';
 import { searchCommands } from './command-search';
 import type { CommandGroup, StanzaCommand } from './command-palette-types';
+import { useIntelligentRouter } from './useIntelligentRouter';
+import { RouterReview } from './RouterReview';
 
 type DisplayGroup = CommandGroup | 'recent';
 
@@ -72,6 +74,8 @@ export function CommandPalette({
   const resultsRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
   const [query, setQuery] = useState('');
+  const [showReview,setShowReview] = useState(false);
+  const routerText = (en: string, ar: string) => isRtl ? ar : en;
   const [showAll, setShowAll] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [keyboardModality, setKeyboardModality] = useState(!isMobileLayout);
@@ -89,6 +93,8 @@ export function CommandPalette({
     () => searchCommands(commands, query, { recentCommandIds: validRecentIds, currentContextId }),
     [commands, currentContextId, query, validRecentIds],
   );
+  const router = useIntelligentRouter(query, orderedResults.length, commands);
+  const executeCommand = (command: StanzaCommand) => { void router.confirm(command); onExecute(command); };
   const suggestedIds = useMemo(() => {
     const ids = new Set<string>(validRecentIds);
     const quickActions = orderedResults.filter((command) => command.group === 'quickActions').slice(0, 4);
@@ -117,7 +123,7 @@ export function CommandPalette({
     }
 
     for (const group of GROUP_ORDER) {
-      const matches = orderedResults.filter((command) => (
+      const matches = (orderedResults.length ? orderedResults : router.routedCommands).filter((command) => (
         command.group === group
         && (query.trim() || !recentSet.has(command.id))
         && (query.trim() || showAll || suggestedIds.has(command.id))
@@ -125,7 +131,7 @@ export function CommandPalette({
       if (matches.length) groups.push({ id: group, commands: matches });
     }
     return groups;
-  }, [commands, orderedResults, query, showAll, suggestedIds, validRecentIds]);
+  }, [commands, orderedResults, query, showAll, suggestedIds, validRecentIds, router.routedCommands]);
   const flatResults = useMemo(
     () => groupedResults.flatMap((group) => group.commands),
     [groupedResults],
@@ -210,7 +216,7 @@ export function CommandPalette({
       moveSelection(flatResults.length - 1);
     } else if (event.key === 'Enter' && !event.repeat && selectedCommand) {
       event.preventDefault();
-      onExecute(selectedCommand);
+      executeCommand(selectedCommand);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       onClose();
@@ -313,6 +319,15 @@ export function CommandPalette({
           )}
         </div>
 
+        {query.trim() && !orderedResults.length && <div className="border-b p-3 text-xs" aria-live="polite">
+          <p>{router.busy ? routerText('Finding a Stanza command…','جارٍ البحث عن أمر…') : router.result?.outcome === 'ambiguous' ? routerText('Choose the intended command.','اختر الأمر المقصود.') : router.result?.outcome === 'provider_unavailable' ? routerText('Provider unavailable. Try a known command.','المزود غير متاح. جرّب أمرًا معروفًا.') : router.result?.outcome === 'unauthorized' || router.result?.outcome === 'matched' && !router.routedCommands.length ? routerText('This capability is unavailable for your account.','هذه الإمكانية غير متاحة لحسابك.') : router.result?.outcome === 'matched' ? routerText(`Suggested command (${router.result.method}); review before opening.`,`أمر مقترح (${router.result.method})؛ راجعه قبل الفتح.`) : routerText('Ask Stanza… No approved command found yet.','اسأل Stanza… لم يتم العثور على أمر معتمد.')}</p>
+          {router.status?.reasoningState === 'ready' && <label className="mt-2 block"><input type="checkbox" checked={router.allowReasoning} onChange={e=>router.setAllowReasoning(e.target.checked)} /> {routerText('Allow AI interpretation of this query','السماح للذكاء الاصطناعي بتفسير هذا الطلب')}</label>}
+          {router.status && !['ready','disabled'].includes(router.status.reasoningState) && <p>{routerText('AI interpretation is unavailable for this account or deployment.','تفسير الذكاء الاصطناعي غير متاح لهذا الحساب أو النظام.')}</p>}
+          {router.status?.learningEnabled && router.allowReasoning && <label className="mt-2 block"><input type="checkbox" checked={router.learn} onChange={e=>router.setLearn(e.target.checked)} /> {routerText('Save this query for admin review after I choose the command','حفظ هذا الطلب لمراجعة المسؤول بعد اختيار الأمر')}</label>}
+        </div>}
+        {router.status?.canReview && <button type="button" className="p-2 text-xs" onClick={()=>setShowReview(v=>!v)}>{routerText('Review routing examples','مراجعة أمثلة التوجيه')}</button>}
+        {showReview && <RouterReview isRtl={isRtl} onClose={()=>setShowReview(false)} />}
+
         <div
           ref={resultsRef}
           id={resultsId}
@@ -346,7 +361,7 @@ export function CommandPalette({
                         role="option"
                         aria-selected={selected}
                         onMouseMove={() => setSelectedIndex(resultIndex)}
-                        onClick={() => onExecute(command)}
+                        onClick={() => executeCommand(command)}
                         className={cn(
                           'stanza-interactive-control grid min-h-14 w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent px-2.5 py-2 text-start text-[var(--stanza-menu-text)] outline-none motion-reduce:transition-none sm:gap-3 sm:px-3',
                           selected
