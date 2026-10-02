@@ -31,13 +31,15 @@ system `employee` role. These checks confirm that an employee cannot manage
 roles or approve payroll. The suite does not modify roles, tenants, payroll,
 or real employee data.
 
+For complete isolated checks, build and run `npm run test:integration` with NODE_ENV=test, ALLOW_TEST_DATA_MUTATION=true and an explicit TEST_DATABASE_ALLOWLIST for the local administrative connection. This requires CREATE DATABASE permission and Redis. It creates its own database/accounts, starts fresh preview servers, checks cross-tenant role assignments, verifies active-grant login/session projections, and cleans up afterward. No existing demo credentials are needed.
+
 ## Manual tenant-isolation check
 
 Provision two dedicated local tenants and users. Authenticate as Tenant A,
 then use a record ID belonging to Tenant B in payroll, grievance, break
 request, and company-location routes. Responses must be `403`, `404`, or an
 empty scoped list, and must never return Tenant B data. Also send a mismatched
-`tenantId` in any accepted request body and confirm the authenticated token's
+`tenantId` in any accepted request body and confirm the authenticated session's
 tenant remains authoritative.
 
 ## Security notes

@@ -1,18 +1,18 @@
 {
-  "name": "react-example",
+  "name": "stanza",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev:server": "tsx watch server.ts",
-    "dev:worker": "tsx watch src/workers/hr-worker.ts",
+    "dev:server": "node --watch --import tsx server.ts",
+    "dev:worker": "node --watch --import tsx src/workers/hr-worker.ts",
     "dev": "concurrently -n \"Server,Worker\" -c \"cyan,green\" \"npm:dev:server\" \"npm:dev:worker\"",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "start": "node -e \"process.env.NODE_ENV='production'; require('./dist/server.cjs')\"",
-    "preview": "vite preview",
+    "preview": "npm run preview:frontend",
     "preview:frontend": "vite preview",
     "preview:full": "npm run build && npm start",
-    "clean": "rm -rf dist server.js",
+    "clean": "node scripts/clean.mjs",
     "lint": "tsc --noEmit",
     "test:smoke": "tsx scripts/smoke-test.ts",
     "test:security": "tsx scripts/security-test.ts",
@@ -52,7 +52,7 @@
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
-    "seed:demo:organisation": "tsx scripts/seed-demo.ts --organisation",
+    "seed:demo:organisation": "npm run db:seed:demo",
     "db:reset:demo": "tsx scripts/reset-demo.ts",
     "assets:pwa": "node scripts/generate-pwa-icons.mjs",
     "analyze": "vite build --mode analyze",
@@ -60,10 +60,19 @@
     "check": "npm run lint && npm run build && npm audit",
     "check:security": "npm run lint && npm run build && npm audit && npm run test:security",
     "test:appearance": "tsx scripts/appearance-test.ts",
-    "test:grievances": "tsx scripts/grievances-migration-test.ts && tsx scripts/grievances-test.ts"
+    "test:grievances": "tsx scripts/grievances-migration-test.ts && tsx scripts/grievances-test.ts",
+    "test:hiring-role-ux": "tsx scripts/hiring-role-ux-test.ts",
+    "test:demo-seed": "tsx scripts/demo-seed-test.ts",
+    "test:demo-fixtures": "tsx scripts/demo-fixtures-test.ts",
+    "test:demo-isolation": "tsx scripts/demo-isolation-test.ts",
+    "test:migrations": "tsx scripts/migration-test.ts",
+    "test:integration": "tsx scripts/migration-test.ts --with-integration",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "test:rendering": "tsx scripts/chrome-regression-test.ts && tsx scripts/demo-motion-test.ts && tsx scripts/lanyard-isolation-test.ts && tsx scripts/login-animation-audit-test.ts && tsx scripts/login-autofill-diagnostic-test.ts && tsx scripts/login-autofill-style-test.ts && tsx scripts/login-canvas-scheduler-test.ts && tsx scripts/login-control-diagnostic-test.ts",
+    "test:smoke:isolated": "tsx scripts/migration-test.ts --with-smoke",
+    "test:logging": "tsx scripts/logging-test.ts"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@lexical/history": "^0.46.0",
     "@lexical/link": "^0.46.0",
     "@lexical/list": "^0.46.0",
@@ -118,7 +127,9 @@
     "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.22.4",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "typescript": "~5.8.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

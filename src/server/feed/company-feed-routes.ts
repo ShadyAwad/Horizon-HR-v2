@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import crypto from 'crypto';
 import type express from 'express';
 import multer from 'multer';
@@ -328,7 +329,7 @@ export function registerCompanyFeedRoutes(
           return res.status(413).json({ success: false, error: 'Image must be 8 MB or smaller.' });
         }
         const statusCode = Number((error as { statusCode?: number }).statusCode) || 422;
-        if (!isProduction()) console.error('[Company Feed Image] Upload failed:', error);
+        if (!isProduction()) logServerError('[Company Feed Image] Upload failed:', error);
         return res.status(statusCode).json({
           success: false,
           error: statusCode === 400 ? (error as Error).message : 'Unable to process this image.',
@@ -394,7 +395,7 @@ export function registerCompanyFeedRoutes(
         res.setHeader('Content-Disposition', 'inline');
         return res.send(contents);
       } catch (error) {
-        if (!isProduction()) console.error('[Company Feed Image] Read failed:', error);
+        if (!isProduction()) logServerError('[Company Feed Image] Read failed:', error);
         return res.status(404).end();
       }
     },
@@ -431,7 +432,7 @@ export function registerCompanyFeedRoutes(
           draft: presentCompanyFeedDraft(draft),
         });
       } catch (error) {
-        console.error('[Company Feed] Failed to load private draft:', error);
+        logServerError('[Company Feed] Failed to load private draft:', error);
         return res.status(500).json({ success: false, error: 'Unable to load company feed draft.' });
       }
     },
@@ -561,7 +562,7 @@ export function registerCompanyFeedRoutes(
       } catch (error) {
         const statusCode = Number((error as { statusCode?: number }).statusCode) || 500;
         if (statusCode !== 500) return res.status(statusCode).json({ success: false, error: (error as Error).message });
-        console.error('[Company Feed] Failed to save private draft:', error);
+        logServerError('[Company Feed] Failed to save private draft:', error);
         return res.status(500).json({ success: false, error: 'Unable to save company feed draft.' });
       }
     },
@@ -597,7 +598,7 @@ export function registerCompanyFeedRoutes(
         });
         return res.json({ success: true, discarded });
       } catch (error) {
-        console.error('[Company Feed] Failed to discard private draft:', error);
+        logServerError('[Company Feed] Failed to discard private draft:', error);
         return res.status(500).json({ success: false, error: 'Unable to discard company feed draft.' });
       }
     },
@@ -957,7 +958,7 @@ export function registerCompanyFeedRoutes(
           });
         }
   
-        console.error('[Company Feed] Failed to create post:', error);
+        logServerError('[Company Feed] Failed to create post:', error);
         res.status(500).json({ success: false, error: 'Unable to create company feed post' });
       }
     },
@@ -1036,7 +1037,7 @@ export function registerCompanyFeedRoutes(
   
         res.json({ success: true, posts });
       } catch (error) {
-        console.error('[Company Feed] Failed to load visible posts:', error);
+        logServerError('[Company Feed] Failed to load visible posts:', error);
         res.status(500).json({ success: false, error: 'Unable to load company feed' });
       }
     },
@@ -1111,7 +1112,7 @@ export function registerCompanyFeedRoutes(
   
         res.json({ success: true, posts });
       } catch (error) {
-        console.error('[Company Feed] Failed to load admin posts:', error);
+        logServerError('[Company Feed] Failed to load admin posts:', error);
         res.status(500).json({ success: false, error: 'Unable to load company feed posts' });
       }
     },
@@ -1234,7 +1235,7 @@ export function registerCompanyFeedRoutes(
           });
         }
   
-        console.error('[Company Feed] Failed to update post status:', error);
+        logServerError('[Company Feed] Failed to update post status:', error);
         res.status(500).json({ success: false, error: 'Unable to update company feed post status' });
       }
     },

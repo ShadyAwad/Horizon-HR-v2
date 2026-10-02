@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 
@@ -139,7 +140,7 @@ export function registerNotificationSettingsRoutes(
 
         res.json({ success: true, settings });
       } catch (error) {
-        console.error('[Notifications] Failed to load settings:', error);
+        logServerError('[Notifications] Failed to load settings:', error);
         res.status(500).json({ success: false, error: 'Unable to load notification settings' });
       }
     },
@@ -257,7 +258,7 @@ export function registerNotificationSettingsRoutes(
 
         res.json({ success: true, settings: savedSettings });
       } catch (error) {
-        console.error('[Notifications] Failed to save settings:', error);
+        logServerError('[Notifications] Failed to save settings:', error);
         res.status(500).json({ success: false, error: 'Unable to save notification settings' });
       }
     },

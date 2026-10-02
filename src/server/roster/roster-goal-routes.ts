@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -18,7 +19,7 @@ const isUuid = (value: unknown): value is string => typeof value === 'string' &&
 
 function sendError(res: express.Response, error: unknown, fallback: string) {
   const value = error as { statusCode?: number; message?: string };
-  if (!value.statusCode || value.statusCode >= 500) console.error('[Roster goals]', error);
+  if (!value.statusCode || value.statusCode >= 500) logServerError('[Roster goals]', error);
   res.status(value.statusCode || 500).json({ success: false, error: value.statusCode ? value.message : fallback });
 }
 

@@ -1,104 +1,74 @@
-## Local development and production preview
+# Stanza
 
-Configure PostgreSQL/Redis and the other required server settings in your local
-`.env` before starting. Keep `VITE_API_BASE_URL` empty for same-origin API requests.
+Stanza is a multi-tenant workforce operations application built as a React/Express modular monolith. It supports attendance and breaks, leave/rosters, employee organisation and roles, hiring, expenses/payroll, equipment, performance goals, grievance cases, a company feed and private Communications workflows. Workspace Composer presents authorized summaries of those modules.
 
-| Command | URL by default | What runs |
-|---|---|---|
-| `npm run dev` | `http://localhost:3000/` | Express APIs, Vite middleware/HMR and the background worker |
-| `npm run build`, then `npm start` | `http://localhost:3000/` | Built frontend and Express APIs from one production-mode server |
-| `npm run preview:full` | `http://localhost:3000/` | Builds, then runs `npm start` |
-| `npm run preview:frontend` (or existing `npm run preview`) | `http://localhost:4173/` | Vite's frontend-only preview; no Express API |
+The project is a portfolio application with fictional demo data. Its security boundaries and deployment requirements are explicit; it is not a claim of certification or operational readiness for real employee records.
 
-For full-stack production testing, stop the dev server using port 3000, then run:
+## Architecture and stack
 
-```powershell
-npm run preview:full
-```
+- React 19, TypeScript, Vite and Tailwind CSS; lazy-loaded feature modules, bilingual English/Arabic UI and RTL support.
+- Express with cookie sessions, same-origin mutation protection and centralized permission/scope checks.
+- PostgreSQL/PostGIS, parameterized SQL, composite tenant foreign keys and tenant-context RLS.
+- Redis/BullMQ and a separate worker for attendance rollups, audits and Communications dispatch; Resend is optional for email.
+- Lexical for validated feed documents, WebAuthn for passkeys, private filesystem upload storage, and a demand-rendered Three/Rapier identity badge.
 
-Use **http://localhost:3000/** for Login, sessions and passkeys. The shorter
-`npm start` command reuses an existing build. Rebuild after frontend/server edits
-or changes to build-time `VITE_*` variables. Production reads `.env`; the local
-`.env.development.local` overrides apply only in development. Full production
-preview does not automatically launch the background worker.
+[Architecture](docs/architecture.md) maps domain ownership. The [request walkthrough](docs/architecture-walkthrough.md) follows frontend, API, tenant context and database execution.
 
-Express reads `PORT` (default `3000`) and serves `dist/assets`, other static assets
-and the SPA fallback after its API routes. Client routes such as `/reset-password`
-therefore still load on a direct visit or refresh. API checks include
-`/api/system/health` and `/api/auth/session`; production health is a minimal
-liveness response, so successful Login is the database-backed check.
+## Local setup
 
-Vite preview remains useful for frontend-only rendering diagnostics. It cannot
-authenticate or restore sessions by itself. Do not set a cross-origin production
-API URL, broaden CORS, or relax cookie/CSRF settings to work around this; use the
-Express preview instead. There is deliberately no preview proxy.
-
-### Local origins and passkeys
-
-The default settings are `APP_BASE_URL=http://localhost:3000`,
-`WEBAUTHN_RP_ID=localhost`, and `WEBAUTHN_ORIGIN=http://localhost:3000`.
-WebAuthn verification uses the exact configured origin, including the port;
-the RP ID is a hostname, without a port. Using `localhost:4173` is a different
-origin and does not match the default passkey configuration.
-
-If you deliberately run Express on another local port, set `PORT`,
-`APP_BASE_URL` and `WEBAUTHN_ORIGIN` consistently for that server process and
-open that exact URL. Keep the RP ID `localhost` when using the localhost host.
-For example, while leaving development on 3000:
+Use Node.js 22.12 or newer, npm, PostgreSQL 15 or newer with PostGIS available, and Redis. Create an isolated local database, then:
 
 ```powershell
-$env:PORT='3001'
-$env:APP_BASE_URL='http://localhost:3001'
-$env:WEBAUTHN_ORIGIN='http://localhost:3001'
-npm run preview:full
+npm ci
+Copy-Item .env.example .env
 ```
 
-Use a separate terminal for these overrides, or remove them afterwards before
-returning to port 3000. Public deployments still use their configured HTTPS origin.
-No authentication, same-origin, CORS, cookie or WebAuthn validation is changed by
-these preview scripts.
+Configure DATABASE_URL privately. Set APP_BASE_URL and WebAuthn origin/RP ID for the browser origin; leave VITE_API_BASE_URL empty for same-origin requests. Redis defaults to 127.0.0.1:6379; REDIS_URL overrides host/port. Email and extraction adapters are optional. Secrets belong only in the ignored environment, never in VITE_ variables.
 
-## Demo workspace
-
-Architecture references:
-
-- [`docs/architecture.md`](docs/architecture.md) maps runtime and domain ownership.
-- [`docs/architecture-walkthrough.md`](docs/architecture-walkthrough.md) follows real Stanza requests from React through RLS-backed SQL.
-
-Create or refresh the safe local demo workspace:
+For a fresh database, apply the bootstrap schema, then the migrations. Existing databases need only the migration command. Stop the application and back up existing databases first:
 
 ```powershell
-npm run db:seed:demo
+psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f src/db/schema.sql
+if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed" }
+npm run db:migrate
 ```
 
-Remove only the `stanza-demo` tenant and its dependent demo data:
+The runner sorts dated filenames and resolves the same-day shift-swap dependency explicitly; plain alphabetical order is insufficient. Migration history remains separate and additive. It stops on the first error and rolls back that file's transaction.
 
-```powershell
-npm run db:reset:demo
-```
+Back up existing databases before deployment migrations. The application does not run migrations automatically. Restart server and worker together after schema changes. The bootstrap currently omits some domain tables, so fresh installs also require `npm run db:migrate`. Test migrations only on disposable databases; do not reset a development database merely to simulate installation.
 
-Demo accounts use the emails seeded by the script. Set `DEMO_PASSWORD` only in
-your local demo environment; it is intentionally never printed or documented.
-Demo accounts are public portfolio fixtures. Do not use real sensitive data in demo mode.
+## Running the application
 
-## Local backend smoke test
+| Command | Behavior |
+| --- | --- |
+| npm run dev | Express APIs + Vite middleware/HMR and the BullMQ worker; default localhost:3000 |
+| npm run dev:server | Express/Vite only, using Node watch with the tsx loader; asynchronous processing needs a worker |
+| npm run dev:worker | Worker only, using the same watcher/loader; configured PostgreSQL and Redis required |
+| npm run build | Bundles browser assets and dist/server.cjs |
+| npm start | Runs the built full-stack server with production configuration |
+| npm run preview:full | Builds, then starts the full-stack production preview |
+| npm run preview:frontend | Vite static preview, default localhost:4173; no backend or worker |
+| npm run preview | Compatibility alias for preview:frontend |
+| npm run clean | Removes only generated dist and legacy server.js |
 
-Start the local Stanza server, then set `SMOKE_TEST_EMAIL` and
-`SMOKE_TEST_PASSWORD` in your uncommitted `.env` to a local `hr_admin` account.
+Production preview serves frontend and APIs on one origin. Run the worker separately. For an alternate local port, set PORT, APP_BASE_URL and WEBAUTHN_ORIGIN to the same port; keep localhost as RP ID. Do not mix a frontend-only preview with API/session verification.
 
-```powershell
-npm run test:smoke
-```
+## Tests
 
-The script checks health, login, notification settings, break requests,
-clock-in validation/auth errors, payroll, company feed, grievances, and signup
-validation. It uses an HttpOnly session cookie, never prints credentials or tokens,
-and labels generated records `Smoke Test`. It cancels its temporary break
-request; feed drafts and low-priority grievances remain as harmless fixtures
-because those routes do not provide deletion endpoints.
+`npm run lint` checks TypeScript and `npm run build` verifies production bundles. CI runs infrastructure-free logic, source-contract and lifecycle tests; [CI documentation](docs/ci.md) explains the boundary. Domain scripts are listed in package.json. `npm run test:migrations` creates and removes a uniquely named temporary database and verifies bootstrap, replay and demo integrity; it requires CREATE DATABASE permission. `npm run test:integration` adds isolated database/Redis/HTTP suites and fresh production servers, requires a completed build, and uses no existing demo accounts. `npm run test:smoke:isolated` runs the same temporary-database setup with backend smoke and reliability checks only. Both require the test mutation guard and an explicit allowlist for the administrative connection.
 
-## Grievance case management
+Database/HTTP/Redis integration suites require disposable fixtures, a running configured server when specified, NODE_ENV=test, ALLOW_TEST_DATA_MUTATION=true and an explicit TEST_DATABASE_ALLOWLIST. HTTP targets must also pass the local/allowlist guard. Never use production credentials or run mutation suites on production. [Security testing](docs/security-testing.md) covers session and tenant checks.
 
-See [implementation and operations](docs/grievance-case-management.md) and
-[validation report](docs/grievance-case-management-validation.md) for Prompt 6,
-including migration order, permissions, private attachment storage and current limits.
+Attendance, Communications and grievance suites create disposable tenants and use real database/queue behavior with fake email providers. Fixture cleanup runs on failure. The demo integrity suite intentionally reconciles the known demo tenant and probes reset in a rolled-back transaction; use its separate demo guard configuration.
+
+## Demo company
+
+[Demo seed operations](docs/demo-seed.md) documents Northstar Systems, the three role accounts, safety flags, stable fixtures, relative dates and reset behavior. Run `npm run db:seed:demo` explicitly after migrations. `seed:demo:organisation` is a compatibility alias for the full guarded seed; it does not restrict fixture scope. Existing account passwords are preserved; new accounts use a privately configured DEMO_PASSWORD. Reset removes owned fixtures while retaining the tenant and primary login credentials. Demo data never grants runtime authority or queues external delivery.
+
+## Security and deployment
+
+Server-side sessions, permissions, scopes and tenant ownership determine access; browser roles/layouts are presentation only. Set the tenant context for RLS inside each transaction, and deploy with a restricted database runtime role. Confidential case notes, private drafts and uploaded files use authorized reads rather than public static paths.
+
+Deploy server, worker, PostgreSQL/PostGIS and Redis together. Use HTTPS and exact origin/passkey configuration; TRUST_PROXY_HOPS must match the trusted proxy topology. Development identity headers and temporary tunnel allowances are refused in production. Mount durable private upload storage and back it up alongside the database. The production health endpoint intentionally returns minimal status rather than internal queue details.
+
+See [Communications](docs/communications.md), [attendance policy](docs/attendance-policy.md), [grievance cases](docs/grievance-case-management.md), [appearance controls](docs/appearance-polish.md), [Workspace Composer](docs/workspace-composer.md), and the [threat model](security-audit/threat-model.md) for domain-specific constraints. Outstanding debt includes the large Dashboard controller and server bootstrap, filesystem/object-storage deployment choices, provider reconciliation, and broader browser/hardware coverage. Legacy auth/catalog foundation code still performs runtime DDL; deployment under a restricted runtime role needs separate privilege verification.

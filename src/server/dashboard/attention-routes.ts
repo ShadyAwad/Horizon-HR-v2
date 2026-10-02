@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import {handlerVisibilitySql} from '../grievances/grievance-policy';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
@@ -135,7 +136,7 @@ export function registerDashboardAttentionRoutes(
         generatedAt: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('[Dashboard] Failed to load attention counts:', error);
+      logServerError('[Dashboard] Failed to load attention counts:', error);
       res.status(500).json({ success: false, error: 'Unable to load dashboard attention counts' });
     }
   });

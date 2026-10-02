@@ -37,15 +37,18 @@ for (const permission of permissionDefinitions) {
 }
 assert.equal(getPermissionDefinition('roles.manage')?.protected, true);
 assert.equal(getPermissionDefinition('roles.manage')?.delegatable, false);
-assert.match(demoSeed, /seedOrganisationDemoData/);
-assert.match(demoSeed, /organisationOnly = process\.argv\.includes\('--organisation'\)/);
-assert.match(demoSeed, /STANZA_DEMO_ENV !== 'true'/);
-assert.match(demoSeed, /ALLOW_DEMO_DATA_MUTATION !== 'true'/);
-assert.match(demoSeed, /assertDatabaseMutationSafety\(process\.env\.DATABASE_URL, 'Demo seed', true, true\)/);
-for (const value of ['People & Operations', 'Product & Engineering', 'Finance & Administration', 'People Operations', 'Talent Acquisition', 'Platform Engineering', 'Finance Operations']) {
-  assert.match(demoSeed, new RegExp(value.replace(/[&]/g, '\\&')));
+assert.match(demoSeed, /seedOrganisation/);
+assert.ok(demoSeed.includes("process.argv.includes('--organisation')"));
+assert.match(demoSeed, /STANZA_DEMO_ENV\s*!==\s*'true'/);
+assert.match(demoSeed, /ALLOW_DEMO_DATA_MUTATION\s*!==\s*'true'/);
+assert.match(demoSeed, /assertDatabaseMutationSafety\(process\.env\.DATABASE_URL,\s*'Demo seed',\s*true,\s*true\)/);
+const demoFixtures = await readFile('scripts/demo/core.ts', 'utf8');
+for (const value of ['Human Resources', 'Engineering', 'Finance', 'Operations', 'Product', 'Sales & Success', 'IT', 'Executive']) {
+  assert.ok(demoFixtures.includes(value), value);
 }
-assert.match(packageJson, /"seed:demo:organisation": "tsx scripts\/seed-demo\.ts --organisation"/);
+const packageScripts = JSON.parse(packageJson).scripts;
+assert.equal(packageScripts['seed:demo:organisation'], 'npm run db:seed:demo');
+assert.equal(packageScripts['db:seed:demo'], 'tsx scripts/seed-demo.ts');
 
 for (const table of ['organisation_job_titles', 'organisation_departments', 'organisation_teams', 'organisation_team_memberships', 'permission_delegations']) {
   assert.match(migration, new RegExp(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`), `${table} must enable RLS`);
@@ -109,7 +112,8 @@ assert.match(routes, /await client\.query\('BEGIN'\)/);
 assert.match(routes, /await client\.query\('ROLLBACK'\)/);
 assert.match(routes, /app\.put\('\/api\/hr\/organisation\/roles\/:roleId\/permissions', rateLimiter, standardAuth, mutationGuard/);
 assert.match(routes, /assertAllowedFields\(req\.body, \['permissionKeys'\]\)/);
-assert.match(routes, /validatePermissionKeys\(req\.body\.permissionKeys\)/);
+assert.match(routes, /validatePermissionKeys\(permissionKeys\.filter/);
+assert.match(routes, /!getPermissionDefinition\(key\)&&!previousSet\.has\(key\)/);
 assert.match(routes, /Permission keys must be recognised registry keys\./);
 assert.match(routes, /assertPermissionMutationAuthority/);
 assert.match(routes, /await assertCompanyPermission\(client, req, 'roles\.manage'\)/);
@@ -187,7 +191,9 @@ assert.match(rolesPanel, /role-assignments\/\$\{dialog\.assignment\.assignmentId
 assert.match(rolesPanel, /organisation\.systemRoleProtected/);
 assert.match(rolesPanel, /organisation\.finalAdminWarning/);
 assert.match(rolesPanel, /\['company', 'location', 'department', 'team', 'direct_reports', 'self'\]/);
-assert.match(rolesPanel, /selectedRole\.isSystem \|\| permission\.protected \|\| !permission\.delegatable/);
+const picker = await readFile('src/components/organisation/PermissionPicker.tsx','utf8');
+assert.match(rolesPanel,/disabled=\{selectedRole\.isSystem/);
+assert.match(picker,/item\.protected\|\|item\.delegatable===false\|\|item\.grantable===false/);
 assert.match(rolesPanel, /role\.isSystem && <p/);
 assert.match(rolesPanel, /role\.isActive/);
 assert.match(rolesPanel, /roleActivity/);

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
@@ -11,7 +12,7 @@ const fields = (body: unknown, allowed: string[]) => {
 };
 const send = (res: express.Response, error: unknown, fallback: string) => {
   const value = error as { statusCode?: number; message?: string };
-  if (!value.statusCode || value.statusCode >= 500) console.error('[Shift swaps]', error);
+  if (!value.statusCode || value.statusCode >= 500) logServerError('[Shift swaps]', error);
   res.status(value.statusCode || 500).json({ success: false, error: value.statusCode ? value.message : fallback });
 };
 const note = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim().slice(0, 1000) : null;

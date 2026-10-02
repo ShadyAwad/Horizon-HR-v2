@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -16,7 +17,7 @@ const text = (value: unknown, maximum = 1000) => typeof value === 'string' ? val
 
 function sendError(res: express.Response, error: unknown, fallback: string) {
   const typed = error as { statusCode?: number; message?: string };
-  if (!typed.statusCode || typed.statusCode >= 500) console.error('[Delegations]', error);
+  if (!typed.statusCode || typed.statusCode >= 500) logServerError('[Delegations]', error);
   res.status(typed.statusCode || 500).json({ success: false, error: typed.statusCode ? typed.message : fallback });
 }
 

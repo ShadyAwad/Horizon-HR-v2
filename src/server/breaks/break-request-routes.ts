@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import { attendancePolicy, lockAttendancePolicy } from '../attendance/attendance-policy';
 import { resolveScopedPermission } from '../organisation/scoped-permissions';
 import type express from 'express';
@@ -208,7 +209,7 @@ export function registerBreakRequestRoutes(
   
         res.status(201).json({ success: true, breakRequest });
       } catch (error) {
-        console.error('[Break Requests] Failed to create break request:', error);
+        logServerError('[Break Requests] Failed to create break request:', error);
         res.status((error as any).statusCode || 500).json({ success: false, error: (error as any).statusCode ? (error as Error).message : 'Unable to create break request' });
       }
     },
@@ -250,7 +251,7 @@ export function registerBreakRequestRoutes(
   
         res.json({ success: true, breakRequests });
       } catch (error) {
-        console.error('[Break Requests] Failed to load own break requests:', error);
+        logServerError('[Break Requests] Failed to load own break requests:', error);
         res.status(500).json({ success: false, error: 'Unable to load break requests' });
       }
     },
@@ -294,7 +295,7 @@ export function registerBreakRequestRoutes(
   
         res.json({ success: true, breakRequests });
       } catch (error) {
-        console.error('[Break Requests] Failed to load pending break requests:', error);
+        logServerError('[Break Requests] Failed to load pending break requests:', error);
         res.status(500).json({ success: false, error: 'Unable to load pending break requests' });
       }
     },
@@ -422,7 +423,7 @@ export function registerBreakRequestRoutes(
   
         res.json({ success: true, breakRequest });
       } catch (error) {
-        console.error('[Break Requests] Failed to review break request:', error);
+        logServerError('[Break Requests] Failed to review break request:', error);
         res.status((error as any).statusCode || 500).json({ success: false, error: (error as any).statusCode ? (error as Error).message : 'Unable to review break request' });
       }
     },
@@ -499,7 +500,7 @@ export function registerBreakRequestRoutes(
   
         res.json({ success: true, breakRequest });
       } catch (error) {
-        console.error('[Break Requests] Failed to cancel break request:', error);
+        logServerError('[Break Requests] Failed to cancel break request:', error);
         res.status(500).json({ success: false, error: 'Unable to cancel break request' });
       }
     },

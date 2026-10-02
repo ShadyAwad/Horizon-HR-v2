@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -30,7 +31,7 @@ const isActiveEmployee = async (client: PoolClient, tenantId: string, employeeId
 )).rowCount);
 const fail = (res: express.Response, error: unknown, fallback: string) => {
   const typed = error as { status?: number; code?: string; message?: string };
-  if (!typed.status || typed.status >= 500) console.error('[Performance]', error);
+  if (!typed.status || typed.status >= 500) logServerError('[Performance]', error);
   return res.status(typed.status || 500).json({ success: false, code: typed.code || 'PERFORMANCE_REQUEST_FAILED', error: typed.status ? typed.message : fallback });
 };
 const date = (value: unknown, label: string, required = false) => {

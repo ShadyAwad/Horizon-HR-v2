@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
@@ -59,7 +60,7 @@ export function registerCompanyLocationCompatibilityRoutes(
   
         res.json({ success: true, locations, coordinatesRestricted: !canViewPreciseLocations });
       } catch (error) {
-        console.error('[Company Locations] Failed to load locations:', error);
+        logServerError('[Company Locations] Failed to load locations:', error);
         res.status(500).json({ success: false, error: 'Unable to load company locations' });
       }
     },
@@ -173,7 +174,7 @@ export function registerCompanyLocationCompatibilityRoutes(
   
         res.status(201).json({ success: true, location: createdLocation });
       } catch (error) {
-        console.error('[Company Locations] Failed to create location:', error);
+        logServerError('[Company Locations] Failed to create location:', error);
         res.status(500).json({ success: false, error: 'Unable to create company location' });
       }
     },
@@ -329,7 +330,7 @@ export function registerCompanyLocationCompatibilityRoutes(
           });
         }
   
-        console.error('[Company Locations] Failed to update location:', error);
+        logServerError('[Company Locations] Failed to update location:', error);
         res.status(500).json({ success: false, error: 'Unable to update company location' });
       }
     },

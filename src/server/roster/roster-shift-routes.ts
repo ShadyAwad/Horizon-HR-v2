@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -250,7 +251,7 @@ export function registerRosterShiftRoutes(
       });
       res.json({ success: true, employees });
     } catch (error) {
-      console.error('[Roster] Failed to load employees:', error);
+      logServerError('[Roster] Failed to load employees:', error);
       res.status(500).json({ success: false, error: 'Unable to load roster employees.' });
     }
   });
@@ -303,7 +304,7 @@ export function registerRosterShiftRoutes(
       res.json({ success: true, shifts });
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 403) return res.status(403).json({ success: false, error: 'You do not have permission to view this roster.' });
-      console.error('[Roster] Failed to load shifts:', error);
+      logServerError('[Roster] Failed to load shifts:', error);
       res.status(500).json({ success: false, error: 'Unable to load roster shifts.' });
     }
   });
@@ -394,7 +395,7 @@ export function registerRosterShiftRoutes(
       if (rosterError.statusCode) {
         return res.status(rosterError.statusCode).json({ success: false, code: rosterError.code, error: rosterError.message, conflicts: rosterError.conflicts, warnings: rosterError.warnings, requiresConfirmation: rosterError.code === 'ROSTER_WARNING_CONFIRMATION_REQUIRED' });
       }
-      console.error('[Roster] Failed to save shift:', error);
+      logServerError('[Roster] Failed to save shift:', error);
       return res.status(500).json({ success: false, error: 'Unable to save roster shift.' });
     }
   }
@@ -420,7 +421,7 @@ export function registerRosterShiftRoutes(
       return res.json({ success: true, shift: result.rows[0] });
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 403) return res.status(403).json({ success: false, error: (error as Error).message });
-      console.error('[Roster] Failed to cancel shift:', error);
+      logServerError('[Roster] Failed to cancel shift:', error);
       return res.status(500).json({ success: false, error: 'Unable to cancel roster shift.' });
     }
   });

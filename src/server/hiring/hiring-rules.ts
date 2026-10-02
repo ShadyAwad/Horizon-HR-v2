@@ -1,4 +1,5 @@
-export const HIRING_STAGES = ['new', 'screening', 'hr_review', 'hiring_manager_review', 'interview', 'final_review', 'offer', 'hired', 'rejected', 'withdrawn'] as const;
+import { HIRING_STAGES } from '../../lib/hiring-stages';
+export { HIRING_STAGES };
 export const HIRING_STATUSES = ['active', 'archived'] as const;
 export const HIRING_NOTE_TYPES = ['general', 'screening', 'interview', 'decision', 'handoff'] as const;
 export const HIRING_NOTE_VISIBILITIES = ['hiring_team', 'hr_only'] as const;

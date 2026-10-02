@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
@@ -98,7 +99,7 @@ export function registerPayrollRoutes(
   
         res.json({ success: true, payroll });
       } catch (error) {
-        console.error('[Payroll] Failed to load employee payroll:', error);
+        logServerError('[Payroll] Failed to load employee payroll:', error);
         res.status(500).json({ error: 'Unable to load payroll records' });
       }
     },
@@ -153,7 +154,7 @@ export function registerPayrollRoutes(
   
         res.json({ success: true, payroll });
       } catch (error) {
-        console.error('[Payroll] Failed to load tenant payroll:', error);
+        logServerError('[Payroll] Failed to load tenant payroll:', error);
         res.status(500).json({ error: 'Unable to load payroll records' });
       }
     },
@@ -321,7 +322,7 @@ export function registerPayrollRoutes(
           return res.status(statusCode).json({ success: false, error: (error as Error).message });
         }
   
-        console.error('[Payroll] Failed to update payroll status:', error);
+        logServerError('[Payroll] Failed to update payroll status:', error);
         res.status(500).json({ success: false, error: 'Unable to update payroll status' });
       }
     },
@@ -668,7 +669,7 @@ export function registerPayrollRoutes(
           return res.status(409).json({ success: false, error: (error as Error).message });
         }
   
-        console.error('[Payroll] Failed to run payroll:', error);
+        logServerError('[Payroll] Failed to run payroll:', error);
         res.status(500).json({ error: 'Unable to run payroll' });
       }
     },

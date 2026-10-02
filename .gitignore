@@ -8,3 +8,16 @@ uploads/profile-images/
 uploads/private-grievances/
 .env*
 !.env.example
+# Local uploads and generated development artifacts
+uploads/
+server.js
+.cache/
+*.tmp.*
+*.tsbuildinfo
+*.dump
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+.idea/
+*.swp

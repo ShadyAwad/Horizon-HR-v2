@@ -13,7 +13,7 @@ npm start
 npm run dev:worker
 ```
 
-Use the Express origin (normally http://localhost:3000, or the configured PORT), not Vite's frontend-only preview. The verification instance used http://localhost:3006. Configure the existing DATABASE_URL, Redis variables, RESEND_API_KEY and EMAIL_FROM normally; never put provider credentials in Vite variables. No production fake-provider switch exists.
+Use the Express origin (normally http://localhost:3000, or the configured PORT), not Vite's frontend-only preview. Configure the existing DATABASE_URL, Redis variables, RESEND_API_KEY and EMAIL_FROM normally; never put provider credentials in Vite variables. No production fake-provider switch exists.
 
 ## Schema and isolation
 
@@ -74,9 +74,9 @@ Recent Communications and Upcoming Meetings use the existing widget catalog/data
 npm run lint
 npm run build
 $env:ALLOW_TEST_DATA_MUTATION='true'
-$env:TEST_DATABASE_ALLOWLIST='horizon_hr'
+$env:TEST_DATABASE_ALLOWLIST='<isolated database name>'
 npm run test:communications
-$env:COMMUNICATIONS_TEST_BASE_URL='http://localhost:3006'
+$env:COMMUNICATIONS_TEST_BASE_URL='http://localhost:3000'
 npm run test:communications:sessions
 npm run test:architecture
 npm run test:hr-background
@@ -87,46 +87,3 @@ git diff --check
 Communications tests use disposable PostgreSQL tenants, non-superuser RLS checks and a uniquely named BullMQ queue on the normal configured Redis. Fake provider functions and mocked adapter responses prevent external email. Coverage includes duplicate enqueue, actual retry/completion/permanent failure, worker lifecycle events, uncertain-outcome reconciliation, cancellation, confirmed-message replay, grants, tenant relationships, private discarded drafts, templates, bounded filters, meetings, resend snapshots, ICS and audits. Test fixtures/isolated queue are removed afterward.
 
 Cookie-session tests exercise real login, private drafts, denied managers and foreign-origin mutation rejection, then invoke existing security and authorization suites with ephemeral credentials. A fresh preview process avoids cumulative login rate limiting; the limiter is not bypassed.
-
-Authorization test maintenance: committed HEAD already returns `system_key` from legacy `/api/roles`; the test incorrectly expected `systemKey`. Only the test lookup was corrected to the established snake_case response. No route, permission, session or escalation protection changed.
-
-## File ownership
-
-New Communications files: this document; scripts/communications-test.ts; scripts/communications-session-test.ts; src/components/communications/CommunicationsPanel.tsx and communications.css; src/lib/communications-contract.ts; src/server/communications/communications-rules.ts, communications-routes.ts, communications-queue.ts; src/db/migrations/20260929_communications.sql.
-
-Integration changes: package.json; server.ts; src/db/schema.sql; src/lib/email.ts; src/workers/hr-worker.ts; src/server/audit/audit-events.ts; src/server/organisation/permission-registry.ts; src/components/RichTextEditor.tsx; Dashboard/navigation/help/tutorial/language registries; Composer widget-catalog/SummaryWidget and workspace count test. Existing unrelated Composer files were already uncommitted and have been preserved.
-
-## Continuation verification record (2026-09-30)
-
-Recovered without restarting or reverting: all four tabs, private drafts, templates, message/meeting details, bounded filters and pagination, invitation snapshots, worker/queue/RLS/audit integration, and both Composer summaries were already implemented. The test-only legacy role-field correction and this document were already present too. Remaining work was browser verification, recovery guidance, responsive refinement, documentation, and final validation.
-
-| Item | Final classification | Evidence / boundary |
-| --- | --- | --- |
-| Email tab | complete | Browser list, template selection, create/reopen/edit/save/discard private draft |
-| Templates tab | complete | Browser details and variable expansion; API create/edit/archive/duplicate validation |
-| Meetings tab | complete | Browser create with demo attendee, edit location, reopen, cancel |
-| History tab | complete | Browser company list/search; discarded private drafts excluded; API permission coverage |
-| Message details | complete | Browser recipients, sender name, timestamps, status timeline and safe body |
-| Meeting details | complete | Browser attendee, organizer, timezone, location, notes, ICS action and locked invitation |
-| Filters/search | complete | Browser status/type/text/employee/related controls; API date range/full-through-day tests. Browser date-fill automation was not a reliable persisted-state check, so date correctness is claimed from integration coverage |
-| Pagination | complete | Browser 20-row first page, second page, disabled terminal Next; bounded API queries |
-| Invitation resend | complete | Browser two distinct invitation records for same revision; API confirms distinct request IDs and immutable previous sent snapshot. Neither browser invitation was sent |
-| Queue recovery UX | complete | Browser fixtures for queued, transient queued, sending, sent, failed, cancelled and RECONCILIATION_REQUIRED; missing configuration covered by integration and persistent UI banner |
-| Workspace widgets | complete | Browser Recent Communications bounded rows and Upcoming Meetings empty state; workspace registry and real hook tests |
-| Documentation | complete | Schema/RLS, permissions, lifecycle, adapter/idempotency/retries, recovery, ICS/resend, limits and evidence |
-| Dark/light | complete | English dark desktop and narrow; Arabic light narrow filters/forms/preview; original English dark preference restored |
-| Arabic RTL | complete | Tabs, filters, compose editor, meeting form and template preview align RTL; category/status values remain canonical technical identifiers |
-| Narrow/mobile | complete | 390px viewport: page scrollWidth 390; table 325px; dialogs 352px with 335px content. Forms scroll vertically; controls wrap |
-| Final automated validation | complete | See commands/results below; optional cross-tenant authorization fixture skip disclosed |
-
-Continuation changes: added bilingual delivery-state instructions in message details, clarified the Arabic resend label, constrained narrow tables/filter controls/dialog forms, and translated the two Communications widget titles. Server authorization and queue behavior were preserved.
-
-Browser fixtures were explicitly fictional records in the isolated demo tenant. State/pagination fixtures had no BullMQ jobs and never called a provider. The temporary draft, meeting, invitation and state/pagination records were removed afterward; the disposable Composer layout was deleted while preserving the original layout. Provider buttons were not used to send email. API tests used separate disposable tenants and fake providers.
-
-Validation passed: npm run lint; npm run build; npm run test:communications; npm run test:communications:sessions (invokes the exact security and authorization scripts with ephemeral HR-admin/manager/employee credentials); npm run test:architecture (11); npm run test:hr-background; npm run test:workspace; npm run test:editor (17); npm run test:navigation; npm run test:performance (110); git diff --check. The final Communications command includes Redis/worker checks as part of its existing script, so those ran once for final validation; no separate Redis/container rerun was performed.
-
-The first session run failed with ECONNREFUSED because no preview server was running; after starting a fresh production preview on port 3006 it passed. An already-open browser held obsolete hashed assets after rebuilding; reload resolved the dynamic import failure. Build retains existing large-chunk and Lexical annotation warnings.
-
-Credential-dependent skip: the standalone authorization script's optional cross-tenant assignment test did not run because AUTHZ_OTHER_TENANT_EMPLOYEE_ID was not supplied. Authenticated manager escalation prevention did run. Communications cross-tenant relationship/access and non-superuser RLS checks passed independently. Real Resend delivery and provider-side reconciliation were intentionally not exercised.
-
-Operational limitations remain: manual refresh, manual redispatch/reconciliation after lost dispatch, no recovery scanner, provider acceptance rather than confirmed delivery, safe text delivery rather than rich formatting, no delivery webhooks/RSVP integration, and meetings without additional UI date/status filtering. Advanced related-record and employee filters use UUIDs. Browser verification sampled the stated combinations; it is not an exhaustive browser-engine/device matrix or provider-delivery test. No commit was created.

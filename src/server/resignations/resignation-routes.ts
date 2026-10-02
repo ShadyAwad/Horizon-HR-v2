@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 
@@ -70,7 +71,7 @@ export function registerResignationRoutes(
         )).rows);
         res.json({ success: true, resignations });
       } catch (error) {
-        console.error('[Resignations] Failed to load employee requests:', error);
+        logServerError('[Resignations] Failed to load employee requests:', error);
         res.status(500).json({ success: false, error: 'Unable to load resignation requests' });
       }
     },
@@ -141,7 +142,7 @@ export function registerResignationRoutes(
         if (statusCode === 409) {
           return res.status(409).json({ success: false, error: (error as Error).message });
         }
-        console.error('[Resignations] Failed to create request:', error);
+        logServerError('[Resignations] Failed to create request:', error);
         res.status(500).json({ success: false, error: 'Unable to submit resignation request' });
       }
     },
@@ -177,7 +178,7 @@ export function registerResignationRoutes(
         )).rows);
         res.json({ success: true, resignations });
       } catch (error) {
-        console.error('[Resignations] Failed to load tenant requests:', error);
+        logServerError('[Resignations] Failed to load tenant requests:', error);
         res.status(500).json({ success: false, error: 'Unable to load resignation requests' });
       }
     },
@@ -231,7 +232,7 @@ export function registerResignationRoutes(
         if (statusCode === 404) {
           return res.status(404).json({ success: false, error: (error as Error).message });
         }
-        console.error('[Resignations] Failed to review request:', error);
+        logServerError('[Resignations] Failed to review request:', error);
         res.status(500).json({ success: false, error: 'Unable to review resignation request' });
       }
     },
@@ -272,7 +273,7 @@ export function registerResignationRoutes(
         if (statusCode === 404) {
           return res.status(404).json({ success: false, error: (error as Error).message });
         }
-        console.error('[Resignations] Failed to withdraw request:', error);
+        logServerError('[Resignations] Failed to withdraw request:', error);
         res.status(500).json({ success: false, error: 'Unable to withdraw resignation request' });
       }
     },
@@ -337,7 +338,7 @@ export function registerResignationRoutes(
         if (statusCode === 404) {
           return res.status(404).json({ success: false, error: (error as Error).message });
         }
-        console.error('[Resignations] Failed to process request:', error);
+        logServerError('[Resignations] Failed to process request:', error);
         res.status(500).json({ success: false, error: 'Unable to process resignation request' });
       }
     },

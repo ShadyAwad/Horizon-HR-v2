@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { validateEmail } from '../../lib/validation';
@@ -50,7 +51,7 @@ const validatedDate = (value: unknown, field: string) => {
 };
 const handleError = (res: express.Response, error: unknown, context: string) => {
   const typed = error as { statusCode?: number; code?: string; message?: string };
-  if (!typed.statusCode || typed.statusCode >= 500) console.error(`[Hiring] ${context}:`, error);
+  if (!typed.statusCode || typed.statusCode >= 500) logServerError(`[Hiring] ${context}:`, error);
   res.status(typed.statusCode || 500).json({ success: false, code: typed.code || 'HIRING_REQUEST_FAILED', error: typed.statusCode ? typed.message : 'Unable to complete hiring request.' });
 };
 const audit = (client: PoolClient, tenantId: string, actorId: string, action: string, entityType: string, entityId: string, metadata: object = {}) => client.query(
@@ -122,11 +123,12 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
       const result = await withTenant(tenantId, async (client) => {
         const params = [tenantId, ...filters, pageSize, (page - 1) * pageSize];
         const where = `a.tenant_id=$1 AND ($2::text IS NULL OR a.full_name ILIKE '%'||$2||'%' OR a.email ILIKE '%'||$2||'%') AND ($3::text IS NULL OR a.stage=$3) AND ($4::text IS NULL OR a.status=$4) AND ($5::text IS NULL OR a.position_title ILIKE '%'||$5||'%') AND ($6::text IS NULL OR a.department ILIKE '%'||$6||'%') AND ($7::uuid IS NULL OR a.current_owner_id=$7)`;
-        const [rows, total] = await Promise.all([
+        const [rows, total, stageTotals] = await Promise.all([
           client.query(`SELECT a.id,a.full_name AS "fullName",a.email,a.phone,a.position_title AS "positionTitle",a.department,a.stage,a.status,a.applied_at AS "appliedAt",a.created_at AS "createdAt",a.updated_at AS "updatedAt",o.id AS "currentOwnerId",o.full_name AS "currentOwnerName",(SELECT max(n.created_at) FROM hiring_applicant_notes n WHERE n.tenant_id=a.tenant_id AND n.applicant_id=a.id AND n.deleted_at IS NULL) AS "latestNoteAt",(SELECT count(*)::int FROM hiring_handoffs h WHERE h.tenant_id=a.tenant_id AND h.applicant_id=a.id AND h.status='pending') AS "pendingHandoffs" FROM hiring_applicants a LEFT JOIN employees o ON o.tenant_id=a.tenant_id AND o.id=a.current_owner_id WHERE ${where} ORDER BY a.created_at DESC LIMIT $8 OFFSET $9`, params),
           client.query(`SELECT count(*)::int AS count FROM hiring_applicants a WHERE ${where}`, params.slice(0, 7)),
+          client.query(`SELECT a.stage,count(*)::int AS count FROM hiring_applicants a WHERE ${where.replace('($3::text IS NULL OR a.stage=$3)','($3::text IS NULL OR TRUE)')} GROUP BY a.stage`, [tenantId,filters[0],null,...filters.slice(2)]),
         ]);
-        return { applicants: rows.rows, total: total.rows[0].count };
+        return { applicants: rows.rows, total: total.rows[0].count, stageCounts: Object.fromEntries(stageTotals.rows.map(row => [row.stage,row.count])) };
       });
       res.json({ success: true, ...result, page, pageSize });
     } catch (error) { handleError(res, error, 'Failed to list applicants'); }

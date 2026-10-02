@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import express from 'express';
 import multer from 'multer';
 import { DocumentExtractionService } from './extraction-service';
@@ -52,7 +53,7 @@ function sendError(res: express.Response, error: unknown) {
   if (error instanceof ExtractionError) {
     return res.status(error.statusCode).json({ success: false, code: error.code, state: error.code === 'EXTRACTION_PROVIDER_UNAVAILABLE' ? 'unavailable' : /TYPE|IMAGE|SIZE|COMPLEX/.test(error.code) ? 'unsupported_file' : 'request_failed', message: error.message });
   }
-  if (process.env.NODE_ENV !== 'production') console.error('[document-extraction failed]', error);
+  if (process.env.NODE_ENV !== 'production') logServerError('[document-extraction failed]', error);
   return res.status(500).json({ success: false, code: 'EXTRACTION_FAILED', state: 'request_failed', message: 'The document could not be extracted.' });
 }
 

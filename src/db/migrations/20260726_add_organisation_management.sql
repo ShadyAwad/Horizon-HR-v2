@@ -2,11 +2,17 @@ BEGIN;
 
 -- Organisation and access management extends the existing tenant role model.
 -- Every composite reference below has a matching parent (id, tenant_id) key.
-ALTER TABLE tenant_roles
-  ADD CONSTRAINT tenant_roles_id_tenant_unique UNIQUE (id, tenant_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='tenant_roles'::regclass AND conname='tenant_roles_id_tenant_unique') THEN
+    ALTER TABLE tenant_roles ADD CONSTRAINT tenant_roles_id_tenant_unique UNIQUE (id, tenant_id);
+  END IF;
+END $$;
 
-ALTER TABLE company_locations
-  ADD CONSTRAINT company_locations_id_tenant_unique UNIQUE (id, tenant_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='company_locations'::regclass AND conname='company_locations_id_tenant_unique') THEN
+    ALTER TABLE company_locations ADD CONSTRAINT company_locations_id_tenant_unique UNIQUE (id, tenant_id);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS organisation_job_titles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -86,12 +92,24 @@ CREATE TABLE IF NOT EXISTS organisation_team_memberships (
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title_id UUID;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS department_id UUID;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS team_id UUID;
-ALTER TABLE employees ADD CONSTRAINT employees_job_title_tenant_fk FOREIGN KEY (job_title_id, tenant_id)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employees'::regclass AND conname='employees_job_title_tenant_fk') THEN
+    ALTER TABLE employees ADD CONSTRAINT employees_job_title_tenant_fk FOREIGN KEY (job_title_id, tenant_id)
   REFERENCES organisation_job_titles(id, tenant_id) ON DELETE SET NULL (job_title_id);
-ALTER TABLE employees ADD CONSTRAINT employees_department_tenant_fk FOREIGN KEY (department_id, tenant_id)
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employees'::regclass AND conname='employees_department_tenant_fk') THEN
+    ALTER TABLE employees ADD CONSTRAINT employees_department_tenant_fk FOREIGN KEY (department_id, tenant_id)
   REFERENCES organisation_departments(id, tenant_id) ON DELETE SET NULL (department_id);
-ALTER TABLE employees ADD CONSTRAINT employees_team_tenant_fk FOREIGN KEY (team_id, tenant_id)
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employees'::regclass AND conname='employees_team_tenant_fk') THEN
+    ALTER TABLE employees ADD CONSTRAINT employees_team_tenant_fk FOREIGN KEY (team_id, tenant_id)
   REFERENCES organisation_teams(id, tenant_id) ON DELETE SET NULL (team_id);
+  END IF;
+END $$;
 
 ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS scope_type VARCHAR(30) NOT NULL DEFAULT 'company';
 ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS scope_id UUID;
@@ -99,14 +117,30 @@ ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS expires_at TIMEST
 ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
 ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS revoked_by UUID;
 ALTER TABLE employee_role_assignments ADD COLUMN IF NOT EXISTS scope_target_key UUID GENERATED ALWAYS AS (COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED;
-ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_scope_type_chk
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employee_role_assignments'::regclass AND conname='employee_role_assignments_scope_type_chk') THEN
+    ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_scope_type_chk
   CHECK (scope_type IN ('company', 'location', 'department', 'team', 'direct_reports', 'self'));
-ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_scope_target_chk
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employee_role_assignments'::regclass AND conname='employee_role_assignments_scope_target_chk') THEN
+    ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_scope_target_chk
   CHECK ((scope_type IN ('company', 'direct_reports', 'self') AND scope_id IS NULL) OR (scope_type IN ('location', 'department', 'team') AND scope_id IS NOT NULL));
-ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_role_tenant_fk FOREIGN KEY (role_id, tenant_id)
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employee_role_assignments'::regclass AND conname='employee_role_assignments_role_tenant_fk') THEN
+    ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_role_tenant_fk FOREIGN KEY (role_id, tenant_id)
   REFERENCES tenant_roles(id, tenant_id) ON DELETE CASCADE;
-ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_revoked_by_tenant_fk FOREIGN KEY (revoked_by, tenant_id)
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='employee_role_assignments'::regclass AND conname='employee_role_assignments_revoked_by_tenant_fk') THEN
+    ALTER TABLE employee_role_assignments ADD CONSTRAINT employee_role_assignments_revoked_by_tenant_fk FOREIGN KEY (revoked_by, tenant_id)
   REFERENCES employees(id, tenant_id) ON DELETE SET NULL (revoked_by);
+  END IF;
+END $$;
 ALTER TABLE employee_role_assignments DROP CONSTRAINT IF EXISTS employee_role_assignments_unique_rule;
 CREATE UNIQUE INDEX IF NOT EXISTS employee_role_assignments_active_scope_unique
   ON employee_role_assignments(tenant_id, employee_id, role_id, scope_type, scope_target_key)

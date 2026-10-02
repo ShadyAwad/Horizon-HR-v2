@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { withTenant } from '../../lib/hr-background';
 import { getLiveEmployeeOverdueHours } from './live-employees-rules';
@@ -111,7 +112,7 @@ export function registerLiveEmployeesRoutes(
           employees,
         });
       } catch (error) {
-        console.error('[Live Employees] Failed to load live employees:', error);
+        logServerError('[Live Employees] Failed to load live employees:', error);
         res.status(500).json({
           success: false,
           error: 'Unable to load live employees.',

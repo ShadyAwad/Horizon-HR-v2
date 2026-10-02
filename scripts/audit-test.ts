@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import {assertDatabaseMutationSafety,assertHttpMutationSafety} from './mutation-safety';
+assertDatabaseMutationSafety(process.env.DATABASE_URL,'Audit integration');
+if(!process.env.DEMO_PASSWORD)throw new Error('Configure a disposable fixture password in DEMO_PASSWORD.');
 
 import { readFile } from 'node:fs/promises';
 import type { PoolClient } from 'pg';
@@ -7,7 +10,7 @@ import { presentAuditEvent, recordAuditEvent } from '../src/server/audit/audit-e
 
 type JsonObject = Record<string, any>;
 
-const baseUrl = (process.env.AUDIT_TEST_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const baseUrl = assertHttpMutationSafety(process.env.AUDIT_TEST_BASE_URL || 'http://localhost:3000','Audit integration');
 const passes: string[] = [];
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -30,7 +33,7 @@ async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
   const result = await api('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: baseUrl },
-    body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD || 'StrongPass!123' }),
+    body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD }),
   });
   assert(result.response.status === 200, `${role} demo session failed with ${result.response.status}.`);
   const cookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { enqueueAuditLog, hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 
@@ -18,7 +19,7 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
   try {
     await task();
   } catch (error) {
-    console.error(`[Background Queue] Failed to enqueue ${label}:`, error);
+    logServerError(`[Background Queue] Failed to enqueue ${label}:`, error);
   }
 }
 
@@ -93,7 +94,7 @@ export function registerLegacyLeaveRoutes(
   
         res.status(201).json({ success: true, leaveRequestId: leaveRequest.id });
       } catch (error) {
-        console.error('[Leave] Failed to create leave request:', error);
+        logServerError('[Leave] Failed to create leave request:', error);
         res.status(500).json({ error: 'Unable to create leave request' });
       }
     });
@@ -187,7 +188,7 @@ export function registerLegacyLeaveRoutes(
         if (typed.statusCode === 404 || typed.statusCode === 409) {
           return res.status(typed.statusCode).json({ success: false, error: typed.message });
         }
-        console.error('[Leave] Failed to update leave request status:', error);
+        logServerError('[Leave] Failed to update leave request status:', error);
         res.status(500).json({ error: 'Unable to update leave request status' });
       }
     });

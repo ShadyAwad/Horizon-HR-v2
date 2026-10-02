@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
@@ -204,7 +205,7 @@ export function registerPayrollExportRoute(
         res.setHeader('Cache-Control', 'no-store');
         res.send(Buffer.from(pdfBytes));
       } catch (error) {
-        console.error('[Payroll] Failed to export payroll PDF:', error);
+        logServerError('[Payroll] Failed to export payroll PDF:', error);
         res.status(500).json({ success: false, error: 'Unable to export payroll PDF' });
       }
     },

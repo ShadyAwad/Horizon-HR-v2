@@ -1,6 +1,11 @@
+import type { PoolClient } from 'pg';
 import { withTenant, type AttendanceRollupJobData } from '../../lib/hr-background';
 export async function rollupAttendanceDailySummary(data: AttendanceRollupJobData) {
-  await withTenant(data.tenantId, async (client) => {
+  await withTenant(data.tenantId, client => rollupAttendanceWithClient(client, data));
+}
+
+/** Shared source-derived rollup, also usable inside the guarded demo seed transaction. */
+export async function rollupAttendanceWithClient(client: PoolClient, data: AttendanceRollupJobData) {
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`attendance-rollup:${data.tenantId}:${data.employeeId}:${data.workDate}`]);
     const result = await client.query(
       `
@@ -50,6 +55,4 @@ export async function rollupAttendanceDailySummary(data: AttendanceRollupJobData
         `[Attendance] No time logs found for tenant=${data.tenantId}, employee=${data.employeeId}, date=${data.workDate}`,
       );
     }
-  });
 }
-

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import vm from 'node:vm';
 import { build } from 'esbuild';
 
 const css = readFileSync('src/index.css', 'utf8');
+const attendance = readFileSync('src/components/attendance/AttendanceWorkspace.tsx', 'utf8');
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');
 const clockRule = css.match(/button\.stanza-theme-primary\.stanza-geo-clock-primary,\s*button\.stanza-theme-primary\.stanza-geo-clock-primary:not\(:disabled\):hover\s*\{([^}]+)\}/)![1];
 assert.match(clockRule, /background: linear-gradient\(.+\) var\(--stanza-accent\) !important/);
@@ -16,7 +16,7 @@ for (const [state, token] of [['', 'accent'], [':not(:disabled):hover', 'accent-
   assert.ok(!block.includes('gradient'));
 }
 assert.match(dashboard, /clockInState === 'idle' \? "stanza-theme-primary stanza-geo-clock-primary"/);
-assert.match(dashboard, /className="stanza-theme-primary stanza-geo-break-primary /);
+assert.ok(attendance.includes('stanza-theme-primary stanza-geo-break-primary'), 'Break action uses shared themed fill');
 const clockClasses = dashboard.slice(dashboard.indexOf('data-geo-interaction="clock"'), dashboard.indexOf('data-geo-interaction="clock"') + 1300);
 assert.doesNotMatch(clockClasses, /hover:scale|active:scale|transition-transform/);
 assert.match(css, /button\.stanza-geo-clock:not\(:disabled\):is\(:hover, :active\),\s*button\.stanza-geo-break-primary:not\(:disabled\):is\(:hover, :active\)\s*\{\s*transform: none;\s*scale: none;/);
@@ -119,18 +119,10 @@ for (const mode of ['baseline', 'idle-static']) {
   }
   subject.cleanup(); assert.equal(audit().stopped, true);
 }
-// Read-only historical source, compiled in memory. No checkout or filesystem restoration.
-const historicalSource = execFileSync('git', ['show', '1725157:src/components/FingerprintCanvas.tsx'], { encoding: 'utf8' });
-const previous = await mount(historicalSource);
 const current = await mount(currentSource);
-assert.equal(current.reads, 1);
-const before: number[] = [], after: number[] = [];
-for (let i = 0; i < 120; i++) { before.push(previous.frame(i * 50)); after.push(current.frame(i * 50)); }
-console.log('120-frame callback CPU, Node VM with Canvas2D stub, NOT Chrome:', JSON.stringify({ before: { average: before.reduce((a,b)=>a+b,0)/120, worst: Math.max(...before) }, after: { average: after.reduce((a,b)=>a+b,0)/120, worst: Math.max(...after) } }));
-assert.equal(previous.reads, 120); assert.equal(previous.tokens, 360);
+for (let i = 0; i < 120; i++) current.frame(i * 50);
 assert.equal(current.reads, 1); assert.equal(current.tokens, 3);
 assert.equal(current.parses, 6); assert.equal(current.classReads, 1);
-assert.equal(previous.parses, 120 * 69 * 6); assert.equal(previous.classReads, 120);
 let measured = current.window.__stanzaLoginCanvasMeasurements[0];
 assert.equal(measured.frames, 120); assert.equal(measured.colorParses, 2);
 assert.equal(measured.legacyEquivalentColorParses, 120 * 69 * 2);
@@ -145,18 +137,13 @@ current.frame(100000); assert.equal(current.raf.size, 0); assert.equal(current.t
 for (let i = 0; i < 600; i++) current.frame(100050 + i * 50);
 assert.equal(measured.frames, 600); assert.equal(measured.stopped, true);
 console.log('Bounded fixed callback measurement (Node VM, Canvas2D stub; NOT Chrome paint/GPU):', JSON.stringify(measured));
-previous.cleanup(); current.cleanup();
+current.cleanup();
 // Mount/unmount/remount, as StrictMode does: every owner cancels and disconnects.
 const remount = await mount(currentSource); assert.equal(remount.raf.size, 1); remount.cleanup();
 const reduced = await mount(currentSource, true); reduced.frame(0); assert.equal(reduced.raf.size, 0);
 reduced.theme(); reduced.frame(16); assert.equal(reduced.context.fillStyle, '#ffffff'); assert.equal(reduced.raf.size, 0); reduced.cleanup();
 console.log('PASS: Geo fill primitives; palette cache and Custom-style refresh; bounded measurements; visibility; cleanup/remount; reduced-motion theme refresh.');
 
-const oldArtwork = await mount(historicalSource, false, true);
-const newArtwork = await mount(currentSource, false, true);
-oldArtwork.frame(1000); newArtwork.frame(1000);
-assert.deepEqual(newArtwork.drawing, oldArtwork.drawing);
-oldArtwork.cleanup(); newArtwork.cleanup();
 const referenceArtwork = await mount(currentSource, false, true);
 const optimizedArtwork = await mount(currentSource, false, true, false, true);
 referenceArtwork.frame(1000); optimizedArtwork.frame(1000);

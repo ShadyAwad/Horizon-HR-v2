@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
@@ -97,7 +98,7 @@ export function registerCompensationRoutes(
   
         res.json({ success: true, profiles });
       } catch (error) {
-        console.error('[Compensation] Failed to load profiles:', error);
+        logServerError('[Compensation] Failed to load profiles:', error);
         res.status(500).json({ success: false, error: 'Unable to load compensation profiles' });
       }
     },
@@ -145,7 +146,7 @@ export function registerCompensationRoutes(
   
         res.json({ success: true, profile });
       } catch (error) {
-        console.error('[Compensation] Failed to load employee profile:', error);
+        logServerError('[Compensation] Failed to load employee profile:', error);
         res.status(500).json({ success: false, error: 'Unable to load compensation profile' });
       }
     },
@@ -305,7 +306,7 @@ export function registerCompensationRoutes(
           return res.status(409).json({ success: false, error: 'An active compensation profile already exists for this employee.' });
         }
   
-        console.error('[Compensation] Failed to save profile:', error);
+        logServerError('[Compensation] Failed to save profile:', error);
         res.status(500).json({ success: false, error: 'Unable to save compensation profile' });
       }
     },

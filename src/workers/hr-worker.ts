@@ -46,25 +46,19 @@ async function writeAuditLog(data: AuditLogJobData) {
 const hrWorker = new Worker(
   HR_QUEUE_NAME,
   async (job: Job) => {
-    console.log(`[Worker Engine] Processing background job: ${job.name} (ID: ${job.id})`);
     
     switch (job.name) {
       case 'rollupAttendanceDailySummary':
         await rollupAttendanceDailySummary(job.data as AttendanceRollupJobData);
-        console.log(
-          `[Attendance] Rolled up daily summary for tenant=${job.data.tenantId}, employee=${job.data.employeeId}, date=${job.data.workDate}`,
-        );
         break;
         
       case 'writeAuditLog':
         await writeAuditLog(job.data as AuditLogJobData);
-        console.log(`[Audit] Wrote ${job.data.action} audit log for tenant=${job.data.tenantId}`);
         break;
 
       case 'expireQrAccessToken': {
         const data = job.data as QrExpiryCleanupJobData;
         await new QrTokenService().expireToken(data.tenantId, data.tokenRecordId);
-        console.log(`[QR] Processed token expiry for tokenRecordId=${data.tokenRecordId}`);
         break;
       }
         
@@ -76,6 +70,8 @@ const hrWorker = new Worker(
     connection: redisConnection,
   }
 );
+
+hrWorker.on('ready', () => console.log('[Worker Engine] Redis connection ready.'));
 
 hrWorker.on('completed', (job) => {
   console.log(`[Worker Engine] Job ${job.id} completed successfully.`);

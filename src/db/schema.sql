@@ -995,6 +995,7 @@ CREATE TABLE IF NOT EXISTS roster_shifts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+    CONSTRAINT roster_shifts_id_tenant_unique UNIQUE (id, tenant_id),
     CONSTRAINT roster_shifts_employee_tenant_fk
         FOREIGN KEY (employee_id, tenant_id)
         REFERENCES employees(id, tenant_id)

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -307,7 +308,7 @@ async function history(client: PoolClient, input: { tenantId: string; requestId:
 
 function send(res: express.Response, error: unknown, fallback: string) {
   const typed = error as { statusCode?: number; message?: string };
-  if (!typed.statusCode || typed.statusCode >= 500) console.error('[Leave]', error);
+  if (!typed.statusCode || typed.statusCode >= 500) logServerError('[Leave]', error);
   res.status(typed.statusCode || 500).json({ success: false, error: typed.statusCode ? typed.message : fallback });
 }
 

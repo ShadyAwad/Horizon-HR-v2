@@ -1,6 +1,6 @@
 # Stanza grievance case management
 
-Prompt 6 extends the existing grievances table, scoped permissions, audit, notification outbox, Communications and Workspace Composer. It reuses native form controls, theme typography and Surface. No new theme, hiring, demo seed, payroll or attendance workflow is introduced.
+Grievance cases use scoped permissions, immutable conversations and timelines, audit events, notification outbox records, Communications drafts and Workspace Composer summaries. The UI reuses native form controls, shared typography and surfaces.
 
 ## Migration and deployment
 
@@ -69,5 +69,3 @@ Pages contain 20 cases; history contains 40 events/messages; destination/candida
 ## Validation
 
 `npm run test:grievances` runs guarded disposable migration/integration fixtures. Set ALLOW_TEST_DATA_MUTATION=true and TEST_DATABASE_ALLOWLIST to the intended local database. Coverage includes migration/rerun, lifecycle, scope/privacy, uploads, concurrency, audit/outbox, private linked drafts, worker revocation, immutability and non-superuser RLS. Fixture rows and private bytes are removed. Email provider tests use fakes; no external email is sent.
-
-See grievance-case-management-validation.md for actual checks and browser evidence.

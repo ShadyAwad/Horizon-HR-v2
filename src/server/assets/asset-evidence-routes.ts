@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import crypto from 'crypto';
 import type express from 'express';
 import multer from 'multer';
@@ -87,7 +88,7 @@ export function registerAssetEvidenceRoutes(
       if (storageKey) await assetEvidenceStorage.remove(storageKey).catch(() => undefined);
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: 'Image must be 6 MB or smaller.' });
       const statusCode = Number((error as { statusCode?: number }).statusCode) || 422;
-      if (process.env.NODE_ENV !== 'production') console.error('[Asset Evidence] Upload failed:', error);
+      if (process.env.NODE_ENV !== 'production') logServerError('[Asset Evidence] Upload failed:', error);
       return res.status(statusCode).json({ success: false, error: statusCode === 404 || statusCode === 409 ? (error as Error).message : 'Unable to process evidence image.' });
     }
   });

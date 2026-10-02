@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { getDbPool, hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 import {
@@ -85,7 +86,7 @@ export function registerLegacyRoleDiscoveryRoutes(
   
         res.json({ success: true, roles });
       } catch (error) {
-        console.error('[Roles] Failed to load tenant roles:', error);
+        logServerError('[Roles] Failed to load tenant roles:', error);
         res.status(500).json({ success: false, error: 'Unable to load tenant roles' });
       }
     },
@@ -111,7 +112,7 @@ export function registerLegacyRoleDiscoveryRoutes(
   
         res.json({ success: true, permissions: result.rows });
       } catch (error) {
-        console.error('[Roles] Failed to load permissions:', error);
+        logServerError('[Roles] Failed to load permissions:', error);
         res.status(500).json({ success: false, error: 'Unable to load permissions' });
       }
     },
@@ -227,7 +228,7 @@ export function registerLegacyRoleMutationRoutes(
           return res.status(409).json({ success: false, error: 'A role with this name already exists.' });
         }
   
-        console.error('[Roles] Failed to create role:', error);
+        logServerError('[Roles] Failed to create role:', error);
         res.status(500).json({ success: false, error: 'Unable to create role' });
       }
     },
@@ -340,7 +341,7 @@ export function registerLegacyRoleMutationRoutes(
           return res.status(400).json({ success: false, error: (error as Error).message });
         }
   
-        console.error('[Roles] Failed to update role permissions:', error);
+        logServerError('[Roles] Failed to update role permissions:', error);
         res.status(500).json({ success: false, error: 'Unable to update role permissions' });
       }
     },
@@ -398,7 +399,7 @@ export function registerLegacyRoleMutationRoutes(
   
         res.json({ success: true, employees });
       } catch (error) {
-        console.error('[Roles] Failed to load role assignments:', error);
+        logServerError('[Roles] Failed to load role assignments:', error);
         res.status(500).json({ success: false, error: 'Unable to load role assignments' });
       }
     },
@@ -542,7 +543,7 @@ export function registerLegacyRoleMutationRoutes(
           return res.status(statusCode).json({ success: false, error: (error as Error).message });
         }
   
-        console.error('[Roles] Failed to assign role:', error);
+        logServerError('[Roles] Failed to assign role:', error);
         res.status(500).json({ success: false, error: 'Unable to assign role' });
       }
     },
@@ -672,7 +673,7 @@ export function registerLegacyRoleMutationRoutes(
           return res.status(statusCode).json({ success: false, error: (error as Error).message });
         }
   
-        console.error('[Roles] Failed to remove role:', error);
+        logServerError('[Roles] Failed to remove role:', error);
         res.status(500).json({ success: false, error: 'Unable to remove role' });
       }
     },
@@ -738,7 +739,7 @@ export function registerLegacyRoleMutationRoutes(
   
         res.json({ success: true, employee });
       } catch (error) {
-        console.error('[Roles] Failed to update employee title:', error);
+        logServerError('[Roles] Failed to update employee title:', error);
         res.status(500).json({ success: false, error: 'Unable to update employee title' });
       }
     },

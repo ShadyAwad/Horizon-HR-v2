@@ -1,0 +1,4 @@
+export type Capability = {key:string;label:string;description:string;category:string;selected?:boolean;protected?:boolean;delegatable?:boolean;grantable?:boolean;legacy?:boolean};
+export function filterCapabilities<T extends Capability>(items:T[],query:string,selectedOnly=false,category=''){const term=query.trim().toLocaleLowerCase();return items.filter(item=>(!selectedOnly||item.selected)&&(!category||item.category===category)&&`${item.label} ${item.description} ${item.category} ${item.key}`.toLocaleLowerCase().includes(term));}
+export function groupCapabilities<T extends Capability>(items:T[]){const groups=new Map<string,T[]>();for(const item of items){const group=groups.get(item.category)||[];group.push(item);groups.set(item.category,group)}return [...groups.entries()];}
+export function selectedCapabilities<T extends Capability>(items:T[]){return groupCapabilities(items.filter(item=>item.selected));}

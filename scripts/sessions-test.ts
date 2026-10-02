@@ -1,8 +1,11 @@
 import 'dotenv/config';
+import {assertDatabaseMutationSafety,assertHttpMutationSafety} from './mutation-safety';
+assertDatabaseMutationSafety(process.env.DATABASE_URL,'Session integration');
+if(!process.env.DEMO_PASSWORD)throw new Error('Configure a disposable fixture password in DEMO_PASSWORD.');
 import { readFile } from 'node:fs/promises';
 
 type Json = Record<string, any>;
-const baseUrl = (process.env.SESSIONS_TEST_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const baseUrl = assertHttpMutationSafety(process.env.SESSIONS_TEST_BASE_URL || 'http://localhost:3000','Session integration');
 const origin = baseUrl;
 const passes: string[] = [];
 function assert(value: unknown, message: string): asserts value {
@@ -18,7 +21,7 @@ async function request(path: string, init: RequestInit = {}) {
 
 async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
   const email = { hr_admin: 'admin@stanza-demo.com', manager: 'manager@stanza-demo.com', employee: 'employee@stanza-demo.com' }[role];
-  const result = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD || 'StrongPass!123' }) });
+  const result = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD }) });
   assert(result.response.status === 200, `${role} session setup failed (${result.response.status}). Run against explicit demo mode.`);
   const cookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];
   assert(cookie && /HttpOnly/i.test(result.response.headers.get('set-cookie') || ''), 'Session cookie was not HttpOnly.');

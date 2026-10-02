@@ -1,6 +1,6 @@
 # Flexible attendance
 
-Apply `src/db/migrations/20260928_flexible_attendance.sql` before deploying the server/worker/frontend together. The local development database has been migrated; deployment databases still need this migration. Fresh schema installs include the same extension.
+Apply `src/db/migrations/20260928_flexible_attendance.sql` before deploying the server/worker/frontend together. Fresh schema installs include the same extension.
 
 Existing tenants default to `required`: missing coordinates or an out-of-geofence point still fail. `optional` attempts location in the UI but permits missing/outside locations, recording their status. `disabled` neither requests coordinates in the UI nor stores submitted coordinates. Clock-in snapshots the mode and location status and writes a transactional audit. Existing `/api/clock-in`, `/api/clock-out` and `time_logs` remain authoritative.
 
@@ -22,42 +22,8 @@ npm run test:attendance
 $env:NODE_ENV='test'
 $env:ALLOW_TEST_DATA_MUTATION='true'
 $env:TEST_DATABASE_ALLOWLIST='<isolated database name>'
-$env:ATTENDANCE_TEST_BASE_URL='http://localhost:3003'
+$env:ATTENDANCE_TEST_BASE_URL='http://localhost:3000'
 npm run test:attendance:integration
 ```
 
 The integration suite creates and removes two isolated fixture tenants. Its RLS probe creates a temporary NOLOGIN role inside a rolled-back transaction, so its database test account requires role-creation authority. Never run it against production. No real employee shifts or tenant policies are used as fixtures.
-
-## Verification notes
-
-The integration suite covers required/optional/disabled attendance, approved and unfiled breaks, concurrency, invalid transitions, inactive/cross-tenant policies, paid-only/unpaid-only/mixed time math, open breaks, repeated rollups, pagination and real non-superuser RLS.
-
-The existing demo seeder resets demo employee passwords, roles, company and location settings together. It was deliberately not run or extended for attendance in this pass, to avoid altering the existing demo workspace. Disposable integration fixtures demonstrate multiple breaks and approved requests instead.
-
-Browser verification covered employee pause/resume, multiple breaks, active-break clock-out, exception resolution, manager scoped approval, HR policy create/edit/deactivate, history, optional missing-location clock-in and disabled clock-in without a prompt. Dark/light and Arabic RTL were checked, including a 390px viewport without document overflow. Physical-device geofence success/outside positioning remains a manual check; its server acceptance/rejection is covered by actual PostGIS integration tests.
-
-The stale authorization test now reads the mounted legacy-role route module. General security/authorization suites still require explicit privileged fixture credentials for optional unrelated role/payroll live checks; the attendance suite supplies its own authenticated fixtures.
-
-## Changed files
-
-- `docs/attendance-policy.md`
-- `package.json`
-- `scripts/attendance-integration-test.ts`
-- `scripts/attendance-rules-test.ts`
-- `scripts/authorization-test.ts`
-- `scripts/interaction-polish-test.ts`
-- `scripts/live-employees-test.ts`
-- `server.ts`
-- `src/components/attendance/AttendanceWorkspace.tsx`
-- `src/db/migrations/20260928_flexible_attendance.sql`
-- `src/db/schema.sql`
-- `src/lib/hr-background.ts`
-- `src/pages/Dashboard.tsx`
-- `src/server/attendance/attendance-policy.ts`
-- `src/server/attendance/attendance-rollup.ts`
-- `src/server/attendance/attendance-routes.ts`
-- `src/server/attendance/flexible-attendance-routes.ts`
-- `src/server/breaks/break-request-routes.ts`
-- `src/server/live-employees/live-employees-routes.ts`
-- `src/server/organisation/permission-registry.ts`
-- `src/workers/hr-worker.ts`

@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import {fileURLToPath} from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 
@@ -57,7 +58,7 @@ export default defineConfig(({ mode }) => {
 
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.dirname(fileURLToPath(import.meta.url)),
       },
     },
 
@@ -66,11 +67,10 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       allowedHosts: allowTryCloudflareDevOrigins ? ['.trycloudflare.com'] : [],
 
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      // Disable HMR explicitly for constrained development environments.
       hmr: process.env.DISABLE_HMR !== 'true',
 
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      // Match file watching to HMR to avoid unnecessary development CPU work.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant, enqueueAttendanceRollup } from '../../lib/hr-background';
@@ -21,9 +22,9 @@ async function visibleRows(c: PoolClient,u: Identity,rows: any[],permission: str
 export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {standardAuth: express.RequestHandler; mutationGuard: express.RequestHandler; rateLimiter: express.RequestHandler}) {
   const {standardAuth,mutationGuard,rateLimiter} = deps;
   const route = (handler: (req: express.Request,c: PoolClient,u: Identity)=>Promise<unknown>): express.RequestHandler => async(req,res)=>{
-    try { const data = await withTenant(req.authUser!.tenantId,c=>handler(req,c,req.authUser!)); if (req.path.endsWith('/resume') && (data as any).rollup) { try { await enqueueAttendanceRollup((data as any).rollup); } catch (error) { console.error('[Attendance rollup enqueue]',error); } }
+    try { const data = await withTenant(req.authUser!.tenantId,c=>handler(req,c,req.authUser!)); if (req.path.endsWith('/resume') && (data as any).rollup) { try { await enqueueAttendanceRollup((data as any).rollup); } catch (error) { logServerError('[Attendance rollup enqueue]', error); } }
       const {rollup, ...response} = data as any; res.json({success:true,...response}); }
-    catch(error) { const e=error as {statusCode?:number;code?:string;message?:string}; const status=e.statusCode || (e.code==='23505'?409:500); if(status===500) console.error('[Attendance]',error); res.status(status).json({success:false,error:status===500?'Attendance service is unavailable.':status===409?'This attendance action has already been recorded.':e.message}); }
+    catch(error) { const e=error as {statusCode?:number;code?:string;message?:string}; const status=e.statusCode || (e.code==='23505'?409:500); if(status===500) logServerError('[Attendance]', error); res.status(status).json({success:false,error:status===500?'Attendance service is unavailable.':status===409?'This attendance action has already been recorded.':e.message}); }
   };
   app.get('/api/attendance/policy',standardAuth,route(async(_req,c,u)=>({
     ...await attendancePolicy(c,u.tenantId), canManage:await allowed(c,u,'attendance.policy.manage'),

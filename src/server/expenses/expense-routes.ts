@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -46,7 +47,7 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
     }
     return res.status(409).json({ success: false, code: 'EXPENSE_CONFLICT', message: 'The expense claim already exists.' });
   }
-  if (process.env.NODE_ENV !== 'production') console.error('[expenses] request failed', error);
+  if (process.env.NODE_ENV !== 'production') logServerError('[expenses] request failed', error);
   return res.status(500).json({ success: false, code: 'EXPENSE_REQUEST_FAILED', message: fallback });
 }
 

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { getHrQueue, HR_QUEUE_NAME, hasDatabaseConfig } from '../../lib/hr-background';
 
@@ -23,7 +24,7 @@ export function registerSystemRoutes(app: express.Express) {
         database: { configured: hasDatabaseConfig() },
       });
     } catch (error) {
-      console.error('[System Health] Failed:', error);
+      logServerError('[System Health] Failed:', error);
       res.status(500).json({ success: false, error: 'Unable to read system health' });
     }
   });

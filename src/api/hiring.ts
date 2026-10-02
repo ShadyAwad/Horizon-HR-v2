@@ -84,7 +84,7 @@ async function request<T>(user: AuthUser, path: string, init: RequestInit = {}) 
     });
     const body = await response.json().catch(() => ({})) as ApiEnvelope<T>;
     if (!response.ok || !body.success) throw new HiringApiError(response.status, body.code, body.error);
-    return camelize(body) as ApiEnvelope<T>;
+    const result = camelize(body); if('stageCounts' in body) (result as Record<string, unknown>).stageCounts=(body as Record<string, unknown>).stageCounts; return result as ApiEnvelope<T>;
   } catch (error) {
     if (error instanceof HiringApiError) throw error;
     throw new HiringApiError(0, 'HIRING_NETWORK_ERROR', 'Unable to reach Hiring. Check your connection and try again.');
@@ -96,7 +96,7 @@ export async function listHiringApplicants(user: AuthUser, filters: HiringApplic
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== '' && value !== false) query.set(key, String(value));
   });
-  return request<{ applicants: HiringApplicantListItem[]; total: number; page: number; pageSize: number }>(user, `/api/hiring/applicants?${query}`);
+  return request<{ applicants: HiringApplicantListItem[]; total: number; stageCounts: Partial<Record<HiringStage, number>>; page: number; pageSize: number }>(user, `/api/hiring/applicants?${query}`);
 }
 
 export const createHiringApplicant = (user: AuthUser, payload: HiringApplicantInput) => request<{ applicant: HiringApplicantListItem; warnings: Array<{ code: string; applicantId: string; message: string }> }>(user, '/api/hiring/applicants', { method: 'POST', body: JSON.stringify(payload) });

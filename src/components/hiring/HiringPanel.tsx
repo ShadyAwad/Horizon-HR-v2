@@ -1,3 +1,5 @@
+import {toggleHiringStage,defaultHiringFilters,hasHiringFilters} from '../../lib/hiring-filters';
+import { HIRING_COUNTER_STAGES } from '../../lib/hiring-stages';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, BriefcaseBusiness, ChevronLeft, ChevronRight, FilePlus2, Forward, Loader2, MessageSquarePlus, Pencil, RefreshCw, ShieldAlert, UserCheck, X } from 'lucide-react';
 import type { AuthUser } from '../../auth/auth-contract';
@@ -71,6 +73,8 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
   const [searchDraft, setSearchDraft] = useState('');
   const [applicants, setApplicants] = useState<HiringApplicantListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [stageCounts,setStageCounts] = useState<Partial<Record<HiringStage,number>>>({});
+  const hasFilters = hasHiringFilters(filters,searchDraft);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -95,6 +99,7 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const requestRef = useRef(0);
+  const listRequestRef = useRef(0);
 
   const stageLabel = useCallback((stage: HiringStage) => t(`hiring.stage.${stage}` as never), [t]);
   const visibleNextStages = useMemo(() => detail ? transitions[detail.stage].filter((stage) => !(['offer', 'hired'] as HiringStage[]).includes(stage) || can('hiring.make_final_decision')) : [], [can, detail]);
@@ -114,15 +119,15 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
   };
 
   const loadList = useCallback(async () => {
-    setListLoading(true); setListError('');
+    const requestId=++listRequestRef.current; setListLoading(true); setListError('');
     try {
       const response = await listHiringApplicants(user, filters);
-      setApplicants(response.applicants); setTotal(response.total);
+      if(requestId!==listRequestRef.current)return; setApplicants(response.applicants); setTotal(response.total); setStageCounts(response.stageCounts || {});
       setSelectedId((current) => current && response.applicants.some((applicant) => applicant.id === current) ? current : response.applicants[0]?.id || null);
     } catch (caught) {
       const apiError = caught as HiringApiError;
-      setListError(apiError.code === 'HIRING_PERMISSION_DENIED' ? t('hiring.errorPermission') : t('hiring.listError'));
-    } finally { setListLoading(false); }
+      if(requestId!==listRequestRef.current)return; setListError(apiError.code === 'HIRING_PERMISSION_DENIED' ? t('hiring.errorPermission') : t('hiring.listError'));
+    } finally { if(requestId===listRequestRef.current)setListLoading(false); }
   }, [filters, t, user]);
 
   const loadDetail = useCallback(async (id: string) => {
@@ -227,7 +232,7 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
     try { await archiveHiringApplicant(user, detail.id); setSelectedId(null); await loadList(); onRefreshAttentionCounts(); closeModal(); }
     catch (caught) { displayError(caught); } finally { setMutationLoading(false); }
   };
-  const clearFilters = () => { setSearchDraft(''); setFilters({ page: 1, pageSize: PAGE_SIZE, status: 'active' }); };
+  const clearFilters = () => { setSearchDraft(''); setFilters(defaultHiringFilters()); };
 
   const stageBadge = (stage: HiringStage) => <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider', stageColors[stage])}>{stageLabel(stage)}</span>;
   const openNote = (note?: { id: string; noteText: string; noteType: HiringNoteType; visibility: HiringNoteVisibility }) => { setEditingNoteId(note?.id || null); setNoteText(note?.noteText || ''); setNoteType(note?.noteType || 'general'); setNoteVisibility(note?.visibility || 'hiring_team'); setModal('note'); setError(''); };
@@ -238,12 +243,13 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
       <div className="mb-4 flex flex-col gap-3 border-b border-emerald-500/15 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div><div className="flex items-center gap-2"><BriefcaseBusiness className="h-5 w-5 text-emerald-500" /><h2 className="text-lg font-black text-slate-900 dark:text-emerald-50">{t('hiring.title')}</h2></div><p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('hiring.subtitle')}</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          {(['new', 'hr_review', 'final_review'] as HiringStage[]).map((stage) => {
-            const count = applicants.filter((item) => item.stage === stage).length;
-            return <span key={stage} data-hiring-review-counter aria-label={`${stageLabel(stage)}: ${count}`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs font-bold text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100">
+          {HIRING_COUNTER_STAGES.map((stage) => {
+            const count = stageCounts[stage] || 0;
+            return <button type="button" key={stage} aria-pressed={filters.stage === stage} onClick={() => setFilters(current => toggleHiringStage(current,stage))} data-hiring-review-counter aria-label={`${stageLabel(stage)}: ${count}`} className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 aria-pressed:ring-2 aria-pressed:ring-emerald-500 inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs font-bold text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100">
               <span className="whitespace-nowrap">{stageLabel(stage)}</span>
               <span dir="ltr" className="grid h-5 min-w-5 place-items-center rounded-full bg-emerald-500/15 px-1 text-[11px] font-black tabular-nums text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-50">{count}</span>
-            </span>;
+              {filters.stage === stage && <span>{isRtl ? 'محدد' : 'Selected'}</span>}
+            </button>;
           })}
           {can('hiring.create') && <button type="button" onClick={openCreate} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400"><FilePlus2 className="h-4 w-4" />{t('hiring.addApplicant')}</button>}
         </div>
@@ -256,12 +262,12 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
         <input aria-label={t('hiring.position')} value={filters.position || ''} onChange={(event) => setFilters((current) => ({ ...current, page: 1, position: event.target.value }))} placeholder={t('hiring.position')} className="rounded-lg border border-emerald-500/20 bg-black/5 px-3 py-2 text-base dark:bg-black/35" />
         <input aria-label={t('hiring.department')} value={filters.department || ''} onChange={(event) => setFilters((current) => ({ ...current, page: 1, department: event.target.value }))} placeholder={t('hiring.department')} className="rounded-lg border border-emerald-500/20 bg-black/5 px-3 py-2 text-base dark:bg-black/35" />
         {can('hiring.assign') && <select aria-label={t('hiring.assignedReviewer')} value={filters.ownerId || ''} onChange={(event) => setFilters((current) => ({ ...current, page: 1, ownerId: event.target.value }))} className="rounded-lg border border-emerald-500/20 bg-black/5 px-3 py-2 text-sm dark:bg-black/35"><option value="">{t('hiring.allReviewers')}</option>{reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.displayName}</option>)}</select>}
-        <div className="flex gap-2"><button type="button" onClick={() => setFilters((current) => ({ ...current, page: 1, assignedToMe: !current.assignedToMe }))} className={cn('flex-1 rounded-lg border px-3 py-2 text-xs font-bold', filters.assignedToMe ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-emerald-500/20 text-neutral-600 dark:text-emerald-100/60')}>{t('hiring.assignedToMe')}</button><button type="button" onClick={clearFilters} title={t('hiring.clearFilters')} className="rounded-lg border border-emerald-500/20 px-3 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"><RefreshCw className="h-4 w-4" /></button></div>
+        <div className="flex gap-2"><button type="button" onClick={() => setFilters((current) => ({ ...current, page: 1, assignedToMe: !current.assignedToMe }))} className={cn('flex-1 rounded-lg border px-3 py-2 text-xs font-bold', filters.assignedToMe ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-emerald-500/20 text-neutral-600 dark:text-emerald-100/60')}>{t('hiring.assignedToMe')}</button><button type="button" onClick={clearFilters} aria-label={t('hiring.clearFilters')} title={t('hiring.clearFilters')} className="rounded-lg border border-emerald-500/20 px-3 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"><RefreshCw className="h-4 w-4" /></button></div>
       </div>
       <ErrorMessage error={listError || error} />
       <div className="grid min-h-[520px] grid-cols-1 overflow-hidden rounded-xl border border-emerald-500/15 lg:grid-cols-[minmax(300px,42%)_1fr]">
         <div className={cn('min-w-0 border-b border-emerald-500/15 bg-emerald-50/25 dark:bg-black/15 lg:border-b-0', isRtl ? 'lg:border-l' : 'lg:border-r')}>
-          <div className="max-h-[520px] overflow-y-auto p-2">{listLoading ? <div className="space-y-2 p-2">{Array.from({ length: 6 }).map((_, index) => <div className="h-20 animate-pulse rounded-lg bg-emerald-500/10" key={index} />)}</div> : applicants.length ? applicants.map((applicant) => <button type="button" key={applicant.id} onClick={() => setSelectedId(applicant.id)} className={cn('mb-1 w-full rounded-lg border p-3 text-start transition', selectedId === applicant.id ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/5')}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-bold text-slate-900 dark:text-emerald-50">{applicant.fullName}</p><p className="truncate text-xs text-neutral-500 dark:text-emerald-100/50">{applicant.positionTitle}{applicant.department ? ` · ${applicant.department}` : ''}</p></div>{stageBadge(applicant.stage)}</div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-emerald-100/45"><span>{applicant.currentOwnerName || t('hiring.unassigned')}</span><span>{dateLabel(applicant.appliedAt || applicant.createdAt, locale)}</span>{applicant.pendingHandoffs > 0 && <span className="font-bold text-amber-700 dark:text-amber-200">{t('hiring.pendingHandoff')}</span>}</div></button>) : <div className="p-8 text-center"><p className="font-bold text-neutral-600 dark:text-emerald-100/70">{t('hiring.empty')}</p>{can('hiring.create') && <button type="button" onClick={openCreate} className="mt-3 text-sm font-bold text-emerald-700 hover:text-emerald-500 dark:text-emerald-300">{t('hiring.addApplicant')}</button>}</div>}</div>
+          <div className="max-h-[520px] overflow-y-auto p-2">{listLoading ? <div className="space-y-2 p-2">{Array.from({ length: 6 }).map((_, index) => <div className="h-20 animate-pulse rounded-lg bg-emerald-500/10" key={index} />)}</div> : applicants.length ? applicants.map((applicant) => <button type="button" key={applicant.id} onClick={() => setSelectedId(applicant.id)} className={cn('mb-1 w-full rounded-lg border p-3 text-start transition', selectedId === applicant.id ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/5')}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="break-words font-bold text-slate-900 dark:text-emerald-50">{applicant.fullName}</p><p className="break-words text-xs text-neutral-500 dark:text-emerald-100/50">{applicant.positionTitle}{applicant.department ? ` · ${applicant.department}` : ''}</p></div>{stageBadge(applicant.stage)}</div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-emerald-100/45"><span>{applicant.currentOwnerName || t('hiring.unassigned')}</span><span>{dateLabel(applicant.appliedAt || applicant.createdAt, locale)}</span>{applicant.pendingHandoffs > 0 && <span className="font-bold text-amber-700 dark:text-amber-200">{t('hiring.pendingHandoff')}</span>}</div></button>) : <div className="p-8 text-center"><p className="font-bold text-neutral-600 dark:text-emerald-100/70">{hasFilters ? (isRtl ? 'لا توجد طلبات تطابق المرشحات.' : 'No applicants match these filters.') : t('hiring.empty')}</p>{hasFilters && <button type="button" onClick={clearFilters} className="mt-3 underline focus-visible:outline-2">{t('hiring.clearFilters')}</button>}{!hasFilters && can('hiring.create') && <button type="button" onClick={openCreate} className="mt-3 text-sm font-bold text-emerald-700 hover:text-emerald-500 dark:text-emerald-300">{t('hiring.addApplicant')}</button>}</div>}</div>
           <div className="flex items-center justify-between border-t border-emerald-500/15 px-3 py-2 text-xs text-neutral-500 dark:text-emerald-100/50"><span><span dir="ltr">{total}</span> {t('hiring.candidates')}</span><div className="flex items-center gap-2"><button type="button" disabled={(filters.page || 1) <= 1} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, (current.page || 1) - 1) }))} className="rounded p-1 disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button><span dir="ltr">{filters.page || 1} / {pages}</span><button type="button" disabled={(filters.page || 1) >= pages} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, (current.page || 1) + 1) }))} className="rounded p-1 disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button></div></div>
         </div>
         <div className="min-w-0 bg-white/40 p-3 dark:bg-[#04100d]/55 md:p-4">{detailLoading ? <div className="space-y-3"><div className="h-8 w-2/5 animate-pulse rounded bg-emerald-500/10" />{Array.from({ length: 5 }).map((_, index) => <div className="h-14 animate-pulse rounded bg-emerald-500/10" key={index} />)}</div> : detail ? <ApplicantDetail detail={detail} user={user} locale={locale} can={can} stageLabel={stageLabel} stageBadge={stageBadge} onEdit={openEdit} onNote={openNote} onStage={() => { setStageTarget(''); setStageReason(''); setModal('stage'); }} onHandoff={openHandoff} onArchive={() => setModal('archive')} onAcknowledge={acknowledge} mutationLoading={mutationLoading} /> : <div className="flex h-full min-h-[330px] items-center justify-center text-center text-sm text-neutral-500 dark:text-emerald-100/45">{detailError || t('hiring.selectApplicant')}</div>}</div>

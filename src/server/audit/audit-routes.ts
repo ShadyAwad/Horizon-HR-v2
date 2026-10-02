@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import {handlerVisibilitySql} from '../grievances/grievance-policy';
 import type { RequestHandler } from 'express';
@@ -259,7 +260,7 @@ export function registerAuditRoutes(app: express.Express, { demoAuth, requirePer
       });
     } catch (error) {
       const statusCode = Number((error as { statusCode?: number }).statusCode) || 500;
-      if (statusCode >= 500) console.error('[Audit Trail] Failed to load events:', error);
+      if (statusCode >= 500) logServerError('[Audit Trail] Failed to load events:', error);
       return res.status(statusCode).json({
         success: false,
         code: statusCode === 400 ? 'AUDIT_QUERY_INVALID' : 'AUDIT_EVENTS_FAILED',

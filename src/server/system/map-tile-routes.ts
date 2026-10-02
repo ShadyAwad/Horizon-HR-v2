@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 
 function isTileCoordinate(value: string | undefined) {
@@ -46,7 +47,7 @@ export function registerMapTileRoutes(app: express.Express) {
       const tileBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
       res.send(tileBuffer);
     } catch (error) {
-      console.error('[Map Tiles] Failed to proxy tile:', error);
+      logServerError('[Map Tiles] Failed to proxy tile:', error);
       res.status(502).json({
         success: false,
         error: 'Unable to load map tile.',

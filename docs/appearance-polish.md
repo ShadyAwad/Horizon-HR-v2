@@ -1,76 +1,27 @@
-# Prompt 5 — Appearance and shared surface polish
+# Appearance and shared UI controls
 
-## RECOVERED STATE
-Preserved the current uncommitted Prompt 4 Communications and Workspace Composer foundation. Inspected Theme Studio, presets, typography/CSS variables, interface scaling, form controls, Expenses, grievance submission, localization, and preference normalization before editing. Reused the existing preference key, theme derivation/contrast guard, draft/Apply workflow, native controls, and Composer surface preferences. No commit or database migration.
+Theme Studio uses the existing `stanza.preferences.v1` store and a draft/Apply workflow. Appearance updates set root CSS variables; components inherit semantic tokens rather than individual inline font overrides.
 
-## TYPOGRAPHY ARCHITECTURE
-`--stanza-font-scale` scales shared Tailwind `--text-xs` through `--text-9xl`, body text, shared presentation CSS, and the three legacy compact pixel label utilities. The rem hierarchy remains proportional. Interface Size still owns root rem geometry. Mobile editable controls retain a 16px minimum to avoid input-focus zoom. Shared navigation, command, and preference labels wrap instead of truncating important content.
+## Typography and persistence
 
-## FONT SIZE
-Small 95%, Default 100%, Large 110%, Extra Large 120%. Available in Personalisation on mobile/desktop and in the existing Theme Studio. A heading/body/secondary/caption preview updates immediately. Help descriptions have unique IDs.
+Interface Size controls root rem geometry. Font Size independently scales the shared Tailwind text hierarchy through `--stanza-font-scale`: Small 95%, Default 100%, Large 110%, Extra Large 120%. Body, captions and headings scale proportionally. Mobile editable controls retain a 16px minimum. The editor previews heading, body, secondary and caption text before Apply.
 
-## INTERFACE SCALE INTERACTION
-Browser checked 85% interface + Large font, 100% + Large, 120% + Default, and 120% + XL at 390px. No page overflow. Settings also checked all Default/Large/XL fonts at 390, 768, and 1440px.
+Missing or unsupported font values normalize to 100%; invalid custom text colors normalize to Auto. Migration preserves accents, pointer/cursor, navigation and lanyard preferences. Composer layouts and surface preferences have a separate account-scoped store. Pre-render bootstrap restores appearance before React paints; storage events synchronize tabs.
 
-## TEXT COLOR / CONTRAST
-One optional `customTheme.textColor`; Auto preserves existing defaults. Primary text is corrected to at least 4.6:1 across page, card, raised/dialog, input, selected/hover and conservative Glass surfaces. Secondary and muted are derived and independently corrected; disabled inherits the readable muted token. Action foregrounds retain their separate existing guard. The existing visible contrast-adjustment warning explains that the requested color is saved. Black-on-dark and white-on-light were corrected in-browser.
+## Text and contrast
 
-## PRESETS
-All seven original preset backgrounds and accents are preserved. Mode-aware shared primary/secondary/muted values protect preset text. Tests check every preset against its light/dark surfaces; browser switching checked all seven modes. Switching back to Custom restores its saved text color.
+`customTheme.textColor` supplies optional primary text. Auto uses mode-aware defaults. Primary text is corrected to at least 4.6:1 against page, card, dialog, input, selection and conservative glass surfaces. Secondary and muted colors are derived and corrected independently; disabled text uses the readable muted token. Action foregrounds use a separate guard. The editor warns when contrast correction is needed while preserving the requested custom color.
 
-## SHARED SURFACE PRIMITIVE
-`Surface` exposes Auto/Solid/Glass through `.stanza-surface` and `data-surface`; WidgetFrame consumes that same CSS contract while retaining its article/ref/drag geometry. Auto and Solid are opaque. Explicit Glass uses static 4px blur and 92% surface color on supported desktop browsers. Mobile, reduced-motion, and reduced-transparency fall back to opaque/no blur. No global conversion or animated blur.
+Preset switching uses the preset's intended text colors. Returning to Custom restores the saved custom value. The original seven preset backgrounds and accents remain defined in the existing theme system.
 
-## EXPENSE UI
-Native shared Select/Input/Textarea support ordinary native attributes, labels, descriptions, errors, disabled states, keyboard operation, focus-visible, and RTL. Expense filters, currency/category/date/details and dialog controls use semantic tokens. The existing authenticated, tenant-scoped own-claims response supplies tenant default currency. New claims use that value rather than hard-coded EGP; reset uses the current default. Record currency, decimal-string amount formatting, OCR edit protection, validation, approval, and reimbursement logic remain intact. Empty category and error guidance remain localized; category administration is unchanged.
+## Forms and surfaces
 
-## GRIEVANCE WIDTH POLISH
-Submission is centered with a 48rem maximum and full available mobile width. CTA is content-sized and wrapping-safe. Description has six rows and a 10rem editing minimum; priority has an accessible label. Existing grievance logic is unchanged.
+`src/components/ui/FormControls.tsx` provides native Input, Select and Textarea controls with semantic background/border/focus tokens, labels, descriptions, disabled and invalid states. Native selection retains keyboard and assistive-technology behavior. Logical properties and wrapping labels support RTL.
 
-## RESPONSIVE / RTL
-Arabic module layouts measured at 390/768/1440px with Default/Large/XL fonts; no document overflow. Expenses, grievance submission, Composer, Communications, Settings, and navigation checked. Arabic expense selects retain RTL direction; the native date control remains usable. The command palette fits at desktop and 390px and arrow keys update the active command.
+`Surface` supports Auto, Solid and Glass. Auto/Solid are opaque; explicit Glass uses static 4px blur and a 92% surface color on supported desktop browsers. Narrow screens, reduced motion and reduced transparency use an opaque fallback. Backdrop filters are never animated. Composer's WidgetFrame consumes the same presentation contract.
 
-## ACCESSIBILITY
-Native labeled keyboard controls, selected options, unique descriptions, visible focus outlines, error text plus dashed invalid borders, wrapping buttons, and readable semantic disabled text. No status is conveyed solely through color.
+Expenses use shared controls and the authenticated tenant default currency; existing record currency and accounting behavior remain authoritative. Grievance submission has a centered 48rem maximum with full available mobile width and a usable description area.
 
-## PERFORMANCE
-Root variable updates and finite React preference updates follow the existing provider. No new observer, RAF loop, timer, per-element sizing, or animated backdrop-filter. Existing performance and cursor idle/cleanup suites pass.
+## Verification
 
-## PERSISTENCE / MIGRATION
-Same `stanza.preferences.v1` key. Missing/unsupported font values become 1; missing/invalid text color becomes Auto. Existing accent, pointer/cursor, lanyard, navigation, and separate Composer surface preferences are preserved. Pre-render bootstrap restores bounded font/interface variables. Storage-event synchronization includes font scale. Browser reload verified font 120% independently of interface 105%; custom #AABBCC reload retained primary #AABBCC with derived secondary/muted values. Verification restored English/dark/Emerald, font/interface defaults, Auto custom text, and the initially empty workspace.
-
-## FILES CHANGED
-Prompt 5 changes only (the working tree also contains the earlier Prompt 4 files):
-- package.json
-- public/stanza-bootstrap.js
-- src/lib/typography.ts
-- src/lib/StanzaPreferencesContext.tsx
-- src/lib/custom-theme.ts
-- src/lib/LanguageContext.tsx
-- src/index.css
-- src/components/ui/FormControls.tsx
-- src/components/ui/FontSizeControl.tsx
-- src/components/ui/Surface.tsx
-- src/components/CustomThemeEditor.tsx
-- src/components/expenses/ExpensesPanel.tsx
-- src/server/expenses/expense-routes.ts
-- src/components/workspace-composer/WidgetFrame.tsx
-- src/components/workspace-composer/composer.css
-- src/components/communications/communications.css
-- src/pages/Dashboard.tsx
-- scripts/appearance-test.ts
-- scripts/theme-test.ts
-- scripts/workspace-test.ts
-- docs/appearance-polish.md
-- docs/appearance-theme-studio.png
-
-## TESTS
-Passed: npm run lint; npm run build; test:appearance (2,880 custom contrast assertions plus all light/dark preset text surfaces); test:theme (includes custom cursor); test:workspace; test:expenses (23); test:navigation; test:command-palette; test:architecture (11); test:performance (110); test:communications (real PostgreSQL/Redis/BullMQ with fake email provider); test:communications:sessions; git diff --check.
-The session suite first failed against its default inactive port 3005 and passed when pointed at running port 3007. Existing legacy token-parity test excludes only the newly introduced disabled token; its original hash remains unchanged. Composer fallback check now reads the shared stylesheet. Build retains existing Lexical annotation and large-chunk warnings. The session suite's optional authorization cross-tenant assignment check skips without its optional fixture ID; Communications integration tenant-isolation checks pass. No external email sent.
-
-## BROWSER VERIFICATION
-Production app on localhost:3007, current in-app browser. Default/Large/XL matrix, interface/font interactions, reload persistence, all preset modes, custom color correction and retention, light/dark, Arabic RTL, expense currency/category selections and receipt/details dialogs, grievance width, Composer and Communications layouts, and command palette keyboard behavior checked. A temporary attendance widget verified Glass: mobile no blur/opaque; desktop 4px blur/92% surface. Solid had no blur. Temporary widget removed. Screenshot captures the existing Theme Studio with the added font control and preview.
-
-## REMAINING LIMITATIONS
-Native select popup rendering follows the browser/OS. The signed-in account had no expense records, so populated expense tables/currency display were covered by existing contracts rather than new browser records. Reduced-transparency/motion fallback is covered by CSS contract tests; OS preference toggles were not emulated. Browser checks used one browser engine. Existing build warnings remain. No Prompt 6/7/8 work, accounting redesign, Communications expansion, or commit.
-
+Run `npm run test:appearance`, `npm run test:theme`, and `npm run test:workspace`. For manual regression, combine interface/font scales, check light/dark presets and Custom contrast correction, reload saved settings, and inspect forms/dialogs in English and Arabic at narrow/tablet/desktop widths. Native select popup appearance depends on the browser and operating system.

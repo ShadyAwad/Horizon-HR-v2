@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { QrTokenService } from './qr-token-service';
 import { QrTokenError } from './qr-token-types';
@@ -15,7 +16,7 @@ function fail(res: express.Response, error: unknown) {
   if (error instanceof QrTokenError) {
     return res.status(error.statusCode).json({ success: false, code: error.code, message: error.message });
   }
-  if (process.env.NODE_ENV !== 'production') console.error('[digital badge] request failed', error);
+  if (process.env.NODE_ENV !== 'production') logServerError('[digital badge] request failed', error);
   return res.status(500).json({ success: false, code: 'DIGITAL_BADGE_FAILED', message: 'Digital badge is unavailable.' });
 }
 

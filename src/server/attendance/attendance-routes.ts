@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import { hasPermissionClaim } from '../auth/permission-claims';
 import { attendancePolicy, lockAttendancePolicy, readCoordinates, attendanceAudit, type AttendanceLocationMode } from './attendance-policy';
 import crypto from 'crypto';
@@ -33,7 +34,7 @@ type AttendanceRouteDependencies = {
 const demoOpenTimeLogs = new Map<string, DemoTimeLog>();
 
 function isDemoEnvironment() {
-  return process.env.STANZA_DEMO_ENV === 'true';
+  return process.env.NODE_ENV !== 'production' && process.env.STANZA_DEMO_ENV === 'true';
 }
 
 function getAttendanceKey(tenantId?: string, employeeId?: string) {
@@ -98,7 +99,7 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
   try {
     await task();
   } catch (error) {
-    console.error(`[Background Queue] Failed to enqueue ${label}:`, error);
+    logServerError(`[Background Queue] Failed to enqueue ${label}:`, error);
   }
 }
 
@@ -254,7 +255,7 @@ export function registerAttendanceClockInRoute(
             recognition = await claimPendingRecognitionDelivery(tenantId, employeeId, 'clock_in');
           } catch (error) {
             // A recognition delivery failure must not roll back a durable clock-in.
-            console.error('[Recognition] Clock-in delivery lookup failed:', error);
+            logServerError('[Recognition] Clock-in delivery lookup failed:', error);
           }
   
           return res.json({
@@ -286,7 +287,7 @@ export function registerAttendanceClockInRoute(
             });
           }
   
-          console.error('[Clock-In] Failed to persist clock-in:', error);
+          logServerError('[Clock-In] Failed to persist clock-in:', error);
   
           if ((error as { code?: string }).code === '23505') {
             return res.status(409).json({
@@ -387,7 +388,7 @@ export function registerAttendanceStatusRoutes(
         locationStatus: openLog?.location_status || null,
       });
     } catch (error) {
-      console.error('[Clock-Status] Failed to load active shift:', error);
+      logServerError('[Clock-Status] Failed to load active shift:', error);
       res.status(503).json({ success: false, error: 'Attendance service is temporarily unavailable. Please try again.' });
     }
   });
@@ -485,7 +486,7 @@ export function registerAttendanceStatusRoutes(
         message: 'Clock-out recorded successfully.',
       });
     } catch (error) {
-      console.error('[Clock-Out] Failed to record clock-out:', error);
+      logServerError('[Clock-Out] Failed to record clock-out:', error);
   
       res.status(503).json({
         success: false,

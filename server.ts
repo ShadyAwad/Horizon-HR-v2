@@ -1,3 +1,4 @@
+import { logServerError } from './src/lib/server-logging';
 import { registerCommunicationsRoutes } from './src/server/communications/communications-routes';
 import { registerFlexibleAttendanceRoutes } from './src/server/attendance/flexible-attendance-routes';
 import { config as loadDotenv } from 'dotenv';
@@ -130,6 +131,7 @@ type AuthEmployeeRow = {
   role_names: string[];
   permissions: string[];
   company_name: string;
+  is_demo_tenant?: boolean;
 };
 
 type WebAuthnCredentialRow = {
@@ -265,6 +267,7 @@ function formatAuthUser(employee: AuthEmployeeRow) {
     permissions: employee.permissions || [],
     tenantId: employee.tenant_id,
     tenant: employee.company_name,
+    isDemoTenant: employee.is_demo_tenant === true,
   };
 }
 
@@ -343,7 +346,7 @@ async function claimRecognitionAfterSuccessfulAuth(tenantId: string, employeeId:
   } catch (error) {
     // Recognition is supplementary: schema rollout or delivery failure must
     // never prevent a valid employee from receiving a standard session.
-    console.error('[Recognition] Login delivery lookup failed:', error);
+    logServerError('[Recognition] Login delivery lookup failed:', error);
     return null;
   }
 }
@@ -824,7 +827,7 @@ async function enqueueBestEffort(label: string, task: () => Promise<unknown>) {
   try {
     await task();
   } catch (error) {
-    console.error(`[Background Queue] Failed to enqueue ${label}:`, error);
+    logServerError(`[Background Queue] Failed to enqueue ${label}:`, error);
   }
 }
 
@@ -884,17 +887,7 @@ async function demoAuth(
             ARRAY[]::varchar[]
           ) AS permissions
         FROM employees
-        LEFT JOIN employee_role_assignments
-          ON employee_role_assignments.tenant_id = employees.tenant_id
-         AND employee_role_assignments.employee_id = employees.id
-         AND employee_role_assignments.revoked_at IS NULL
-         AND (employee_role_assignments.expires_at IS NULL OR employee_role_assignments.expires_at > NOW())
-        LEFT JOIN tenant_roles assigned_role
-          ON assigned_role.tenant_id = employees.tenant_id
-         AND assigned_role.id = employee_role_assignments.role_id
-        LEFT JOIN tenant_role_permissions
-          ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
-         AND tenant_role_permissions.role_id = assigned_role.id
+        ${ACTIVE_AUTH_ROLE_JOINS}
         WHERE employees.id = $1
           AND employees.tenant_id = $2
         GROUP BY employees.id
@@ -959,7 +952,7 @@ async function demoAuth(
       }
     }
 
-    console.error('[Auth] Failed to resolve authenticated user:', error);
+    logServerError('[Auth] Failed to resolve authenticated user:', error);
 
     res.status(500).json({
       success: false,
@@ -1055,7 +1048,7 @@ function apiErrorHandler(
   res: express.Response,
   _next: express.NextFunction,
 ) {
-  console.error('[API] Unhandled error:', error);
+  logServerError('[API] Unhandled error:', error);
 
   if (res.headersSent) return;
 
@@ -1157,6 +1150,23 @@ async function consumeWebAuthnChallenge(
   return result.rows[0]?.challenge || null;
 }
 
+// Keep login, session refresh and employee projections consistent with active authority.
+const ACTIVE_AUTH_ROLE_JOINS = `
+ LEFT JOIN employee_role_assignments
+   ON employee_role_assignments.tenant_id = employees.tenant_id
+  AND employee_role_assignments.employee_id = employees.id
+  AND employee_role_assignments.revoked_at IS NULL
+  AND employee_role_assignments.assigned_at <= NOW()
+  AND (employee_role_assignments.expires_at IS NULL OR employee_role_assignments.expires_at > NOW())
+ LEFT JOIN tenant_roles assigned_role
+   ON assigned_role.tenant_id = employees.tenant_id
+  AND assigned_role.id = employee_role_assignments.role_id
+  AND assigned_role.is_active
+ LEFT JOIN tenant_role_permissions
+   ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
+  AND tenant_role_permissions.role_id = assigned_role.id
+`;
+
 async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
   const result = await getDbPool().query<AuthEmployeeRow>(
     `
@@ -1176,74 +1186,17 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
           array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
           ARRAY[]::varchar[]
         ) AS permissions,
-        tenants.company_name
+        tenants.company_name,
+        tenants.slug = 'stanza-demo' AS is_demo_tenant
       FROM employees
       INNER JOIN tenants
         ON tenants.id = employees.tenant_id
-      LEFT JOIN employee_role_assignments
-        ON employee_role_assignments.tenant_id = employees.tenant_id
-       AND employee_role_assignments.employee_id = employees.id
-      LEFT JOIN tenant_roles assigned_role
-        ON assigned_role.tenant_id = employees.tenant_id
-       AND assigned_role.id = employee_role_assignments.role_id
-      LEFT JOIN tenant_role_permissions
-        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
-       AND tenant_role_permissions.role_id = assigned_role.id
+      ${ACTIVE_AUTH_ROLE_JOINS}
       WHERE LOWER(employees.email) = $1
-      GROUP BY employees.id, tenants.company_name
+      GROUP BY employees.id, tenants.company_name, tenants.slug
       LIMIT 1
     `,
     [normalizedEmail],
-  );
-
-  return result.rows[0] || null;
-}
-
-/* Demo fixture lookup is intentionally not part of runtime authentication. */
-async function fetchPortfolioDemoEmployeeRemoved(
-  config: { accounts: Record<string, string>; tenantSlug: string },
-  role: string,
-) {
-  const result = await getDbPool().query<AuthEmployeeRow>(
-    `
-      SELECT
-        employees.id,
-        employees.tenant_id,
-        employees.email,
-        employees.full_name,
-        employees.role,
-        employees.job_title,
-        employees.profile_image_url,
-        COALESCE(
-          array_remove(array_agg(DISTINCT assigned_role.name), NULL),
-          ARRAY[]::varchar[]
-        ) AS role_names,
-        COALESCE(
-          array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
-          ARRAY[]::varchar[]
-        ) AS permissions,
-        tenants.company_name
-      FROM employees
-      INNER JOIN tenants
-        ON tenants.id = employees.tenant_id
-      LEFT JOIN employee_role_assignments
-        ON employee_role_assignments.tenant_id = employees.tenant_id
-       AND employee_role_assignments.employee_id = employees.id
-      LEFT JOIN tenant_roles assigned_role
-        ON assigned_role.tenant_id = employees.tenant_id
-       AND assigned_role.id = employee_role_assignments.role_id
-      LEFT JOIN tenant_role_permissions
-        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
-       AND tenant_role_permissions.role_id = assigned_role.id
-      WHERE LOWER(employees.email) = $1
-        AND tenants.slug = $2
-        AND employees.role = $3
-        AND employees.is_active = true
-        AND employees.employment_status = 'active'
-      GROUP BY employees.id, tenants.company_name
-      LIMIT 1
-    `,
-    [config.accounts[role], config.tenantSlug, role],
   );
 
   return result.rows[0] || null;
@@ -1268,24 +1221,17 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
           array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
           ARRAY[]::varchar[]
         ) AS permissions,
-        tenants.company_name
+        tenants.company_name,
+        tenants.slug = 'stanza-demo' AS is_demo_tenant
       FROM employees
       INNER JOIN tenants
         ON tenants.id = employees.tenant_id
-      LEFT JOIN employee_role_assignments
-        ON employee_role_assignments.tenant_id = employees.tenant_id
-       AND employee_role_assignments.employee_id = employees.id
-      LEFT JOIN tenant_roles assigned_role
-        ON assigned_role.tenant_id = employees.tenant_id
-       AND assigned_role.id = employee_role_assignments.role_id
-      LEFT JOIN tenant_role_permissions
-        ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
-       AND tenant_role_permissions.role_id = assigned_role.id
+      ${ACTIVE_AUTH_ROLE_JOINS}
       WHERE employees.tenant_id = $1
         AND employees.id = $2
         AND employees.is_active = true
         AND employees.employment_status = 'active'
-      GROUP BY employees.id, tenants.company_name
+      GROUP BY employees.id, tenants.company_name, tenants.slug
       LIMIT 1
     `,
     [tenantId, employeeId],
@@ -1911,16 +1857,6 @@ async function startServer() {
         stack?: string;
       };
 
-      console.error('[register-tenant failed]', {
-        message: registerError.message,
-        code: registerError.code,
-        constraint: registerError.constraint,
-        detail: registerError.detail,
-        table: registerError.table,
-        column: registerError.column,
-        stack: process.env.NODE_ENV === 'production' ? undefined : registerError.stack,
-      });
-
       if ((error as { code?: string }).code === 'EMAIL_ALREADY_REGISTERED') {
         return res.status(400).json({
           success: false,
@@ -1948,6 +1884,7 @@ async function startServer() {
         });
       }
 
+      console.error('[Register tenant] Failed:', registerError.code || 'UNKNOWN');
       res.status(500).json({
         success: false,
         code: 'REGISTER_TENANT_FAILED',
@@ -1961,7 +1898,7 @@ async function startServer() {
 
 
 
-  // 1. Auth Endpoint (Simulates secure iron-session check)
+  // Session lifecycle endpoints.
 
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -1970,7 +1907,7 @@ app.post('/api/auth/logout', async (req, res) => {
     else clearAuthSessionCookie(req, res);
     res.json({ success: true });
   } catch (error) {
-    console.error('[Logout] Failed to revoke session:', error);
+    logServerError('[Logout] Failed to revoke session:', error);
     clearAuthSessionCookie(req, res);
     res.status(500).json({ success: false, error: 'Unable to log out safely.' });
   }
@@ -1993,7 +1930,7 @@ app.get('/api/auth/session', async (req, res) => {
     }
     return res.json({ success: true, authenticated: true, user: formatAuthUser(employee) });
   } catch (error) {
-    console.error('[Auth session] Failed:', error);
+    logServerError('[Auth session] Failed:', error);
     return res.status(503).json({ success: false, error: 'Unable to restore the session.' });
   }
 });
@@ -2212,21 +2149,14 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             ARRAY[]::varchar[]
           ) AS permissions,
           employees.password_hash,
-          tenants.company_name
+          tenants.company_name,
+        tenants.slug = 'stanza-demo' AS is_demo_tenant
         FROM employees
         INNER JOIN tenants
           ON tenants.id = employees.tenant_id
-        LEFT JOIN employee_role_assignments
-          ON employee_role_assignments.tenant_id = employees.tenant_id
-         AND employee_role_assignments.employee_id = employees.id
-        LEFT JOIN tenant_roles assigned_role
-          ON assigned_role.tenant_id = employees.tenant_id
-         AND assigned_role.id = employee_role_assignments.role_id
-        LEFT JOIN tenant_role_permissions
-          ON tenant_role_permissions.tenant_id = assigned_role.tenant_id
-         AND tenant_role_permissions.role_id = assigned_role.id
+        ${ACTIVE_AUTH_ROLE_JOINS}
         WHERE LOWER(employees.email) = $1
-        GROUP BY employees.id, tenants.company_name
+        GROUP BY employees.id, tenants.company_name, tenants.slug
         LIMIT 1
       `,
       [normalizedEmail],
@@ -2283,7 +2213,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
               employees.full_name,
               employees.role,
               employees.password_hash,
-              tenants.company_name
+              tenants.company_name,
+        tenants.slug = 'stanza-demo' AS is_demo_tenant
             FROM employees
             INNER JOIN tenants
               ON tenants.id = employees.tenant_id
@@ -2332,7 +2263,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       }
     }
 
-    console.error('[Login] Failed:', error);
+    logServerError('[Login] Failed:', error);
 
     res.status(500).json({
       success: false,
@@ -2385,7 +2316,7 @@ app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) =>
     databaseUpdated = true;
 
     await profileImageStorage.remove(previousProfileImageUrl).catch((error) => {
-      console.error('[Profile Avatar] Previous file cleanup failed:', error);
+      logServerError('[Profile Avatar] Previous file cleanup failed:', error);
     });
     return res.json({ success: true, message: 'Profile photo updated.', profileImageUrl: newProfileImageUrl });
   } catch (error) {
@@ -2394,7 +2325,7 @@ app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) =>
       return res.status(413).json({ success: false, code: 'IMAGE_TOO_LARGE', message: 'Image is too large.' });
     }
     const statusCode = Number((error as { statusCode?: number }).statusCode) || 422;
-    if (!isProduction()) console.error('[Profile Avatar] Upload failed:', error);
+    if (!isProduction()) logServerError('[Profile Avatar] Upload failed:', error);
     return res.status(statusCode).json({
       success: false,
       code: statusCode === 415 ? 'UNSUPPORTED_IMAGE' : 'IMAGE_PROCESSING_FAILED',
@@ -2424,11 +2355,11 @@ app.delete('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) 
       return current.rows[0].profile_image_url;
     });
     await profileImageStorage.remove(previousProfileImageUrl).catch((error) => {
-      console.error('[Profile Avatar] Removed file cleanup failed:', error);
+      logServerError('[Profile Avatar] Removed file cleanup failed:', error);
     });
     return res.json({ success: true, profileImageUrl: null });
   } catch (error) {
-    console.error('[Profile Avatar] Remove failed:', error);
+    logServerError('[Profile Avatar] Remove failed:', error);
     return res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
       message: 'Unable to remove profile photo.',
@@ -2473,7 +2404,7 @@ app.get('/api/auth/passkeys', demoAuth, async (req, res) => {
 
     res.json({ success: true, passkeys });
   } catch (error) {
-    console.error('[Passkeys] Failed to list passkeys:', error);
+    logServerError('[Passkeys] Failed to list passkeys:', error);
     res.status(500).json({ success: false, error: 'Unable to load passkeys.' });
   }
 });
@@ -2531,7 +2462,7 @@ app.post('/api/auth/passkeys/register/options', sensitiveAuthRateLimiter, demoAu
 
     res.json({ success: true, options });
   } catch (error) {
-    console.error('[Passkeys] Failed to create registration options:', error);
+    logServerError('[Passkeys] Failed to create registration options:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
       error: (error as Error).message || 'Unable to start passkey registration.',
@@ -2637,7 +2568,7 @@ app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAut
 
     res.json({ success: true, passkey: createdCredential });
   } catch (error) {
-    console.error('[Passkeys] Failed to verify registration:', error);
+    logServerError('[Passkeys] Failed to verify registration:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
       error: (error as Error).message || 'Unable to register passkey.',
@@ -2713,7 +2644,7 @@ app.post('/api/auth/passkeys/login/options', passkeyLoginRateLimiter, async (req
       recordLoginFailures(loginRateLimitKeys);
     }
 
-    console.error('[Passkeys] Failed to create login options:', error);
+    logServerError('[Passkeys] Failed to create login options:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
       error: (error as Error).message || 'Unable to start passkey sign in.',
@@ -2843,7 +2774,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
     res.json({ success: true, user: formatAuthUser(loginUser), recognition });
   } catch (error) {
     recordLoginFailures(loginRateLimitKeys);
-    console.error('[Passkeys] Failed to verify login:', error);
+    logServerError('[Passkeys] Failed to verify login:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
       error: (error as Error).message || 'Unable to sign in with passkey.',
@@ -2952,7 +2883,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
 
     res.json(response);
   } catch (error) {
-    console.error('[Password Reset] Failed to create reset token:', error);
+    logServerError('[Password Reset] Failed to create reset token:', error);
 
     res.status(500).json({
       success: false,
@@ -3106,7 +3037,7 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
   } catch (error) {
     await client.query('ROLLBACK');
 
-    console.error('[Password Reset] Failed to reset password:', error);
+    logServerError('[Password Reset] Failed to reset password:', error);
 
     res.status(500).json({
       success: false,
@@ -3196,6 +3127,8 @@ registerCompanyFeedRoutes(app, {
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
+      // Avoid temporary bundled config modules triggering the TypeScript watcher.
+      configLoader: 'runner',
       server: { middlewareMode: true },
       appType: 'spa',
     });
@@ -3234,11 +3167,11 @@ registerCompanyFeedRoutes(app, {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Horizon HR Network] Edge Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Stanza] Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
 startServer().catch((error) => {
-  console.error('[Horizon HR Network] Server startup failed:', error instanceof Error ? error.message : error);
+  console.error('[Stanza] Server startup failed:', error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

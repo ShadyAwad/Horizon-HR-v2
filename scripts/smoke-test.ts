@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { assertHttpMutationSafety } from './mutation-safety';
+import { getDbPool } from '../src/lib/hr-background';
+import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -14,6 +15,10 @@ type SmokeUser = {
   role: string;
 };
 
+assertDatabaseMutationSafety(process.env.DATABASE_URL,'Smoke test');
+let fixtureTenantId: string | undefined;
+let postId: string | undefined;
+let caseId: string | undefined;
 const baseUrl = assertHttpMutationSafety(process.env.SMOKE_TEST_BASE_URL || 'http://localhost:3000', 'Smoke test');
 const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random().toString(36).slice(2, 8)}`;
 const smokePrefix = `Smoke Test ${runId}`;
@@ -31,13 +36,13 @@ function getRequiredEnv(...keys: string[]) {
   return undefined;
 }
 
-async function request(path: string, init: RequestInit = {}): Promise<ApiResult> {
+async function request(path: string, init: RequestInit = {}, authenticated = true): Promise<ApiResult> {
   const headers = new Headers(init.headers);
 
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (sessionCookie && !headers.has('Cookie')) headers.set('Cookie', sessionCookie);
+  if (authenticated && sessionCookie && !headers.has('Cookie')) headers.set('Cookie', sessionCookie);
 
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   const setCookie = response.headers.get('set-cookie');
@@ -146,6 +151,7 @@ async function run() {
     }
 
     user = { id, tenantId, role };
+    fixtureTenantId = tenantId;
     authenticatedHeaders = {
       'x-employee-id': id,
       'x-tenant-id': tenantId,
@@ -179,9 +185,9 @@ async function run() {
         }],
       }),
     });
-    expectStatus(result, 409, 'Duplicate signup email');
-    if (result.body?.code !== 'EMAIL_UNAVAILABLE') {
-      throw new Error('Duplicate signup did not return EMAIL_UNAVAILABLE.');
+    expectStatus(result, 400, 'Duplicate signup email');
+    if (result.body?.code !== 'REGISTRATION_UNAVAILABLE') {
+      throw new Error('Duplicate signup must return generic REGISTRATION_UNAVAILABLE.');
     }
   });
 
@@ -226,7 +232,7 @@ async function run() {
     const result = await request('/api/clock-in', {
       method: 'POST',
       body: JSON.stringify({ latitude: 30.0444, longitude: 31.2357 }),
-    });
+    }, false);
     expectStatus(result, 401, 'Clock-in missing authentication');
   });
 
@@ -266,13 +272,21 @@ async function run() {
       }),
     });
     expectStatus(createResult, 201, 'Company feed draft create');
+    const created = asRecord(createResult.body?.post);
+    if(typeof created?.id !== 'string')throw new Error('Created post ID missing');
+    postId = created.id;
   });
 
   await check('Grievance create and tenant list', async () => {
+    const options = await request('/api/grievances/options');
+    expectStatus(options, 200, 'Grievance destinations');
+    const destinations = Array.isArray(options.body?.departments) ? options.body.departments.map(asRecord).filter(d=>d?.grievance_enabled) : [];
+    const destinationDepartmentId = destinations[0]?.id;
     const createResult = await request('/api/grievances', {
       method: 'POST',
       headers: authenticatedHeaders,
       body: JSON.stringify({
+        destinationDepartmentId,
         title: `${smokePrefix} grievance`,
         description: 'Harmless automated smoke-test grievance. It may be resolved from the Grievances panel.',
         category: 'general',
@@ -284,12 +298,13 @@ async function run() {
     const grievance = asRecord(createResult.body?.grievance);
     const grievanceId = grievance?.id;
     if (typeof grievanceId !== 'string') throw new Error('Grievance response did not include an id.');
+    caseId = grievanceId;
 
-    const listResult = await request('/api/grievances', { headers: authenticatedHeaders });
+    const listResult = await request('/api/grievances/me', { headers: authenticatedHeaders });
     expectStatus(listResult, 200, 'Grievance list');
     const grievances = Array.isArray(listResult.body?.grievances) ? listResult.body.grievances : [];
     const found = grievances.some((item) => asRecord(item)?.id === grievanceId);
-    if (!found) throw new Error('Created grievance was not returned by /api/grievances.');
+    if (!found) throw new Error('Created grievance was not returned by the reporter list.');
   });
 
   await check('Signup validation rejects malformed payload safely', async () => {
@@ -318,4 +333,19 @@ run()
     await cleanupBreakRequest();
     console.error(`FAIL  Smoke test setup: ${error instanceof Error ? error.message : 'Unknown failure'}`);
     process.exitCode = 1;
-  });
+  }).finally(removeOwnedFixtures).catch(error=>{console.error('Smoke fixture cleanup failed:',error.message);process.exitCode=1;});
+
+async function removeOwnedFixtures() {
+ const pool=getDbPool();
+ try {
+  if(!fixtureTenantId)return;
+  const client=await pool.connect();
+  try {
+   await client.query('BEGIN');
+   await client.query("SELECT set_config('app.current_tenant',$1,true)",[fixtureTenantId]);
+   for(const [table,id] of [['company_feed_posts',postId],['grievances',caseId],['break_requests',createdBreakRequestId]])if(id)await client.query('DELETE FROM '+table+' WHERE tenant_id=$1 AND id=$2',[fixtureTenantId,id]);
+   await client.query('DELETE FROM audit_logs WHERE tenant_id=$1 AND entity_id=ANY($2::uuid[])',[fixtureTenantId,[postId,caseId,createdBreakRequestId].filter(Boolean)]);
+   await client.query('COMMIT');
+  } catch(error) {await client.query('ROLLBACK');throw error;} finally {client.release();}
+ } finally {await pool.end();}
+}

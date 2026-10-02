@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { hasDatabaseConfig, withTenant } from '../../lib/hr-background';
 
@@ -102,7 +103,7 @@ export function registerLoanRoutes(
   
         res.json({ success: true, loans });
       } catch (error) {
-        console.error('[Loans] Failed to load tenant loans:', error);
+        logServerError('[Loans] Failed to load tenant loans:', error);
         res.status(500).json({ success: false, error: 'Unable to load employee loans' });
       }
     },
@@ -152,7 +153,7 @@ export function registerLoanRoutes(
   
         res.json({ success: true, loans });
       } catch (error) {
-        console.error('[Loans] Failed to load employee loans:', error);
+        logServerError('[Loans] Failed to load employee loans:', error);
         res.status(500).json({ success: false, error: 'Unable to load employee loans' });
       }
     },
@@ -339,7 +340,7 @@ export function registerLoanRoutes(
   
         res.status(201).json({ success: true, loan });
       } catch (error) {
-        console.error('[Loans] Failed to create employee loan:', error);
+        logServerError('[Loans] Failed to create employee loan:', error);
         res.status(500).json({ success: false, error: 'Unable to create employee loan' });
       }
     },
@@ -454,7 +455,7 @@ export function registerLoanRoutes(
   
         res.json({ success: true, loan });
       } catch (error) {
-        console.error('[Loans] Failed to update employee loan status:', error);
+        logServerError('[Loans] Failed to update employee loan status:', error);
         res.status(500).json({ success: false, error: 'Unable to update employee loan status' });
       }
     },

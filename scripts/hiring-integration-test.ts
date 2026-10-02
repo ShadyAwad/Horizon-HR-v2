@@ -9,12 +9,12 @@ type Session = { id: string; tenantId: string; sessionCookie?: string; role: str
 const baseUrl = assertHttpMutationSafety(process.env.HIRING_TEST_BASE_URL || 'http://localhost:3000', 'Hiring integration test');
 const password = process.env.HIRING_TEST_PASSWORD || process.env.DEMO_PASSWORD;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const applicantEmail = `hiring-smoke-${runId}@example.com`;
+const applicantEmail = `hiring-smoke-${runId}@example.invalid`;
 const passed: string[] = [];
 const isolationFixture = {
-  slug: 'stanza-hiring-integration-isolation',
+  slug: `stanza-hiring-integration-${runId}`,
   companyName: 'Stanza Hiring Integration Isolation',
-  email: 'hiring-integration-reader@stanza.test',
+  email: `hiring-integration-${runId}@example.invalid`,
   roleName: 'Hiring Integration Reader',
 } as const;
 
@@ -106,7 +106,7 @@ async function setupOtherTenantHiringFixture(
     await client.query(
       `INSERT INTO employee_role_assignments (tenant_id, employee_id, role_id)
        VALUES ($1, $2, $3)
-       ON CONFLICT (tenant_id, employee_id, role_id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [tenantId, employee.rows[0].id, role.rows[0].id],
     );
     await client.query('COMMIT');

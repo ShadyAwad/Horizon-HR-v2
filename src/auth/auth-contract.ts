@@ -9,6 +9,7 @@ export type AuthUser = {
   roleNames?: string[];
   permissions?: string[];
   tenantId: string;
+  isDemoTenant?: boolean;
   tenant?: string | { id: string; slug: string; companyName: string };
   profileImageUrl?: string | null;
 };

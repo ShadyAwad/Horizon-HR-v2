@@ -13,7 +13,7 @@ Composer is a separate Dashboard destination. Canonical modules retain their wor
 | Leave Approvals | `/api/hr/leave-requests?status=pending&pageSize=5` | leave scoped/review/manage |
 | Expense Approvals | `/api/finance/expense-claims?status=pending&pageSize=5` | expense scoped/review/manage/reimburse |
 | Goals / Tasks | `/api/roster/goals?weekStart=YYYY-MM-DD` | roster goals self/scoped/manage; defaults to own goals |
-| Grievance Inbox | `/api/grievances` | existing manager/HR role boundary |
+| Grievance Inbox | `/api/grievances` | explicit grievance grants and scoped case visibility |
 | Hiring Pipeline Summary | `/api/hiring/applicants?status=active&pageSize=5` | hiring.view |
 | Company Feed | `/api/company-feed` | authenticated visibility rules |
 
@@ -72,46 +72,9 @@ The two Add to Workspace buttons live on Geo Operations' attendance panel and Co
 
 Full-stack preview uses `npm run preview:full` (or build followed by npm start), not frontend-only Vite preview. API responses remain same-origin.
 
-Two navigation assertions referenced removed `geo-operations-summary-grid` markup and an obsolete count of full-section wrappers. Those markers were already absent from committed HEAD. Updated assertions protect shared width, unified AttendanceWorkspace mounting, responsive columns, scroll containment and RTL logical alignment using current architecture. No Geo Operations production styling or logic changed.
 
 Limits: browser-local layouts, manual data refresh, summaries rather than full module functionality, bounded card counts, and no cross-page HTML dragging. Server-scoped summary counts may differ from the limited visible row list. No automatic cross-device synchronization or layout sharing.
 
-## Foundation verification record (2026-09-29)
+## Communications summaries
 
-Full-stack production preview: `http://localhost:3004/` (PORT=3004 and APP_BASE_URL set to that origin). Browser checks covered create/rename/duplicate/switch/reset/delete; add/remove; pointer drag/resize; keyboard movement and resize; collision displacement and restoration; maximize/restore; saved geometry/configuration/surfaces after reload; normal-mode locked handles; both Add to Workspace actions; all eight summaries with authorized accounts; light/dark; Arabic controls/library; and 390px stacking/dialog scrolling/maximize without page overflow. Original Morning Operations was preserved. Only its explicitly approved disposable copy was reset/deleted.
-
-Permission-loss verification used a separately created local tenant/account: Expense summary loaded an empty result (HTTP 200), removing its fixture permission made the canonical endpoint return 403, and reload displayed an unavailable saved card with no content/Open action. The library omitted it. The data-hook regression independently verifies no request is scheduled for revoked cards. Fixture permissions were restored and the isolated tenant/account removed afterward; no real HR records changed.
-
-Passing checks: lint (TypeScript), production build, workspace, navigation, theme/cursor, architecture (11), performance (110), tutorials, command-palette, authorization structural checks, security unauthenticated checks, and git diff --check. The general authorization suite skips optional live admin/manager tests when AUTHZ credentials are absent; the security suite similarly warns about absent admin credentials. These are not claimed as executed. The targeted fixture endpoint test above ran against the real production server. Build emits existing large-chunk and Lexical annotation warnings.
-
-Keyboard resize was additionally exercised in the production browser: wider/narrower/taller/shorter commit geometry, repeated shrinking stops at 4x4, and Tab moves focus to Configure. Resizing into a neighbor invokes the same collision resolution. Attendance Add to Workspace also allows a second independent Attendance instance, as intended by the duplicate-instance policy.
-
-## Changed-file manifest
-
-- `package.json`: Composer test command.
-- `scripts/workspace-test.ts`: registry, layout, persistence and lifecycle contracts.
-- `scripts/workspace-data-test.ts`: real hook/deferred request lifecycle regression.
-- `scripts/navigation-test.ts`: update the two pre-existing stale Geo layout assertions.
-- `src/pages/Dashboard.tsx`: scoped provider, lazy Composer destination and two add actions.
-- `src/navigation/workspace-registry.ts`: Composer navigation metadata.
-- `src/lib/LanguageContext.tsx`: Composer title/description translations.
-- `src/components/tutorials/help-registry.ts`: Composer help entry.
-- `src/components/tutorials/tutorial-registry.ts`: replayable Composer tutorial.
-- `src/components/workspace-composer/widget-catalog.ts`: metadata, access predicates, endpoint mapping.
-- `src/components/workspace-composer/widget-registry.ts`: lazy rendering registry.
-- `src/components/workspace-composer/workspace-model.ts`: normalized v1 layout and actions.
-- `src/components/workspace-composer/ComposerPreferences.tsx`: scoped local persistence and storage events.
-- `src/components/workspace-composer/WorkspaceComposer.tsx`: editor, library, workspace CRUD and data composition.
-- `src/components/workspace-composer/WidgetFrame.tsx`: gestures, keyboard controls, maximize and presentation.
-- `src/components/workspace-composer/ComposerDialog.tsx`: accessible top-layer dialogs.
-- `src/components/workspace-composer/AddToWorkspace.tsx`: canonical panel destination picker.
-- `src/components/workspace-composer/SummaryWidget.tsx`: eight lightweight summaries.
-- `src/components/workspace-composer/useWidgetData.ts`: deduplicated cancellable snapshots.
-- `src/components/workspace-composer/composer.css`: scoped responsive/theme surfaces.
-- `docs/workspace-composer.md`: this implementation and verification guide.
-
-## Communications summaries (2026-09-30)
-
-The existing catalog also includes Recent Communications (`communications`, `/api/communications/messages`, own view/send permissions) and Upcoming Meetings (`meetings`, `/api/communications/meetings?upcoming=true`, meeting view/manage permissions). Both are read-only summaries with an Open module action, bilingual titles, existing abort/deduplication behavior, and bounded canonical responses. The registry now contains ten widget types. This extension does not change layout persistence or Composer architecture.
-
-Continuation browser validation used a disposable layout: Recent Communications displayed five bounded rows, and Upcoming Meetings correctly excluded cancelled meetings and displayed an empty state. The disposable layout was removed and the original preserved. Workspace model/data-hook tests passed again after the title translations.
+Recent Communications and Upcoming Meetings use the existing authorized Communications APIs and lazy summary renderer. They add no send action or background polling. Demo-only first-use layouts are documented in demo-seed.md.

@@ -1,3 +1,4 @@
+import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { QrTokenService } from './qr-token-service';
 import { isQrTokenPurpose, QrTokenError, type QrTokenPurpose } from './qr-token-types';
@@ -39,7 +40,7 @@ function sendError(res: express.Response, error: unknown) {
   if (error instanceof QrTokenError) {
     return res.status(error.statusCode).json({ success: false, code: error.code, message: error.message });
   }
-  if (process.env.NODE_ENV !== 'production') console.error('[qr-token request failed]', error);
+  if (process.env.NODE_ENV !== 'production') logServerError('[qr-token request failed]', error);
   return res.status(500).json({ success: false, code: 'QR_REQUEST_FAILED', message: 'The QR token request could not be completed.' });
 }
 

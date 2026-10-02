@@ -98,7 +98,7 @@ export async function sendPasswordResetEmail({ to, name, resetUrl }: PasswordRes
   });
 
   if (delivery.developmentFallback) {
-    console.log(`[password-reset] Development reset link for ${to}:\n${resetUrl}`);
+    console.warn('[Email] Password-reset delivery is not configured; no reset link was logged.');
   }
 
   return delivery;
