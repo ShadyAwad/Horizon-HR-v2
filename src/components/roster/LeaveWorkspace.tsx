@@ -452,6 +452,7 @@ function isTerminal(status: LeaveStatus) {
 
 export function LeaveWorkspace({
   openRequestSignal = 0,
+  onOpenRequestHandled,
   initialRequestId,
   initialLeaveView,
   hasApproverAuthorityHint = false,
@@ -459,6 +460,7 @@ export function LeaveWorkspace({
   onDataChanged,
 }: {
   openRequestSignal?: number;
+  onOpenRequestHandled?: (signal: number) => void;
   initialRequestId?: string | null;
   initialLeaveView?: LeaveView | null;
   hasApproverAuthorityHint?: boolean;
@@ -513,7 +515,7 @@ export function LeaveWorkspace({
   const [decision, setDecision] = useState<ApprovalDecision | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
-  const lastOpenSignal = useRef(openRequestSignal);
+  const lastOpenSignal = useRef(0);
   const submittingRef = useRef(false);
   const decisionRef = useRef(false);
 
@@ -574,10 +576,12 @@ export function LeaveWorkspace({
   useEffect(() => {
     if (openRequestSignal === lastOpenSignal.current) return;
     lastOpenSignal.current = openRequestSignal;
+    if (!openRequestSignal) return;
+    onOpenRequestHandled?.(openRequestSignal);
     setRequestStep('details');
     setRequestError('');
     setRequestDialogOpen(true);
-  }, [openRequestSignal]);
+  }, [openRequestSignal, onOpenRequestHandled]);
 
   const loadDetail = useCallback(async (requestId: string) => {
     setDetailLoading(true);

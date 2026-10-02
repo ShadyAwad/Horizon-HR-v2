@@ -1,8 +1,8 @@
 import { INTENTS, getIntent, normalizeQuery, unsafeOperation, type Intent, type RouterResult } from '../../lib/intelligent-router';
-import { EmbeddingCache, validateReasoning, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
+import { ReasoningUnavailable, EmbeddingCache, validateReasoning, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
 export type SemanticHit = { intentKey: string; score: number };
 export interface SemanticSearch { search(vector: number[], provider: EmbeddingProvider, allowedKeys: string[]): Promise<SemanticHit[]> }
-export type RouterDependencies = { allowed: (intent: Intent) => Promise<boolean>; available?: () => Promise<Intent[]>; search: SemanticSearch; embedding?: EmbeddingProvider; authorization: ReasoningAuthorization; actor: { tenantId: string; employeeId: string }; cache?: EmbeddingCache; minimumScore: number; minimumMargin: number };
+export type RouterDependencies = { allowed: (intent: Intent) => Promise<boolean>; available?: () => Promise<Intent[]>; search: SemanticSearch; embedding?: EmbeddingProvider; authorization: ReasoningAuthorization; actor: { tenantId: string; employeeId: string; sessionId?: string }; cache?: EmbeddingCache; minimumScore: number; minimumMargin: number };
 export function aggregateIntents(hits: SemanticHit[], allowed: readonly Intent[]) {
   const keys = new Set(allowed.map(i => i.key)), scores = new Map<string, number>();
   for (const hit of hits) if (keys.has(hit.intentKey) && Number.isFinite(hit.score) && hit.score <= 1 && hit.score >= -1) scores.set(hit.intentKey, Math.max(scores.get(hit.intentKey) ?? -1, hit.score));
@@ -52,6 +52,6 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
     return matched(proposed, 'llm', { ...semantic, fallbackUsed: true });
   } catch (error) {
     const invalid = error instanceof Error && error.message === 'INVALID_REASONING';
-    return finish({ ...unresolved(), outcome: invalid ? 'no_match' : choices.length ? 'ambiguous' : 'provider_unavailable', method: 'llm', fallbackUsed: true });
+    return finish({ ...unresolved(), outcome: invalid ? 'no_match' : choices.length ? 'ambiguous' : 'provider_unavailable', method: 'llm', fallbackUsed: true, ...(error instanceof ReasoningUnavailable ? {providerFailure:{reason:error.reason,stage:error.stage,...error.diagnostics,...(error.httpStatus ? {httpStatus:error.httpStatus} : {})}} : {}) });
   }
 }

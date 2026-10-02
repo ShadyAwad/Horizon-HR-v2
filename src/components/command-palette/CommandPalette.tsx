@@ -18,6 +18,7 @@ import { searchCommands } from './command-search';
 import type { CommandGroup, StanzaCommand } from './command-palette-types';
 import { useIntelligentRouter } from './useIntelligentRouter';
 import { RouterReview } from './RouterReview';
+import { OpenAIConnection } from './OpenAIConnection';
 
 type DisplayGroup = CommandGroup | 'recent';
 
@@ -76,6 +77,27 @@ export function CommandPalette({
   const [query, setQuery] = useState('');
   const [showReview,setShowReview] = useState(false);
   const routerText = (en: string, ar: string) => isRtl ? ar : en;
+  const semanticLabel = (state: string) => ({
+    pgvector_missing: routerText('unavailable — pgvector is not installed', 'غير متاحة — pgvector غير مثبت'),
+    migration_required: routerText('unavailable — router migration is required', 'غير متاحة — يلزم ترحيل قاعدة بيانات التوجيه'),
+    credentials_missing: routerText('unavailable — embedding credentials are missing', 'غير متاحة — بيانات اعتماد التضمين مفقودة'),
+    examples_missing: routerText('unavailable — approved examples are missing', 'غير متاحة — الأمثلة المعتمدة مفقودة'),
+    configured_not_verified: routerText('configured; provider connection not verified', 'مهيأة؛ لم يتم التحقق من اتصال المزود'),
+  }[state] || routerText('unavailable', 'غير متاحة'));
+  const failureLabel = (reason: string) => ({
+    model_unavailable: routerText('The configured model is not available to this ChatGPT account.','النموذج المحدد غير متاح لهذا الحساب.'),
+    authorization_rejected: routerText('OpenAI rejected this account’s inference authorization.','رفض OpenAI تفويض الاستدلال لهذا الحساب.'),
+    rate_limited: routerText('OpenAI usage or rate limit reached.','تم بلوغ حد الاستخدام أو معدل الطلبات.'),
+    request_rejected: routerText('OpenAI rejected the inference request.','رفض OpenAI طلب الاستدلال.'),
+    network_error: routerText('The server could not reach OpenAI.','تعذر على الخادم الاتصال بـ OpenAI.'),
+    incomplete_response: routerText('OpenAI did not complete the response.','لم يُكمل OpenAI الاستجابة.'),
+    catalog_invalid: routerText('OpenAI returned an unexpected model catalog.','أعاد OpenAI قائمة نماذج غير متوقعة.'),
+  }[reason] || routerText('Provider unavailable.','المزود غير متاح.'));
+  const reasoningLabel = (state: string) => state === 'ready'
+    ? routerText('available with explicit query consent', 'متاحة بموافقة صريحة لكل طلب')
+    : state === 'disabled' ? routerText('disabled', 'معطلة')
+    : state === 'credentials_missing' ? routerText('unavailable — credentials missing', 'غير متاحة — بيانات الاعتماد مفقودة')
+    : routerText('unavailable — account authorization is not connected', 'غير متاحة — تفويض الحساب غير متصل');
   const [showAll, setShowAll] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [keyboardModality, setKeyboardModality] = useState(!isMobileLayout);
@@ -279,7 +301,7 @@ export function CommandPalette({
                   if (!event.target.value) setShowAll(false);
                 }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder={labels.searchPlaceholder}
+                placeholder={routerText('Search commands or ask Stanza…', 'ابحث عن أمر أو اسأل Stanza…')}
                 aria-controls={resultsId}
                 aria-describedby={`${helpId}${isMobileLayout && keyboardModality ? ` ${keyboardHelpId}` : ''}`}
                 aria-activedescendant={selectedCommand ? `stanza-command-${selectedCommand.id}` : undefined}
@@ -312,15 +334,22 @@ export function CommandPalette({
             </button>
           </div>
           <p id={helpId} className="mt-1 px-7 text-[11px] text-slate-500 dark:text-emerald-100/45">
-            {isMobileLayout ? labels.mobileHelp : labels.keyboardHelp}
+            {routerText('Ask Stanza: type a command or describe where you want to go. ', 'اسأل Stanza: اكتب أمرًا أو صف ما تريد فتحه. ')}{isMobileLayout ? labels.mobileHelp : labels.keyboardHelp}
           </p>
           {isMobileLayout && keyboardModality && (
             <p id={keyboardHelpId} className="sr-only">{labels.keyboardHelp}</p>
           )}
         </div>
 
+        {query.trim() && orderedResults.length > 0 && <p className="border-b p-3 text-xs" role="status">{routerText('Normal command match', 'نتيجة بحث الأوامر المعتادة')}</p>}
+        {router.status && <p className="px-3 py-2 text-xs" role="status">{routerText(
+          'Semantic embeddings: ' + semanticLabel(router.status.semanticState) + '. AI reasoning: ' + reasoningLabel(router.status.reasoningState) + '.',
+          'التضمينات الدلالية: ' + semanticLabel(router.status.semanticState) + '. تفسير الذكاء الاصطناعي: ' + reasoningLabel(router.status.reasoningState) + '.',
+        )}</p>}
+        {router.status?.openaiLocalAvailable && <OpenAIConnection connected={Boolean(router.status.openaiConnection?.connected)} accountLabel={router.status.openaiConnection?.accountLabel} persistent={router.status.openaiConnection?.persistent} expiresAt={router.status.openaiConnection?.expiresAt} scopes={router.status.openaiConnection?.scopes} refreshedAt={router.status.openaiConnection?.refreshedAt} model={router.status.openaiConnection?.model} isRtl={isRtl} onChanged={router.refreshStatus} />}
         {query.trim() && !orderedResults.length && <div className="border-b p-3 text-xs" aria-live="polite">
           <p>{router.busy ? routerText('Finding a Stanza command…','جارٍ البحث عن أمر…') : router.result?.outcome === 'ambiguous' ? routerText('Choose the intended command.','اختر الأمر المقصود.') : router.result?.outcome === 'provider_unavailable' ? routerText('Provider unavailable. Try a known command.','المزود غير متاح. جرّب أمرًا معروفًا.') : router.result?.outcome === 'unauthorized' || router.result?.outcome === 'matched' && !router.routedCommands.length ? routerText('This capability is unavailable for your account.','هذه الإمكانية غير متاحة لحسابك.') : router.result?.outcome === 'matched' ? routerText(`Suggested command (${router.result.method}); review before opening.`,`أمر مقترح (${router.result.method})؛ راجعه قبل الفتح.`) : routerText('Ask Stanza… No approved command found yet.','اسأل Stanza… لم يتم العثور على أمر معتمد.')}</p>
+          {router.result?.providerFailure && <p>{failureLabel(router.result.providerFailure.reason)} ({router.result.providerFailure.stage}{router.result.providerFailure.httpStatus ? ' HTTP '+router.result.providerFailure.httpStatus : ''}{router.result.providerFailure.upstreamCode ? '; '+router.result.providerFailure.upstreamCode : ''}{router.result.providerFailure.parameter ? '; '+router.result.providerFailure.parameter : ''}) {router.result.providerFailure.detail} {router.result.providerFailure.eventType} {router.result.providerFailure.termination} {router.result.providerFailure.requestId && ('Request '+router.result.providerFailure.requestId)}</p>}
           {router.status?.reasoningState === 'ready' && <label className="mt-2 block"><input type="checkbox" checked={router.allowReasoning} onChange={e=>router.setAllowReasoning(e.target.checked)} /> {routerText('Allow AI interpretation of this query','السماح للذكاء الاصطناعي بتفسير هذا الطلب')}</label>}
           {router.status && !['ready','disabled'].includes(router.status.reasoningState) && <p>{routerText('AI interpretation is unavailable for this account or deployment.','تفسير الذكاء الاصطناعي غير متاح لهذا الحساب أو النظام.')}</p>}
           {router.status?.learningEnabled && router.allowReasoning && <label className="mt-2 block"><input type="checkbox" checked={router.learn} onChange={e=>router.setLearn(e.target.checked)} /> {routerText('Save this query for admin review after I choose the command','حفظ هذا الطلب لمراجعة المسؤول بعد اختيار الأمر')}</label>}

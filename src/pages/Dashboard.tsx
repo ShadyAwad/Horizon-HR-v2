@@ -5750,6 +5750,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         <Suspense fallback={<div className="min-h-72 animate-pulse bg-emerald-500/5" />}>
                           <LeaveWorkspace
                             openRequestSignal={leaveRequestSignal}
+                            onOpenRequestHandled={signal => setLeaveRequestSignal(current => current === signal ? 0 : current)}
                             initialLeaveView={leaveDeepLink?.view}
                             initialRequestId={leaveDeepLink?.requestId}
                             hasApproverAuthorityHint={hasLeaveApproverAuthority}

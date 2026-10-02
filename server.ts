@@ -1,5 +1,6 @@
 import { shouldUseSecureCookie } from './src/server/auth/session-cookie-policy';
 import { validateProductionConfig } from './src/lib/production-config';
+import { isLocalPreview } from './src/lib/local-preview';
 import { installShutdown } from './src/lib/runtime-lifecycle';
 import { requestIds } from './src/lib/request-context';
 import { closeCommunicationsQueue } from './src/server/communications/communications-queue';
@@ -61,6 +62,7 @@ import { registerResignationRoutes } from './src/server/resignations/resignation
 import { registerNotificationSettingsRoutes } from './src/server/notifications/notification-settings-routes';
 import { registerGrievanceRoutes } from './src/server/grievances/grievance-routes';
 import { registerIntelligentRouterRoutes } from './src/server/intelligent-router/routes';
+import { closeLocalOpenAIAuth, disconnectLocalOpenAISession } from './src/server/intelligent-router/openai-local-auth';
 import { registerSystemRoutes } from './src/server/system/system-routes';
 import { registerMapTileRoutes } from './src/server/system/map-tile-routes';
 import { registerCompanyFeedRoutes } from './src/server/feed/company-feed-routes';
@@ -97,7 +99,7 @@ import {
 } from './src/server/trycloudflare-dev';
 
 loadDotenv();
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && !isLocalPreview()) {
   loadDotenv({ path: '.env.development.local', override: true });
 }
 
@@ -390,6 +392,7 @@ async function revokeAuthSession(req: express.Request, res: express.Response) {
         });
       }
       await client.query('COMMIT');
+      if(session)await disconnectLocalOpenAISession(session.id,{tenantId:session.tenant_id,employeeId:session.employee_id,sessionId:session.id}).catch(error=>logServerError('[OpenAI logout]',error));
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -3135,7 +3138,7 @@ registerCompanyFeedRoutes(app, {
   });
 
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !isLocalPreview()) {
     const {createServer:createViteServer}=await import('vite');
     const vite = await createViteServer({
       // Avoid temporary bundled config modules triggering the TypeScript watcher.
@@ -3178,12 +3181,12 @@ registerCompanyFeedRoutes(app, {
     });
   }
 
-  const httpServer = app.listen(PORT, '0.0.0.0', () => {
+  const httpServer = app.listen(PORT, isLocalPreview() ? 'localhost' : '0.0.0.0', () => {
     console.info(JSON.stringify({level:'info',operation:'http_listening',port:PORT}));
   });
   isStopping = installShutdown(async()=>{
     await new Promise<void>((resolve,reject)=>{httpServer.close(error=>error?reject(error):resolve());httpServer.closeIdleConnections();});
-    await closeVite?.();await closeCommunicationsQueue();await closeHrResources();
+    await closeLocalOpenAIAuth();await closeVite?.();await closeCommunicationsQueue();await closeHrResources();
   });
 }
 

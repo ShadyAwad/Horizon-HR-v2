@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { isLocalPreview } from '../src/lib/local-preview';
+import { validateProductionConfig } from '../src/lib/production-config';
+assert.equal(isLocalPreview({NODE_ENV:'development'}), false);
+assert.equal(isLocalPreview({NODE_ENV:'development',STANZA_RUNTIME_PROFILE:'local-preview'}), true);
+assert.throws(()=>isLocalPreview({NODE_ENV:'production',STANZA_RUNTIME_PROFILE:'local-preview'}));
+assert.throws(()=>validateProductionConfig({NODE_ENV:'production',STANZA_RUNTIME_PROFILE:'local-preview'}), /Production configuration invalid/);
+const refused=spawnSync(process.execPath,['scripts/local-preview.mjs'], {env:{...process.env,NODE_ENV:'production'},encoding:'utf8',timeout:5000});
+assert.notEqual(refused.status,0);assert.match(refused.stderr,/Use npm start for production/);
+console.log('PASS explicit preview profile cannot bypass production validation or launch in production');

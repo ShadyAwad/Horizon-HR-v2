@@ -6,10 +6,11 @@ export function useIntelligentRouter(query:string,normalResults:number,commands:
   const [resolved,setResolved]=useState<{query:string;result:RouterResult}|null>(null),[busy,setBusy]=useState(false),[allowReasoning,setAllowReasoning]=useState(false),[learn,setLearn]=useState(false);
   // Old proposals disappear during render, before effect cleanup or network completion.
   const result=normalResults===0&&resolved?.query===query?resolved.result:null;
-  const [status,setStatus]=useState<{reasoningState:string;canReview:boolean;learningEnabled:boolean}|null>(null);
+  const [status,setStatus]=useState<{reasoningState:string;embeddingConfigured:boolean;semanticState:string;canReview:boolean;learningEnabled:boolean;openaiLocalAvailable?:boolean;openaiConnection?:{connected:boolean;pending:boolean;model?:string;accountLabel?:string;persistent?:boolean;expiresAt?:string;scopes?:string[];refreshedAt?:string}}|null>(null);
+  const [statusVersion,setStatusVersion]=useState(0);
   // Consent applies to one query. Changing it requires a new explicit opt-in.
   useEffect(()=>{setAllowReasoning(false);setLearn(false);},[query]);
-  useEffect(()=>{ const c=new AbortController();void apiFetch(apiUrl('/api/command-router/status'),{signal:c.signal}).then(async r=>{if(r.ok)setStatus(await r.json());}).catch(()=>{});return ()=>c.abort(); },[]);
+  useEffect(()=>{ const c=new AbortController();void apiFetch(apiUrl('/api/command-router/status'),{signal:c.signal}).then(async r=>{if(r.ok)setStatus(await r.json());}).catch(()=>{});return ()=>c.abort(); },[statusVersion]);
   useEffect(()=>{
     setResolved(null);setBusy(false);
     if(normalResults || query.trim().length<3 || query.length>500)return;
@@ -29,5 +30,5 @@ export function useIntelligentRouter(query:string,normalResults:number,commands:
   async function confirm(command:StanzaCommand) {
     if(result?.candidateId && result.commandId===command.id) await apiFetch(apiUrl(`/api/command-router/candidates/${result.candidateId}/confirm`),{method:'POST'}).catch(()=>{});
   }
-  return {result,busy,status,allowReasoning,setAllowReasoning,learn,setLearn,routedCommands,confirm};
+  return {result,busy,status,refreshStatus:()=>{setAllowReasoning(false);setLearn(false);setStatusVersion(v=>v+1);},allowReasoning,setAllowReasoning,learn,setLearn,routedCommands,confirm};
 }
