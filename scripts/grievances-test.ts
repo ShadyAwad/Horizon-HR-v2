@@ -1,3 +1,4 @@
+import {closeHrResources} from '../src/lib/hr-background';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -9,7 +10,7 @@ import { registerAuditRoutes } from '../src/server/audit/audit-routes';
 import { registerDashboardAttentionRoutes } from '../src/server/dashboard/attention-routes';
 import { resolveScopedPermission } from '../src/server/organisation/scoped-permissions';
 import { withTenant } from '../src/lib/hr-background';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { registerCommunicationsRoutes } from '../src/server/communications/communications-routes';
 import { processMessage } from '../src/server/communications/communications-queue';
 import { registerGrievanceRoutes } from '../src/server/grievances/grievance-routes';
@@ -216,5 +217,5 @@ finally {
     for (const key of stored)
         fs.rmSync('uploads/private-grievances/' + key, { force: true });
     server.close();
-    await pool.end();
+    await pool.end();await closeHrResources();
 }

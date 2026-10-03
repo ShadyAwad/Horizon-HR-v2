@@ -2,7 +2,8 @@ import Redis from 'ioredis';
 import 'dotenv/config';
 import { Queue } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
-import { Pool, type PoolClient } from 'pg';
+import { type Pool, type PoolClient } from 'pg';
+import { RuntimePool } from './database-security';
 export const HR_QUEUE_NAME = 'hr-queue';
 export function getRedisConnection(): RedisOptions {
     const redisUrl = process.env.REDIS_URL?.trim();
@@ -103,7 +104,7 @@ export function getDbPool() {
         throw new Error('DATABASE_URL is required for HR database operations.');
     }
     if (!dbPool) {
-        dbPool = new Pool({
+        dbPool = new RuntimePool({
             connectionString: process.env.DATABASE_URL,
             ssl: getDatabaseSsl(),
             max: Number(process.env.DATABASE_POOL_MAX || 10),

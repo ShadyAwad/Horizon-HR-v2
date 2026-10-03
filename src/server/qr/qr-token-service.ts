@@ -371,9 +371,7 @@ export class QrTokenService {
 
   async consumeOnboardingInvite(tokenHash: string): Promise<{ consumed: true } | null> {
     const tenantLookup = await getDbPool().query(
-      `SELECT tenant_id FROM qr_access_tokens
-       WHERE token_hash=$1 AND purpose='onboarding_invite'
-       LIMIT 1`,
+      `SELECT tenant_id FROM stanza_qr_tenant($1,'onboarding_invite')`,
       [tokenHash],
     );
     const tenantId = tenantLookup.rows[0]?.tenant_id;
@@ -459,9 +457,7 @@ export class QrTokenService {
   async resolvePublic(purpose: QrTokenPurpose, tokenHash: string): Promise<Record<string, unknown> | null> {
     const pool = getDbPool();
     const tenantLookup = await pool.query(
-      `SELECT tenant_id FROM qr_access_tokens
-       WHERE token_hash=$1 AND purpose=$2
-       LIMIT 1`,
+      `SELECT tenant_id FROM stanza_qr_tenant($1,$2)`,
       [tokenHash, purpose],
     );
     const tenantId = tenantLookup.rows[0]?.tenant_id;

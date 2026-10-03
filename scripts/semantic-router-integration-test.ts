@@ -1,9 +1,11 @@
+import {closeHrResources} from '../src/lib/hr-background';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { once } from 'node:events';
-import { getDbPool,withTenant } from '../src/lib/hr-background';
+import {withTenant} from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { routerConfig } from '../src/server/intelligent-router/config';
 import { registerIntelligentRouterRoutes } from '../src/server/intelligent-router/routes';
 import { PgSemanticSearch } from '../src/server/intelligent-router/store';
@@ -92,4 +94,4 @@ try{
   }finally{await roleClient.query('ROLLBACK');roleClient.release();}
   const metrics=await api('admin','/metrics');assert.equal(metrics.status,200);assert(metrics.metrics.some((m:{promotions:string})=>Number(m.promotions)===1));
   console.log('PASS router API authorization, candidate lifecycle, duplicate handling, promotion avoids LLM, cross-tenant filtering and non-bypass RLS');
-}finally{server.close();for(const t of tenants)await pool.query('DELETE FROM tenants WHERE id=$1',[t]);await pool.end();}
+}finally{server.close();for(const t of tenants)await pool.query('DELETE FROM tenants WHERE id=$1',[t]);await pool.end();await closeHrResources();}

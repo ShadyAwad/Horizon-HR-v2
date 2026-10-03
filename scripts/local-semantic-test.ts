@@ -7,7 +7,7 @@ import {getDbPool,withTenant} from '../src/lib/hr-background';
 import {resolveScopedPermission} from '../src/server/organisation/scoped-permissions';
 const settings=routerConfig(),provider=createEmbedding(settings)!;
 if(settings.embeddingProvider!=='local')throw Error('Local-only evaluation');
-const pool=getDbPool();const row=(await pool.query("SELECT id,tenant_id FROM employees WHERE email='admin@stanza-demo.com' AND is_active")).rows[0];
+const pool=getDbPool();const located=(await pool.query("SELECT tenant_id FROM stanza_auth_tenant('admin@stanza-demo.com')")).rows[0];const row=located&&await withTenant(located.tenant_id,async c=>(await c.query("SELECT id,tenant_id FROM employees WHERE email='admin@stanza-demo.com' AND is_active")).rows[0]);
 if(!row)throw Error('Existing demo fixture administrator required');
 const actor={tenantId:row.tenant_id,employeeId:row.id};
 const available=await withTenant(actor.tenantId,async c=>{const result=[];for(const i of INTENTS){if(!i.permissions.length){result.push(i);continue;}for(const p of i.permissions)if((await resolveScopedPermission(c,{tenantId:actor.tenantId,actorEmployeeId:actor.employeeId,permissionKey:p,targetEmployeeId:actor.employeeId})).allowed){result.push(i);break;}}return result;});

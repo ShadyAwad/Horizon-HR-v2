@@ -12,7 +12,8 @@ const pool=getDbPool();
 try{
  const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.ROUTER_TEST_EMAIL,password:process.env.ROUTER_TEST_PASSWORD})});
  assert(login.ok,'Standard login required');const cookie=login.headers.get('set-cookie')?.split(';',1)[0];assert(cookie);
- const employee=(await pool.query('SELECT id,tenant_id FROM employees WHERE email=$1 AND is_active',[process.env.ROUTER_TEST_EMAIL])).rows[0];assert(employee);
+ const located=(await pool.query('SELECT tenant_id FROM stanza_auth_tenant($1)',[process.env.ROUTER_TEST_EMAIL])).rows[0];
+ const employee=located&&await withTenant(located.tenant_id,async c=>(await c.query('SELECT id,tenant_id FROM employees WHERE email=$1 AND is_active',[process.env.ROUTER_TEST_EMAIL])).rows[0]);assert(employee);
  const actor={tenantId:employee.tenant_id,employeeId:employee.id};
  const api=async(path:string,body?:object)=>{const response=await fetch(base+'/api/command-router/'+path,{method:body?'POST':'GET',headers:{Cookie:cookie,Origin:base,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});assert(response.ok,`HTTP ${response.status} for ${path}`);return response.json();};
  const before=(await api('metrics')).metrics.reduce((n:number,r:any)=>n+Number(r.fallbacks),0);

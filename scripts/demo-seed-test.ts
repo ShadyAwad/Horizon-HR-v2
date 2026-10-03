@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 import { identifyDemo, fixtureId, DEMO_SLUG } from './demo/core';
 import { readManifest, resetDemoFixtures, FIXTURE_TABLES } from './demo/reset';

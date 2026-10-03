@@ -2,13 +2,13 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { Pool } from 'pg';
+import {getMigrationPool} from './migration-pool';
 import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
 import { rollupAttendanceDailySummary } from '../src/server/attendance/attendance-rollup';
 import { getDbPool, getHrQueue, enqueueAttendanceRollup } from '../src/lib/hr-background';
 const base=assertHttpMutationSafety(process.env.ATTENDANCE_TEST_BASE_URL||'http://localhost:3003','Attendance integration');
 assertDatabaseMutationSafety(process.env.DATABASE_URL,'Attendance integration');
-const pool=new Pool({connectionString:process.env.DATABASE_URL});
+const pool=getMigrationPool();
 const tenants:string[]=[];const password=crypto.randomBytes(20).toString('base64url');const tag=crypto.randomUUID();
 type Person={id:string;tenantId:string;email:string;cookie:string};
 async function call(u:Person|null,path:string,body?:unknown,method='POST',origin=base) {

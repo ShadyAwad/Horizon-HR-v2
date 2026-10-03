@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
-import { getDbPool, enqueueAuditLog, closeHrResources } from '../src/lib/hr-background';
+import { enqueueAuditLog, closeHrResources } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Background durability probe');
 try {
@@ -13,6 +14,7 @@ try {
     assert(Date.now() - started < 5000);
     const rows = (await pool.query("SELECT id FROM outbox_events WHERE tenant_id=$1 AND event_type='background.hr' AND processed_at IS NULL", [tenant.id])).rows;
     assert.equal(rows.length, 1);
+    await pool.end();
     console.log('PASS unavailable Redis preserves pending PostgreSQL dispatch with bounded producer failure');
 }
 finally {

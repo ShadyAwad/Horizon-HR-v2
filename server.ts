@@ -325,8 +325,7 @@ async function createAuthSession(
   res: express.Response,
 ) {
   const token = crypto.randomBytes(32).toString('base64url');
-  const pool = getDbPool();
-  await pool.query(
+  await withTenant(employee.tenant_id, client => client.query(
     `INSERT INTO auth_sessions (
        tenant_id, employee_id, session_token_hash, expires_at, device_label, ip_masked, location_label
      )
@@ -339,7 +338,7 @@ async function createAuthSession(
       getSessionDeviceLabel(req),
       maskSessionIp(getRequestIp(req)),
     ],
-  );
+  ));
   setAuthSessionCookie(req, res, token);
 }
 
@@ -360,6 +359,8 @@ async function revokeAuthSession(req: express.Request, res: express.Response) {
     const client = await getDbPool().connect();
     try {
       await client.query('BEGIN');
+      const context = await client.query('SELECT tenant_id FROM stanza_session_identity($1)', [hashSessionToken(token)]);
+      await client.query("SELECT set_config('app.current_tenant', $1, true)", [context.rows[0]?.tenant_id || '00000000-0000-0000-0000-000000000000']);
       const sessionResult = await client.query<{
         id: string;
         tenant_id: string;
@@ -408,23 +409,18 @@ async function getAuthSessionIdentity(req: express.Request) {
   if (!token) return null;
 
   const result = await getDbPool().query<{ id: string; employee_id: string; tenant_id: string }>(
-    `SELECT id, employee_id, tenant_id
-     FROM auth_sessions
-     WHERE session_token_hash = $1
-       AND revoked_at IS NULL
-       AND expires_at > NOW()
-     LIMIT 1`,
+    `SELECT id, employee_id, tenant_id FROM stanza_session_identity($1)`,
     [hashSessionToken(token)],
   );
   const session = result.rows[0];
   if (!session) return null;
 
-  await getDbPool().query(
+  await withTenant(session.tenant_id, client => client.query(
     `UPDATE auth_sessions SET last_used_at = NOW()
      WHERE id = $1
        AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '5 minutes')`,
     [session.id],
-  );
+  ));
   return session;
 }
 
@@ -628,72 +624,7 @@ async function seedTenantRolesAndPermissions(
   tenantId: string,
   customRoles: Array<{ name: string; description: string | null; permissionKeys: string[] }> = [],
 ) {
-  await client.query(
-    `
-      INSERT INTO tenant_permissions (permission_key, label, description)
-      VALUES
-        ('locations.read', 'Read locations', 'View company locations.'),
-        ('locations.manage', 'Manage locations', 'Create and update company locations and geofences.'),
-        ('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.'),
-        ('attendance.policy.manage', 'Manage attendance policy', 'Configure company attendance and break policies.'),
-        ('attendance.clock', 'Clock attendance', 'Clock in and out.'),
-        ('attendance.view', 'View attendance', 'View attendance records and summaries.'),
-        ('attendance.view_live', 'View live employees', 'View tenant employees with currently open attendance shifts.'),
-        ('break_requests.create', 'Create break requests', 'Request manager approval for breaks.'),
-        ('break_requests.view_own', 'View own break requests', 'View personal break request history.'),
-        ('break_requests.review', 'Review break requests', 'Approve or reject pending break requests.'),
-        ('break_requests.view_all', 'View all break requests', 'View tenant break request queues.'),
-        ('leave.create', 'Create leave requests', 'Create and view personal leave requests.'),
-        ('leave.request.self', 'Request personal leave', 'Create personal leave requests.'),
-        ('leave.view.self', 'View personal leave', 'View personal leave request history.'),
-        ('leave.cancel.self', 'Cancel personal leave', 'Cancel pending personal leave requests.'),
-        ('leave.view.scoped', 'View scoped leave requests', 'View leave requests within an authorised employee scope.'),
-        ('leave.approve', 'Approve scoped leave requests', 'Approve or reject leave requests within an authorised employee scope.'),
-        ('leave.manage', 'Manage tenant leave', 'Manage leave requests across an explicitly authorised company scope.'),
-        ('leave.review', 'Review leave requests', 'Review tenant leave requests.'),
-        ('roster.view_all', 'View tenant rosters', 'View roster shifts for employees in the tenant.'),
-        ('roster.manage', 'Manage rosters', 'Create, update, cancel, and override roster shifts.'),
-        ('roster.goals.view_self', 'View own roster goals', 'View personal weekly roster goals and tasks.'),
-        ('roster.goals.view_scoped', 'View scoped roster goals', 'View weekly roster goals for employees in an authorised scope.'),
-        ('roster.goals.manage', 'Manage roster goals', 'Assign and manage weekly roster goals within an authorised scope.'),
-        ('roster.goals.complete_self', 'Complete own roster goals', 'Update progress and complete personal weekly roster goals.'),
-        ('payroll.view_self', 'View own payroll', 'View personal payroll records.'),
-        ('payroll.view_all', 'View all payroll', 'View tenant payroll records.'),
-        ('payroll.run', 'Run payroll', 'Generate tenant payroll.'),
-        ('payroll.approve', 'Approve payroll', 'Approve or cancel payroll records.'),
-        ('payroll.mark_paid', 'Mark payroll paid', 'Mark approved payroll as paid.'),
-        ('payroll.export_pdf', 'Export payroll PDF', 'Export payroll statements as PDF.'),
-        ('compensation.manage', 'Manage compensation', 'Create and update compensation profiles.'),
-        ('loans.view_self', 'View own loans', 'View personal employee loans.'),
-        ('loans.manage', 'Manage loans', 'Create and update employee loans.'),
-        ('grievances.create', 'Create grievances', 'File grievance cases.'),
-        ('grievances.review', 'Review grievances', 'Review scoped grievance cases.'),
-        ('grievances.view_own', 'Grievances view own', 'Authorized grievance case access.'),
-        ('grievances.view', 'Grievances view', 'Authorized grievance case access.'),
-        ('grievances.triage', 'Grievances triage', 'Authorized grievance case access.'),
-        ('grievances.assign', 'Grievances assign', 'Authorized grievance case access.'),
-        ('grievances.respond', 'Grievances respond', 'Authorized grievance case access.'),
-        ('grievances.internal_notes', 'Grievances internal notes', 'Authorized grievance case access.'),
-        ('grievances.resolve', 'Grievances resolve', 'Authorized grievance case access.'),
-        ('grievances.close', 'Grievances close', 'Authorized grievance case access.'),
-        ('grievances.confidential', 'Grievances confidential', 'Authorized grievance case access.'),
-        ('grievances.configure', 'Grievances configure', 'Authorized grievance case access.'),
-        ('resignations.create', 'Create resignation requests', 'Submit resignation requests.'),
-        ('resignations.view_own', 'View own resignation requests', 'View personal resignation requests.'),
-        ('resignations.view_all', 'View all resignation requests', 'View tenant resignation requests.'),
-        ('resignations.review', 'Review resignation requests', 'Approve or reject resignation requests.'),
-        ('resignations.process', 'Process resignation requests', 'Mark approved resignation requests as processed.'),
-        ('feed.read', 'Read company feed', 'Read company feed posts.'),
-        ('feed.publish', 'Publish company feed', 'Create and manage company feed posts.'),
-        ('audit.view', 'View audit trail', 'View tenant-scoped audit events.'),
-        ('roles.manage', 'Manage roles', 'Manage tenant roles, permissions, and employee titles.'),
-        ('roles.assign_privileged', 'Assign privileged roles', 'Assign system administrator and equivalent privileged roles.')
-      ON CONFLICT (permission_key) DO UPDATE SET
-        label = EXCLUDED.label,
-        description = EXCLUDED.description
-    `,
-  );
-
+  // The global permission catalog is provisioned by migrations, never by runtime.
   await client.query(
     `
       INSERT INTO tenant_roles (tenant_id, name, description, system_key, is_system)
@@ -877,7 +808,7 @@ async function demoAuth(
   }
 
   try {
-    const result = await getDbPool().query<AuthenticatedUser>(
+    const result = await withTenant(tenantId, client => client.query<AuthenticatedUser>(
       `
         SELECT
           employees.id AS "employeeId",
@@ -901,7 +832,7 @@ async function demoAuth(
         LIMIT 1
       `,
       [employeeId, tenantId],
-    );
+    ));
 
     if (result.rowCount === 0) {
       return res.status(401).json({
@@ -924,7 +855,7 @@ async function demoAuth(
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
       try {
-        const fallbackResult = await getDbPool().query<AuthenticatedUser>(
+        const fallbackResult = await withTenant(tenantId, client => client.query<AuthenticatedUser>(
           `
             SELECT
               id AS "employeeId",
@@ -943,7 +874,7 @@ async function demoAuth(
             LIMIT 1
           `,
           [employeeId, tenantId],
-        );
+        ));
 
         if (fallbackResult.rowCount === 0) {
           return res.status(401).json({
@@ -1174,8 +1105,14 @@ const ACTIVE_AUTH_ROLE_JOINS = `
   AND tenant_role_permissions.role_id = assigned_role.id
 `;
 
+async function withAuthEmail<T>(email: string, callback: (client: PoolClient) => Promise<T>) {
+  const located = await getDbPool().query<{tenant_id:string}>('SELECT tenant_id FROM stanza_auth_tenant($1)', [email]);
+  // Unknown addresses still execute the bounded lookup and retain login timing behavior.
+  return withTenant(located.rows[0]?.tenant_id || '00000000-0000-0000-0000-000000000000', callback);
+}
+
 async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
-  const result = await getDbPool().query<AuthEmployeeRow>(
+  const result = await withAuthEmail(normalizedEmail, client => client.query<AuthEmployeeRow>(
     `
       SELECT
         employees.id,
@@ -1204,13 +1141,13 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
       LIMIT 1
     `,
     [normalizedEmail],
-  );
+  ));
 
   return result.rows[0] || null;
 }
 
 async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
-  const result = await getDbPool().query<AuthEmployeeRow>(
+  const result = await withTenant(tenantId, client => client.query<AuthEmployeeRow>(
     `
       SELECT
         employees.id,
@@ -1242,7 +1179,7 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
       LIMIT 1
     `,
     [tenantId, employeeId],
-  );
+  ));
 
   return result.rows[0] || null;
 }
@@ -1579,12 +1516,7 @@ async function startServer() {
       // Keep a global login email unique even though employee rows are tenant-scoped.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedAdminEmail.value]);
       const existingEmailResult = await client.query<{ id: string }>(
-        `
-          SELECT id
-          FROM employees
-          WHERE LOWER(email) = $1
-          LIMIT 1
-        `,
+        `SELECT tenant_id AS id FROM stanza_auth_tenant($1)`,
         [normalizedAdminEmail.value],
       );
 
@@ -1595,6 +1527,8 @@ async function startServer() {
         });
       }
 
+      const registrationTenantId = crypto.randomUUID();
+      await client.query("SELECT set_config('app.current_tenant', $1, true)", [registrationTenantId]);
       const tenantResult = await client.query<{
         id: string;
         company_name: string;
@@ -1602,13 +1536,13 @@ async function startServer() {
       }>(
         `
           INSERT INTO tenants (
-            company_name,
+            id, company_name,
             slug,
             default_currency,
             capacity_tier,
             allows_company_loans
           )
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($6, $1, $2, $3, $4, $5)
           RETURNING id, company_name, slug
         `,
         [
@@ -1617,6 +1551,7 @@ async function startServer() {
           normalizedCurrency,
           normalizedCapacity,
           Boolean(allowsLoans),
+          registrationTenantId,
         ],
       );
 
@@ -1972,13 +1907,13 @@ function presentSession(row: Record<string, unknown>, currentSessionId?: string)
 app.get('/api/auth/sessions', demoAuth, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const authUser = req.authUser!;
-  const result = await getDbPool().query<Record<string, unknown>>(
+  const result = await withTenant(authUser.tenantId, client => client.query<Record<string, unknown>>(
     `${sessionSelect}
       WHERE tenant_id = $1 AND employee_id = $2
       ORDER BY (id = $3) DESC, COALESCE(last_used_at, created_at) DESC
       LIMIT 100`,
     [authUser.tenantId, authUser.employeeId, req.authSessionId || ''],
-  );
+  ));
   return res.json({ success: true, sessions: result.rows.map((row) => presentSession(row, req.authSessionId)) });
 });
 
@@ -2032,7 +1967,7 @@ app.get('/api/hr/session-center', demoAuth, requirePermission('sessions.manage')
   const authUser = req.authUser!;
   const status = typeof req.query.status === 'string' ? req.query.status : 'active';
   const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
-  const result = await getDbPool().query<Record<string, unknown>>(
+  const result = await withTenant(authUser.tenantId, client => client.query<Record<string, unknown>>(
     `SELECT auth_sessions.id, auth_sessions.employee_id, auth_sessions.tenant_id, auth_sessions.device_label,
             auth_sessions.ip_masked, auth_sessions.location_label, auth_sessions.created_at,
             auth_sessions.last_used_at, auth_sessions.expires_at, auth_sessions.revoked_at,
@@ -2047,7 +1982,7 @@ app.get('/api/hr/session-center', demoAuth, requirePermission('sessions.manage')
       ORDER BY COALESCE(auth_sessions.last_used_at, auth_sessions.created_at) DESC
       LIMIT 200`,
     [authUser.tenantId, search, ['active', 'revoked', 'expired', 'all'].includes(status) ? status : 'active'],
-  );
+  ));
   return res.json({ success: true, sessions: result.rows.map((row) => ({ ...presentSession(row, req.authSessionId), employee: { id: row.employee_id, name: row.employee_name, email: row.employee_email, role: row.employee_role } })) });
 });
 
@@ -2130,7 +2065,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   }
 
   try {
-    const result = await getDbPool().query<{
+    const result = await withAuthEmail(normalizedEmail, client => client.query<{
       id: string;
       tenant_id: string;
       email: string;
@@ -2172,7 +2107,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
         LIMIT 1
       `,
       [normalizedEmail],
-    );
+    ));
 
     if (result.rowCount === 0) {
       verifyPassword(password, INVALID_LOGIN_TIMING_HASH);
@@ -2208,7 +2143,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
       try {
-        const fallbackResult = await getDbPool().query<{
+        const fallbackResult = await withAuthEmail(normalizedEmail, client => client.query<{
           id: string;
           tenant_id: string;
           email: string;
@@ -2234,7 +2169,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             LIMIT 1
           `,
           [normalizedEmail],
-        );
+        ));
 
         const fallbackEmployee = fallbackResult.rows[0];
         const fallbackPasswordValid = verifyPassword(
@@ -2822,7 +2757,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
     const tokenHash = hashResetCode(resetCode);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const result = await getDbPool().query<{
+    const result = await withAuthEmail(normalizedEmail, client => client.query<{
       tenant_id: string;
       employee_id: string;
       full_name: string;
@@ -2837,7 +2772,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
         LIMIT 1
       `,
       [normalizedEmail],
-    );
+    ));
 
     /*
       Important security behavior:
@@ -2853,7 +2788,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
 
     const employee = result.rows[0];
 
-    await getDbPool().query(
+    await withTenant(employee.tenant_id, client => client.query(
       `
         INSERT INTO password_reset_tokens (
           tenant_id,
@@ -2875,7 +2810,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
         null,
         expiresAt,
       ],
-    );
+    ));
 
     const appBaseUrl = (process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
     const delivery = await sendPasswordResetEmail({
@@ -2974,6 +2909,8 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
   try {
     await client.query('BEGIN');
 
+    const resetContext = await client.query('SELECT tenant_id FROM stanza_reset_tenant($1)', [resetCodeHash]);
+    await client.query("SELECT set_config('app.current_tenant', $1, true)", [resetContext.rows[0]?.tenant_id || '00000000-0000-0000-0000-000000000000']);
     const tokenResult = await client.query<{
       id: string;
       tenant_id: string;

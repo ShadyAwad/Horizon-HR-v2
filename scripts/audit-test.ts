@@ -5,7 +5,7 @@ if(!process.env.DEMO_PASSWORD)throw new Error('Configure a disposable fixture pa
 
 import { readFile } from 'node:fs/promises';
 import type { PoolClient } from 'pg';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { presentAuditEvent, recordAuditEvent } from '../src/server/audit/audit-events';
 
 type JsonObject = Record<string, any>;

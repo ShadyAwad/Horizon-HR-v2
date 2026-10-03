@@ -1,11 +1,11 @@
 /** Temporary indexes only, using the real local-model corpus with reproducible fixture tenant allocation. */
 import './router-env';
 import assert from 'node:assert/strict';
-import {Pool} from 'pg';
+import {getMigrationPool} from './migration-pool';
 import {routerConfig} from '../src/server/intelligent-router/config';
 if(process.env.NODE_ENV==='production')throw Error('Development-only benchmark');
 const settings=routerConfig();if(settings.embeddingProvider!=='local')throw Error('Local corpus required');
-const pool=new Pool({connectionString:process.env.DATABASE_URL}),c=await pool.connect();
+const pool=getMigrationPool(),c=await pool.connect();
 const k=10,percentile=(v:number[],p:number)=>[...v].sort((a,b)=>a-b)[Math.ceil(v.length*p)-1];
 try{
  await c.query('BEGIN');

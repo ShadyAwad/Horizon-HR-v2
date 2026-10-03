@@ -2,7 +2,7 @@ import './router-env';
 import {INTENTS,normalizeQuery} from '../src/lib/intelligent-router';
 import {INTENT_EXAMPLES} from '../src/lib/router-examples';
 import {createEmbedding,routerConfig} from '../src/server/intelligent-router/config';
-import {getDbPool} from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool, migrationUrl} from './migration-pool';
 export function approvedCorpus(){
  const unique=new Map<string,{intent:string;phrase:string;text:string}>();
  for(const intent of INTENTS)for(const phrase of [...intent.aliases,...(INTENT_EXAMPLES[intent.key]??[])]){

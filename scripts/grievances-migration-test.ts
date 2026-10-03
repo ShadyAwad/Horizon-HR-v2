@@ -2,10 +2,10 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { Pool } from 'pg';
+import {getMigrationPool} from './migration-pool';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Grievance legacy migration test');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL }), schema = 'grv_migration_' + crypto.randomUUID().replaceAll('-', ''), c = await pool.connect();
+const pool = getMigrationPool(), schema = 'grv_migration_' + crypto.randomUUID().replaceAll('-', ''), c = await pool.connect();
 try {
     await c.query(`CREATE SCHEMA ${schema}`);
     await c.query(`SET search_path TO ${schema},public`);

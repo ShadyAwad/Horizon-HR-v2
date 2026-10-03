@@ -7,23 +7,26 @@ import fs from 'node:fs';
 import net from 'node:net';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { Pool } from 'pg';
-import { getDbPool } from '../src/lib/hr-background';
+import { getMigrationPool, migrationUrl } from './migration-pool';
+import { grantRuntimeAccess } from './runtime-role';
 import { applyMigrations } from './migration-order';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 // CREATE/DROP is restricted to a newly generated database, never the configured database.
-const { databaseUrl } = assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Disposable migration checks');
+const { databaseUrl } = assertDatabaseMutationSafety(migrationUrl(), 'Disposable migration checks');
 const name = 'stanza_migration_test_' + crypto.randomBytes(12).toString('hex');
 assert.match(name, /^stanza_migration_test_[a-f0-9]{24}$/);
-const admin = getDbPool();
+const admin = getMigrationPool();
 const target = new URL(databaseUrl);
 target.pathname = '/' + name;
+const runtimeTarget = new URL(process.env.DATABASE_URL!);
+runtimeTarget.pathname = '/' + name;
 const pool = new Pool({ connectionString: target.toString(), ssl: admin.options.ssl });
 pool.on('error', error => console.error('Temporary database connection:', error.message));
 admin.on('error', error => console.error('Migration administration connection:', error.message));
 let created = false;
 const env: NodeJS.ProcessEnv & {
     DEMO_PASSWORD: string;
-} = { ...process.env, DATABASE_URL: target.toString(), NODE_ENV: 'test', ALLOW_TEST_DATA_MUTATION: 'true', TEST_DATABASE_ALLOWLIST: name, DEMO_DATABASE_ALLOWLIST: name, DEMO_DATABASE_NAME: name, DEMO_TENANT_ID: '', ALLOW_DEMO_DATA_MUTATION: 'true', DEMO_PASSWORD: 'Aa1!' + crypto.randomBytes(24).toString('base64url'), RESEND_API_KEY: '', EMAIL_FROM: '', STANZA_DEMO_ENV: 'false', DEV_AUTH_HEADERS: 'false', ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'false', ORGANISATION_CONCURRENCY_TEST: 'true' };
+} = { ...process.env, DATABASE_URL: runtimeTarget.toString(), DATABASE_MIGRATION_URL: target.toString(), NODE_ENV: 'test', ALLOW_TEST_DATA_MUTATION: 'true', TEST_DATABASE_ALLOWLIST: name, DEMO_DATABASE_ALLOWLIST: name, DEMO_DATABASE_NAME: name, DEMO_TENANT_ID: '', ALLOW_DEMO_DATA_MUTATION: 'true', DEMO_PASSWORD: 'Aa1!' + crypto.randomBytes(24).toString('base64url'), RESEND_API_KEY: '', EMAIL_FROM: '', STANZA_DEMO_ENV: 'false', DEV_AUTH_HEADERS: 'false', ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'false', ORGANISATION_CONCURRENCY_TEST: 'true' };
 function run(script: string, args: string[] = [], extra: NodeJS.ProcessEnv = {}) {
     const result = spawnSync(process.execPath, ['--import', 'tsx', script, ...args], { env: { ...env, ...extra }, stdio: 'inherit' });
     assert.equal(result.status, 0, script + ' failed');
@@ -65,8 +68,8 @@ try {
     await admin.query(`CREATE DATABASE "${name}" TEMPLATE template0`);
     created = true;
     await pool.query(fs.readFileSync('src/db/schema.sql', 'utf8'));
-    await applyMigrations(pool);
-    console.log('PASS fresh migration pass');
+    await applyMigrations(pool, undefined, ['20261003_runtime_database_role.sql']);
+    console.log('PASS fresh legacy bootstrap before runtime-role upgrade');
     // Non-demo control data makes isolation checks non-vacuous.
     const control = (await pool.query("INSERT INTO tenants(slug,company_name) VALUES('migration-control','Migration control') RETURNING id")).rows[0].id;
     await pool.query("INSERT INTO employees(tenant_id,email,full_name,role,password_hash) VALUES($1,'control@example.invalid','Untouched control','employee',$2)", [control, await bcrypt.hash(crypto.randomBytes(24).toString('base64url'), 10)]);
@@ -79,9 +82,14 @@ try {
     };
     const before = await fingerprint();
     await applyMigrations(pool);
-    assert.deepEqual(await fingerprint(), before, 'Migration replay must preserve populated employee/case/expense/attendance records');
-    console.log('PASS populated migration replay preserves business records');
+    assert.deepEqual(await fingerprint(), before, 'Populated runtime-role upgrade must preserve business records');
+    await grantRuntimeAccess(pool, process.env.DATABASE_RUNTIME_ROLE || 'stanza_runtime');
+    console.log('PASS populated runtime-role migration upgrade and restricted grants');
+    await applyMigrations(pool);
+    assert.deepEqual(await fingerprint(), before, 'Migration replay must preserve populated business records');
+    console.log('PASS complete fresh/replay migration pass preserves business records');
     run('scripts/demo-seed-test.ts', [], { STANZA_DEMO_ENV: 'true' });
+    run('scripts/runtime-role-test.ts');
     if (process.argv.includes('--with-integration')) {
         run('scripts/semantic-router-integration-test.ts');
         run('scripts/grievances-migration-test.ts');
@@ -192,8 +200,12 @@ async function devSmoke() {
     }
 }
 async function deploymentProcesses() {
-    const config = { ...env, NODE_ENV: 'production', APP_BASE_URL: 'http://localhost:3000', WEBAUTHN_ORIGIN: 'http://localhost:3000', WEBAUTHN_RP_ID: 'localhost', QR_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), TRUST_PROXY_HOPS: '0', DATABASE_SSL: 'false', DATABASE_ALLOW_PLAINTEXT: 'true', PROFILE_IMAGE_DIRECTORY: path.resolve('uploads/profile-images'), COMPANY_FEED_IMAGE_DIRECTORY: path.resolve('uploads/company-feed'), ASSET_EVIDENCE_DIRECTORY: path.resolve('uploads/assets'), GRIEVANCE_ATTACHMENT_DIRECTORY: path.resolve('uploads/private-grievances') };
+    const config: NodeJS.ProcessEnv = { ...env, NODE_ENV: 'production', APP_BASE_URL: 'http://localhost:3000', WEBAUTHN_ORIGIN: 'http://localhost:3000', WEBAUTHN_RP_ID: 'localhost', QR_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), TRUST_PROXY_HOPS: '0', DATABASE_SSL: 'false', DATABASE_ALLOW_PLAINTEXT: 'true', PROFILE_IMAGE_DIRECTORY: path.resolve('uploads/profile-images'), COMPANY_FEED_IMAGE_DIRECTORY: path.resolve('uploads/company-feed'), ASSET_EVIDENCE_DIRECTORY: path.resolve('uploads/assets'), GRIEVANCE_ATTACHMENT_DIRECTORY: path.resolve('uploads/private-grievances') };
     run('scripts/background-durability-test.ts', [], { REDIS_URL: 'redis://127.0.0.1:1' });
+    const {default: RedisProbe}=await import('ioredis');
+    const beforeWorker=new RedisProbe(config.REDIS_URL!);beforeWorker.on('error',()=>{});
+    const priorClientIds=new Set(String(await beforeWorker.call('CLIENT','LIST')).trim().split('\n').map(line=>line.match(/(?:^| )id=(\d+)/)?.[1]));
+    beforeWorker.disconnect();
     const worker = spawn(process.execPath, ['dist/worker.cjs'], { env: config, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     worker.stdout?.on('data', b => { output += b.toString(); });
@@ -218,6 +230,32 @@ async function deploymentProcesses() {
         const pending = await pool.query("SELECT count(*)::int AS count FROM outbox_events WHERE event_type='background.hr' AND processed_at IS NULL");
         assert.equal(pending.rows[0].count, 0);
         console.log('PASS worker recovers durable pending audit without duplication');
+        // Interrupt only this test worker's newly created BullMQ blocking connections.
+        // Do not stop Redis or disconnect other database/client sessions.
+        const { default: Redis } = await import('ioredis');
+        const probe = new Redis(config.REDIS_URL!);
+        probe.on('error', () => {});
+        try {
+            const clients = String(await probe.call('CLIENT','LIST')).trim().split('\n')
+                .map(line => Object.fromEntries(line.split(' ').map(field => field.split('='))));
+            const db = new URL(config.REDIS_URL!).pathname.slice(1) || '0';
+            const blockers=clients.filter(c => !priorClientIds.has(c.id) && c.db===db && c.name.startsWith('bull:') && c.flags.includes('b'));
+            assert(blockers.length>=2, 'Both HR and communications worker blocking clients must exist');
+            for (const c of blockers) await probe.call('CLIENT','KILL','ID',c.id);
+            // Queue a fresh durable job after disconnect. The same worker must recover.
+            await pool.query(`INSERT INTO outbox_events(tenant_id,event_type,payload)
+              SELECT id,'background.hr',jsonb_build_object('name','writeAuditLog','data',jsonb_build_object('tenantId',id,'action','operations_reconnect_probe','entityType','operations_probe'),'options','{}'::jsonb)
+              FROM tenants WHERE slug='migration-control'`);
+            const deadline=Date.now()+20000;
+            let recovered=false;
+            while(Date.now()<deadline) {
+                recovered=(await pool.query("SELECT count(*)::int AS n FROM audit_logs WHERE action='operations_reconnect_probe'")).rows[0].n===1;
+                if(recovered)break;
+                await new Promise(r=>setTimeout(r,200));
+            }
+            assert(recovered,'Runtime worker must reconnect and process a second durable job');
+            console.log('PASS actual Redis client disconnect/reconnect; restricted runtime worker processes the next durable outbox job');
+        } finally { probe.disconnect(); }
     }
     finally {
         await stop(worker);

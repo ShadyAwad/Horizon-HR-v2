@@ -88,7 +88,9 @@
     "test:semantic-router:integration": "tsx scripts/semantic-router-integration-test.ts",
     "test:semantic-router:local": "tsx scripts/local-semantic-test.ts",
     "test:local-embedding": "tsx scripts/local-embedding-test.ts",
-    "test:semantic-router:live": "tsx scripts/local-router-live-test.ts"
+    "test:semantic-router:live": "tsx scripts/local-router-live-test.ts",
+    "db:setup:runtime": "tsx scripts/setup-runtime-role.ts",
+    "test:database-role": "tsx scripts/runtime-role-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

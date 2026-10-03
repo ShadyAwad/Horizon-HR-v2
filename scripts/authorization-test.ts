@@ -16,7 +16,8 @@ function pass(message: string) {
   console.log(`PASS  ${message}`);
 }
 
-assert(source.includes("'roles.assign_privileged'"), 'Privileged assignment permission is not defined.');
+const permissionMigration = await readFile(new URL('../src/db/migrations/20261003_runtime_database_role.sql', import.meta.url), 'utf8');
+assert(permissionMigration.includes("'roles.assign_privileged'"), 'Privileged assignment permission is not defined.');
 assert(guards.includes('targetLevel > actorLevel'), 'Server-side privilege rank check is missing.');
 assert(guards.includes('employeeId === actorEmployeeId && targetLevel > actorLevel'), 'Self-escalation protection is missing.');
 assert(guards.includes('Only an authorized tenant administrator may assign HR Admin.'), 'HR Admin assignment boundary is missing.');

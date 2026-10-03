@@ -1,12 +1,12 @@
 import 'dotenv/config';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool, migrationUrl} from './migration-pool';
 import { assertDatabaseMutationSafety, requireDestructiveConfirmation } from './mutation-safety';
 import { identifyDemo, DEMO_SLUG } from './demo/core';
 import { resetDemoFixtures } from './demo/reset';
 async function resetDemo() {
     if (process.env.STANZA_DEMO_ENV !== 'true' || process.env.ALLOW_DEMO_DATA_MUTATION !== 'true')
         throw new Error('Demo reset requires STANZA_DEMO_ENV=true and ALLOW_DEMO_DATA_MUTATION=true.');
-    assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Demo reset', false, true);
+    assertDatabaseMutationSafety(migrationUrl(), 'Demo reset', false, true);
     await requireDestructiveConfirmation(DEMO_SLUG, 'demo fixture reset');
     const pool = getDbPool(), client = await pool.connect();
     try {

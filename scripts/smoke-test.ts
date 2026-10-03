@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
 
 type JsonRecord = Record<string, unknown>;

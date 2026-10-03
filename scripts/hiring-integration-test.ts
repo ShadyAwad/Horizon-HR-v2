@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
 
 type JsonObject = Record<string, any>;

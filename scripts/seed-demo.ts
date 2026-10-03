@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool, migrationUrl} from './migration-pool';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 import { identifyDemo, context, emailFor, DEMO_SLUG, type DemoContext } from './demo/core';
 import { seedOrganisation } from './demo/organisation';
@@ -11,7 +11,7 @@ import { readManifest, clearMovingAttendance } from './demo/reset';
 export async function seedDemo() {
     if (process.env.STANZA_DEMO_ENV !== 'true' || process.env.ALLOW_DEMO_DATA_MUTATION !== 'true')
         throw new Error('Demo seed requires STANZA_DEMO_ENV=true and ALLOW_DEMO_DATA_MUTATION=true.');
-    assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Demo seed', true, true);
+    assertDatabaseMutationSafety(migrationUrl(), 'Demo seed', true, true);
     const pool = getDbPool(), client = await pool.connect();
     let phase = 'tenant identification';
     try {

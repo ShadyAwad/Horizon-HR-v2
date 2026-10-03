@@ -1,9 +1,10 @@
+import {closeHrResources} from '../src/lib/hr-background';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import express from 'express';
 import { once } from 'node:events';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { registerCommunicationsRoutes } from '../src/server/communications/communications-routes';
 import { processMessage, classifyDelivery, reconcileFailedJob } from '../src/server/communications/communications-queue';
 import { calendarInvitation, meetingTimes, renderTemplate, variablesIn, escapeHtml } from '../src/server/communications/communications-rules';
@@ -275,5 +276,5 @@ finally {
         await pool.query('DELETE FROM tenants WHERE id=$1', [tenant]);
     }
     server.close();
-    await pool.end();
+    await pool.end();await closeHrResources();
 }

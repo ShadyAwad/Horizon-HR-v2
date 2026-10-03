@@ -27,11 +27,11 @@ export function migrationOrder(directory = 'src/db/migrations') {
         visit(file);
     return result;
 }
-export async function applyMigrations(pool: Pool, directory = 'src/db/migrations') {
+export async function applyMigrations(pool: Pool, directory = 'src/db/migrations', exclude: string[] = []) {
     const client = await pool.connect();
     try {
         await client.query('SELECT pg_advisory_lock(73190510)');
-        for (const file of migrationOrder(directory)) {
+        for (const file of migrationOrder(directory).filter(file => !exclude.includes(file))) {
             await client.query(fs.readFileSync(directory + '/' + file, 'utf8'));
             console.log('Applied migration:', file);
         }

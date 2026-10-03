@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import {getMigrationPool} from './migration-pool';
 import { readFile } from 'node:fs/promises';
 import { ASSET_CATEGORIES } from '../src/lib/asset-categories';
 import { assertDatabaseMutationSafety, assertHttpMutationSafety } from './mutation-safety';
@@ -12,7 +12,7 @@ for (const file of ['src/components/assets/AssetFormDialog.tsx', 'src/components
 }
 const base = assertHttpMutationSafety(process.env.RELIABILITY_TEST_BASE_URL || 'http://localhost:3002', 'Reliability integration');
 assertDatabaseMutationSafety(process.env.DATABASE_URL, 'Reliability integration');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getMigrationPool();
 const roleIds: string[] = [], assetIds: string[] = [];
 let cookie = '', tenantId = '';
 async function request(path: string, body?: unknown, origin = base, authenticated = true) {

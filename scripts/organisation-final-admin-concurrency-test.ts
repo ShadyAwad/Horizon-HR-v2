@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { randomUUID } from 'node:crypto';
-import { getDbPool } from '../src/lib/hr-background';
+import {getMigrationPool as getDbPool} from './migration-pool';
 import { assertHrAdminAssignmentsMayBeRevoked, lockFinalHrAdminAuthority } from '../src/server/organisation/final-hr-admin';
 import { assertDatabaseMutationSafety } from './mutation-safety';
 
