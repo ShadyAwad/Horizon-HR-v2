@@ -949,7 +949,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [loanDeductionsApplied, setLoanDeductionsApplied] = useState(0);
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
-  const [grievancesInitialView,setGrievancesInitialView] = useState<'mine'|'inbox'>('mine');
+  const [grievancesInitialView,setGrievancesInitialView] = useState<'mine'|'inbox'|'new'>('mine');
   const [showResignationsPanel, setShowResignationsPanel] = useState(false);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [adminFeedPosts, setAdminFeedPosts] = useState<FeedPost[]>([]);
@@ -1937,6 +1937,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           recommendedPriority: 3,
           contextId: 'geofence',
         },
+        { id:'router:clock-out',type:'safe_utility',group:'quickActions',label:text('Open Clock Out','فتح تسجيل الانصراف'),description:text('Show the clock control; confirm manually.','عرض أدوات الحضور؛ التأكيد يدوي.'),keywords:['clock out','انصراف'],icon:<Map className="h-5 w-5"/>,execute:()=>revealControl('geofence','stanza-attendance-control'),allowed:true },
+        { id:'router:submit-grievance',type:'open_existing_flow',group:'quickActions',label:text('New grievance','شكوى جديدة'),description:text('Open the grievance form; review before submitting.','فتح نموذج الشكوى للمراجعة قبل الإرسال.'),keywords:['new grievance','شكوى جديدة'],icon:<Plus className="h-5 w-5"/>,execute:()=>{selectNavigationItem('grievances');setGrievancesInitialView('new');},allowed:explicitCommandPermissions.has('grievances.create') },
+        { id:'router:help',type:'safe_utility',group:'quickActions',label:text('Help Center','مركز المساعدة'),description:text('Read existing help articles.','قراءة مقالات المساعدة.'),keywords:['help center','مساعدة'],icon:<User className="h-5 w-5"/>,execute:()=>{setHelpOpenSignal(v=>v+1);setShowControlCenter(true);},allowed:true },
         {
           id: 'settings:open',
           type: 'settings',

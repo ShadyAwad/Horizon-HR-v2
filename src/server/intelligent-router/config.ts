@@ -1,11 +1,14 @@
-import { OpenAIEmbeddingProvider, OpenAIReasoningProvider, type AiMode, type ReasoningAuthorization, type ReasoningProvider } from './providers';
+import { LocalEmbeddingProvider, LOCAL_MODEL, LOCAL_DIMENSIONS, LOCAL_VERSION } from './local-embedding';
+import { OpenAIEmbeddingProvider, OpenAIReasoningProvider, type AiMode, type ReasoningAuthorization, type ReasoningProvider, type EmbeddingProvider } from './providers';
 export function routerConfig(env: NodeJS.ProcessEnv = process.env) {
   const mode = env.STANZA_ROUTER_AI_MODE || 'disabled';
   if (!['disabled', 'user-authorized', 'tenant-provided', 'application-funded'].includes(mode)) throw Error('Invalid STANZA_ROUTER_AI_MODE');
+  const embeddingProvider=env.STANZA_ROUTER_EMBEDDING_PROVIDER||'local';
+  if(!['local','openai','disabled'].includes(embeddingProvider))throw Error('Invalid STANZA_ROUTER_EMBEDDING_PROVIDER');
   const effort = env.STANZA_ROUTER_REASONING_EFFORT || 'low';
   if (!['low', 'medium'].includes(effort)) throw Error('Router effort supports only low or medium');
   const numeric = (key: string, fallback: number, min: number, max: number, integer = false) => { const value = Number(env[key] ?? fallback); if (!Number.isFinite(value) || value < min || value > max || integer && !Number.isInteger(value)) throw Error(`Invalid ${key}`); return value; };
-  return { mode: mode as AiMode, model: env.STANZA_ROUTER_REASONING_MODEL || 'gpt-6.1-sol', effort: effort as 'low' | 'medium', escalate: effort === 'medium' || env.STANZA_ROUTER_ESCALATE_COMPLEX === 'true', embeddingModel: env.STANZA_ROUTER_EMBEDDING_MODEL || 'text-embedding-3-small', dimensions: numeric('STANZA_ROUTER_EMBEDDING_DIMENSIONS', 1536, 1, 2000, true), version: env.STANZA_ROUTER_EMBEDDING_VERSION || 'v1', minimumScore: numeric('STANZA_ROUTER_MIN_SCORE', .84, 0, 1), minimumMargin: numeric('STANZA_ROUTER_MIN_MARGIN', .10, 0, 1), topK: numeric('STANZA_ROUTER_TOP_K', 32, 2, 100, true), learning: env.STANZA_ROUTER_LEARNING === 'true' };
+  return { mode: mode as AiMode, model: env.STANZA_ROUTER_REASONING_MODEL || 'gpt-6.1-sol', effort: effort as 'low' | 'medium', escalate: effort === 'medium' || env.STANZA_ROUTER_ESCALATE_COMPLEX === 'true', embeddingProvider, embeddingModel: embeddingProvider==='local'?LOCAL_MODEL:env.STANZA_ROUTER_EMBEDDING_MODEL || 'text-embedding-3-small', dimensions: embeddingProvider==='local'?LOCAL_DIMENSIONS:numeric('STANZA_ROUTER_EMBEDDING_DIMENSIONS', 1536, 1, 2000, true), version: embeddingProvider==='local'?LOCAL_VERSION:env.STANZA_ROUTER_EMBEDDING_VERSION || 'v1', minimumScore: numeric('STANZA_ROUTER_MIN_SCORE', .84, 0, 1), minimumMargin: numeric('STANZA_ROUTER_MIN_MARGIN', .10, 0, 1), topK: numeric('STANZA_ROUTER_TOP_K', 32, 2, 100, true), learning: env.STANZA_ROUTER_LEARNING === 'true' };
 }
 /** Deployment boundary: no browser credentials and no assumed ChatGPT enrollment. */
 export function createAuthorization(config: ReturnType<typeof routerConfig>, env: NodeJS.ProcessEnv = process.env, adapters: { user?: ReasoningAuthorization; tenant?: ReasoningAuthorization } = {}): ReasoningAuthorization {
@@ -18,4 +21,4 @@ export function createAuthorization(config: ReturnType<typeof routerConfig>, env
     return applicationProvider ? { state: 'ready', provider: applicationProvider } : { state: 'credentials_missing' };
   } };
 }
-export function createEmbedding(config: ReturnType<typeof routerConfig>, env: NodeJS.ProcessEnv = process.env) { return env.STANZA_ROUTER_EMBEDDING_KEY ? new OpenAIEmbeddingProvider(env.STANZA_ROUTER_EMBEDDING_KEY, config.embeddingModel, config.dimensions, config.version) : undefined; }
+export function createEmbedding(config: ReturnType<typeof routerConfig>, env: NodeJS.ProcessEnv = process.env):EmbeddingProvider|undefined { return config.embeddingProvider==='local' ? new LocalEmbeddingProvider() : config.embeddingProvider==='openai' && env.STANZA_ROUTER_EMBEDDING_KEY ? new OpenAIEmbeddingProvider(env.STANZA_ROUTER_EMBEDDING_KEY, config.embeddingModel, config.dimensions, config.version) : undefined; }

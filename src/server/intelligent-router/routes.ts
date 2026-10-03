@@ -1,3 +1,4 @@
+import {dataAnswer} from './data-answers';
 import type express from 'express';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -86,21 +87,30 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       if (!catalog.migrated) return 'migration_required';
       if (!embedding) return 'credentials_missing';
       const examples = await c.query('SELECT 1 FROM router_semantic_examples WHERE approval_state=$1 AND embedding_model=$2 AND embedding_dimensions=$3 AND embedding_version=$4 AND (tenant_id IS NULL OR tenant_id=$5) LIMIT 1', ['approved',embedding.model,embedding.dimensions,embedding.version,u.tenantId]);
-      return examples.rowCount ? 'configured_not_verified' : 'examples_missing';
+      return examples.rowCount ? embedding.status?.() ?? 'configured_not_verified' : 'examples_missing';
     });
     return { openaiLocalAvailable:Boolean(userAuthorization),openaiConnection:userAuthorization ? await userAuthorization.status(u) : null,mode:config.mode,reasoningState:state.state,embeddingConfigured:Boolean(embedding),semanticState,learningEnabled:config.learning,canReview };
   });
+  route('post','/api/command-router/existing',async req=>{
+    if(req.body&&Object.keys(req.body).length)throw Error('INVALID_QUERY');
+    const u=actor(req);await telemetry.record(()=>withTenant(u.tenantId,c=>recordMetric(c,u.tenantId,{method:'existing',outcome:'matched',fallbackUsed:false})));return {};
+  });
   route('post','/api/command-router/resolve',async req => {
-    if (typeof req.body?.query !== 'string' || !req.body.query.trim() || req.body.query.length>500 || Object.keys(req.body).some(k => !['query','allowReasoning','learn'].includes(k)) || req.body.allowReasoning !== undefined && typeof req.body.allowReasoning !== 'boolean' || req.body.learn !== undefined && typeof req.body.learn !== 'boolean') throw Error('INVALID_QUERY');
+    if (typeof req.body?.query !== 'string' || !req.body.query.trim() || req.body.query.length>500 || Object.keys(req.body).some(k => !['query','allowReasoning','learn','timeZone'].includes(k)) || req.body.allowReasoning !== undefined && typeof req.body.allowReasoning !== 'boolean' || req.body.learn !== undefined && typeof req.body.learn !== 'boolean') throw Error('INVALID_QUERY');
+    const timeZone=typeof req.body.timeZone==='string'&&req.body.timeZone.length<=64?req.body.timeZone:'UTC';
+    try{new Intl.DateTimeFormat('en',{timeZone});}catch{throw Error('INVALID_QUERY');}
     const u = actor(req);
     const result = await resolveQuery(req.body.query,{actor:u,allowed:i => allowed(u,i),available:()=>available(u),search:new PgSemanticSearch(u.tenantId,config.topK),embedding,authorization:req.body.allowReasoning === true ? authorization : {resolve:async () => ({state:'disabled'})},cache,minimumScore:config.minimumScore,minimumMargin:config.minimumMargin});
+    if(result.outcome==='matched'&&result.intentKey)result.answer=await withTenant(u.tenantId,c=>dataAnswer(c,u,result.intentKey!,timeZone));
     // Optional persistence cannot break deterministic routing during migration/provider outages.
     const persisted = await telemetry.record(() => withTenant(u.tenantId,async c => {
       if (config.learning && req.body.learn === true) result.candidateId = await createCandidate(c,u.tenantId,u.employeeId,req.body.query,result);
       await recordMetric(c,u.tenantId,result,result.candidateId ? 1 : 0);
+      if(result.promotedSemanticHit)await c.query("UPDATE router_daily_metrics SET semantic_after_promotion=semantic_after_promotion+1 WHERE tenant_id=$1 AND day=current_date AND method=$2 AND outcome=$3 AND intent_key=$4",[u.tenantId,result.method,result.outcome,result.intentKey]);
+      if(embedding&&result.embeddingLatencyMs!==undefined)await c.query("INSERT INTO router_embedding_metrics(tenant_id,embedding_model,embedding_dimensions,embedding_version,queries,latency_samples) VALUES($1,$2,$3,$4,1,ARRAY[$5::double precision]) ON CONFLICT(tenant_id,day,embedding_model,embedding_dimensions,embedding_version) DO UPDATE SET queries=router_embedding_metrics.queries+1,latency_samples=router_embedding_metrics.latency_samples[greatest(1,cardinality(router_embedding_metrics.latency_samples)-254):]||EXCLUDED.latency_samples",[u.tenantId,embedding.model,embedding.dimensions,embedding.version,result.embeddingLatencyMs]);
     }));
     if (!persisted) delete result.candidateId;
-    return { result };
+    return { result, semanticState:embedding?.status?.() };
   });
   route('post','/api/command-router/candidates/:id/confirm',async req => {
     const u=actor(req), id=req.params.id;
@@ -144,7 +154,9 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
         (SELECT percentile_cont(.5) WITHIN GROUP(ORDER BY latency) FROM unnest(latency_samples) latency) AS p50_ms,
         (SELECT percentile_cont(.95) WITHIN GROUP(ORDER BY latency) FROM unnest(latency_samples) latency) AS p95_ms
         FROM router_vector_metrics WHERE tenant_id=$1 AND day>=current_date-30 ORDER BY day`,[u.tenantId])).rows;
-      return {metrics,vectorMetrics};
+      const embeddingMetrics=(await c.query("SELECT day,embedding_model,embedding_dimensions,embedding_version,queries,cardinality(latency_samples) sample_count,(SELECT percentile_cont(.5) WITHIN GROUP(ORDER BY x) FROM unnest(latency_samples) x) p50_ms,(SELECT percentile_cont(.95) WITHIN GROUP(ORDER BY x) FROM unnest(latency_samples) x) p95_ms FROM router_embedding_metrics WHERE tenant_id=$1 AND day>=current_date-30",[u.tenantId])).rows;
+      const total=metrics.reduce((n,r)=>n+Number(r.requests),0),count=(method:string)=>metrics.filter(r=>r.method===method).reduce((n,r)=>n+Number(r.requests),0);
+      return {metrics,vectorMetrics,embeddingMetrics,summary:{requests:total,routingPercentages:Object.fromEntries(['existing','exact','rule','semantic','llm'].map(m=>[m,total?count(m)*100/total:0])),outcomePercentages:Object.fromEntries(['ambiguous','no_match'].map(o=>[o,total?metrics.filter(r=>r.outcome===o).reduce((n,r)=>n+Number(r.requests),0)*100/total:0])),llmFallbackRate:total?metrics.reduce((n,r)=>n+Number(r.fallbacks),0)/total:0,promotedExamples:metrics.reduce((n,r)=>n+Number(r.promotions),0),semanticAfterPromotion:metrics.reduce((n,r)=>n+Number(r.semantic_after_promotion),0)}};
     });
   });
 }

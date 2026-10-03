@@ -12,7 +12,7 @@ let embeds=0,reasons=0;
 const provider={model:'mock',dimensions:2,version:'1',embed:async()=>{embeds++;return [1,0];}};
 const base=():RouterDependencies=>({actor:{tenantId:'a',employeeId:'a'},allowed:async()=>true,embedding:provider,minimumScore:.84,minimumMargin:.1,search:{search:async()=>[]},authorization:{resolve:async()=>({state:'ready',provider:{interpret:async()=>{reasons++;return {status:'resolved',proposedIntentKey:'request_leave',confidence:'high'};}}})}});
 await test('provider configuration fails closed and separates credentials',async()=>{
-  assert.equal(routerConfig({}).model,'gpt-6.1-sol');assert.equal(routerConfig({}).mode,'disabled');assert.throws(()=>routerConfig({STANZA_ROUTER_AI_MODE:'free'}));assert.throws(()=>routerConfig({STANZA_ROUTER_REASONING_EFFORT:'high'}));assert.throws(()=>routerConfig({STANZA_ROUTER_EMBEDDING_DIMENSIONS:'NaN'}));assert.throws(()=>routerConfig({STANZA_ROUTER_MIN_MARGIN:'-1'}));
+  assert.equal(routerConfig({}).model,'gpt-6.1-sol');assert.equal(routerConfig({}).mode,'disabled');assert.throws(()=>routerConfig({STANZA_ROUTER_AI_MODE:'free'}));assert.throws(()=>routerConfig({STANZA_ROUTER_REASONING_EFFORT:'high'}));assert.throws(()=>routerConfig({STANZA_ROUTER_EMBEDDING_PROVIDER:'openai',STANZA_ROUTER_EMBEDDING_DIMENSIONS:'NaN'}));assert.throws(()=>routerConfig({STANZA_ROUTER_MIN_MARGIN:'-1'}));
   for(const mode of ['user-authorized','tenant-provided'] as const)assert.equal((await createAuthorization(routerConfig({STANZA_ROUTER_AI_MODE:mode}),{}).resolve(base().actor)).state,'authorization_unavailable');
   assert.equal((await createAuthorization(routerConfig({STANZA_ROUTER_AI_MODE:'application-funded'}),{STANZA_ROUTER_EMBEDDING_KEY:'fake'}).resolve(base().actor)).state,'credentials_missing');
 });

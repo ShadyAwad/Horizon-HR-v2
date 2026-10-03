@@ -26,6 +26,9 @@ async function employee(tenant:string,name:string,permissions:string[]){
 }
 try{
   assert((await pool.query("SELECT 1 FROM pg_extension WHERE extname='vector'")).rowCount,'pgvector migration must be applied');
+  const tables=['router_semantic_examples','router_candidates','router_daily_metrics','router_vector_metrics','router_embedding_metrics'];
+  const flags=(await pool.query('SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class WHERE relname=ANY($1::text[])',[tables])).rows;
+  assert.equal(flags.length,5);assert(flags.every(r=>r.relrowsecurity&&r.relforcerowsecurity),'every router table forces RLS');
   for(const name of ['a','b'])tenants.push((await pool.query('INSERT INTO tenants(slug,company_name) VALUES($1,$2) RETURNING id',[`router-${name}-${tag}`,name])).rows[0].id);
   const [tenant,other]=tenants;
   await employee(tenant,'user',['leave.request.self']);await employee(tenant,'admin',['roles.manage','leave.request.self']);await employee(other,'other',['roles.manage','leave.request.self']);await employee(tenant,'denied',[]);
@@ -42,6 +45,12 @@ try{
   reasoningCalls=0;assert.equal((await api('user','/resolve',{query:'a quiet day away please',allowReasoning:true})).result.method,'semantic');assert.equal(reasoningCalls,0,'promoted query resolves without LLM');
   assert.equal((await api('user','/resolve',{query:'a quiet break tomorrow',allowReasoning:true})).result.method,'semantic');assert.equal(reasoningCalls,0,'similar mock embedding also avoids LLM');
   assert.equal((await new PgSemanticSearch(other,32).search([1,0,0],embedding,['request_leave'])).length,0);
+  for(const space of [{...embedding,model:'different-model'},{...embedding,version:'different-version'},{...embedding,dimensions:2}]) {
+    assert.equal((await new PgSemanticSearch(tenant,32).search(space.dimensions===2?[1,0]:[1,0,0],space,['request_leave'])).length,0,'incompatible embedding spaces never reach cosine operator');
+  }
+  const vectorMetrics=(await pool.query('SELECT queries,semantic_row_count,latency_samples FROM router_vector_metrics WHERE tenant_id=$1 AND embedding_model=$2',[tenant,embedding.model])).rows[0];
+  assert(Number(vectorMetrics.queries)>0);assert(vectorMetrics.latency_samples.length>0&&vectorMetrics.latency_samples.length<=256);
+  assert(vectorMetrics.latency_samples.every((n:number)=>Number.isFinite(n)&&n>=0),'real database vector timing is persisted');
   assert.equal((await api('admin',`/candidates/${id}/review`,{decision:'approve'})).status,404,'repeat review is unavailable');
   // Duplicate phrase approved by a second employee remains one active vector.
   const second=await withTenant(tenant,async c=>(await c.query("INSERT INTO router_candidates(tenant_id,employee_id,normalized_query,proposed_intent,confirmation_state) VALUES($1,$2,'a quiet day away please','request_leave','confirmed') RETURNING id",[tenant,actors.get('admin')!.employeeId])).rows[0].id);
@@ -52,10 +61,29 @@ try{
     await roleClient.query('BEGIN');const role='router_rls_'+tag.replaceAll('-','');assert.match(role,/^router_rls_[a-f0-9]+$/);
     await roleClient.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
     await roleClient.query(`GRANT USAGE ON SCHEMA public TO ${role}`);
-    await roleClient.query(`GRANT SELECT,INSERT,UPDATE ON router_candidates,router_semantic_examples,router_daily_metrics TO ${role}`);
+    await roleClient.query(`GRANT SELECT,INSERT,UPDATE ON router_candidates,router_semantic_examples,router_daily_metrics,router_vector_metrics,router_embedding_metrics TO ${role}`);
+    await roleClient.query("INSERT INTO router_semantic_examples(intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state) VALUES('request_leave','rls shared fixture','rls shared fixture','[1,0,0]',$1,3,'1','system','approved')",['rls-'+tag]);
     await roleClient.query(`SET LOCAL ROLE ${role}`);await roleClient.query("SELECT set_config('app.current_tenant',$1,true)",[other]);
     assert.equal((await roleClient.query('SELECT * FROM router_candidates WHERE tenant_id=$1',[tenant])).rowCount,0);
     assert.equal((await roleClient.query('SELECT * FROM router_semantic_examples WHERE tenant_id=$1',[tenant])).rowCount,0);
+    for(const table of ['router_daily_metrics','router_vector_metrics','router_embedding_metrics']) {
+      assert.equal((await roleClient.query('SELECT * FROM '+table+' WHERE tenant_id=$1',[tenant])).rowCount,0,'cross-tenant metrics are invisible');
+      assert.equal((await roleClient.query('UPDATE '+table+' SET tenant_id=$2 WHERE tenant_id=$1',[tenant,other])).rowCount,0,'cross-tenant updates affect no rows');
+    }
+    await roleClient.query('SAVEPOINT metric_write');
+    await assert.rejects(roleClient.query("INSERT INTO router_daily_metrics(tenant_id,method,outcome) VALUES($1,'semantic','rls_fixture')",[tenant]),/row-level security/);
+    await roleClient.query('ROLLBACK TO SAVEPOINT metric_write');
+    await roleClient.query('SAVEPOINT vector_metric_write');
+    await assert.rejects(roleClient.query("INSERT INTO router_vector_metrics(tenant_id,embedding_model,embedding_dimensions,embedding_version) VALUES($1,'rls-fixture',3,'1')",[tenant]),/row-level security/);
+    await roleClient.query('ROLLBACK TO SAVEPOINT vector_metric_write');
+    assert.equal((await roleClient.query('SELECT * FROM router_semantic_examples WHERE tenant_id IS NULL AND embedding_model=$1',['rls-'+tag])).rowCount,1,'shared system examples are readable by tenants');
+    await roleClient.query("SELECT set_config('app.current_tenant','',true)");
+    assert.equal((await roleClient.query('SELECT * FROM router_candidates')).rowCount,0,'missing tenant context fails closed');
+    assert.equal((await roleClient.query('SELECT * FROM router_semantic_examples WHERE embedding_model=$1',['rls-'+tag])).rowCount,1,'system examples remain readable without tenant context');
+    await roleClient.query("SELECT set_config('app.current_tenant',$1,true)",[other]);
+    await roleClient.query('SAVEPOINT dimensions');
+    await assert.rejects(roleClient.query("INSERT INTO router_semantic_examples(tenant_id,intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state) VALUES($1,'request_leave','bad dimensions','bad dimensions','[1,0,0]','test',2,'1','tenant','approved')",[other]),(e:unknown)=>(e as {code?:string}).code==='23514','stored vector dimensions must match declared space');
+    await roleClient.query('ROLLBACK TO SAVEPOINT dimensions');
     await roleClient.query('SAVEPOINT cross_tenant');
     await assert.rejects(roleClient.query("INSERT INTO router_candidates(tenant_id,employee_id,normalized_query,proposed_intent) VALUES($1,$2,'forged','request_leave')",[tenant,actors.get('user')!.employeeId]),/row-level security/);await roleClient.query('ROLLBACK TO SAVEPOINT cross_tenant');
     await roleClient.query('SAVEPOINT system_write');

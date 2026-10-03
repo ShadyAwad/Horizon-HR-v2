@@ -4,7 +4,7 @@ import type { Intent, ProviderFailureReason } from '../../lib/intelligent-router
 export class ReasoningUnavailable extends Error {
   constructor(readonly reason: ProviderFailureReason, readonly stage: 'models' | 'responses', readonly httpStatus?: number, readonly diagnostics: import('../../lib/intelligent-router').ProviderDiagnostics = {}) {super('PROVIDER_UNAVAILABLE');}
 }
-export interface EmbeddingProvider { readonly model: string; readonly dimensions: number; readonly version: string; embed(text: string): Promise<number[]> }
+export interface EmbeddingProvider { readonly model: string; readonly dimensions: number; readonly version: string; embed(text: string): Promise<number[]>; embedBatch?(texts: readonly string[]): Promise<number[][]>; status?():string; close?():Promise<void> }
 export type ReasoningInput = { query: string; intents: readonly Intent[]; complex: boolean };
 export type ReasoningResult = { status: 'resolved' | 'ambiguous' | 'unsupported'; proposedIntentKey?: string | null; confidence?: 'low' | 'medium' | 'high' | null; explanation?: string | null; suggestedParameters?: Record<string, unknown> | null };
 export interface ReasoningProvider { interpret(input: ReasoningInput): Promise<ReasoningResult> }

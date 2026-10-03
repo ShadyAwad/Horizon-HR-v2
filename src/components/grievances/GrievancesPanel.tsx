@@ -16,13 +16,14 @@ export default function GrievancesPanel({ user, onBack, onMutation, onEmailDraft
     onBack: () => void;
     onMutation?: () => void;
     onEmailDraft?: () => void;
-    initialView?: 'mine' | 'inbox';
+    initialView?: 'mine' | 'inbox' | 'new';
 }) {
     const { isRtl } = useLanguage();
     const text = (key: string) => key in GRIEVANCE_COPY ? GRIEVANCE_COPY[key as keyof typeof GRIEVANCE_COPY][isRtl ? 1 : 0] : key;
     const [view, setView] = useState<'mine' | 'inbox' | 'new'>(initialView), [cases, setCases] = useState<Row[]>([]), [total, setTotal] = useState(0), [page, setPage] = useState(1), [filters, setFilters] = useState({ q: '', status: '', priority: '', department: '', assignee: '', category: '', from: '', to: '', view: 'all' }), [options, setOptions] = useState<Row>({ departments: [], configure: false }), [selected, setSelected] = useState<string | null>(null), [detail, setDetail] = useState<Row | null>(null), [historyPage, setHistoryPage] = useState(1), [revision, setRevision] = useState(0), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [form, setForm] = useState(emptyForm), [attachment, setAttachment] = useState<File | null>(null), [kind, setKind] = useState('response'), [body, setBody] = useState(''), [nextStatus, setNextStatus] = useState(''), [resolution, setResolution] = useState(''), [response, setResponse] = useState(''), [assignedEmployee, setAssignedEmployee] = useState(''), [assignedDepartment, setAssignedDepartment] = useState(''), [assignees, setAssignees] = useState<Row[]>([]), [priority, setPriority] = useState('normal'), [confidentiality, setConfidentiality] = useState('standard');
+    const canCreate=user.permissions?user.permissions.includes('grievances.create'):user.role==='hr_admin';
     const canInbox = user.permissions ? user.permissions.some(p => p === 'grievances.view' || p === 'grievances.review') : user.role === 'hr_admin';
-    useEffect(()=>{setView(initialView==='inbox'&&canInbox?'inbox':'mine');setSelected(null);setPage(1);},[initialView,canInbox]);
+    useEffect(()=>{setView(initialView==='inbox'&&canInbox?'inbox':initialView==='new'&&canCreate?'new':'mine');setSelected(null);setPage(1);},[initialView,canInbox,canCreate]);
     const accountKey = user.tenantId + user.id + user.role + JSON.stringify(user.permissions || []);
     const failure = useCallback((e: unknown) => { const code = (e as {
         code?: string;

@@ -15,12 +15,17 @@ export function useIntelligentRouter(query:string,normalResults:number,commands:
     setResolved(null);setBusy(false);
     if(normalResults || query.trim().length<3 || query.length>500)return;
     const c=new AbortController();
-    const timer=setTimeout(()=>{setBusy(true);void apiFetch(apiUrl('/api/command-router/resolve'),{method:'POST',signal:c.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({query,allowReasoning,learn})})
-      .then(async r=>{if(!r.ok)throw Error('unavailable');const payload=await r.json();if(!c.signal.aborted)setResolved({query,result:payload.result});})
+    const timer=setTimeout(()=>{setBusy(true);void apiFetch(apiUrl('/api/command-router/resolve'),{method:'POST',signal:c.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({query,allowReasoning,learn,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone})})
+      .then(async r=>{if(!r.ok)throw Error('unavailable');const payload=await r.json();if(!c.signal.aborted){setResolved({query,result:payload.result});if(typeof payload.semanticState==='string')setStatus(current=>current?{...current,semanticState:payload.semanticState}:current);}})
       .catch(()=>{if(!c.signal.aborted)setResolved({query,result:{outcome:'provider_unavailable',method:'none',fallbackUsed:false}});})
       .finally(()=>{if(!c.signal.aborted)setBusy(false);});},400);
     return ()=>{clearTimeout(timer);c.abort();};
   },[query,normalResults,allowReasoning,learn]);
+  useEffect(()=>{
+    if(!normalResults||query.trim().length<3)return;
+    const c=new AbortController(),timer=setTimeout(()=>{void apiFetch(apiUrl('/api/command-router/existing'),{method:'POST',signal:c.signal,headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});},400);
+    return()=>{clearTimeout(timer);c.abort();};
+  },[query,normalResults]);
   // Re-resolve server proposals through both allowlists and currently visible commands.
   const intents=result?.outcome==='matched'?[getIntent(result.intentKey)]:result?.outcome==='ambiguous'&&Array.isArray(result.choices)?result.choices.map(getIntent):[];
   const routedCommands=intents.flatMap(i=>{

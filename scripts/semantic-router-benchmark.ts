@@ -1,45 +1,42 @@
-/** Development only. All corpus and indexes are transaction-scoped temporary objects. */
-import 'dotenv/config';
+/** Temporary indexes only, using the real local-model corpus with reproducible fixture tenant allocation. */
+import './router-env';
 import assert from 'node:assert/strict';
-import { Pool } from 'pg';
-if(process.env.NODE_ENV==='production')throw Error('ANN benchmarking is development-only');
-if(!process.env.DATABASE_URL)throw Error('ANN benchmark requires a development DATABASE_URL with pgvector installed');
+import {Pool} from 'pg';
+import {routerConfig} from '../src/server/intelligent-router/config';
+if(process.env.NODE_ENV==='production')throw Error('Development-only benchmark');
+const settings=routerConfig();if(settings.embeddingProvider!=='local')throw Error('Local corpus required');
 const pool=new Pool({connectionString:process.env.DATABASE_URL}),c=await pool.connect();
-const dimensions=16, count=1200, k=10;
-const vector=(n:number)=>Array.from({length:dimensions},(_,i)=>Math.sin((n+1)*(i+7)*1.31)+Math.cos((n+3)*(i+1)*.71));
-const queries=Array.from({length:40},(_,i)=>JSON.stringify(vector(i*23+19)));
-const percentile=(v:number[],p:number)=>[...v].sort((a,b)=>a-b)[Math.min(v.length-1,Math.ceil(v.length*p)-1)];
+const k=10,percentile=(v:number[],p:number)=>[...v].sort((a,b)=>a-b)[Math.ceil(v.length*p)-1];
 try{
-  await c.query('BEGIN');
-  assert((await c.query("SELECT 1 FROM pg_extension WHERE extname='vector'")).rowCount,'Install pgvector through migrations first');
-  await c.query('CREATE TEMP TABLE router_ann_fixture(id integer PRIMARY KEY,tenant_id integer,embedding vector(16)) ON COMMIT DROP');
-  for(let offset=0;offset<count;offset+=100){const params:unknown[]=[];const rows=Array.from({length:Math.min(100,count-offset)},(_,j)=>{const n=offset+j;params.push(n,n%5===0?null:n%7===0?1:2,JSON.stringify(vector(n)));return `($${j*3+1},$${j*3+2},$${j*3+3}::vector)`;});await c.query('INSERT INTO router_ann_fixture VALUES '+rows.join(','),params);}
-  await c.query('ANALYZE router_ann_fixture');
-  const filters={global:'TRUE',tenant:'tenant_id=1',merged:'(tenant_id IS NULL OR tenant_id=1)',split:'split'};
-  const querySql=(filter:string)=>filter==='split'?`WITH system_hits AS (SELECT id,embedding <=> $1::vector AS distance FROM router_ann_fixture WHERE tenant_id IS NULL ORDER BY embedding <=> $1::vector LIMIT $2),tenant_hits AS (SELECT id,embedding <=> $1::vector AS distance FROM router_ann_fixture WHERE tenant_id=1 ORDER BY embedding <=> $1::vector LIMIT $2) SELECT id FROM (SELECT * FROM system_hits UNION ALL SELECT * FROM tenant_hits) h ORDER BY distance LIMIT $2`:`SELECT id FROM router_ann_fixture WHERE ${filter} ORDER BY embedding <=> $1::vector LIMIT $2`;
-  const sample=async(filter:string)=>{const ids:number[][]=[],latencies:number[]=[];for(const q of queries){const start=performance.now();const r=await c.query(querySql(filter),[q,k]);latencies.push(performance.now()-start);ids.push(r.rows.map(r=>r.id));}return {ids,latencies};};
-  await c.query('SET LOCAL enable_indexscan=off');await c.query('SET LOCAL enable_bitmapscan=off');
-  const baseline:Record<string,Awaited<ReturnType<typeof sample>>>={};
-  for(const [key,filter] of Object.entries(filters))baseline[key]=await sample(filter);
-  const reports:object[]=[];
-  for(const [key,b] of Object.entries(baseline))reports.push({strategy:'exact',filter:key,rows:count,buildMs:0,indexBytes:0,p50Ms:percentile(b.latencies,.5),p95Ms:percentile(b.latencies,.95),recallAtK:1});
-  await c.query('SET LOCAL enable_indexscan=on');await c.query('SET LOCAL enable_bitmapscan=on');await c.query('SET LOCAL enable_seqscan=off');
-  for(const strategy of ['hnsw','ivfflat'] as const){
-    const start=performance.now();const lists=32;
-    await c.query(`CREATE INDEX router_ann_eval ON router_ann_fixture USING ${strategy}(embedding vector_cosine_ops) WITH (${strategy==='hnsw'?'m=16,ef_construction=64':`lists=${lists}`})`);
-    const buildMs=performance.now()-start,indexBytes=Number((await c.query("SELECT pg_relation_size('pg_temp.router_ann_eval') AS size")).rows[0].size);
-    for(const tuning of strategy==='hnsw'?[40,100]:[1,8,32]){
-      await c.query(`SET LOCAL ${strategy==='hnsw'?'hnsw.ef_search':'ivfflat.probes'}=${tuning}`);
-      for(const [key,filter] of Object.entries(filters)){
-        const plan=(await c.query('EXPLAIN '+querySql(filter),[queries[0],k])).rows.map(r=>r['QUERY PLAN']).join(' ');
-        assert(plan.includes('router_ann_eval'),'Planner did not use benchmark ANN index');
-        const measured=await sample(filter);let total=0,found=0;
-        measured.ids.forEach((ids,i)=>{total+=baseline[key].ids[i].length;found+=ids.filter(id=>baseline[key].ids[i].includes(id)).length;});
-        reports.push({strategy,filter:key,rows:count,lists:strategy==='ivfflat'?lists:'',probes:strategy==='ivfflat'?tuning:'',efSearch:strategy==='hnsw'?tuning:'',buildMs,indexBytes,p50Ms:percentile(measured.latencies,.5),p95Ms:percentile(measured.latencies,.95),recallAtK:found/total});
-      }
-    }
-    await c.query('DROP INDEX pg_temp.router_ann_eval');
+ await c.query('BEGIN');
+ await c.query('CREATE TEMP TABLE router_ann_fixture(id integer PRIMARY KEY,tenant_id integer,embedding vector('+settings.dimensions+')) ON COMMIT DROP');
+ await c.query("WITH corpus AS (SELECT row_number() OVER(ORDER BY id)::int id,embedding FROM router_semantic_examples WHERE approval_state='approved' AND embedding_model=$1 AND embedding_dimensions=$2 AND embedding_version=$3) INSERT INTO router_ann_fixture SELECT id,CASE WHEN id%5=0 THEN 1 WHEN id%7=0 THEN 2 ELSE NULL END,embedding FROM corpus",[settings.embeddingModel,settings.dimensions,settings.version]);
+ const count=Number((await c.query('SELECT count(*) n FROM router_ann_fixture')).rows[0].n);assert(count>=100,'Seed the actual corpus first');
+ const queries=(await c.query('SELECT embedding::text vector FROM router_ann_fixture ORDER BY id LIMIT 40')).rows.map(r=>r.vector);
+ await c.query('ANALYZE router_ann_fixture');
+ const filters={all:'TRUE',tenant:'tenant_id=1',merged:'(tenant_id IS NULL OR tenant_id=1)',split:'split'};
+ const sql=(filter:string)=>filter==='split'?`WITH s AS (SELECT id,embedding <=> $1::vector distance FROM router_ann_fixture WHERE tenant_id IS NULL ORDER BY embedding <=> $1::vector LIMIT $2),t AS (SELECT id,embedding <=> $1::vector distance FROM router_ann_fixture WHERE tenant_id=1 ORDER BY embedding <=> $1::vector LIMIT $2) SELECT id FROM (SELECT * FROM s UNION ALL SELECT * FROM t) h ORDER BY distance LIMIT $2`:`SELECT id FROM router_ann_fixture WHERE ${filter} ORDER BY embedding <=> $1::vector LIMIT $2`;
+ const sample=async(filter:string)=>{const ids:number[][]=[],times:number[]=[];for(const q of queries){const t=performance.now();const r=await c.query(sql(filter),[q,k]);times.push(performance.now()-t);ids.push(r.rows.map(r=>r.id));}return {ids,times};};
+ await c.query('SET LOCAL enable_indexscan=off');await c.query('SET LOCAL enable_bitmapscan=off');
+ const baseline:Record<string,Awaited<ReturnType<typeof sample>>>={},reports:object[]=[];
+ for(const [name,filter] of Object.entries(filters)){baseline[name]=await sample(filter);reports.push({strategy:'exact',filter:name,rows:count,buildMs:0,indexBytes:0,p50Ms:percentile(baseline[name].times,.5),p95Ms:percentile(baseline[name].times,.95),recallAtK:1});}
+ await c.query('SET LOCAL enable_indexscan=on');await c.query('SET LOCAL enable_bitmapscan=on');await c.query('SET LOCAL enable_seqscan=off');
+ for(const strategy of ['hnsw','ivfflat']){
+  const lists=Math.max(4,Math.floor(Math.sqrt(count))),start=performance.now();
+  await c.query(`CREATE INDEX router_ann_eval ON router_ann_fixture USING ${strategy}(embedding vector_cosine_ops) WITH (${strategy==='hnsw'?'m=16,ef_construction=64':'lists='+lists})`);
+  const buildMs=performance.now()-start,indexBytes=Number((await c.query("SELECT pg_relation_size('pg_temp.router_ann_eval') size")).rows[0].size);
+  for(const tuning of strategy==='hnsw'?[40,100]:[1,Math.min(8,lists),lists]){
+   await c.query(`SET LOCAL ${strategy==='hnsw'?'hnsw.ef_search':'ivfflat.probes'}=${tuning}`);
+   for(const [name,filter] of Object.entries(filters)){
+    const plan=(await c.query('EXPLAIN '+sql(filter),[queries[0],k])).rows.map(r=>r['QUERY PLAN']).join(' ');
+    const annUsed=plan.includes('router_ann_eval');
+    if(strategy==='hnsw'||tuning<lists)assert(annUsed,'Expected ANN benchmark index');
+    const measured=await sample(filter);let total=0,found=0;
+    measured.ids.forEach((ids,i)=>{total+=baseline[name].ids[i].length;found+=ids.filter(id=>baseline[name].ids[i].includes(id)).length;});
+    reports.push({strategy,filter:name,rows:count,tuning,annUsed,buildMs,indexBytes,p50Ms:percentile(measured.times,.5),p95Ms:percentile(measured.times,.95),recallAtK:found/total});
+   }
   }
-  console.table(reports);
-  console.log('Synthetic fixture only. Tenant, merged and deliberately split system/tenant searches are compared. Production remains exact; no indexes persist.');
+  await c.query('DROP INDEX pg_temp.router_ann_eval');
+ }
+ console.table(reports);console.log('Real local vectors; fixture tenant allocation. No persistent indexes. Exact remains default.');
 }finally{await c.query('ROLLBACK');c.release();await pool.end();}

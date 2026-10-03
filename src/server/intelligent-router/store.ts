@@ -14,11 +14,11 @@ export class PgSemanticSearch implements SemanticSearch {
       // Deliberate system + tenant searches avoid a tenant corpus displacing system top K.
       const start = performance.now();
       const rows = await c.query(`WITH space AS MATERIALIZED (
-        SELECT intent_key,embedding,tenant_id FROM router_semantic_examples WHERE approval_state='approved'
+        SELECT intent_key,embedding,tenant_id,source FROM router_semantic_examples WHERE approval_state='approved'
         AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5 AND intent_key=ANY($6::text[])
         AND (tenant_id IS NULL OR tenant_id=$1)
-      ), system_hits AS (SELECT intent_key,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id IS NULL ORDER BY embedding <=> $2::vector LIMIT $7),
-      tenant_hits AS (SELECT intent_key,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id=$1 ORDER BY embedding <=> $2::vector LIMIT $7)
+      ), system_hits AS (SELECT intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id IS NULL ORDER BY embedding <=> $2::vector LIMIT $7),
+      tenant_hits AS (SELECT intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id=$1 ORDER BY embedding <=> $2::vector LIMIT $7)
       SELECT COALESCE((SELECT jsonb_agg(h) FROM (SELECT * FROM system_hits UNION ALL SELECT * FROM tenant_hits) h),'[]'::jsonb) AS hits,
       (SELECT count(*) FROM space) AS semantic_row_count`, [this.tenantId, literal, provider.model, provider.dimensions, provider.version, allowedKeys, this.topK]);
       const latency = performance.now() - start;
@@ -33,7 +33,7 @@ export class PgSemanticSearch implements SemanticSearch {
           [this.tenantId,provider.model,provider.dimensions,provider.version,rows.rows[0].semantic_row_count,latency]);
       } catch { await c.query('ROLLBACK TO SAVEPOINT router_vector_telemetry'); }
       await c.query('RELEASE SAVEPOINT router_vector_telemetry');
-      return rows.rows[0].hits.map((r: {intent_key:string;score:number}) => ({ intentKey: r.intent_key, score: Number(r.score) }));
+      return rows.rows[0].hits.map((r: {intent_key:string;score:number;source:string}) => ({ intentKey: r.intent_key, score: Number(r.score), promoted:r.source==='promoted_query' }));
     });
   }
 }
