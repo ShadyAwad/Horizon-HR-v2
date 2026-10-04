@@ -1,11 +1,16 @@
+import { PlannedBreakEditor, type BreakWindow } from '../components/roster/PlannedBreakEditor';
+import { validatePlannedBreaks } from '../lib/roster-breaks';
+import { Surface } from '../components/ui/Surface';
+import { WIDGETS, canUseWidget } from '../components/workspace-composer/widget-catalog';
+import { useNavigationHistory } from '../components/navigation/useNavigationHistory';
 import { FontSizeControl } from '../components/ui/FontSizeControl';
-import { ComposerPreferencesProvider } from '../components/workspace-composer/ComposerPreferences';
+import { ComposerPreferencesProvider, useComposerPreferences } from '../components/workspace-composer/ComposerPreferences';
 import { AddToWorkspace } from '../components/workspace-composer/AddToWorkspace';
 import { AttendanceWorkspace } from '../components/attendance/AttendanceWorkspace';
 import CustomThemeEditor from '../components/CustomThemeEditor';
 import { Component, lazy, Suspense, useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type ErrorInfo, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { 
-  Fingerprint, LogOut, MapPin, Map, Navigation, X,
+  Fingerprint, MapPin, Map, Navigation, X,
   Calendar, CheckCircle2, AlertTriangle, User, Sun, Moon, Bell, Coffee, Save, DollarSign, MessageSquare, Newspaper, Download, Smartphone, WifiOff, ChevronDown, Info, FileText, Minus, Plus, RotateCcw, RefreshCw, Camera, Trash2, BriefcaseBusiness, LoaderCircle, UsersRound, ScrollText, ShieldCheck, Box, BarChart3, Network, ReceiptText, Settings
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -284,6 +289,7 @@ type ShiftRow = {
   date: string;
   shiftStart: string;
   shiftEnd: string;
+  breaks?: BreakWindow[];
   breakStart: string;
   breakEnd: string;
   type: string;
@@ -2120,6 +2126,19 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     return () => window.removeEventListener('keydown', handleCommandShortcut);
   }, [openCommandPalette, showCommandPalette]);
   const activeNavigationLabel = navigationItems.find((item) => item.active)?.label || t('dash.geoOp');
+  const composerPreferences = useComposerPreferences();
+  const destination = navigationItems.find(item => item.active)?.id ?? activeTab;
+  const historyDestination = destination === 'composer' ? 'composer:' + composerPreferences.state.activeId : destination;
+  const navigationHistory = useNavigationHistory(historyDestination, value => {
+    if (value.startsWith('composer:')) return composerPreferences.state.workspaces.some(w => w.id === value.slice(9));
+    return navigationItems.some(item => item.id === value);
+  }, value => {
+    if (value.startsWith('composer:')) { composerPreferences.dispatch({type:'select',id:value.slice(9)}); selectNavigationItem('composer'); }
+    else selectNavigationItem(value as DashboardWorkspaceId);
+  });
+  const moduleWidgets = WIDGETS.filter(widget => widget.module === destination && canUseWidget(user,widget));
+  const framedModule = ['geofence','roster','performance','assets',...WIDGETS.map(widget => widget.module)].includes(destination);
+
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
   useEffect(() => {
@@ -2536,6 +2555,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         start_time: string;
         end_time: string;
         notes?: string | null;
+        planned_breaks?: Array<{startTime:string;endTime:string}>;
         approved_leave?: boolean;
         leave_request_id?: string | null;
         leave_type?: string | null;
@@ -2553,6 +2573,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           date: toRosterDateKey(start),
           shiftStart: start.toTimeString().slice(0, 5),
           shiftEnd: end.toTimeString().slice(0, 5),
+          breaks: (shift.planned_breaks ?? []).map(b=>({start:new Date(b.startTime).toTimeString().slice(0,5),end:new Date(b.endTime).toTimeString().slice(0,5)})),
           breakStart: '',
           breakEnd: '',
           type: shift.notes || 'Scheduled',
@@ -2612,18 +2633,18 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       timers.push(window.setTimeout(() => notifyEmployee(title, body), delay));
     };
 
-    if (todaysShift) {
+    if (todaysShift) for (const planned of (todaysShift.breaks ?? (todaysShift.breakStart && todaysShift.breakEnd ? [{start:todaysShift.breakStart,end:todaysShift.breakEnd}] : []))) {
       scheduleBreakReminder(
         breakReminderSetting.enabled,
-        todaysShift.breakStart,
+        planned.start,
         'Break starting',
-        `Your break starts at ${todaysShift.breakStart}.`,
+        `Your break starts at ${planned.start}.`,
       );
       scheduleBreakReminder(
         breakReminderSetting.enabled,
-        todaysShift.breakEnd,
+        planned.end,
         'Break ending',
-        `Your break ends at ${todaysShift.breakEnd}.`,
+        `Your break ends at ${planned.end}.`,
       );
     }
 
@@ -2723,6 +2744,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     }, 4000);
   };
 
+  const shiftBreaks = (shift: ShiftRow): BreakWindow[] => shift.breaks ?? (shift.breakStart && shift.breakEnd ? [{start:shift.breakStart,end:shift.breakEnd}] : []);
   const persistRosterShift = async (shift: ShiftRow, overrideCodes: string[] = [], overrideReason = '') => {
     const startTime = new Date(`${shift.date}T${shift.shiftStart}:00`);
     const endTime = new Date(`${shift.date}T${shift.shiftEnd}:00`);
@@ -2730,6 +2752,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       setRosterMessage(t('dash.rosterEndAfterStart'));
       return;
     }
+    let plannedBreaks: ReturnType<typeof validatePlannedBreaks>;
+    try { plannedBreaks = validatePlannedBreaks(shiftBreaks(shift).map(b=>({startTime:new Date(shift.date+'T'+b.start+':00').toISOString(),endTime:new Date(shift.date+'T'+b.end+':00').toISOString()})),startTime,endTime); }
+    catch { setRosterMessage(lang === 'ar' ? 'الاستراحات يجب أن تكون داخل الوردية دون تداخل وبنهاية بعد البداية.' : 'Breaks must be inside the shift, with end after start and no overlap.'); return; }
     const localConflict = schedule.some((existing) => {
       if (!existing.id || existing.id === shift.id || !existing.shiftStart || !existing.shiftEnd) return false;
       const existingStart = new Date(`${existing.date}T${existing.shiftStart}:00`);
@@ -2748,6 +2773,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           employeeId: selectedRosterEmployeeId,
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
+          plannedBreaks,
           notes: shift.type === 'Unscheduled' ? null : shift.type,
           overrideCodes,
           overrideReason,
@@ -2776,6 +2802,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     }
   };
 
+  const saveShiftBreaks = (shift: ShiftRow, breaks: BreakWindow[]) => { void persistRosterShift({...shift,breaks}); };
   const setRosterRange = (value: '1' | '2' | '4' | 'custom') => {
     if (value === 'custom') {
       setRosterRangeWeeks('custom');
@@ -4304,7 +4331,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           onClick={onLogout}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 dark:text-emerald-300"
         >
-          <LogOut className="h-3.5 w-3.5" />
+          <StanzaFingerprintMark size={20} />
           {t('dash.logout')}
         </button>
       </div>
@@ -5280,6 +5307,12 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             </h1>
           </div>
         </header>
+        <nav aria-label={isRtl ? 'سجل التنقل' : 'Navigation history'} className="stanza-module-toolbar">
+          <button type="button" className="stanza-interactive-control rounded-lg border px-3 py-2 text-sm" disabled={!navigationHistory.canBack} onClick={navigationHistory.back}>{isRtl ? '→ رجوع' : '← Back'}</button>
+          <button type="button" className="stanza-interactive-control rounded-lg border px-3 py-2 text-sm" disabled={!navigationHistory.canForward} onClick={navigationHistory.forward}>{isRtl ? 'تقدم ←' : 'Forward →'}</button>
+          {framedModule && <label className="flex items-center gap-2 text-xs">{isRtl ? 'سطح اللوحات' : 'Panel surface'}<select className="stanza-select stanza-form-control" aria-label={isRtl ? 'سطح اللوحات' : 'Panel surface'} value={composerPreferences.state.surface} onChange={e=>composerPreferences.dispatch({type:'surface',value:e.target.value as typeof composerPreferences.state.surface})}>{['auto','solid','glass','transparent'].map(value=><option key={value} value={value}>{isRtl ? ({auto:'تلقائي',solid:'مصمت',glass:'زجاجي',transparent:'شفاف'}[value]) : value[0].toUpperCase()+value.slice(1)}</option>)}</select></label>}
+          {moduleWidgets.length > 0 && <div className="module-add"><AddToWorkspace key={destination} widgetId={moduleWidgets[0].id} widgetIds={moduleWidgets.map(widget=>widget.id)} user={user} /></div>}
+        </nav>
         {/* Dashboard Grid Container */}
         <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full max-w-full min-w-0 items-start">
             
@@ -5477,6 +5510,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     </button>
                 </div>}
 
+                <Surface variant={composerPreferences.state.surface} className={framedModule ? 'stanza-module-frame space-y-4' : 'contents border-0'} data-module-surface={framedModule || undefined}>
                 {/* Tab Contents */}
                 {activeTab === 'communications' && canViewCommunications && <Suspense fallback={<p>Loading Communications...</p>}><CommunicationsPanel initialView={communicationsInitialView} /></Suspense>}
                 {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
@@ -5554,7 +5588,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
                        
-                       <div className="relative z-10 mb-3"><AddToWorkspace widgetId="attendance" user={user} /></div>
+
                        <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-0 w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-[220px] md:px-6 md:py-8">
                            <p className="mb-3 text-sm font-bold" role="status">{attendanceOnBreak ? (isRtl ? 'في استراحة' : 'On break') : hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</p>
                            {hasActiveShift && attendanceLocationStatus && <p className="mb-2 text-xs">{attendanceLocationStatus === 'verified' ? (isRtl ? 'الموقع معتمد' : 'Location verified') : attendanceLocationStatus === 'outside' ? (isRtl ? 'خارج الموقع — مسموح اختيارياً' : 'Outside geofence — optional policy') : attendanceLocationStatus === 'disabled' ? (isRtl ? 'الموقع معطل' : 'Location disabled') : (isRtl ? 'تم الحضور دون موقع' : 'Clocked in without location')}</p>}
@@ -5727,7 +5761,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55" dir="ltr">{rosterStartDate} - {rosterEndDate}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{t('dash.autoSaved')}</span>}
+                        {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}</span>}
                         {(rosterSubview === 'leave' || rosterSubview === 'schedule') && <button type="button" onClick={openLeaveRequestFlow} className="rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
                       </div>
                     </div>
@@ -5781,7 +5815,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              {canManageRoster && (
                                <span className="inline-flex items-center gap-1 px-3 py-1 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
                                  <Save className="h-3 w-3" />
-                                 {t('dash.autoSaved')}
+                                 {lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}
                                </span>
                              )}
                            </div>
@@ -5848,8 +5882,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              const expanded = expandedRosterDate === s.date;
                              const scheduled = Boolean(s.shiftStart && s.shiftEnd);
                              return <article key={s.date} className={cn('overflow-hidden rounded-xl border border-emerald-500/15 bg-white/75 dark:bg-black/25', s.hasRosterConflict && 'border-amber-500/35', s.approvedLeave && 'border-emerald-500/35')}>
-                               <button type="button" aria-expanded={expanded} onClick={() => setExpandedRosterDate(expanded ? null : s.date)} className="flex min-h-16 w-full items-start justify-between gap-3 p-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"><span><strong className="block text-sm text-slate-900 dark:text-emerald-50">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></strong><span className="mt-1 block text-xs text-slate-600 dark:text-emerald-100/65">{scheduled ? `${getShiftFrame(s)} · ${s.breakStart && s.breakEnd ? `${s.breakStart}-${s.breakEnd}` : t('dash.noBreak')}` : t('dash.abstained')} · {displayShiftType(s.type)}</span></span><span className="flex flex-col items-end gap-1"><span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold', scheduled ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-neutral-500/20 text-neutral-500 dark:text-emerald-100/45')}>{scheduled ? t('dash.scheduled') : t('dash.abstained')}</span>{s.approvedLeave && <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-200">{s.hasRosterConflict ? (lang === 'ar' ? 'تعارض إجازة' : 'Leave conflict') : (lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave')}</span>}</span></button>
-                               {expanded && <div className="border-t border-emerald-500/15 p-3"><p className="text-xs text-slate-600 dark:text-emerald-100/65">{s.approvedLeave ? `${lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave'}${s.leaveType ? ` · ${displayEnum(s.leaveType)}` : ''}` : displayShiftType(s.type)}</p>{canManageRoster ? <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs font-bold">{t('dash.shiftFrame')}<input type="time" value={s.shiftStart} onChange={(event) => updateShift(s.date, 'shiftStart', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{lang === 'ar' ? 'نهاية الوردية' : 'Shift end'}<input type="time" value={s.shiftEnd} onChange={(event) => updateShift(s.date, 'shiftEnd', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{t('dash.breakTime')}<input type="time" value={s.breakStart} onChange={(event) => updateShift(s.date, 'breakStart', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{lang === 'ar' ? 'نهاية الاستراحة' : 'Break end'}<input type="time" value={s.breakEnd} onChange={(event) => updateShift(s.date, 'breakEnd', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="col-span-2 text-xs font-bold">{t('dash.locationRole')}<input value={s.type} onChange={(event) => updateShift(s.date, 'type', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label></div> : <p className="mt-3 text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'عرض للقراءة فقط' : 'Read-only schedule'}</p>}</div>}
+                               <button type="button" aria-expanded={expanded} onClick={() => setExpandedRosterDate(expanded ? null : s.date)} className="flex min-h-16 w-full items-start justify-between gap-3 p-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"><span><strong className="block text-sm text-slate-900 dark:text-emerald-50">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></strong><span className="mt-1 block text-xs text-slate-600 dark:text-emerald-100/65">{scheduled ? `${getShiftFrame(s)} · ${shiftBreaks(s).length ? shiftBreaks(s).map(b=>b.start+'–'+b.end).join(' · ') : t('dash.noBreak')}` : t('dash.abstained')} · {displayShiftType(s.type)}</span></span><span className="flex flex-col items-end gap-1"><span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold', scheduled ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'border-neutral-500/20 text-neutral-500 dark:text-emerald-100/45')}>{scheduled ? t('dash.scheduled') : t('dash.abstained')}</span>{s.approvedLeave && <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-200">{s.hasRosterConflict ? (lang === 'ar' ? 'تعارض إجازة' : 'Leave conflict') : (lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave')}</span>}</span></button>
+                               {expanded && <div className="border-t border-emerald-500/15 p-3"><p className="text-xs text-slate-600 dark:text-emerald-100/65">{s.approvedLeave ? `${lang === 'ar' ? 'إجازة معتمدة' : 'Approved leave'}${s.leaveType ? ` · ${displayEnum(s.leaveType)}` : ''}` : displayShiftType(s.type)}</p>{canManageRoster ? <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs font-bold">{t('dash.shiftFrame')}<input type="time" value={s.shiftStart} onChange={(event) => updateShift(s.date, 'shiftStart', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><label className="text-xs font-bold">{lang === 'ar' ? 'نهاية الوردية' : 'Shift end'}<input type="time" value={s.shiftEnd} onChange={(event) => updateShift(s.date, 'shiftEnd', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label><div className="col-span-2"><PlannedBreakEditor value={shiftBreaks(s)} editable isRtl={isRtl} shiftDate={s.date} onSave={breaks=>saveShiftBreaks(s,breaks)} /></div><label className="col-span-2 text-xs font-bold">{t('dash.locationRole')}<input value={s.type} onChange={(event) => updateShift(s.date, 'type', event.target.value)} className="mt-1 w-full rounded border border-emerald-500/20 bg-white px-2 py-2 text-slate-900 dark:bg-black/35 dark:text-emerald-50" /></label></div> : <p className="mt-3 text-xs text-slate-500 dark:text-emerald-100/55">{lang === 'ar' ? 'عرض للقراءة فقط' : 'Read-only schedule'}</p>}</div>}
                              </article>;
                            })}
                          </div>
@@ -5898,24 +5932,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                    ) : s.shiftStart && s.shiftEnd ? <span dir="ltr">{getShiftFrame(s)}</span> : t('dash.leave')}
                                  </td>
                                  <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
-                                   {canManageRoster ? (
-                                     <div className="flex items-center gap-2">
-                                       <Coffee className="h-4 w-4 text-emerald-500" />
-                                       <input
-                                         type="time"
-                                         value={s.breakStart}
-                                         onChange={(event) => updateShift(s.date, 'breakStart', event.target.value)}
-                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                       />
-                                       <span>-</span>
-                                       <input
-                                         type="time"
-                                         value={s.breakEnd}
-                                         onChange={(event) => updateShift(s.date, 'breakEnd', event.target.value)}
-                                         className="w-24 rounded border border-emerald-500/15 bg-white px-2 py-1 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50"
-                                       />
-                                     </div>
-                                   ) : s.breakStart && s.breakEnd ? <span dir="ltr">{s.breakStart} - {s.breakEnd}</span> : t('dash.noBreak')}
+                                   <PlannedBreakEditor value={shiftBreaks(s)} editable={canManageRoster} isRtl={isRtl} shiftDate={s.date} onSave={breaks=>saveShiftBreaks(s,breaks)} />
                                  </td>
                                  <td className="p-3 text-xs text-slate-600 dark:text-slate-300">
                                    {canManageRoster ? (
@@ -6006,7 +6023,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
                 {activeTab === 'feed' && (
                   <CompanyFeedBoundary onDiscardLocal={feedDraft.clearLocal}>
-                   <AddToWorkspace widgetId="feed" user={user} />
+
                    <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -6988,6 +7005,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                    </div>
                 )}
 
+                </Surface>
             </div>
 
         </div>

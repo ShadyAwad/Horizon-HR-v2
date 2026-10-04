@@ -1,3 +1,4 @@
+import { validatePlannedBreaks } from '../../lib/roster-breaks';
 import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
@@ -22,6 +23,7 @@ type RosterShiftInput = {
   startTime?: string;
   endTime?: string;
   notes?: string | null;
+  plannedBreaks?: unknown;
   overrideCodes?: string[];
   overrideReason?: string;
 };
@@ -273,7 +275,7 @@ export function registerRosterShiftRoutes(
         }
         const result = await client.query(
           `
-            SELECT shift.id,shift.employee_id,shift.start_time,shift.end_time,shift.status,shift.notes,shift.override_codes,shift.override_reason,
+            SELECT shift.id,shift.employee_id,shift.start_time,shift.end_time,shift.status,shift.notes,shift.planned_breaks,shift.override_codes,shift.override_reason,
               (approved_leave.leave_request_id IS NOT NULL) AS approved_leave,
               approved_leave.leave_request_id,approved_leave.leave_type,approved_leave.start_date AS leave_start_date,
               approved_leave.end_date AS leave_end_date,COALESCE(approved_leave.conflict_count,0)::int AS conflict_count,
@@ -324,6 +326,9 @@ export function registerRosterShiftRoutes(
     if (!isUuid(employeeId) || !startTime || !endTime || endTime <= startTime) {
       return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: 'employeeId, startTime, and an endTime after startTime are required.' });
     }
+    let plannedBreaks: ReturnType<typeof validatePlannedBreaks> | undefined;
+    try { if (body.plannedBreaks !== undefined) plannedBreaks = validatePlannedBreaks(body.plannedBreaks,startTime,endTime); }
+    catch (error) { return res.status(400).json({success:false,code:'VALIDATION_ERROR',error:(error as Error).message}); }
     if (requestedOverrideCodes.length > 0 && !overrideReason) {
       return res.status(400).json({ success: false, code: 'OVERRIDE_REASON_REQUIRED', error: 'An override reason is required.' });
     }
@@ -343,6 +348,13 @@ export function registerRosterShiftRoutes(
           Object.assign(denied, { statusCode: 403 });
           throw denied;
         }
+        if (shiftId && plannedBreaks === undefined) {
+          const previous = (await client.query('SELECT planned_breaks FROM roster_shifts WHERE tenant_id=$1 AND id=$2',[authUser.tenantId,shiftId])).rows[0];
+          if (previous) {
+            try { validatePlannedBreaks(previous.planned_breaks,startTime,endTime); }
+            catch (error) { throw Object.assign(error as Error,{statusCode:400,code:'VALIDATION_ERROR'}); }
+          }
+        }
         const overlaps = await client.query<{ id: string; start_time: string; end_time: string }>(
           `SELECT id, start_time, end_time FROM roster_shifts WHERE tenant_id = $1 AND employee_id = $2 AND status = 'scheduled' AND start_time < $4 AND end_time > $3 AND ($5::uuid IS NULL OR id <> $5::uuid)`,
           [authUser.tenantId, employeeId, startTime.toISOString(), endTime.toISOString(), shiftId ?? null],
@@ -361,12 +373,12 @@ export function registerRosterShiftRoutes(
         }
         const result = shiftId
           ? await client.query(
-            `UPDATE roster_shifts SET employee_id = $3, start_time = $4, end_time = $5, notes = $6, override_codes = $7::text[], override_reason = $8, updated_by = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $9 RETURNING *`,
-            [authUser.tenantId, authUser.employeeId, employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null, shiftId],
+            `UPDATE roster_shifts SET employee_id = $3, start_time = $4, end_time = $5, notes = $6, planned_breaks = COALESCE($10::jsonb,planned_breaks), override_codes = $7::text[], override_reason = $8, updated_by = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $9 RETURNING *`,
+            [authUser.tenantId, authUser.employeeId, employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null, shiftId, plannedBreaks === undefined ? null : JSON.stringify(plannedBreaks)],
           )
           : await client.query(
-            `INSERT INTO roster_shifts (tenant_id, employee_id, created_by, updated_by, start_time, end_time, notes, override_codes, override_reason) VALUES ($1, $2, $3, $3, $4, $5, $6, $7::text[], $8) RETURNING *`,
-            [authUser.tenantId, employeeId, authUser.employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null],
+            `INSERT INTO roster_shifts (tenant_id, employee_id, created_by, updated_by, start_time, end_time, notes, override_codes, override_reason, planned_breaks) VALUES ($1, $2, $3, $3, $4, $5, $6, $7::text[], $8, $9::jsonb) RETURNING *`,
+            [authUser.tenantId, employeeId, authUser.employeeId, startTime.toISOString(), endTime.toISOString(), notes, requestedOverrideCodes, overrideReason || null, JSON.stringify(plannedBreaks ?? [])],
           );
         if (result.rowCount === 0) {
           const missing = new Error('Roster shift not found.');

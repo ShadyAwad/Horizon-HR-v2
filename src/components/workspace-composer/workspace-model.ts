@@ -1,13 +1,14 @@
+import type { SurfaceVariant } from '../ui/Surface';
 import { widgetDefinition, type WidgetId, type WidgetConfig } from './widget-catalog';
 export const COLUMNS=12, MAX_WIDGETS=20, MAX_WORKSPACES=10;
-export type Surface='auto'|'solid'|'glass';
+export type Surface=SurfaceVariant;
 export type WidgetInstance={instanceId:string;widgetId:WidgetId;x:number;y:number;width:number;height:number;config:WidgetConfig;surfaceOverride:Surface};
 export type SavedWorkspace={id:string;name:string;widgets:WidgetInstance[]};
 export type ComposerPreferences={version:1;activeId:string;surface:Surface;workspaces:SavedWorkspace[]};
 export const newId=()=>crypto.randomUUID();
 export const defaultPreferences=():ComposerPreferences=>({version:1,activeId:'my-workspace',surface:'auto',workspaces:[{id:'my-workspace',name:'My Workspace',widgets:[]}]});
 const integer=(v:unknown,fallback:number,min:number,max:number)=>typeof v==='number'&&Number.isFinite(v)?Math.max(min,Math.min(max,Math.round(v))):fallback;
-export const surface=(v:unknown):Surface=>v==='solid'||v==='glass'?v:'auto';
+export const surface=(v:unknown):Surface=>v==='solid'||v==='glass'||v==='transparent'?v:'auto';
 export const overlap=(a:WidgetInstance,b:WidgetInstance)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
 export function boundGeometry(w:WidgetInstance):WidgetInstance {
  const def=widgetDefinition(w.widgetId)!;const width=integer(w.width,def.defaultWidth,def.minWidth,COLUMNS);

@@ -90,7 +90,9 @@
     "test:local-embedding": "tsx scripts/local-embedding-test.ts",
     "test:semantic-router:live": "tsx scripts/local-router-live-test.ts",
     "db:setup:runtime": "tsx scripts/setup-runtime-role.ts",
-    "test:database-role": "tsx scripts/runtime-role-test.ts"
+    "test:database-role": "tsx scripts/runtime-role-test.ts",
+    "test:ui-consistency": "tsx scripts/ui-consistency-test.ts",
+    "test:roster-breaks:integration": "tsx scripts/roster-breaks-integration-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

@@ -298,7 +298,7 @@ export function CommandPalette({
               <span id={titleId} className="sr-only">{labels.title}</span>
               <input
                 ref={inputRef}
-                type="search"
+                type="text"
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
@@ -323,9 +323,9 @@ export function CommandPalette({
                   inputRef.current?.focus();
                 }}
                 aria-label={labels.clearSearch}
-                className="stanza-close-action grid h-10 w-10 shrink-0 place-items-center rounded-lg"
+                className="stanza-interactive-control min-h-10 shrink-0 rounded-lg px-2 text-xs"
               >
-                <X className="h-4 w-4" />
+                {routerText('Clear', 'مسح')}
               </button>
             )}
             <button

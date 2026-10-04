@@ -96,6 +96,7 @@ try {
         run('scripts/grievances-test.ts');
         run('scripts/communications-test.ts');
         run('scripts/organisation-final-admin-concurrency-test.ts');
+        await withServer('scripts/roster-breaks-integration-test.ts', [], 'ROSTER_BREAK_TEST_BASE_URL');
         await withServer('scripts/attendance-integration-test.ts', [], 'ATTENDANCE_TEST_BASE_URL');
         await withServer('scripts/hiring-role-ux-test.ts', ['--with-hiring-integration'], 'HIRING_ROLE_TEST_BASE_URL');
         await withServer('scripts/communications-session-test.ts', [], 'COMMUNICATIONS_TEST_BASE_URL');

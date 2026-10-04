@@ -8,6 +8,7 @@ export type CustomThemeConfig = {
   lanyardStyle: LanyardStyle;
   accent: string;
   textColor: string | null;
+  hoverHighlight: string | null;
   primaryAction: string | null;
   secondaryAction: string | null;
   surfaceTint: string | null;
@@ -30,7 +31,7 @@ export type CustomThemeConfig = {
 };
 export const DEFAULT_CUSTOM_THEME: Readonly<CustomThemeConfig> = Object.freeze({
   lanyardStyle: { cardColor: null, accentColor: null, strapColor: null },
-  textColor: null, accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
+  hoverHighlight: null, textColor: null, accent: DEFAULT_CUSTOM_ACCENT, primaryAction: null, secondaryAction: null,
   surfaceTint: null, backgroundTint: null, cursorEffect: 'none', cursorColor: null,
   cursorTrailIntensity: 40, cursorTrailLength: 6,
   cursorAppearance: 'system', pointerColor: null, pointerSize: 16, pointerOpacity: 90,
@@ -49,6 +50,7 @@ export function normaliseCustomTheme(value: unknown, legacyAccent?: unknown): Cu
     primaryAction: normaliseCustomAccent(raw.primaryAction), secondaryAction: normaliseCustomAccent(raw.secondaryAction),
     surfaceTint: normaliseCustomAccent(raw.surfaceTint), backgroundTint: normaliseCustomAccent(raw.backgroundTint),
     textColor: normaliseCustomAccent(raw.textColor),
+    hoverHighlight: normaliseCustomAccent(raw.hoverHighlight),
     cursorColor: normaliseCustomAccent(raw.cursorColor),
     cursorAppearance: CURSOR_APPEARANCES.includes(raw.cursorAppearance as CursorAppearance) ? raw.cursorAppearance as CursorAppearance : 'system',
     pointerColor: normaliseCustomAccent(raw.pointerColor),
@@ -105,7 +107,15 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
   const surface = mixColor(light ? '#FFFFFF' : '#151D29', config.surfaceTint ?? base, .035);
   const raised = mixColor(light ? '#FFFFFF' : '#1D2735', config.surfaceTint ?? base, .035);
   const selected = mixColor(surface, base, light ? .12 : .17);
-  const hover = mixColor(surface, base, light ? .07 : .10);
+  const requestedHover = config.hoverHighlight ?? mixColor(surface, base, light ? .07 : .10);
+  // Keep hover visible without losing the established text polarity.
+  let hover = requestedHover;
+  const defaultText = light ? '#172033' : '#F1F5F9';
+  for (let step = 0; step <= 100; step++) {
+    hover = mixColor(requestedHover, surface, step / 100);
+    if (contrastRatio(defaultText, hover) >= 4.6) break;
+  }
+  if (config.hoverHighlight && contrastRatio(hover, surface) < 1.15) hover = mixColor(surface, light ? '#000000' : '#FFFFFF', light ? .10 : .15);
   const secondarySoft = mixColor(surface, config.secondaryAction ?? base, .10);
   const surfaces = [page, surface, raised, selected, hover];
   if (config.secondaryAction) surfaces.push(secondarySoft);
@@ -145,7 +155,7 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
     'light-atmosphere': `radial-gradient(circle at top left, ${background}12, transparent 45%), ${page}`,
     'light-topography': `${topography}18`, 'light-glow-top': `${background}24`, 'light-glow-bottom': `${background}14`,
   };
-  return { base, textAdjusted: primary !== requestedText, adjusted: primary !== requestedText || accent !== base || (config.primaryAction !== null && action !== config.primaryAction)
+  return { base, hoverAdjusted: config.hoverHighlight !== null && hover !== requestedHover, textAdjusted: primary !== requestedText, adjusted: (config.hoverHighlight !== null && hover !== requestedHover) || primary !== requestedText || accent !== base || (config.primaryAction !== null && action !== config.primaryAction)
     || (config.secondaryAction !== null && secondaryAction !== config.secondaryAction), tokens };
 }
 

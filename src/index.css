@@ -1578,3 +1578,14 @@ body{font-size:var(--text-base)}
 :is(#stanza-navigation-panel,.stanza-navigation-item,.stanza-command-palette,.stanza-preference-surface) .truncate {
   white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;
 }
+
+/* Shared module framing opts into the existing composer surface preference. */
+.stanza-module-frame {padding:clamp(12px,2vw,20px);width:100%;min-width:0}
+.stanza-module-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.stanza-module-toolbar .module-add {margin-inline-start:auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.stanza-module-toolbar button,.stanza-module-toolbar select {min-height:36px}
+.stanza-surface[data-surface=transparent] {background:color-mix(in srgb,var(--stanza-surface) 92%,transparent);backdrop-filter:none}
+@media (prefers-reduced-transparency:reduce),(prefers-reduced-motion:reduce),(max-width:899px) {
+ .stanza-surface[data-surface=transparent] {background:var(--stanza-surface)}
+}
+[data-perf-flat-surfaces=true] .stanza-surface {background:var(--stanza-surface);backdrop-filter:none}

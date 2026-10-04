@@ -6,7 +6,7 @@ import { useLanguage } from '../lib/LanguageContext';
 import { DEFAULT_CUSTOM_THEME, deriveCustomTheme, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from '../lib/custom-theme';
 import PointerStudio from './PointerStudio';
 
-const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint', 'textColor'] as const;
+const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint', 'textColor', 'hoverHighlight'] as const;
 
 export default function CustomThemeEditor() {
   const { customTheme, setCustomTheme, setLanyardPreview } = useStanzaPreferences();
@@ -20,18 +20,19 @@ export default function CustomThemeEditor() {
   const normalized = useMemo(() => normaliseCustomTheme(draft, customTheme.accent), [draft, customTheme.accent]);
   useEffect(() => { setLanyardPreview(normalized.lanyardStyle); return () => setLanyardPreview(null); }, [normalized.lanyardStyle, setLanyardPreview]);
   const palette = useMemo(() => deriveCustomTheme(normalized, theme), [normalized, theme]);
-  const previewStyle = useMemo(() => Object.fromEntries(Object.entries(palette.tokens).map(([key, value]) => [`--stanza-${key}`, value])) as CSSProperties, [palette]);
+  const previewStyle = useMemo(() => ({ ...Object.fromEntries(Object.entries(palette.tokens).map(([key, value]) => [`--stanza-${key}`, value])), '--stanza-surface-hover': palette.tokens['hover-surface'] }) as CSSProperties, [palette]);
   const changed = JSON.stringify(normalized) !== JSON.stringify(customTheme);
   const update = <K extends keyof CustomThemeConfig>(field: K, value: CustomThemeConfig[K]) => setDraft((current) => ({ ...current, [field]: value }));
   const commit = () => { if (valid) setCustomTheme(normalized); };
   const colorControl = (field: typeof COLOR_FIELDS[number]) => {
     const value = draft[field];
-    const swatch = normaliseCustomAccent(value) ?? (field === 'textColor' ? palette.tokens['text-primary'] : normalized.accent);
+    const derived = field === 'textColor' ? palette.tokens['text-primary'] : field === 'hoverHighlight' ? palette.tokens['hover-surface'] : normalized.accent;
+    const swatch = normaliseCustomAccent(value) ?? derived;
     const invalid = value !== null && normaliseCustomAccent(value) === null;
     return <div className="stanza-studio-color" key={field}>
       <label htmlFor={`${id}-${field}`}>{t(`studio.${field}`)}<small>{value === null ? t(field === 'textColor' ? 'studio.auto' : 'studio.derived') : t('studio.custom')}</small></label>
       <input type="color" aria-label={`${t(`studio.${field}`)} — ${t('background.colorPicker')}`} value={swatch} onChange={(event) => update(field, event.target.value)} />
-      <input id={`${id}-${field}`} type="text" dir="ltr" value={value ?? ''} placeholder={field === 'textColor' ? palette.tokens['text-primary'] : normalized.accent} spellCheck={false} maxLength={7}
+      <input id={`${id}-${field}`} type="text" dir="ltr" value={value ?? ''} placeholder={derived} spellCheck={false} maxLength={7}
         aria-invalid={invalid} aria-describedby={invalid ? `${id}-error` : undefined}
         onChange={(event) => update(field, event.target.value === '' && field !== 'accent' ? null : event.target.value)}
         onBlur={() => { const color = normaliseCustomAccent(value); if (color) update(field, color); }} />
@@ -63,9 +64,11 @@ export default function CustomThemeEditor() {
     </details>
     <PointerStudio draft={draft} onChange={setDraft} />
     {!valid && <p id={`${id}-error`} role="alert">{t('background.invalidColor')}</p>}
+    {valid && palette.hoverAdjusted && <p role="status">{isRtl ? 'عُدّل تظليل المرور لضمان ظهوره ووضوح النص. يُحفظ اللون الأصلي.' : 'Hover highlight adjusted for visibility and readable text. Your original color is saved.'}</p>}
     {valid && palette.adjusted && <p role="status">{t('background.contrastAdjusted')}</p>}
     <h4>{t('background.preview')}</h4>
     <div className="stanza-custom-preview" style={previewStyle} aria-label={t('background.preview')}>
+      <button type="button" className="stanza-interactive-control rounded-lg px-3 py-2">{isRtl ? 'معاينة التظليل عند المرور' : 'Hover highlight preview'}</button>
       <div className="stanza-custom-preview-nav">{t('background.previewSelected')}</div>
       <div className="stanza-custom-preview-content"><strong>{t('background.previewText')}</strong><p>{t('background.previewBody')}</p><p style={{color:'var(--stanza-text-secondary)'}}>{isRtl ? 'نص ثانوي' : 'Secondary text'}</p><small style={{color:'var(--stanza-text-muted)'}}>{isRtl ? 'تسمية توضيحية' : 'Caption'}</small>
         <div className="stanza-studio-preview-actions"><button type="button" className="stanza-custom-preview-primary">{t('background.previewButton')}</button>
