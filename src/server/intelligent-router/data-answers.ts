@@ -13,5 +13,11 @@ export async function dataAnswer(c:PoolClient,actor:RouterActor,intent:string,ti
     const row=(await c.query('SELECT manager.full_name AS manager,department.name AS department,team.name AS team FROM employees employee LEFT JOIN employees manager ON manager.tenant_id=employee.tenant_id AND manager.id=employee.manager_id AND manager.is_active LEFT JOIN organisation_departments department ON department.tenant_id=employee.tenant_id AND department.id=employee.department_id LEFT JOIN organisation_teams team ON team.tenant_id=employee.tenant_id AND team.id=employee.team_id WHERE employee.tenant_id=$1 AND employee.id=$2',[actor.tenantId,actor.employeeId])).rows[0];
     return {kind:'profile',field:intent,value:row?.[intent==='my_manager'?'manager':intent==='my_team'?'team':'department']??null};
   }
+  // Payroll has no authoritative future payment date; never infer one from old payslips.
+  if(intent==='next_payday') return {kind:'payday',date:null};
+  if(intent==='tomorrow_meetings'){
+    const rows=(await c.query("SELECT m.title,m.starts_at,m.ends_at,count(*) OVER() AS total FROM communication_meetings m WHERE m.tenant_id=$1 AND m.status='scheduled' AND (m.starts_at AT TIME ZONE $3)::date=((now() AT TIME ZONE $3)::date+1) AND (m.organizer_id=$2 OR EXISTS(SELECT 1 FROM communication_meeting_attendees a WHERE a.tenant_id=m.tenant_id AND a.meeting_id=m.id AND a.employee_id=$2)) ORDER BY m.starts_at,m.id LIMIT 5",[actor.tenantId,actor.employeeId,timeZone])).rows;
+    return {kind:'meetings',timeZone,total:Number(rows[0]?.total??0),items:rows.map(row=>({title:row.title,start:row.starts_at.toISOString(),end:row.ends_at.toISOString()}))};
+  }
   return undefined;
 }

@@ -17,10 +17,17 @@ export const CASES=[
  ['show my most recent payslip','latest_payslip'],['what is included in my compensation','compensation_summary'],['I need to submit a new expense','submit_expense'],['show me expenses I filed before','expense_history'],['help me clock in','clock_in_help'],['I would like to request annual leave','request_leave'],
  ['cancel leave','no_match'],['modify salary','no_match'],['close grievance','no_match'],['الغاء الاجازة','no_match'],['اقفل الشكوى','no_match'],['recommend a pizza','no_match'],['Tell me tomorrow stock prices','no_match']
 ] as const;
+const COVERAGE_CASES:readonly (readonly [string,string])[]=[
+ ['when is my shift?','current_shift'],['when do I work?','current_shift'],["what's my schedule?",'current_shift'],['next shift','next_shift'],['what time do I start tomorrow?','tomorrow_shift'],['when do I get paid?','next_payday'],['where is my payslip?','latest_payslip'],['how much leave do I have?','leave_balance'],['who is my boss?','my_manager'],['who is my manager?','my_manager'],['what equipment do I have?','my_assets'],['what meetings do I have tomorrow?','tomorrow_meetings'],
+ ['شيفتي امتى','current_shift'],['هشتغل امتى','current_shift'],['جدولي ايه','current_shift'],['next shift امتى','next_shift'],['am I working tomorrow','tomorrow_shift'],['هقبض امتى','next_payday'],['مين رئيسي في الشغل','my_manager'],['باقي لي كام يوم اجازة','leave_balance'],
+ ['Could you show my work schedule please','current_shift'],['When does my following shift begin','next_shift'],['Do I have to come to work tomorrow morning','tomorrow_shift'],['Who is my direct supervisor at the company','my_manager'],['I need the newest salary statement','latest_payslip'],['How much vacation time is still available','leave_balance'],
+ ['When does my shift end','shift_end_time'],['where is the clock out control','clock_out_help'],['Can I see my old clock in records','attendance'],['show all my past salary statements','payslips'],['book me a flight tomorrow','no_match'],['cancel my meetings tomorrow','no_match']
+];
+const evaluationCases=[...CASES,...COVERAGE_CASES];
 const embeddingTimes:number[]=[],searchTimes:number[]=[],endTimes:number[]=[],semanticEndTimes:number[]=[];let authorizationCalls=0;const reports=[];
 try{
  await provider.embed('warm up local sentence encoder');
- for(const [query,expected] of CASES){
+ for(const [query,expected] of evaluationCases){
   let hits:ReturnType<typeof aggregateIntents>=[];
   const r=await resolveQuery(query,{actor,allowed:async i=>available.some(a=>a.key===i.key),available:async()=>available,embedding:{...provider,model:provider.model,dimensions:provider.dimensions,version:provider.version,embed:async text=>{const start=performance.now();const vector=await provider.embed(text);embeddingTimes.push(performance.now()-start);return vector;}},minimumScore:settings.minimumScore,minimumMargin:settings.minimumMargin,search:{search:async(vector,p,keys)=>{const start=performance.now();const found=await new PgSemanticSearch(actor.tenantId,settings.topK).search(vector,p,keys);searchTimes.push(performance.now()-start);hits=aggregateIntents(found,available);return found;}},authorization:{resolve:async()=>{authorizationCalls++;return {state:'disabled'};}}});
   endTimes.push(r.latencyMs!);if(r.method==='semantic')semanticEndTimes.push(r.latencyMs!);reports.push({query,expected,layer:r.method,top:hits[0]?.intentKey??r.intentKey??'',score:hits[0]?.score??'',competing:hits[1]?.intentKey??'',competingScore:hits[1]?.score??'',margin:r.margin??'',final:r.intentKey??r.outcome,action:r.commandId??'',llmInvoked:false,pass:(r.intentKey??r.outcome)===expected});
@@ -29,6 +36,6 @@ try{
  const percentile=(v:number[],p:number)=>[...v].sort((a,b)=>a-b)[Math.ceil(v.length*p)-1];
  const summary=(v:number[])=>({samples:v.length,p50:percentile(v,.5),p95:percentile(v,.95)});
  console.log(JSON.stringify({intents:INTENTS.length,allowedIntents:available.length,passed:reports.filter(r=>r.pass).length,total:reports.length,authorizationFallbackChecks:authorizationCalls,embeddingMs:summary(embeddingTimes),vectorSearchWithTelemetryMs:summary(searchTimes),endToEndMsAllQueries:summary(endTimes),semanticEndToEndMs:summary(semanticEndTimes)}));
- if(reports.some((r,i)=>!r.pass&&(i<16||r.final!=='no_match'&&r.final!=='ambiguous')))process.exitCode=1;
+ if(reports.some((r,i)=>!r.pass&&(i<16||i>=CASES.length&&i<CASES.length+20||r.final!=='no_match'&&r.final!=='ambiguous')))process.exitCode=1;
  console.log('Held-out low-confidence abstentions are reported, never forced into unsafe matches.');
 }finally{await provider.close?.();await pool.end();}

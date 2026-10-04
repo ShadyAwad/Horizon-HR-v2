@@ -28,10 +28,10 @@ export function useIntelligentRouter(query:string,normalResults:number,commands:
   },[query,normalResults]);
   // Re-resolve server proposals through both allowlists and currently visible commands.
   const intents=result?.outcome==='matched'?[getIntent(result.intentKey)]:result?.outcome==='ambiguous'&&Array.isArray(result.choices)?result.choices.map(getIntent):[];
-  const routedCommands=intents.flatMap(i=>{
+  const routedCommands=[...new Map(intents.flatMap(i=>{
     if(!i || !ACTIONS.has(i.actionKey) || result?.outcome==='matched'&&(result.actionKey!==i.actionKey || result.commandId!==i.commandId))return [];
     const command=commands.find(c=>c.id===i.commandId);return command?[command]:[];
-  });
+  }).map(command=>[command.id,command] as const)).values()];
   async function confirm(command:StanzaCommand) {
     if(result?.candidateId && result.commandId===command.id) await apiFetch(apiUrl(`/api/command-router/candidates/${result.candidateId}/confirm`),{method:'POST'}).catch(()=>{});
   }

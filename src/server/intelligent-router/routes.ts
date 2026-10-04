@@ -79,7 +79,19 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     return userAuthorization.disconnect(actor(req));
   });
   route('get','/api/command-router/status',async req => {
-    const u = actor(req), state = await authorization.resolve(u);
+    const u = actor(req);
+    let state:Awaited<ReturnType<ReasoningAuthorization['resolve']>>,openaiConnection:Awaited<ReturnType<LocalOpenAIAuth['status']>>|null=null;
+    let reasoningStatusError:string|undefined;
+    try {
+      state=await authorization.resolve(u);
+      if(userAuthorization)openaiConnection=await userAuthorization.status(u);
+    }catch(error){
+      // An unavailable credential store must not hide a healthy independent semantic provider.
+      const code=error instanceof Error?error.message:'';
+      if(!['OPENAI_STORE_UNAVAILABLE','OPENAI_STORE_BUSY','OPENAI_AUTH_UNAVAILABLE','OPENAI_SESSION_REQUIRED'].includes(code))throw error;
+      state={state:'authorization_unavailable'};reasoningStatusError=code;
+      logServerError('[Router reasoning status]',error);
+    }
     const canReview = await withTenant(u.tenantId,c => review(c,u));
     const semanticState = await withTenant(u.tenantId, async c => {
       const catalog = (await c.query("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector') AS vector, to_regclass('router_semantic_examples') IS NOT NULL AS migrated")).rows[0];
@@ -89,7 +101,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       const examples = await c.query('SELECT 1 FROM router_semantic_examples WHERE approval_state=$1 AND embedding_model=$2 AND embedding_dimensions=$3 AND embedding_version=$4 AND (tenant_id IS NULL OR tenant_id=$5) LIMIT 1', ['approved',embedding.model,embedding.dimensions,embedding.version,u.tenantId]);
       return examples.rowCount ? embedding.status?.() ?? 'configured_not_verified' : 'examples_missing';
     });
-    return { openaiLocalAvailable:Boolean(userAuthorization),openaiConnection:userAuthorization ? await userAuthorization.status(u) : null,mode:config.mode,reasoningState:state.state,embeddingConfigured:Boolean(embedding),semanticState,learningEnabled:config.learning,canReview };
+    return { openaiLocalAvailable:Boolean(userAuthorization),openaiConnection,reasoningStatusError,mode:config.mode,reasoningState:state.state,embeddingConfigured:Boolean(embedding),semanticState,learningEnabled:config.learning,canReview };
   });
   route('post','/api/command-router/existing',async req=>{
     if(req.body&&Object.keys(req.body).length)throw Error('INVALID_QUERY');

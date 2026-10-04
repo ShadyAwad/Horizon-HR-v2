@@ -13,7 +13,8 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
   const finish = (r: RouterResult): RouterResult => ({ ...r, latencyMs: performance.now() - start });
   const query = normalizeQuery(raw);
   const empty: RouterResult = { outcome: 'no_match', method: 'none', fallbackUsed: false };
-  if (!query || raw.length > 500 || unsafeOperation(query)) return finish(empty);
+  if (!query || raw.length > 500) return finish(empty);
+  if (unsafeOperation(query)) return finish({...empty,unsupported:true});
   const matched = async (i: Intent, method: RouterResult['method'], extra: Partial<RouterResult> = {}): Promise<RouterResult> => {
     // Recheck at result time: cached embeddings and model proposals grant no permissions.
     if (!getIntent(i.key) || !await d.allowed(i)) return finish({ ...empty, ...extra, method, outcome: 'unauthorized' });
@@ -26,7 +27,7 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
   const allowed: Intent[] = d.available ? (await d.available()).filter(i => getIntent(i.key)) : [];
   if (!d.available) for (const i of INTENTS) if (getIntent(i.key) && await d.allowed(i)) allowed.push(i);
   if (!allowed.length) return finish({ ...empty, outcome: 'unauthorized' });
-  let semantic: Partial<RouterResult> = {}, choices: string[] = [], unavailable = false;
+  let semantic: Partial<RouterResult> = {}, choices: string[] = [], unavailable = !d.embedding;
   if (d.embedding) {
     try {
       const embeddingStart=performance.now();
@@ -36,24 +37,24 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
       if (hits.length) {
         const top = hits[0], competing = hits[1]?.score ?? 0, margin = top.score - competing;
         semantic = { ...semantic, score: top.score, competingScore: competing, margin };
-        if (top.score >= d.minimumScore && margin >= d.minimumMargin) return matched(getIntent(top.intentKey)!, 'semantic', {...semantic,promotedSemanticHit:top.promoted===true});
+        if (top.score >= d.minimumScore && margin >= d.minimumMargin) return matched(getIntent(top.intentKey)!, 'semantic', {...semantic,semanticStatus:'matched',promotedSemanticHit:top.promoted===true});
         if (top.score >= d.minimumScore) choices = hits.filter(h => top.score - h.score < d.minimumMargin).map(h => h.intentKey);
       }
     } catch { unavailable = true; }
   }
-  const unresolved = (): RouterResult => finish({ ...empty, ...semantic, outcome: choices.length ? 'ambiguous' : unavailable ? 'provider_unavailable' : 'no_match', method: Object.keys(semantic).length ? 'semantic' : 'none', ...(choices.length ? { choices } : {}) });
+  const unresolved = (): RouterResult => finish({ ...empty, ...semantic, semanticStatus: unavailable ? 'unavailable' : choices.length ? 'ambiguous' : 'weak', outcome: choices.length ? 'ambiguous' : unavailable ? 'provider_unavailable' : 'no_match', method: Object.keys(semantic).length ? 'semantic' : 'none', ...(choices.length ? { choices } : {}) });
   try {
     const auth = await d.authorization.resolve(d.actor);
-    if (auth.state !== 'ready') return unresolved();
+    if (auth.state !== 'ready') return {...unresolved(),reasoningUnavailable:auth.state!=='disabled'};
     // Explicit multi-step markers control optional escalation, never query length alone.
     const complex = /\b(?:then|after that|first.*(?:and|then))\b|وبعدين|ثم/u.test(query);
     const proposal = validateReasoning(await auth.provider.interpret({ query, intents: allowed, complex }));
     if (proposal.status === 'ambiguous') return finish({ ...unresolved(), outcome: 'ambiguous', choices: choices.length ? choices : allowed.map(i => i.key), method: 'llm', fallbackUsed: true });
     const proposed = getIntent(proposal.proposedIntentKey);
-    if (proposal.status !== 'resolved' || !proposed || proposal.confidence !== 'high') return finish({ ...empty, ...semantic, method: 'llm', fallbackUsed: true });
+    if (proposal.status !== 'resolved' || !proposed || proposal.confidence !== 'high') return finish({ ...empty, ...semantic, method: 'llm', fallbackUsed: true, unsupported:proposal.status==='unsupported' });
     return matched(proposed, 'llm', { ...semantic, fallbackUsed: true });
   } catch (error) {
     const invalid = error instanceof Error && error.message === 'INVALID_REASONING';
-    return finish({ ...unresolved(), outcome: invalid ? 'no_match' : choices.length ? 'ambiguous' : 'provider_unavailable', method: 'llm', fallbackUsed: true, ...(error instanceof ReasoningUnavailable ? {providerFailure:{reason:error.reason,stage:error.stage,...error.diagnostics,...(error.httpStatus ? {httpStatus:error.httpStatus} : {})}} : {}) });
+    return finish({ ...unresolved(), outcome: invalid ? 'no_match' : choices.length ? 'ambiguous' : unavailable ? 'provider_unavailable' : 'no_match', method: 'llm', fallbackUsed: true, reasoningUnavailable:!invalid, ...(error instanceof ReasoningUnavailable ? {providerFailure:{reason:error.reason,stage:error.stage,...error.diagnostics,...(error.httpStatus ? {httpStatus:error.httpStatus} : {})}} : {}) });
   }
 }

@@ -6,6 +6,8 @@ import { resolveQuery,aggregateIntents,type RouterDependencies } from '../src/se
 import { EmbeddingCache,OpenAIEmbeddingProvider,OpenAIReasoningProvider,validateReasoning,validateVector } from '../src/server/intelligent-router/providers';
 import { routerConfig,createAuthorization } from '../src/server/intelligent-router/config';
 import { createCandidate,recordMetric } from '../src/server/intelligent-router/store';
+import {routerFeedback,answerFeedback} from '../src/components/command-palette/router-feedback';
+import {dataAnswer} from '../src/server/intelligent-router/data-answers';
 let checks=0;
 async function test(name:string,fn:()=>unknown|Promise<unknown>){await fn();checks++;console.log('PASS',name);}
 let embeds=0,reasons=0;
@@ -67,5 +69,26 @@ await test('migration and retrieval maintain explicit tenant and vector space bo
   const sql=fs.readFileSync('src/db/migrations/20261002_intelligent_router.sql','utf8'),store=fs.readFileSync('src/server/intelligent-router/store.ts','utf8');
   assert(sql.includes('CREATE EXTENSION IF NOT EXISTS vector'));assert(!sql.includes('DROP EXTENSION'));assert(sql.includes('FORCE ROW LEVEL SECURITY'));assert(sql.includes('WITH CHECK'));assert(store.includes('AS MATERIALIZED'));assert(store.includes('embedding_version=$5'));assert(store.includes('tenant_id=$1'));assert(store.includes('system_hits'));assert(!/CREATE INDEX.*(?:hnsw|ivfflat)/i.test(sql));
   assert.equal(normalizeQuery('  طَلَب إجازة  '),normalizeQuery('طلب اجازة'));
+});
+await test('semantic abstention, outage, AI failure and unsupported feedback stay distinct',async()=>{
+ const d=base();d.authorization={resolve:async()=>({state:'disabled'})};let r=await resolveQuery('unknown phrase',d);
+ assert.equal(r.semanticStatus,'weak');assert.equal(r.outcome,'no_match');assert.match(routerFeedback(r,false,false,false),/confidently/);
+ d.authorization={resolve:async()=>({state:'ready',provider:{interpret:async()=>{throw Error('outage');}}})};r=await resolveQuery('unknown phrase',d);
+ assert.equal(r.outcome,'no_match');assert.equal(r.reasoningUnavailable,true);assert.equal(r.semanticStatus,'weak');assert(!routerFeedback(r,false,false,false).includes('provider'));
+ d.authorization={resolve:async()=>({state:'ready',provider:{interpret:async()=>({status:'unsupported'})}})};r=await resolveQuery('unknown phrase',d);assert.equal(r.unsupported,true);
+ d.authorization={resolve:async()=>({state:'ready',provider:{interpret:async()=>{throw Error('outage');}}})};
+ d.embedding=undefined;r=await resolveQuery('unknown phrase',d);assert.equal(r.semanticStatus,'unavailable');assert.match(routerFeedback(r,false,false,false),/Semantic provider/);
+ r=await resolveQuery('cancel meetings',d);assert.equal(r.unsupported,true);assert.match(routerFeedback(r,false,false,false),/not supported/);
+ assert.match(routerFeedback({outcome:'ambiguous',method:'semantic',fallbackUsed:false},false,true,false),/More than one/);
+ assert.match(routerFeedback({outcome:'matched',method:'semantic',fallbackUsed:false},false,true,false),/semantic/);
+ assert.equal(routerFeedback({outcome:'no_match',method:'semantic',fallbackUsed:false},false,false,true),'لم أتمكن من مطابقة الطلب بثقة.');
+});
+await test('deterministic payday absence and personal tomorrow meetings with bounded answer',async()=>{
+ const calls:{sql:string;values:unknown[]}[]=[];const c={query:async(sql:string,values:unknown[])=>{calls.push({sql,values});return {rows:[{title:'Planning',starts_at:new Date('2026-10-05T09:00:00Z'),ends_at:new Date('2026-10-05T10:00:00Z'),total:'6'}]};}} as unknown as PoolClient;
+ const actor={tenantId:'tenant',employeeId:'employee'};
+ const payday=await dataAnswer(c,actor,'next_payday','Africa/Cairo');assert.deepEqual(payday,{kind:'payday',date:null});assert.equal(calls.length,0);assert.match(answerFeedback(payday!,false),/No next payday/);
+ const meetings=await dataAnswer(c,actor,'tomorrow_meetings','Africa/Cairo');assert.equal(meetings?.kind,'meetings');assert.deepEqual(calls[0].values,['tenant','employee','Africa/Cairo']);assert(calls[0].sql.includes('a.tenant_id=m.tenant_id'));assert(calls[0].sql.includes('a.employee_id=$2'));assert(calls[0].sql.includes("m.status='scheduled'"));assert(calls[0].sql.includes('LIMIT 5'));
+ assert.match(answerFeedback(meetings!,false),/Planning/);assert.match(answerFeedback(meetings!,false),/see all/);
+ assert.equal(answerFeedback({kind:'meetings',timeZone:'Africa/Cairo',total:0,items:[]},true),'لا توجد اجتماعات مقررة لك غدًا.');
 });
 console.log(`${checks} router test groups passed`);

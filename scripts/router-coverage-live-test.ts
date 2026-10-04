@@ -1,0 +1,26 @@
+import './router-env';
+import assert from 'node:assert/strict';
+import {getDbPool,withTenant} from '../src/lib/hr-background';
+const base=process.env.ROUTER_TEST_BASE_URL||'http://localhost:3000';
+assert(['localhost','127.0.0.1'].includes(new URL(base).hostname),'Local-only test');
+assert(process.env.ROUTER_TEST_EMAIL&&process.env.ROUTER_TEST_PASSWORD,'Set test login credentials in the environment');
+const pool=getDbPool();
+try{
+ const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.ROUTER_TEST_EMAIL,password:process.env.ROUTER_TEST_PASSWORD})});assert(login.ok,'Standard login');const cookie=login.headers.get('set-cookie')?.split(';',1)[0];assert(cookie);
+ const api=async(path:string,body?:object)=>{const r=await fetch(base+'/api/command-router/'+path,{method:body?'POST':'GET',headers:{Cookie:cookie,Origin:base,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});assert(r.ok,path+' HTTP '+r.status);return r.json();};
+ const status=await api('status');assert(status.embeddingConfigured);assert(!['pgvector_missing','migration_required','examples_missing','credentials_missing'].includes(status.semanticState));console.log(JSON.stringify({semanticState:status.semanticState,reasoningState:status.reasoningState,reasoningStatusError:status.reasoningStatusError}));
+ const count=async()=> (await api('metrics')).metrics.reduce((n:number,r:any)=>n+Number(r.fallbacks),0);const before=await count();
+ const located=(await pool.query('SELECT tenant_id FROM stanza_auth_tenant($1)',[process.env.ROUTER_TEST_EMAIL])).rows[0];const actor=await withTenant(located.tenant_id,async c=>(await c.query('SELECT id,tenant_id FROM employees WHERE email=$1',[process.env.ROUTER_TEST_EMAIL])).rows[0]);
+ for(const [query,intent] of [["when is my shift?",'current_shift'],['when do I work?','current_shift'],["what\'s my schedule?",'current_shift'],['who is my boss?','my_manager'],['when do I get paid?','next_payday'],['how much leave do I have?','leave_balance'],['شيفتي امتى','current_shift'],['هشتغل امتى','current_shift'],['جدولي ايه','current_shift'],['هقبض امتى','next_payday'],['مين رئيسي في الشغل','my_manager'],['باقي لي كام يوم اجازة','leave_balance'],['do I have meetings tomorrow?','tomorrow_meetings'],['next shift','next_shift']]){
+  const {result:r}=await api('resolve',{query,allowReasoning:false,timeZone:'Africa/Cairo'});assert.equal(r.outcome,'matched',query);assert.equal(r.intentKey,intent,query);assert.equal(r.fallbackUsed,false);assert(['semantic','exact'].includes(r.method));
+  if(r.method==='semantic'){assert(r.score>=.84);assert(r.margin>=.10);}
+  if(intent==='next_payday')assert.deepEqual(r.answer,{kind:'payday',date:null});
+  if(intent==='my_manager'){const expected=await withTenant(actor.tenant_id,async c=>(await c.query('SELECT manager.full_name FROM employees employee LEFT JOIN employees manager ON manager.id=employee.manager_id AND manager.tenant_id=employee.tenant_id AND manager.is_active WHERE employee.tenant_id=$1 AND employee.id=$2',[actor.tenant_id,actor.id])).rows[0]);assert.equal(r.answer.value,expected.full_name??null);}
+  if(intent==='current_shift'||intent==='next_shift'){const row=await withTenant(actor.tenant_id,async c=>(await c.query("SELECT start_time,end_time FROM roster_shifts WHERE tenant_id=$1 AND employee_id=$2 AND status='scheduled' AND "+(intent==='current_shift'?'start_time<=now() AND end_time>now()':'start_time>now()')+' ORDER BY start_time LIMIT 1',[actor.tenant_id,actor.id])).rows[0]);assert.equal(r.answer.start,row?.start_time.toISOString()??null);assert.equal(r.answer.end,row?.end_time.toISOString()??null);}
+  if(intent==='tomorrow_meetings'){const rows=await withTenant(actor.tenant_id,async c=>(await c.query("SELECT m.title,m.starts_at FROM communication_meetings m WHERE m.tenant_id=$1 AND m.status='scheduled' AND (m.starts_at AT TIME ZONE 'Africa/Cairo')::date=((now() AT TIME ZONE 'Africa/Cairo')::date+1) AND (m.organizer_id=$2 OR EXISTS(SELECT 1 FROM communication_meeting_attendees a WHERE a.tenant_id=m.tenant_id AND a.meeting_id=m.id AND a.employee_id=$2)) ORDER BY m.starts_at,m.id",[actor.tenant_id,actor.id])).rows);assert.equal(r.answer.total,rows.length);assert.deepEqual(r.answer.items.map((i:any)=>[i.title,i.start]),rows.slice(0,5).map(row=>[row.title,row.starts_at.toISOString()]));}
+  console.log(JSON.stringify({query,layer:r.method,intent:r.intentKey,score:r.score,margin:r.margin,gptCalled:r.fallbackUsed,answer:r.answer?.kind,recorded:r.answer?.start??r.answer?.value??r.answer?.total??null}));
+ }
+ for(const query of ['font','nonsense zigzag','cancel my meetings tomorrow']){const {result:r}=await api('resolve',{query,allowReasoning:false});assert.equal(r.outcome,'no_match');assert.equal(r.fallbackUsed,false);assert.equal(r.semanticStatus==='unavailable',false);if(query.startsWith('cancel'))assert.equal(r.unsupported,true);}
+ assert.equal(await count(),before,'No GPT fallback recorded');
+ console.log('PASS real HTTP coverage, independently checked own-record answers, honest absences, weak/unsupported states and telemetry: zero GPT calls');
+}finally{await pool.end();}
