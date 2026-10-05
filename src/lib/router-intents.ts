@@ -10,7 +10,7 @@ export const ADDITIONAL_INTENTS = [
  ['approved_leave','roster:leave','Open personal leave to inspect approved requests.',['leave.view.self','leave.create'],'approved leave|اجازات معتمده'],
  ['leave_history','roster:leave','Open the existing personal leave request history.',['leave.view.self','leave.create'],'leave history|تاريخ الاجازات'],
  ['latest_payslip','router:payslips','Open actual payroll statements; latest payment comes from payroll records.',['payroll.view_self'],'latest payslip|اخر قسيمه راتب'],
- ['next_payday','router:payslips','Open payroll; next pay date is not stored authoritatively, never estimate it.',['payroll.view_self'],'next payday|ميعاد المرتب القادم'],
+ ['next_payday','router:payslips','Open payroll; next pay date is not stored authoritatively, never estimate it.',['payroll.view_self'],'next payday|payday|ميعاد المرتب القادم'],
  ['compensation_summary','router:payslips','Open existing payroll and compensation details.',['payroll.view_self'],'compensation summary|ملخص التعويضات'],
  ['active_loans','router:payslips','Open payroll where existing loan details can be inspected.',['payroll.view_self'],'active loans|قروض نشطه'],
  ['pending_expenses','expenses:claims','Open personal expense claims to inspect pending statuses.',['expenses.submit.self'],'pending expenses|مصروفات معلقه'],
@@ -31,5 +31,8 @@ export const ADDITIONAL_INTENTS = [
  ['organisation','organisation:hierarchy','Open authorized organisation hierarchy.',['organisation.view'],'organisation hierarchy|هيكل المؤسسه'],
  ['digital_id','profile:digital-id','Open own existing digital employee badge.',[],'digital employee id|بطاقه الموظف'],
  ['help_center','router:help','Open existing Help Center.',[],'help center|مركز المساعده'],
- ['settings','settings:open','Open existing personal settings.',[],'personal settings|اعداداتي'],
+ ['appearance_settings','settings:appearance','Open existing Appearance and Theme Studio controls; never change preferences automatically.',[],'appearance|theme|themes|change theme|customise appearance|cursor|change cursor|change my cursor|pointer effects|dark mode|light mode|شكل البرنامج|الثيم|المؤشر|dark mode عايز'],
+ ['font_settings','settings:font','Open existing personalisation font-size controls; never change preferences automatically.',[],'font|fonts|change font|text size|make text bigger|غير الخط|كبر الخط|حجم الخط'],
+ ['live_employees','navigation:liveEmployees','Open authorized Live Employees and summarize actual clocked-in records.',['attendance.view_live'],'live employees|active employees|الموظفين الموجودين دلوقتي|مين عامل clock in'],
+ ['settings','settings:open','Open existing personal settings.',[],'personal settings|language|language settings|اعداداتي|اللغة'],
 ] as const;

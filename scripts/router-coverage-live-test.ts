@@ -1,5 +1,7 @@
 import './router-env';
 import assert from 'node:assert/strict';
+import {dashboardCommandFixture} from './command-registry-fixture';
+import {arbitrateLocalCommands} from '../src/components/command-palette/command-search';
 import {getDbPool,withTenant} from '../src/lib/hr-background';
 const base=process.env.ROUTER_TEST_BASE_URL||'http://localhost:3000';
 assert(['localhost','127.0.0.1'].includes(new URL(base).hostname),'Local-only test');
@@ -20,7 +22,22 @@ try{
   if(intent==='tomorrow_meetings'){const rows=await withTenant(actor.tenant_id,async c=>(await c.query("SELECT m.title,m.starts_at FROM communication_meetings m WHERE m.tenant_id=$1 AND m.status='scheduled' AND (m.starts_at AT TIME ZONE 'Africa/Cairo')::date=((now() AT TIME ZONE 'Africa/Cairo')::date+1) AND (m.organizer_id=$2 OR EXISTS(SELECT 1 FROM communication_meeting_attendees a WHERE a.tenant_id=m.tenant_id AND a.meeting_id=m.id AND a.employee_id=$2)) ORDER BY m.starts_at,m.id",[actor.tenant_id,actor.id])).rows);assert.equal(r.answer.total,rows.length);assert.deepEqual(r.answer.items.map((i:any)=>[i.title,i.start]),rows.slice(0,5).map(row=>[row.title,row.starts_at.toISOString()]));}
   console.log(JSON.stringify({query,layer:r.method,intent:r.intentKey,score:r.score,margin:r.margin,gptCalled:r.fallbackUsed,answer:r.answer?.kind,recorded:r.answer?.start??r.answer?.value??r.answer?.total??null}));
  }
- for(const query of ['font','nonsense zigzag','cancel my meetings tomorrow']){const {result:r}=await api('resolve',{query,allowReasoning:false});assert.equal(r.outcome,'no_match');assert.equal(r.fallbackUsed,false);assert.equal(r.semanticStatus==='unavailable',false);if(query.startsWith('cancel'))assert.equal(r.unsupported,true);}
+ const registry=dashboardCommandFixture();
+ const presenceResponse=await fetch(base+'/api/hr/live-employees',{headers:{Cookie:cookie}});assert(presenceResponse.ok,'Existing Live Employees authorization');const presence=(await presenceResponse.json()).employees;
+ for(const [query,intent] of [['theme','appearance_settings'],['font','font_settings'],['change font','font_settings'],['text size','font_settings'],['cursor','appearance_settings'],['change my cursor','appearance_settings'],['dark mode','appearance_settings'],['announcement','company_feed'],['announcements','company_feed'],['news','company_feed'],['company news','company_feed'],["who's clocked in right now?",'live_employees'],['who is working right now?','live_employees'],['payday','next_payday'],['when is my next payday?','next_payday'],['schedule','current_shift'],['الثيم','appearance_settings'],['كبر الخط','font_settings'],['المؤشر','appearance_settings'],['في اخبار جديدة؟','company_feed'],['مين شغال دلوقتي؟','live_employees'],['مين عامل clock in؟','live_employees']]){
+  const local=arbitrateLocalCommands(registry,query);
+  if(query==='schedule'){assert(local.commands.some(c=>c.id==='roster:schedule'));console.log(JSON.stringify({query,chosenLayer:'local',destination:local.commands[0].id,localScore:local.ranked[0].score,gptCalled:false}));continue;}
+  const {result:r}=await api('resolve',{query,allowReasoning:false,timeZone:'Africa/Cairo'});assert.equal(r.intentKey,intent,query);assert.equal(r.fallbackUsed,false);assert.equal(r.outcome,'matched');
+  if(local.commands.length)assert(local.commands.some(c=>c.id===r.commandId),query+' agreed destination');
+  if(intent==='live_employees'){assert.deepEqual(r.answer,{kind:'presence',total:new Set(presence.map((e:any)=>e.employeeId)).size,onBreak:new Set(presence.filter((e:any)=>e.currentBreakStartedAt).map((e:any)=>e.employeeId)).size});}
+  console.log(JSON.stringify({query,chosenLayer:local.commands.length?'local':r.method,destination:r.commandId,localTop:local.ranked[0]?.command.id,localScore:local.ranked[0]?.score,localConfidence:local.confidence,semanticScore:r.score,semanticMargin:r.margin,gptCalled:false}));
+ }
+ // Existing employee credentials use the same demo password; neither authentication nor data is altered.
+ const employeeLogin=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'employee@stanza-demo.com',password:process.env.ROUTER_TEST_PASSWORD})});assert(employeeLogin.ok,'Existing restricted demo employee');const employeeCookie=employeeLogin.headers.get('set-cookie')!.split(';',1)[0];
+ for(const query of ['live employees',"who's clocked in right now?"]){const response=await fetch(base+'/api/command-router/resolve',{method:'POST',headers:{Cookie:employeeCookie,Origin:base,'Content-Type':'application/json'},body:JSON.stringify({query,allowReasoning:false})});assert(response.ok);const {result:r}=await response.json();assert(!r.answer,'Unauthorized presence never exposes counts');assert.notEqual(r.intentKey,'live_employees');assert.notEqual(r.commandId,'navigation:liveEmployees');}
+ const denied=await fetch(base+'/api/hr/live-employees',{headers:{Cookie:employeeCookie}});assert.equal(denied.status,403);
+ console.log('PASS presence summary agrees with real Live Employees API; restricted employee sees neither destination nor counts');
+ for(const query of ['nonsense zigzag','cancel my meetings tomorrow']){const {result:r}=await api('resolve',{query,allowReasoning:false});assert.equal(r.outcome,'no_match');assert.equal(r.fallbackUsed,false);assert.equal(r.semanticStatus==='unavailable',false);if(query.startsWith('cancel'))assert.equal(r.unsupported,true);}
  assert.equal(await count(),before,'No GPT fallback recorded');
  console.log('PASS real HTTP coverage, independently checked own-record answers, honest absences, weak/unsupported states and telemetry: zero GPT calls');
 }finally{await pool.end();}

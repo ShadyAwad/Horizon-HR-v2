@@ -72,7 +72,8 @@ try {
   assert.equal((await runtime.query("SELECT has_sequence_privilege(current_user,'communication_message_events_id_seq','UPDATE') AS allowed")).rows[0].allowed,false);
   const elevated=await admin.connect();try{await assert.rejects(assertRuntimeRole(elevated),/dedicated non-owner/);}finally{elevated.release();}
   assert.equal((await runtime.query("SELECT * FROM stanza_session_identity('invalid')")).rowCount,0);
-  const functions=(await admin.query("SELECT proname,prosecdef,proconfig,proacl::text[] AS proacl FROM pg_proc WHERE proname LIKE 'stanza_%'")).rows;
+  const functions=(await admin.query("SELECT proname,prosecdef,proconfig,proacl::text[] AS proacl FROM pg_proc WHERE proname LIKE 'stanza_%' AND prosecdef")).rows;
+  const normalizer=(await admin.query("SELECT prosecdef,provolatile,proparallel FROM pg_proc WHERE oid='stanza_entity_normalize(text)'::regprocedure")).rows[0];assert.equal(normalizer.prosecdef,false);assert.equal(normalizer.provolatile,'i');assert.equal(normalizer.proparallel,'s');
   assert.equal(functions.length,5);assert(functions.every(f=>f.prosecdef&&f.proconfig.includes('search_path=pg_catalog')&&!f.proacl.some((a:string)=>a.startsWith('='))));
   console.log(`PASS real restricted login: ${tables.length} tenant tables; own/missing/cross-tenant reads, cross-tenant updates/writes, tenant directory, invoker view, global corpus, sequence/function ACLs and rejected DDL/admin connection.`);
 } finally { await runtime.end(); await admin.end(); }

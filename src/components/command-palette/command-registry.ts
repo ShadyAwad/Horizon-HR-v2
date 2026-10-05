@@ -1,3 +1,4 @@
+import { INTENTS } from '../../lib/intelligent-router';
 import type { DashboardNavigationItem } from '../../navigation/navigation-contracts';
 import { getWorkspaceAliases } from '../../navigation/workspace-registry';
 import type {
@@ -58,5 +59,5 @@ export function buildCommandRegistry({
     if (!command.id || ids.has(command.id)) return false;
     ids.add(command.id);
     return true;
-  });
+  }).map(command=>({...command,keywords:[...new Set([...command.keywords,...INTENTS.filter(intent=>intent.commandId===command.id&&intent.enabled&&!intent.entities).flatMap(intent=>intent.aliases)])]}));
 }

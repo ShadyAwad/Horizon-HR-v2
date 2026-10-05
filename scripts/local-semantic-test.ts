@@ -23,7 +23,15 @@ const COVERAGE_CASES:readonly (readonly [string,string])[]=[
  ['Could you show my work schedule please','current_shift'],['When does my following shift begin','next_shift'],['Do I have to come to work tomorrow morning','tomorrow_shift'],['Who is my direct supervisor at the company','my_manager'],['I need the newest salary statement','latest_payslip'],['How much vacation time is still available','leave_balance'],
  ['When does my shift end','shift_end_time'],['where is the clock out control','clock_out_help'],['Can I see my old clock in records','attendance'],['show all my past salary statements','payslips'],['book me a flight tomorrow','no_match'],['cancel my meetings tomorrow','no_match']
 ];
-const evaluationCases=[...CASES,...COVERAGE_CASES];
+const PRODUCT_CASES:readonly (readonly [string,string])[]=[
+ ['theme','appearance_settings'],['font','font_settings'],['change font','font_settings'],['text size','font_settings'],['cursor','appearance_settings'],['change my cursor','appearance_settings'],['dark mode','appearance_settings'],['announcement','company_feed'],['announcements','company_feed'],['news','company_feed'],['company news','company_feed'],["who's clocked in right now?",'live_employees'],['who is working right now?','live_employees'],['payday','next_payday'],['when is my next payday?','next_payday'],
+ ['الثيم','appearance_settings'],['كبر الخط','font_settings'],['المؤشر','appearance_settings'],['اعلانات الشركة','company_feed'],['في اخبار جديدة؟','company_feed'],['مين شغال دلوقتي؟','live_employees'],['مين عامل clock in؟','live_employees'],
+ ['Which employees are currently present at work','live_employees'],['Please show the newest announcements at work','company_feed'],['How can I adjust the appearance of my pointer','appearance_settings'],['I need larger text to read','font_settings'],['show my personal messages','communications'],['I need help clocking in','clock_in_help'],['Tell me tomorrow stock prices','no_match'],['who will be clocked in tomorrow','no_match']
+];
+const ENTITY_CASES:readonly (readonly [string,string])[]=[
+ ["show me Ahmed Hassan's grievance",'employee_grievance_lookup'],["show me Ahmed's grievance",'employee_grievance_lookup'],['find Ahmed Hassan disciplinary case','employee_grievance_lookup'],['show Ahmed Hassan grievance from Cairo warehouse','employee_grievance_lookup'],['open EMP-123 grievance','employee_grievance_lookup'],["show me Mona Ali's grievance",'employee_grievance_lookup'],['عايز اشوف شكوى احمد حسن','employee_grievance_lookup'],['وريني الشكوى بتاعت أحمد حسن','employee_grievance_lookup'],['grievance بتاعت Ahmed Hassan','employee_grievance_lookup'],['look up the complaint belonging to a colleague','employee_grievance_lookup']
+];
+const evaluationCases=[...CASES,...COVERAGE_CASES,...PRODUCT_CASES,...ENTITY_CASES];
 const embeddingTimes:number[]=[],searchTimes:number[]=[],endTimes:number[]=[],semanticEndTimes:number[]=[];let authorizationCalls=0;const reports=[];
 try{
  await provider.embed('warm up local sentence encoder');
@@ -36,6 +44,6 @@ try{
  const percentile=(v:number[],p:number)=>[...v].sort((a,b)=>a-b)[Math.ceil(v.length*p)-1];
  const summary=(v:number[])=>({samples:v.length,p50:percentile(v,.5),p95:percentile(v,.95)});
  console.log(JSON.stringify({intents:INTENTS.length,allowedIntents:available.length,passed:reports.filter(r=>r.pass).length,total:reports.length,authorizationFallbackChecks:authorizationCalls,embeddingMs:summary(embeddingTimes),vectorSearchWithTelemetryMs:summary(searchTimes),endToEndMsAllQueries:summary(endTimes),semanticEndToEndMs:summary(semanticEndTimes)}));
- if(reports.some((r,i)=>!r.pass&&(i<16||i>=CASES.length&&i<CASES.length+20||r.final!=='no_match'&&r.final!=='ambiguous')))process.exitCode=1;
+ if(reports.some((r,i)=>!r.pass&&(i<16||i>=CASES.length&&i<CASES.length+20||i>=CASES.length+COVERAGE_CASES.length&&i<CASES.length+COVERAGE_CASES.length+22||i>=CASES.length+COVERAGE_CASES.length+PRODUCT_CASES.length||r.final!=='no_match'&&r.final!=='ambiguous')))process.exitCode=1;
  console.log('Held-out low-confidence abstentions are reported, never forced into unsafe matches.');
 }finally{await provider.close?.();await pool.end();}

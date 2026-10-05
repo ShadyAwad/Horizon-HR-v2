@@ -1,3 +1,4 @@
+import {safeEntityTemplate,type EntityTemplate} from '../../lib/router-entities';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
 import { getIntent, normalizeQuery, type RouterResult } from '../../lib/intelligent-router';
@@ -46,9 +47,12 @@ export async function recordMetric(c: PoolClient, tenant: string, r: RouterResul
   [tenant,r.method,r.outcome,r.intentKey ?? '',request ? 1 : 0,r.latencyMs ?? 0,r.score ?? 0,r.margin ?? 0,r.score === undefined ? 0 : 1,r.fallbackUsed ? 1 : 0,candidate,promotion]);
 }
 export async function createCandidate(c: PoolClient, tenant: string, employee: string, query: string, r: RouterResult) {
-  if (r.method !== 'llm' || r.outcome !== 'matched' || !getIntent(r.intentKey)) return undefined;
-  const result = await c.query(`INSERT INTO router_candidates(tenant_id,employee_id,normalized_query,proposed_intent) VALUES($1,$2,$3,$4)
-    ON CONFLICT(tenant_id,employee_id,normalized_query,proposed_intent) DO NOTHING RETURNING id`, [tenant,employee,normalizeQuery(query),r.intentKey]);
+  const intent=getIntent(r.intentKey);
+  if (r.outcome !== 'matched' || !intent) return undefined;
+  if (intent.entities ? r.entityRoute?.status!=='resolved' || !r.entityTemplate || !safeEntityTemplate(r.entityTemplate) : r.method!=='llm') return undefined;
+  const text=intent.entities?r.entityTemplate!.text:query;
+  const result = await c.query(`INSERT INTO router_candidates(tenant_id,employee_id,normalized_query,proposed_intent,entity_template,resolution_source) VALUES($1,$2,$3,$4,$5::jsonb,$6)
+    ON CONFLICT(tenant_id,employee_id,normalized_query,proposed_intent) DO NOTHING RETURNING id`, [tenant,employee,normalizeQuery(text),r.intentKey,r.entityTemplate?JSON.stringify(r.entityTemplate):null,intent.entities?'entity':'llm']);
   return result.rows[0]?.id as string | undefined;
 }
 /** Call only after company-scoped review authorization. Provider work occurs outside DB locks. */
@@ -59,6 +63,8 @@ export async function promoteCandidate(tenant: string, reviewer: string, id: str
   });
   if (!candidate || !getIntent(candidate.proposed_intent)) throw Error('CANDIDATE_UNAVAILABLE');
   const text = normalizeQuery(candidate.normalized_query);
+  const template=candidate.entity_template as EntityTemplate|undefined;
+  if(getIntent(candidate.proposed_intent)?.entities && (!template || template.version!==1 || !Array.isArray(template.placeholders) || !safeEntityTemplate(template) || normalizeQuery(template.text)!==text))throw Error('CANDIDATE_UNAVAILABLE');
   const duplicate = await withTenant(tenant, async c => (await c.query(`SELECT intent_key FROM router_semantic_examples WHERE (tenant_id IS NULL OR tenant_id=$1) AND normalized_text=$2 AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5`, [tenant,text,provider.model,provider.dimensions,provider.version])).rows[0]);
   if (duplicate && duplicate.intent_key !== candidate.proposed_intent) throw Error('CONTRADICTORY_EXAMPLE');
   const vector = duplicate ? undefined : validateVector(await provider.embed(text), provider.dimensions);
@@ -70,11 +76,19 @@ export async function promoteCandidate(tenant: string, reviewer: string, id: str
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [JSON.stringify([tenant,text,provider.model,provider.dimensions,provider.version])]);
     const existing = (await c.query(`SELECT intent_key FROM router_semantic_examples WHERE (tenant_id IS NULL OR tenant_id=$1) AND normalized_text=$2 AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5`, [tenant,text,provider.model,provider.dimensions,provider.version])).rows[0];
     if (existing && existing.intent_key !== candidate.proposed_intent) throw Error('CONTRADICTORY_EXAMPLE');
-    if (!existing && vector) await c.query(`INSERT INTO router_semantic_examples(tenant_id,intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state,approved_by)
-      VALUES($1,$2,$3,$3,$4::vector,$5,$6,$7,'promoted_query','approved',$8)`, [tenant,candidate.proposed_intent,text,JSON.stringify(vector),provider.model,provider.dimensions,provider.version,reviewer]);
+    if(template)await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[JSON.stringify(['entity-promotion',tenant,provider.model,provider.dimensions,provider.version])]);
+    let nearDuplicate=false;
+    if(template&&vector){
+      const near=(await c.query(`WITH space AS MATERIALIZED(SELECT intent_key,embedding FROM router_semantic_examples WHERE (tenant_id IS NULL OR tenant_id=$1) AND approval_state='approved' AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5)
+        SELECT intent_key,max(1-(embedding <=> $2::vector)) AS score FROM space GROUP BY intent_key ORDER BY score DESC LIMIT 8`,[tenant,JSON.stringify(vector),provider.model,provider.dimensions,provider.version])).rows;
+      if(near.some(r=>Number(r.score)>=.97&&r.intent_key!==candidate.proposed_intent))throw Error('CONTRADICTORY_EXAMPLE');
+      nearDuplicate=near.some(r=>Number(r.score)>=.97&&r.intent_key===candidate.proposed_intent);
+    }
+    if (!existing && !nearDuplicate && vector) await c.query(`INSERT INTO router_semantic_examples(tenant_id,intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state,approved_by,entity_template)
+      VALUES($1,$2,$3,$3,$4::vector,$5,$6,$7,'promoted_query','approved',$8,$9::jsonb)`, [tenant,candidate.proposed_intent,text,JSON.stringify(vector),provider.model,provider.dimensions,provider.version,reviewer,template?JSON.stringify(template):null]);
     await c.query("UPDATE router_candidates SET review_state='approved',embedding_status='embedded',reviewed_at=now(),reviewed_by=$3 WHERE tenant_id=$1 AND id=$2", [tenant,id,reviewer]);
-    await recordAuditEvent(c,{tenantId:tenant,actorId:reviewer,action:'router.example_approved',targetType:'router_candidate',targetId:id,metadata:{intentKey:candidate.proposed_intent,embeddingModel:provider.model,embeddingVersion:provider.version,duplicate:Boolean(existing)}});
-    await recordMetric(c,tenant,{method:'semantic',outcome:'matched',intentKey:candidate.proposed_intent,fallbackUsed:false},0,existing ? 0 : 1,false);
-    return { promoted: !existing, duplicate: Boolean(existing) };
+    await recordAuditEvent(c,{tenantId:tenant,actorId:reviewer,action:'router.example_approved',targetType:'router_candidate',targetId:id,metadata:{intentKey:candidate.proposed_intent,embeddingModel:provider.model,embeddingVersion:provider.version,duplicate:Boolean(existing)||nearDuplicate}});
+    await recordMetric(c,tenant,{method:'semantic',outcome:'matched',intentKey:candidate.proposed_intent,fallbackUsed:false},0,existing||nearDuplicate ? 0 : 1,false);
+    return { promoted: !existing&&!nearDuplicate, duplicate: Boolean(existing)||nearDuplicate };
   });
 }

@@ -7,6 +7,7 @@ export function normaliseCommandSearchText(value: string) {
     .normalize('NFKD')
     .replace(COMBINING_MARKS, '')
     .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
@@ -77,4 +78,23 @@ export function searchCommands(
     .filter((result) => Number.isFinite(result.score))
     .sort((left, right) => right.score - left.score || left.registryIndex - right.registryIndex)
     .map((result) => result.command);
+}
+
+/** Raw scores retain weak candidates for diagnostics; only lexical evidence wins arbitration. */
+export function rankCommandMatches(commands:readonly StanzaCommand[],query:string,options:Parameters<typeof scoreCommand>[2]={}) {
+  const q=normaliseCommandSearchText(query);
+  const lexical=(value:string)=>{const v=normaliseCommandSearchText(value);return v===q?'exact':q.length>=3&&(v.startsWith(q)||v.split(' ').some(token=>token.startsWith(q)))?'strong':'weak';};
+  return commands.map((command,registryIndex)=>{
+    const fields=[command.label,...command.keywords,command.description];
+    const evidence=fields.map(lexical);
+    // Descriptions explain destinations; they never constitute exact command aliases.
+    const confidence=!q?'strong':evidence.slice(0,-1).includes('exact')?'exact':evidence.includes('strong')?'strong':'weak';
+    return {command,registryIndex,score:scoreCommand(command,query,options),confidence};
+  }).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.registryIndex-b.registryIndex);
+}
+export function arbitrateLocalCommands(commands:readonly StanzaCommand[],query:string,options:Parameters<typeof scoreCommand>[2]={}) {
+  const ranked=rankCommandMatches(commands,query,options);
+  const exact=ranked.filter(r=>r.confidence==='exact');
+  const accepted=exact.length?exact:ranked.filter(r=>r.confidence==='strong');
+  return {ranked,commands:accepted.map(r=>r.command),confidence:exact.length?'exact':accepted.length?'strong':'weak',shouldResolve:!!query.trim()&&!accepted.length};
 }

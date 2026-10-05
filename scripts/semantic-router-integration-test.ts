@@ -34,6 +34,8 @@ try{
   for(const name of ['a','b'])tenants.push((await pool.query('INSERT INTO tenants(slug,company_name) VALUES($1,$2) RETURNING id',[`router-${name}-${tag}`,name])).rows[0].id);
   const [tenant,other]=tenants;
   await employee(tenant,'user',['leave.request.self']);await employee(tenant,'admin',['roles.manage','leave.request.self']);await employee(other,'other',['roles.manage','leave.request.self']);await employee(tenant,'denied',[]);
+  await employee(tenant,'presence-only',['attendance.view_live']);
+  const presenceDenied=await api('presence-only','/resolve',{query:'live employees',allowReasoning:false});assert.equal(presenceDenied.result.outcome,'unauthorized');assert.equal(presenceDenied.result.answer,undefined,'presence permission alone never bypasses existing HR-admin boundary');
   assert.equal((await api('','/resolve',{query:'request leave'})).status,401);
   assert.equal((await api('user','/resolve',{query:'request leave',actionKey:'FORGED'})).status,400);
   assert.equal((await api('denied','/resolve',{query:'request leave'})).result.outcome,'unauthorized');

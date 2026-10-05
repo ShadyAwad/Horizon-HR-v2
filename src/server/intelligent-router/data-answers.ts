@@ -1,3 +1,4 @@
+import {livePresenceAnswer} from './live-presence';
 import type {PoolClient} from 'pg';
 import type {RouterActor} from './openai-local-auth';
 import type {RouterDataAnswer} from '../../lib/intelligent-router';
@@ -19,5 +20,6 @@ export async function dataAnswer(c:PoolClient,actor:RouterActor,intent:string,ti
     const rows=(await c.query("SELECT m.title,m.starts_at,m.ends_at,count(*) OVER() AS total FROM communication_meetings m WHERE m.tenant_id=$1 AND m.status='scheduled' AND (m.starts_at AT TIME ZONE $3)::date=((now() AT TIME ZONE $3)::date+1) AND (m.organizer_id=$2 OR EXISTS(SELECT 1 FROM communication_meeting_attendees a WHERE a.tenant_id=m.tenant_id AND a.meeting_id=m.id AND a.employee_id=$2)) ORDER BY m.starts_at,m.id LIMIT 5",[actor.tenantId,actor.employeeId,timeZone])).rows;
     return {kind:'meetings',timeZone,total:Number(rows[0]?.total??0),items:rows.map(row=>({title:row.title,start:row.starts_at.toISOString(),end:row.ends_at.toISOString()}))};
   }
+  if(intent==='live_employees')return livePresenceAnswer(c,actor);
   return undefined;
 }

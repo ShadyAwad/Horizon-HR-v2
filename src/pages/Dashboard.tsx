@@ -955,6 +955,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [loanDeductionsApplied, setLoanDeductionsApplied] = useState(0);
   const [payrollStatusUpdatingId, setPayrollStatusUpdatingId] = useState<string | null>(null);
   const [showGrievancesPanel, setShowGrievancesPanel] = useState(false);
+  const [grievanceCaseId,setGrievanceCaseId]=useState<string|undefined>();
   const [grievancesInitialView,setGrievancesInitialView] = useState<'mine'|'inbox'|'new'>('mine');
   const [showResignationsPanel, setShowResignationsPanel] = useState(false);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
@@ -1046,6 +1047,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [requestedHelpArticleId, setRequestedHelpArticleId] = useState<string | null>(null);
   const [helpOpenSignal, setHelpOpenSignal] = useState(0);
   const [personalizationOpenSignal, setPersonalizationOpenSignal] = useState(0);
+  const [appearanceOpenSignal,setAppearanceOpenSignal] = useState(0);
   const [lanyardHighlightSignal, setLanyardHighlightSignal] = useState(0);
   const lanyardToggleRef = useRef<HTMLButtonElement>(null);
   const [showTenantId, setShowTenantId] = useState(false);
@@ -1419,7 +1421,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
   const canViewCommunications = ['view','send','templates.manage','meetings.view','meetings.manage','history.view'].some(key=>hasPermission(user, `communications.${key}`));
   const canViewHiring = hasPermission(user, 'hiring.view');
-  const canViewLiveEmployees = hasPermission(user, 'attendance.view_live');
+  const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
   const canManageSessions = hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
@@ -1488,7 +1490,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     recordDevInteraction(`module-switch:${id}`, () => {
       setShowPayrollPanel(false); setShowGrievancesPanel(false); setShowResignationsPanel(false);
       if (id === 'payroll') { setActiveTab('profile'); setShowPayrollPanel(true); return; }
-      if (id === 'grievances') { setActiveTab('profile'); setShowGrievancesPanel(true); setGrievancesInitialView('mine'); return; }
+      if (id === 'grievances') { setGrievanceCaseId(undefined); setActiveTab('profile'); setShowGrievancesPanel(true); setGrievancesInitialView('mine'); return; }
       if (id === 'resignations') { setActiveTab('resignations'); setShowResignationsPanel(true); return; }
       const workspace = getWorkspaceDescriptor(id);
       if (workspace) setActiveTab(workspace.targetTab);
@@ -1946,6 +1948,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         { id:'router:clock-out',type:'safe_utility',group:'quickActions',label:text('Open Clock Out','فتح تسجيل الانصراف'),description:text('Show the clock control; confirm manually.','عرض أدوات الحضور؛ التأكيد يدوي.'),keywords:['clock out','انصراف'],icon:<Map className="h-5 w-5"/>,execute:()=>revealControl('geofence','stanza-attendance-control'),allowed:true },
         { id:'router:submit-grievance',type:'open_existing_flow',group:'quickActions',label:text('New grievance','شكوى جديدة'),description:text('Open the grievance form; review before submitting.','فتح نموذج الشكوى للمراجعة قبل الإرسال.'),keywords:['new grievance','شكوى جديدة'],icon:<Plus className="h-5 w-5"/>,execute:()=>{selectNavigationItem('grievances');setGrievancesInitialView('new');},allowed:explicitCommandPermissions.has('grievances.create') },
         { id:'router:help',type:'safe_utility',group:'quickActions',label:text('Help Center','مركز المساعدة'),description:text('Read existing help articles.','قراءة مقالات المساعدة.'),keywords:['help center','مساعدة'],icon:<User className="h-5 w-5"/>,execute:()=>{setHelpOpenSignal(v=>v+1);setShowControlCenter(true);},allowed:true },
+        {id:'settings:appearance',type:'settings',group:'settings',label:text('Open Appearance / Theme Studio','فتح المظهر واستوديو الثيم'),description:text('Review themes, pointer effects and light/dark controls.','عرض الثيمات وتأثيرات المؤشر وأدوات الوضع الفاتح والداكن.'),keywords:['appearance','theme','cursor'],icon:<Settings className="h-5 w-5"/>,execute:()=>{setShowControlCenter(true);setAppearanceOpenSignal(v=>v+1);},allowed:true,contextId:'settings'},
+        {id:'settings:font',type:'settings',group:'settings',label:text('Open Font Size Settings','فتح إعدادات حجم الخط'),description:text('Review the existing text-size and interface controls.','عرض أدوات حجم النص والواجهة الحالية.'),keywords:['font','text size'],icon:<Settings className="h-5 w-5"/>,execute:()=>{setShowControlCenter(true);setPersonalizationOpenSignal(v=>v+1);},allowed:true,contextId:'settings'},
         {
           id: 'settings:open',
           type: 'settings',
@@ -2081,9 +2085,10 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       recordModuleNavigation(command.sourceNavigationId);
     }
   }, [availableCommandIds, recentCommandIds, recordModuleNavigation, setRecentCommandIds]);
-  const executeCommandPaletteCommand = useCallback((command: StanzaCommand) => {
+  const executeCommandPaletteCommand = useCallback((command: StanzaCommand,result?:import('../lib/intelligent-router').RouterResult|null) => {
     commandPaletteReturnFocusRef.current = null;
     executeRegisteredCommand(command);
+    if(command.id==='router:grievance-inbox'&&result?.intentKey==='employee_grievance_lookup'&&result.entityRoute?.status==='resolved'&&result.entityRoute.caseId)setGrievanceCaseId(result.entityRoute.caseId);
     setShowCommandPalette(false);
   }, [executeRegisteredCommand]);
   const executePinnedQuickAction = useCallback((command: StanzaCommand) => {
@@ -5193,6 +5198,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 title={t('dash.settings')}
                 summary={isDark ? t('dash.switchLight') : t('dash.switchDark')}
                 renderContent={renderControlCenterSettings}
+                openSignal={appearanceOpenSignal}
                 isRtl={isRtl}
                 expandLabel={t('dash.expand')}
                 collapseLabel={t('dash.collapse')}
@@ -6757,7 +6763,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                           />
                         </Suspense>
                       ) : showGrievancesPanel ? (
- <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} initialView={grievancesInitialView} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
+ <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} initialView={grievancesInitialView} initialCaseId={grievanceCaseId} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                          <div id="stanza-my-equipment" className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">

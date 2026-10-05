@@ -14,10 +14,12 @@ import {
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/utils';
 import { normaliseRecentCommandIds } from './command-palette-state';
-import { searchCommands } from './command-search';
+import { arbitrateLocalCommands } from './command-search';
 import type { CommandGroup, StanzaCommand } from './command-palette-types';
 import { useIntelligentRouter } from './useIntelligentRouter';
 import { routerFeedback, answerFeedback } from './router-feedback';
+import type {RouterResult} from '../../lib/intelligent-router';
+import { EntityClarification } from './EntityClarification';
 import { RouterReview } from './RouterReview';
 import { OpenAIConnection } from './OpenAIConnection';
 
@@ -45,7 +47,7 @@ type Props = {
   isRtl: boolean;
   labels: CommandPaletteLabels;
   onClose: () => void;
-  onExecute: (command: StanzaCommand) => void;
+  onExecute: (command: StanzaCommand,result?:RouterResult|null) => void;
 };
 
 const GROUP_ORDER: readonly CommandGroup[] = [
@@ -116,12 +118,13 @@ export function CommandPalette({
     () => normaliseRecentCommandIds(recentCommandIds, availableIds),
     [availableIds, recentCommandIds],
   );
-  const orderedResults = useMemo(
-    () => searchCommands(commands, query, { recentCommandIds: validRecentIds, currentContextId }),
+  const localSearch = useMemo(
+    () => arbitrateLocalCommands(commands, query, { recentCommandIds: validRecentIds, currentContextId }),
     [commands, currentContextId, query, validRecentIds],
   );
+  const orderedResults=localSearch.commands;
   const router = useIntelligentRouter(query, orderedResults.length, commands);
-  const executeCommand = (command: StanzaCommand) => { void router.confirm(command); onExecute(command); };
+  const executeCommand = (command: StanzaCommand) => { void router.confirm(command); onExecute(command,router.result); };
   const suggestedIds = useMemo(() => {
     const ids = new Set<string>(validRecentIds);
     const quickActions = orderedResults.filter((command) => command.group === 'quickActions').slice(0, 4);
@@ -352,9 +355,10 @@ export function CommandPalette({
           'التضمينات الدلالية: ' + semanticLabel(router.status.semanticState) + '. تفسير الذكاء الاصطناعي: ' + reasoningLabel(router.status.reasoningState) + '.',
         )}</p>}
         {router.status?.openaiLocalAvailable && <OpenAIConnection connected={Boolean(router.status.openaiConnection?.connected)} accountLabel={router.status.openaiConnection?.accountLabel} persistent={router.status.openaiConnection?.persistent} expiresAt={router.status.openaiConnection?.expiresAt} scopes={router.status.openaiConnection?.scopes} refreshedAt={router.status.openaiConnection?.refreshedAt} model={router.status.openaiConnection?.model} isRtl={isRtl} onChanged={router.refreshStatus} />}
-        {query.trim() && !orderedResults.length && <div className="border-b p-3 text-xs" aria-live="polite">
+        {query.trim() && !orderedResults.length && <div className="border-b p-3 text-xs" aria-live="polite" data-router-method={router.result?.method} data-router-intent={router.result?.intentKey} data-router-score={router.result?.score} data-router-margin={router.result?.margin} data-router-fallback-used={router.result?.fallbackUsed}>
           <p>{routerFeedback(router.result,router.busy,router.routedCommands.length>0,isRtl)}</p>
           {router.result?.outcome==='matched' && router.routedCommands.length>0 && router.result.answer && <p className="mt-2 whitespace-pre-wrap break-words">{answerFeedback(router.result.answer,isRtl)}</p>}
+          {router.result?.entityRoute && <EntityClarification route={router.result.entityRoute} isRtl={isRtl} busy={router.busy} onChoose={router.chooseEntity}/> }
           {router.result?.providerFailure && <details className="mt-2"><summary>{routerText('AI fallback details','تفاصيل تفسير الذكاء الاصطناعي')}</summary><p>{failureLabel(router.result.providerFailure.reason)} ({router.result.providerFailure.stage}{router.result.providerFailure.httpStatus ? ' HTTP '+router.result.providerFailure.httpStatus : ''}{router.result.providerFailure.upstreamCode ? '; '+router.result.providerFailure.upstreamCode : ''}{router.result.providerFailure.parameter ? '; '+router.result.providerFailure.parameter : ''}) {router.result.providerFailure.detail} {router.result.providerFailure.eventType} {router.result.providerFailure.termination} {router.result.providerFailure.requestId && ('Request '+router.result.providerFailure.requestId)}</p></details>}
           {router.result?.reasoningUnavailable && router.status?.reasoningState==='ready' && <p>{routerText('AI fallback is unavailable.','تفسير الذكاء الاصطناعي غير متاح.')}</p>}
           {router.status?.reasoningState === 'ready' && <label className="mt-2 block"><input type="checkbox" checked={router.allowReasoning} onChange={e=>router.setAllowReasoning(e.target.checked)} /> {routerText('Allow AI interpretation of this query','السماح للذكاء الاصطناعي بتفسير هذا الطلب')}</label>}
@@ -393,6 +397,8 @@ export function CommandPalette({
                           else optionRefs.current.delete(command.id);
                         }}
                         id={`stanza-command-${command.id}`}
+                        data-search-score={localSearch.ranked.find(result=>result.command.id===command.id)?.score}
+                        data-search-confidence={localSearch.ranked.find(result=>result.command.id===command.id)?.confidence}
                         type="button"
                         role="option"
                         aria-selected={selected}

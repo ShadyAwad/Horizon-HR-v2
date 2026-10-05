@@ -48,7 +48,7 @@
     "test:workspace": "tsx scripts/workspace-test.ts && tsx scripts/workspace-data-test.ts",
     "test:navigation": "tsx scripts/navigation-test.ts",
     "test:tutorials": "tsx scripts/tutorials-test.ts",
-    "test:command-palette": "tsx scripts/command-palette-test.ts",
+    "test:command-palette": "tsx scripts/command-palette-test.ts && tsx scripts/command-arbitration-test.ts",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test:organisation:concurrency": "tsx scripts/organisation-final-admin-concurrency-test.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
@@ -92,7 +92,9 @@
     "db:setup:runtime": "tsx scripts/setup-runtime-role.ts",
     "test:database-role": "tsx scripts/runtime-role-test.ts",
     "test:ui-consistency": "tsx scripts/ui-consistency-test.ts",
-    "test:roster-breaks:integration": "tsx scripts/roster-breaks-integration-test.ts"
+    "test:roster-breaks:integration": "tsx scripts/roster-breaks-integration-test.ts",
+    "test:router-coverage:live": "tsx scripts/router-coverage-live-test.ts",
+    "test:router-entities": "tsx scripts/entity-resolution-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

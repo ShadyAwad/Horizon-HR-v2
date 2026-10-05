@@ -1,3 +1,7 @@
+import {entityExecutors} from './entity-execution';
+import {hasGrievanceLookupAuthority} from './entity-resolvers';
+import {generalizeEntities,safeEntityTemplate,type EntityChoices} from '../../lib/router-entities';
+import {canReadLivePresence} from './live-presence';
 import {dataAnswer} from './data-answers';
 import type express from 'express';
 import type { PoolClient } from 'pg';
@@ -27,6 +31,8 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
   const active = async (c: PoolClient, u: ReturnType<typeof actor>) => Boolean((await c.query("SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active AND employment_status='active'", [u.tenantId,u.employeeId])).rowCount);
   const allowed = async (u: ReturnType<typeof actor>, i: Intent) => withTenant(u.tenantId, async c => {
     if (!await active(c,u)) return false;
+    if(i.entities)return hasGrievanceLookupAuthority(c,u);
+    if(i.key==='live_employees')return canReadLivePresence(c,u);
     if (!i.permissions.length) return true;
     for (const p of i.permissions) if (await permission(c,u,p)) return true;
     return false;
@@ -36,6 +42,8 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     const intents: Intent[] = [];
     for (const i of INTENTS) {
       if (!getIntent(i.key)) continue;
+      if(i.entities){if(await hasGrievanceLookupAuthority(c,u))intents.push(i);continue;}
+      if(i.key==='live_employees'){if(await canReadLivePresence(c,u))intents.push(i);continue;}
       if (!i.permissions.length) { intents.push(i); continue; }
       for (const p of i.permissions) if (await permission(c,u,p)) { intents.push(i); break; }
     }
@@ -108,12 +116,24 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     const u=actor(req);await telemetry.record(()=>withTenant(u.tenantId,c=>recordMetric(c,u.tenantId,{method:'existing',outcome:'matched',fallbackUsed:false})));return {};
   });
   route('post','/api/command-router/resolve',async req => {
-    if (typeof req.body?.query !== 'string' || !req.body.query.trim() || req.body.query.length>500 || Object.keys(req.body).some(k => !['query','allowReasoning','learn','timeZone'].includes(k)) || req.body.allowReasoning !== undefined && typeof req.body.allowReasoning !== 'boolean' || req.body.learn !== undefined && typeof req.body.learn !== 'boolean') throw Error('INVALID_QUERY');
+    if (typeof req.body?.query !== 'string' || !req.body.query.trim() || req.body.query.length>500 || Object.keys(req.body).some(k => !['query','allowReasoning','learn','timeZone','entityChoices'].includes(k)) || req.body.allowReasoning !== undefined && typeof req.body.allowReasoning !== 'boolean' || req.body.learn !== undefined && typeof req.body.learn !== 'boolean') throw Error('INVALID_QUERY');
+    const choices=req.body.entityChoices ?? {};
+    if (!choices || typeof choices!=='object' || Array.isArray(choices) || Object.keys(choices).some(k=>!['employee','location','case'].includes(k)) || Object.values(choices).some(v=>typeof v!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v))) throw Error('INVALID_QUERY');
     const timeZone=typeof req.body.timeZone==='string'&&req.body.timeZone.length<=64?req.body.timeZone:'UTC';
     try{new Intl.DateTimeFormat('en',{timeZone});}catch{throw Error('INVALID_QUERY');}
     const u = actor(req);
     const result = await resolveQuery(req.body.query,{actor:u,allowed:i => allowed(u,i),available:()=>available(u),search:new PgSemanticSearch(u.tenantId,config.topK),embedding,authorization:req.body.allowReasoning === true ? authorization : {resolve:async () => ({state:'disabled'})},cache,minimumScore:config.minimumScore,minimumMargin:config.minimumMargin});
-    if(result.outcome==='matched'&&result.intentKey)result.answer=await withTenant(u.tenantId,c=>dataAnswer(c,u,result.intentKey!,timeZone));
+    if(result.outcome==='matched'&&getIntent(result.intentKey)?.entities){
+      const execute=entityExecutors[result.intentKey as keyof typeof entityExecutors];
+      if(!execute)throw Error('INVALID_QUERY');
+      result.entityRoute=await withTenant(u.tenantId,c=>execute(c,u,req.body.query,choices as EntityChoices,result.entityParameters));
+      if(result.entityRoute.status==='resolved'){
+        const template=generalizeEntities(req.body.query,result.entityRoute.entities);
+        if(template&&safeEntityTemplate(template))result.entityTemplate=template;
+      }
+      delete result.entityParameters; // never echo untrusted model proposals
+    }
+    if(result.outcome==='matched'&&result.intentKey&&!result.entityRoute)result.answer=await withTenant(u.tenantId,c=>dataAnswer(c,u,result.intentKey!,timeZone));
     // Optional persistence cannot break deterministic routing during migration/provider outages.
     const persisted = await telemetry.record(() => withTenant(u.tenantId,async c => {
       if (config.learning && req.body.learn === true) result.candidateId = await createCandidate(c,u.tenantId,u.employeeId,req.body.query,result);

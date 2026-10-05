@@ -52,7 +52,7 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
     if (proposal.status === 'ambiguous') return finish({ ...unresolved(), outcome: 'ambiguous', choices: choices.length ? choices : allowed.map(i => i.key), method: 'llm', fallbackUsed: true });
     const proposed = getIntent(proposal.proposedIntentKey);
     if (proposal.status !== 'resolved' || !proposed || proposal.confidence !== 'high') return finish({ ...empty, ...semantic, method: 'llm', fallbackUsed: true, unsupported:proposal.status==='unsupported' });
-    return matched(proposed, 'llm', { ...semantic, fallbackUsed: true });
+    return matched(proposed, 'llm', { ...semantic, fallbackUsed: true, ...(proposed.entities ? {entityParameters:proposal.suggestedParameters as import('../../lib/router-entities').EntityParameters ?? {}} : {}) });
   } catch (error) {
     const invalid = error instanceof Error && error.message === 'INVALID_REASONING';
     return finish({ ...unresolved(), outcome: invalid ? 'no_match' : choices.length ? 'ambiguous' : unavailable ? 'provider_unavailable' : 'no_match', method: 'llm', fallbackUsed: true, reasoningUnavailable:!invalid, ...(error instanceof ReasoningUnavailable ? {providerFailure:{reason:error.reason,stage:error.stage,...error.diagnostics,...(error.httpStatus ? {httpStatus:error.httpStatus} : {})}} : {}) });
