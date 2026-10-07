@@ -8,12 +8,12 @@ export async function seedOrganisation(ctx: DemoContext) {
     const { client, tenantId: t } = ctx;
     await client.query('UPDATE tenants SET company_name=$2 WHERE id=$1', [t, COMPANY]);
     // Registry catalogue is shared across tenants: never overwrite it while seeding.
-    const catalog = (await client.query('SELECT permission_key FROM tenant_permissions')).rows.map(r => r.permission_key);
-    const missing = PERMISSION_REGISTRY.filter(p => !catalog.includes(p.key));
+    const catalog = (await client.query("SELECT permission_key FROM tenant_permissions WHERE permission_key NOT LIKE 'platform.%'")).rows.map(r => r.permission_key);
+    const missing = PERMISSION_REGISTRY.filter(p => !p.key.startsWith('platform.') && !catalog.includes(p.key));
     if (missing.length)
         throw new Error(`Apply permission migrations before seeding: ${missing.map(p => p.key).join(', ')}`);
     const roles = new Map<string, string>();
-    for (const [key, name, keys] of [['employee', 'Employee', employeePermissions], ['manager', 'Manager', managerPermissions], ['hr_admin', 'HR Admin', PERMISSION_REGISTRY.map(p => p.key)]] as const) {
+    for (const [key, name, keys] of [['employee', 'Employee', employeePermissions], ['manager', 'Manager', managerPermissions], ['hr_admin', 'HR Admin', PERMISSION_REGISTRY.filter(p => !p.key.startsWith('platform.')).map(p => p.key)]] as const) {
         const found = await client.query('SELECT id FROM tenant_roles WHERE tenant_id=$1 AND system_key=$2', [t, key]);
         const id = found.rows[0]?.id ?? await ctx.row('tenant_roles', key, { name, description: `Northstar ${name} access.`, system_key: key, is_system: true, is_active: true });
         roles.set(key, id);

@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
+import { StanzaIcon } from '../ui/StanzaIcon';
 import {
   BarChart3,
   Box,
@@ -94,7 +95,7 @@ export function useDashboardWorkspaceNavigation({
         id: workspace.id,
         label: translate(workspace.labelKey),
         group: workspace.group,
-        icon: iconFor(workspace.icon),
+        icon: workspace.id === 'support' ? <StanzaIcon name="support" /> : workspace.id === 'composer' ? <StanzaIcon name="workspace" /> : iconFor(workspace.icon),
         badge: workspace.attention ? counts[workspace.attention] : 0,
         active: isActive(workspace.id, activeTab, activeProfilePanel),
         onSelect: () => onSelect(workspace.id),

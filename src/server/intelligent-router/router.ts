@@ -1,12 +1,12 @@
 import { INTENTS, getIntent, normalizeQuery, unsafeOperation, type Intent, type RouterResult } from '../../lib/intelligent-router';
 import { ReasoningUnavailable, EmbeddingCache, validateReasoning, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
-export type SemanticHit = { intentKey: string; score: number; promoted?:boolean };
+export type SemanticHit = { intentKey: string; score: number; promoted?:boolean; exampleId?:string };
 export interface SemanticSearch { search(vector: number[], provider: EmbeddingProvider, allowedKeys: string[]): Promise<SemanticHit[]> }
 export type RouterDependencies = { allowed: (intent: Intent) => Promise<boolean>; available?: () => Promise<Intent[]>; search: SemanticSearch; embedding?: EmbeddingProvider; authorization: ReasoningAuthorization; actor: { tenantId: string; employeeId: string; sessionId?: string }; cache?: EmbeddingCache; minimumScore: number; minimumMargin: number };
 export function aggregateIntents(hits: SemanticHit[], allowed: readonly Intent[]) {
   const keys = new Set(allowed.map(i => i.key)), scores = new Map<string, number>();
   for (const hit of hits) if (keys.has(hit.intentKey) && Number.isFinite(hit.score) && hit.score <= 1 && hit.score >= -1) scores.set(hit.intentKey, Math.max(scores.get(hit.intentKey) ?? -1, hit.score));
-  return [...scores].map(([intentKey, score]) => ({ intentKey, score, ...(hits.some(h=>h.intentKey===intentKey&&h.score===score&&h.promoted)?{promoted:true}:{}) })).sort((a, b) => b.score - a.score || a.intentKey.localeCompare(b.intentKey));
+  return [...scores].map(([intentKey, score]) => ({ intentKey, score, exampleId:hits.find(h=>h.intentKey===intentKey&&h.score===score)?.exampleId, ...(hits.some(h=>h.intentKey===intentKey&&h.score===score&&h.promoted)?{promoted:true}:{}) })).sort((a, b) => b.score - a.score || a.intentKey.localeCompare(b.intentKey));
 }
 export async function resolveQuery(raw: string, d: RouterDependencies): Promise<RouterResult> {
   const start = performance.now();
@@ -37,7 +37,7 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
       if (hits.length) {
         const top = hits[0], competing = hits[1]?.score ?? 0, margin = top.score - competing;
         semantic = { ...semantic, score: top.score, competingScore: competing, margin };
-        if (top.score >= d.minimumScore && margin >= d.minimumMargin) return matched(getIntent(top.intentKey)!, 'semantic', {...semantic,semanticStatus:'matched',promotedSemanticHit:top.promoted===true});
+        if (top.score >= d.minimumScore && margin >= d.minimumMargin) return matched(getIntent(top.intentKey)!, 'semantic', {...semantic,semanticStatus:'matched',promotedSemanticHit:top.promoted===true,semanticExampleId:top.exampleId});
         if (top.score >= d.minimumScore) choices = hits.filter(h => top.score - h.score < d.minimumMargin).map(h => h.intentKey);
       }
     } catch { unavailable = true; }

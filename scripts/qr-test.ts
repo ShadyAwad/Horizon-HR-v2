@@ -1,11 +1,13 @@
-import 'dotenv/config';
+import './router-env';
+import {getMigrationPool} from './migration-pool';
+import {assertDatabaseMutationSafety} from './mutation-safety';
 
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import express from 'express';
 import type { PoolClient } from 'pg';
-import { getDbPool } from '../src/lib/hr-background';
+import { closeHrResources } from '../src/lib/hr-background';
 import { presentAuditEvent, recordAuditEvent } from '../src/server/audit/audit-events';
 import { assertQrIssuePermission } from '../src/server/qr/qr-token-permissions';
 import { decryptQrToken, encryptQrToken } from '../src/server/qr/qr-token-crypto';
@@ -403,7 +405,9 @@ await recordAuditEvent(auditClient, {
 pass('Audit projection and writer reject token material and sensitive subject data');
 
 if (process.env.DATABASE_URL) {
-  const pool = getDbPool();
+  assertDatabaseMutationSafety(process.env.DATABASE_URL,'QR integration');
+  // Fixture setup/readback needs the migration connection; service calls still use stanza_runtime.
+  const pool = getMigrationPool();
   const tenant = await pool.query('SELECT id FROM tenants ORDER BY created_at LIMIT 1');
   assert(tenant.rows[0], 'Local QR concurrency test requires one existing tenant.');
   const tenantId = tenant.rows[0].id as string;
@@ -508,6 +512,7 @@ if (process.env.DATABASE_URL) {
     );
     await pool.query('DELETE FROM qr_access_tokens WHERE id=ANY($1::uuid[])', [cleanupTokenRecordIds]);
     await pool.end();
+    await closeHrResources();
   }
   pass('PostgreSQL enforces atomic consumption, tenant isolation, rotation, revocation, and idempotent expiry');
 } else {

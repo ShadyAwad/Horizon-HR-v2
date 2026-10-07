@@ -89,10 +89,11 @@ export function installCustomCursor(value: CustomThemeConfig, target: HTMLElemen
       const fade = Math.max(0, 1 - age / fadeDuration);
       if (!fade) { for (const node of nodes) node.style.opacity = '0'; return; }
       const measuredSpeed = Math.min(3, Math.hypot(x - previousX, y - previousY) / dt);
-      speed += (measuredSpeed - speed) * .3;
+      speed += (measuredSpeed - speed) * (1 - Math.exp(-dt / 45));
       previousX = x; previousY = y;
       const response = config.cursorVelocityResponse / 100;
-      const smooth = 1 - Math.exp(-dt / (16 + config.cursorSmoothness * .85 + speed * response * 24));
+      const followTime = 12 + config.cursorSmoothness * .48;
+      const smooth = 1 - Math.exp(-dt / (followTime / (1 + speed * response * .35)));
       if (effect === 'dot-trail' || effect === 'sparks') {
         if (age < 80 && (points[0].x !== x || points[0].y !== y)) {
           for (let i = count - 1; i > 0; i--) Object.assign(points[i], points[i - 1]);
@@ -101,7 +102,7 @@ export function installCustomCursor(value: CustomThemeConfig, target: HTMLElemen
       } else {
         for (let i = 0; i < count; i++) {
           const goal = i ? points[i - 1] : { x, y };
-          const follow = effect === 'glow' ? 1 : i === 0 ? Math.min(1, smooth * 1.65) : smooth;
+          const follow = effect === 'glow' ? 1 : i === 0 ? 1 - Math.exp(-dt / 8) : smooth;
           points[i].x += (goal.x - points[i].x) * follow;
           points[i].y += (goal.y - points[i].y) * follow;
         }
@@ -140,7 +141,7 @@ export function installCustomCursor(value: CustomThemeConfig, target: HTMLElemen
     const move = (event: PointerEvent) => {
       if (event.pointerType === 'touch') { stop(); return; }
       const element = event.target instanceof Element ? event.target : null;
-      if (!preview && element?.closest('[role="dialog"], [role="alertdialog"], [data-custom-cursor-preview]')) { stop(); return; }
+      if (!preview && element?.closest('dialog, [role="dialog"], [role="alertdialog"], [data-custom-cursor-preview]')) { stop(); return; }
       // Keep native text selection, form widgets, disabled and resize/drag affordances.
       if (element?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [disabled], [aria-disabled="true"], [draggable="true"]')) { stop(); return; }
       eventTarget = element;

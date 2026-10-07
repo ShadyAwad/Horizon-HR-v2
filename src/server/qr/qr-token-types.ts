@@ -38,6 +38,7 @@ export type AssetQrLabel = {
   canRevoke: boolean;
   requiresRotation: boolean;
   verificationUnavailable?: boolean;
+  issuanceUnavailable?: boolean;
   verificationUrl: string | null;
   issuedAt: string | null;
   lastUpdatedAt: string | null;

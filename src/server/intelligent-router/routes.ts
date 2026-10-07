@@ -1,3 +1,4 @@
+import {registerSemanticAdminRoutes,semanticAudit} from './semantic-admin';
 import {entityExecutors} from './entity-execution';
 import {hasGrievanceLookupAuthority} from './entity-resolvers';
 import {generalizeEntities,safeEntityTemplate,type EntityChoices} from '../../lib/router-entities';
@@ -22,6 +23,7 @@ import { createCandidate, PgSemanticSearch, promoteCandidate, recordMetric } fro
 type Dependencies = { standardAuth: express.RequestHandler; mutationGuard: express.RequestHandler; rateLimiter: express.RequestHandler };
 export function registerIntelligentRouterRoutes(app: express.Express, d: Dependencies, runtime: { config?: ReturnType<typeof routerConfig>; embedding?: EmbeddingProvider; authorization?: ReasoningAuthorization } = {}) {
   const config = runtime.config ?? routerConfig(), embedding = runtime.embedding ?? createEmbedding(config), cache = new EmbeddingCache();
+  registerSemanticAdminRoutes(app,d,embedding);
   const userAuthorization = localOpenAIEnabled() ? new LocalOpenAIAuth(process.env.STANZA_ROUTER_OPENAI_HOST_ID!,config.model,u => withTenant(u.tenantId,async c => Boolean((await c.query('SELECT 1 FROM auth_sessions WHERE tenant_id=$1 AND employee_id=$2 AND id=$3 AND revoked_at IS NULL AND expires_at>now()',[u.tenantId,u.employeeId,u.sessionId])).rowCount)),fetch,new LocalOpenAIProfileStore(process.env.STANZA_ROUTER_OPENAI_HOST_ID!)) : undefined;
   if(userAuthorization)retainLocalAuthorization(userAuthorization);
   const authorization = runtime.authorization ?? createAuthorization(config,process.env,{user:userAuthorization});
@@ -49,7 +51,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     }
     return intents;
   });
-  const review = async (c: PoolClient, u: ReturnType<typeof actor>) => await active(c,u) && await permission(c,u,'roles.manage',true);
+  const review = async (c: PoolClient, u: ReturnType<typeof actor>) => await active(c,u) && await permission(c,u,'semantic.review_candidates',true);
   const route = (method: 'get' | 'post', url: string, fn: (req: express.Request) => Promise<object>) => app[method](url,d.standardAuth,d.rateLimiter,...(method === 'post' ? [d.mutationGuard] : []),async (req,res) => {
     const requestId = randomUUID();
     res.setHeader('X-Stanza-Router-Request-Id',requestId);
@@ -122,6 +124,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     const timeZone=typeof req.body.timeZone==='string'&&req.body.timeZone.length<=64?req.body.timeZone:'UTC';
     try{new Intl.DateTimeFormat('en',{timeZone});}catch{throw Error('INVALID_QUERY');}
     const u = actor(req);
+    const httpStart=performance.now();
     const result = await resolveQuery(req.body.query,{actor:u,allowed:i => allowed(u,i),available:()=>available(u),search:new PgSemanticSearch(u.tenantId,config.topK),embedding,authorization:req.body.allowReasoning === true ? authorization : {resolve:async () => ({state:'disabled'})},cache,minimumScore:config.minimumScore,minimumMargin:config.minimumMargin});
     if(result.outcome==='matched'&&getIntent(result.intentKey)?.entities){
       const execute=entityExecutors[result.intentKey as keyof typeof entityExecutors];
@@ -139,9 +142,13 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       if (config.learning && req.body.learn === true) result.candidateId = await createCandidate(c,u.tenantId,u.employeeId,req.body.query,result);
       await recordMetric(c,u.tenantId,result,result.candidateId ? 1 : 0);
       if(result.promotedSemanticHit)await c.query("UPDATE router_daily_metrics SET semantic_after_promotion=semantic_after_promotion+1 WHERE tenant_id=$1 AND day=current_date AND method=$2 AND outcome=$3 AND intent_key=$4",[u.tenantId,result.method,result.outcome,result.intentKey]);
+      if(result.outcome==='matched'&&result.method==='semantic'&&result.semanticExampleId)await c.query('INSERT INTO router_example_hits(tenant_id,example_id,hits) VALUES($1,$2,1) ON CONFLICT(tenant_id,example_id,day) DO UPDATE SET hits=router_example_hits.hits+1,last_hit=now()',[u.tenantId,result.semanticExampleId]);
+      const timings=[{kind:'http',ms:performance.now()-httpStart},...(result.entityRoute?.entities??[]).map(e=>({kind:e.type,ms:e.latencyMs}))];
+      for(const t of timings)await c.query('INSERT INTO router_http_metrics(tenant_id,kind,latency_samples) VALUES($1,$2,ARRAY[$3::float8]) ON CONFLICT(tenant_id,day,kind) DO UPDATE SET latency_samples=router_http_metrics.latency_samples[greatest(1,cardinality(router_http_metrics.latency_samples)-254):]||EXCLUDED.latency_samples',[u.tenantId,t.kind,t.ms]);
       if(embedding&&result.embeddingLatencyMs!==undefined)await c.query("INSERT INTO router_embedding_metrics(tenant_id,embedding_model,embedding_dimensions,embedding_version,queries,latency_samples) VALUES($1,$2,$3,$4,1,ARRAY[$5::double precision]) ON CONFLICT(tenant_id,day,embedding_model,embedding_dimensions,embedding_version) DO UPDATE SET queries=router_embedding_metrics.queries+1,latency_samples=router_embedding_metrics.latency_samples[greatest(1,cardinality(router_embedding_metrics.latency_samples)-254):]||EXCLUDED.latency_samples",[u.tenantId,embedding.model,embedding.dimensions,embedding.version,result.embeddingLatencyMs]);
     }));
     if (!persisted) delete result.candidateId;
+    delete result.semanticExampleId;
     return { result, semanticState:embedding?.status?.() };
   });
   route('post','/api/command-router/candidates/:id/confirm',async req => {
@@ -152,6 +159,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       const i=getIntent(row?.proposed_intent);
       if (!row || !i || !await allowed(u,i)) throw Error('CANDIDATE_UNAVAILABLE');
       await c.query("UPDATE router_candidates SET confirmation_state='confirmed' WHERE tenant_id=$1 AND employee_id=$2 AND id=$3",[u.tenantId,u.employeeId,id]);
+      await semanticAudit(c,u.tenantId,u.employeeId,'candidate_confirmed',String(id));
       return {confirmed:true};
     });
   });

@@ -19,10 +19,10 @@ export async function grantRuntimeAccess(pool: Pool, role: string) {
       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')`)).rows;
     const appendOnly = new Set(['audit_logs','grievance_case_events','grievance_messages','communication_message_events',
       'expense_claim_history','hiring_stage_history','leave_request_history',
-      'roster_shift_assignment_history','shift_swap_history','performance_goal_updates']);
+      'roster_shift_assignment_history','shift_swap_history','performance_goal_updates','router_review_history','support_ticket_events']);
     for (const table of tables) {
       const name = '"' + table.relname.replaceAll('"','""') + '"';
-      if (table.relname==='tenant_permissions') {
+      if (['tenant_permissions','router_platform_authorities'].includes(table.relname)) {
         await client.query(`REVOKE ALL ON public.${name} FROM ${quoted}`);
         await client.query(`GRANT SELECT ON public.${name} TO ${quoted}`);
       } else {

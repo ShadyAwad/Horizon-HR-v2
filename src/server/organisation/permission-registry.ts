@@ -39,6 +39,8 @@ const definePermission = (
 
 // This is deliberately fixed: role APIs never turn arbitrary database strings into permissions.
 export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
+  ...['view_analytics','review_candidates','manage_examples','manage_privacy'].map(k=>definePermission('semantic.'+k,k.replaceAll('_',' '),'Company semantic intelligence authority.','Semantic Intelligence','high',companyScope,true)),
+  ...['view_all','review_global','manage_global','view_tenants','manage_models'].map(k=>definePermission('platform.semantic.'+k,k.replaceAll('_',' '),'Operator-provisioned platform authority; tenant roles cannot grant it.','Platform','high',companyScope,false,true)),
   definePermission('communications.view', 'View own communications', 'Read own messages and active templates.', 'Communications', 'low', companyScope, false),
   definePermission('communications.send', 'Send communications', 'Queue HR/company messages.', 'Communications', 'high', companyScope, false),
   definePermission('communications.templates.manage', 'Manage communication templates', 'Create, edit and deactivate templates.', 'Communications', 'high', companyScope, false),
@@ -118,6 +120,8 @@ export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
   definePermission('performance.manage_goals', 'Manage performance goals', 'Manage goals and OKRs.', 'Performance', 'medium', peopleScopes),
   definePermission('performance.manage_recognition', 'Manage recognition', 'Manage employee recognition.', 'Performance', 'medium', peopleScopes),
   definePermission('performance.view_reports', 'View performance reports', 'View performance reporting.', 'Performance', 'medium', peopleScopes),
+  definePermission('support.view','View support queue','View same-company support requests.','Support','medium',['company']),
+  definePermission('support.manage','Handle support tickets','Assign and update same-company requests.','Support','high',['company'],false),
   definePermission('assets.view', 'View assets', 'View tenant assets.', 'Assets', 'low', peopleScopes),
   definePermission('assets.manage', 'Manage assets', 'Create and update inventory.', 'Assets', 'high', peopleScopes, false),
   definePermission('assets.assign', 'Assign assets', 'Assign equipment and licenses.', 'Assets', 'high', peopleScopes, false),

@@ -1,3 +1,4 @@
+import {qrEncryptionConfigured} from './qr-token-crypto';
 import type { PoolClient } from 'pg';
 import { enqueueQrExpiryCleanup, getDbPool, withTenant } from '../../lib/hr-background';
 import { recordAuditEvent } from '../audit/audit-events';
@@ -263,11 +264,12 @@ export class QrTokenService {
         : null;
       return {
         state: !activeEmployee ? 'inactive' : isActiveToken ? 'active' : token?.status === 'revoked' ? 'revoked' : 'not_issued',
-        canIssue: activeEmployee && !isActiveToken && !verificationUnavailable,
-        canRotate: activeEmployee && isActiveToken && !verificationUnavailable,
+        canIssue: activeEmployee && !isActiveToken && !verificationUnavailable && qrEncryptionConfigured(),
+        canRotate: activeEmployee && isActiveToken && !verificationUnavailable && qrEncryptionConfigured(),
         canRevoke: isActiveToken,
         requiresRotation: Boolean(isActiveToken && !rawToken),
         verificationUnavailable,
+        issuanceUnavailable: !qrEncryptionConfigured(),
         verificationUrl,
         issuedAt: token ? new Date(token.issuedAt).toISOString() : null,
         lastUpdatedAt: token ? new Date(token.lastUpdatedAt).toISOString() : null,

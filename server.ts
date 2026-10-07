@@ -1,3 +1,4 @@
+import {registerSupportRoutes} from './src/server/support/support-routes';
 import { shouldUseSecureCookie } from './src/server/auth/session-cookie-policy';
 import { validateProductionConfig } from './src/lib/production-config';
 import { isLocalPreview } from './src/lib/local-preview';
@@ -707,7 +708,7 @@ async function seedTenantRolesAndPermissions(
       FROM tenant_roles
       CROSS JOIN tenant_permissions
       WHERE tenant_roles.tenant_id = $1
-        AND tenant_roles.system_key = 'hr_admin'
+        AND tenant_roles.system_key = 'hr_admin' AND tenant_permissions.permission_key NOT LIKE 'platform.%'
       ON CONFLICT (tenant_id, role_id, permission_key) DO NOTHING
     `,
     [tenantId],
@@ -719,7 +720,7 @@ async function seedTenantRolesAndPermissions(
       `
         SELECT permission_key
         FROM tenant_permissions
-        WHERE permission_key = ANY($1::varchar[])
+        WHERE permission_key = ANY($1::varchar[]) AND permission_key NOT LIKE 'platform.%'
       `,
       [requestedCustomPermissionKeys],
     );
@@ -3050,6 +3051,7 @@ registerPayrollRoutes(app, {
 });
 
 registerGrievanceRoutes(app, {standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
+registerSupportRoutes(app,{standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
 registerIntelligentRouterRoutes(app, {standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
 
 registerPayrollExportRoute(app, {

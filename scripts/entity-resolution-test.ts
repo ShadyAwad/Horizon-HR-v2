@@ -13,6 +13,7 @@ import {registerIntelligentRouterRoutes} from '../src/server/intelligent-router/
 import {createEmbedding,routerConfig} from '../src/server/intelligent-router/config';
 import {validateReasoning} from '../src/server/intelligent-router/providers';
 import {createCandidate,promoteCandidate,PgSemanticSearch} from '../src/server/intelligent-router/store';
+import {handlerVisibilitySql} from '../src/server/grievances/grievance-policy';
 import {getIntent,normalizeQuery} from '../src/lib/intelligent-router';
 assertDatabaseMutationSafety(process.env.DATABASE_URL,'Entity integration');
 const admin=getMigrationPool(),tag=randomUUID(),tenants:string[]=[],actors=new Map<string,NonNullable<Express.Request['authUser']>>();
@@ -32,7 +33,7 @@ async function team(tenant:string,site:string,name:string){return (await admin.q
 async function grievance(tenant:string,employee:string,reference:string,confidential=false){return (await admin.query("INSERT INTO grievances(tenant_id,employee_id,title,description,category,case_number,status,confidentiality) VALUES($1,$2,'Fixture conduct case','Fictional test detail','conduct',$3,'submitted',$4) RETURNING id",[tenant,employee,reference,confidential?'confidential':'standard'])).rows[0].id;}
 try {
  for(let i=0;i<2;i++)tenants.push((await admin.query('INSERT INTO tenants(slug,company_name) VALUES($1,$2) RETURNING id',[`entity-${tag}-${i}`,'Disposable entity fixture'])).rows[0].id);
- const [a,b]=tenants,handler=await person(a,'Fixture Handler',['grievances.view','grievances.confidential','roles.manage'],'handler');await person(a,'Standard Handler',['grievances.view'],'standard');await person(a,'Denied Handler',[],'denied');
+ const [a,b]=tenants,handler=await person(a,'Fixture Handler',['grievances.view','grievances.confidential','roles.manage','semantic.review_candidates'],'handler');await person(a,'Standard Handler',['grievances.view'],'standard');await person(a,'Denied Handler',[],'denied');
  const ahmed=await person(a,'Ahmed Hassan',[],'ahmed'),ali=await person(a,'Ahmed Ali',[],'ali'),arabic=await person(a,'أحمد حَسَن',[],'arabic'),secret=await person(a,'Private Reporter',[],'secret');
  const foreign=await person(b,'Ahmed Hassan',[],'foreign');await person(b,'Mona Ali',[],'foreign-only');
  const site=await location(a,'Cairo Warehouse'),foreignSite=await location(b,'Cairo Warehouse'),otherSite=await location(a,'Cairo Office');const t=await team(a,site,'Cairo team');
@@ -91,6 +92,12 @@ try {
  await admin.query("INSERT INTO employees(tenant_id,email,full_name,password_hash,team_id) SELECT $1,'fixture-'||n||'@example.invalid','Fixture Person '||n,'no-login',$2 FROM generate_series(1,10000) n",[a,t]);
  await admin.query("INSERT INTO grievances(tenant_id,employee_id,title,description,category,case_number,status) SELECT $1,id,'Density fixture','Fictional','conduct','GRV-2026-'||lpad((100000+row_number() OVER())::text,6,'0'),'submitted' FROM employees WHERE tenant_id=$1 AND full_name LIKE 'Fixture Person %'",[a]);
  await admin.query('ANALYZE employees');await admin.query('ANALYZE company_locations');await admin.query('ANALYZE grievances');
+ await withTenant(a,async c=>{
+  const before=`SELECT e.id FROM company_locations e WHERE e.tenant_id=$1 AND e.is_active AND regexp_split_to_array(stanza_entity_normalize(e.name),' ') && ARRAY['cairo','warehouse']::text[] AND EXISTS(SELECT 1 FROM organisation_teams team JOIN employees target ON target.tenant_id=team.tenant_id AND target.team_id=team.id JOIN grievances g ON g.tenant_id=target.tenant_id AND g.employee_id=target.id WHERE team.tenant_id=e.tenant_id AND team.location_id=e.id AND ${handlerVisibilitySql()}) ORDER BY e.id LIMIT 51`;
+  const after=before.replace(') ORDER BY e.id',' LIMIT 1 OFFSET 0) ORDER BY e.id');
+  const plans=[];for(const [label,sql] of [['before',before],['after',after]]){const plan=(await c.query('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+sql,[a,actor.employeeId])).rows[0]['QUERY PLAN'][0];const nodes:{node:string;rows:number;loops:number}[]=[];const walk=(p:Record<string,unknown>)=>{nodes.push({node:String(p['Node Type']),rows:Number(p['Actual Rows']),loops:Number(p['Actual Loops'])});for(const child of (p.Plans??[]) as Record<string,unknown>[])walk(child);};walk(plan.Plan);plans.push({label,executionMs:plan['Execution Time'],maxLoops:Math.max(...nodes.map(n=>n.loops))});}
+  console.log(JSON.stringify({locationQueryPlans:plans}));
+ });
  const employeeTimes:number[]=[],locationTimes:number[]=[],routeTimes:number[]=[],counts:number[]=[];
  for(let n=0;n<60;n++)await withTenant(a,async c=>{const start=performance.now();const r=await executeEntityIntent(c,actor,query);routeTimes.push(performance.now()-start);assert.equal(r.caseId,caseId);employeeTimes.push(r.entities[0].latencyMs);locationTimes.push(r.entities[1].latencyMs);counts.push(...r.entities.map(e=>e.evaluated));});
  const stats=(values:number[])=>{const v=[...values].sort((a,b)=>a-b);return {p50:v[Math.ceil(v.length*.5)-1],p95:v[Math.ceil(v.length*.95)-1]};};

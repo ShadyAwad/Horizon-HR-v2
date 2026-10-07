@@ -1,6 +1,9 @@
 import type { TranslationKey } from '../lib/LanguageContext';
 
 export type DashboardWorkspaceId =
+  | 'support'
+  | 'semanticIntelligence'
+  | 'semanticPlatform'
   | 'communications'
   | 'composer'
   | 'geofence'
@@ -23,6 +26,8 @@ export type DashboardWorkspaceId =
 export type DashboardTabId = Exclude<DashboardWorkspaceId, 'payroll' | 'grievances'>;
 export type WorkspaceGroup = 'workspace' | 'peopleOperations' | 'administration';
 export type WorkspaceVisibilityKey =
+  | 'semanticIntelligence'
+  | 'semanticPlatform'
   | 'communications'
   | 'hiring'
   | 'performance'
@@ -74,6 +79,9 @@ export type WorkspaceDescriptor = {
 };
 
 export const WORKSPACE_REGISTRY: readonly WorkspaceDescriptor[] = [
+ {id:'support',targetTab:'support',labelKey:'support.title',group:'peopleOperations',icon:'shield',helpArticleId:'equipment-support',tutorialId:'equipment-support',aliases:['IT support','equipment issue','الدعم التقني'],mobileEligible:true,quickActionEligible:true},
+  {id:'semanticIntelligence',targetTab:'semanticIntelligence',labelKey:'semantic.title',group:'administration',icon:'chart',visibility:'semanticIntelligence',helpArticleId:'semantic-intelligence',tutorialId:'semantic-intelligence',aliases:['semantic intelligence','intelligent routing','الذكاء الدلالي'],mobileEligible:true,quickActionEligible:true},
+  {id:'semanticPlatform',targetTab:'semanticPlatform',labelKey:'semantic.platform',group:'administration',icon:'shield',visibility:'semanticPlatform',helpArticleId:'semantic-platform',tutorialId:'semantic-platform',aliases:['platform semantic','ذكاء المنصة'],mobileEligible:true,quickActionEligible:false},
   { id:'communications', targetTab:'communications', labelKey:'communications.title', group:'workspace', icon:'message', visibility:'communications', helpArticleId:'communications', tutorialId:'communications', aliases:['email','meetings','templates'], mobileEligible:true, quickActionEligible:true },
   { id: 'composer', targetTab: 'composer', labelKey: 'composer.title', group: 'workspace', icon: 'network', helpArticleId: 'workspace-composer', tutorialId: 'workspace-composer', aliases: ['custom workspace', 'widgets', 'operations', 'مساحة مخصصة'], mobileEligible: true, quickActionEligible: true },
   { id: 'geofence', targetTab: 'geofence', labelKey: 'dash.geoOp', group: 'workspace', icon: 'map', attention: 'breakRequests', helpArticleId: 'geo-operations', tutorialId: 'geo-operations', aliases: ['attendance', 'clock', 'clock in', 'location', 'geo', 'الحضور', 'الموقع'], mobileEligible: true, quickActionEligible: true },

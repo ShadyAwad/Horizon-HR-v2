@@ -1,3 +1,4 @@
+import {duplicateBoundary} from './semantic-privacy';
 import {safeEntityTemplate,type EntityTemplate} from '../../lib/router-entities';
 import type { PoolClient } from 'pg';
 import { withTenant } from '../../lib/hr-background';
@@ -15,12 +16,13 @@ export class PgSemanticSearch implements SemanticSearch {
       // Deliberate system + tenant searches avoid a tenant corpus displacing system top K.
       const start = performance.now();
       const rows = await c.query(`WITH space AS MATERIALIZED (
-        SELECT intent_key,embedding,tenant_id,source FROM router_semantic_examples WHERE approval_state='approved'
+        SELECT id,intent_key,embedding,tenant_id,source,scope FROM router_semantic_examples WHERE approval_state='approved'
         AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5 AND intent_key=ANY($6::text[])
-        AND (tenant_id IS NULL OR tenant_id=$1)
-      ), system_hits AS (SELECT intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id IS NULL ORDER BY embedding <=> $2::vector LIMIT $7),
-      tenant_hits AS (SELECT intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id=$1 ORDER BY embedding <=> $2::vector LIMIT $7)
-      SELECT COALESCE((SELECT jsonb_agg(h) FROM (SELECT * FROM system_hits UNION ALL SELECT * FROM tenant_hits) h),'[]'::jsonb) AS hits,
+        AND (scope='SYSTEM' OR (scope='SHARED' AND NOT EXISTS(SELECT 1 FROM router_privacy_settings WHERE tenant_id=$1 AND mode='STRICT_PRIVATE')) OR (scope='TENANT_PRIVATE' AND tenant_id=$1))
+      ), system_hits AS (SELECT id,intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE scope='SYSTEM' ORDER BY embedding <=> $2::vector LIMIT $7),
+      shared_hits AS (SELECT id,intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE scope='SHARED' ORDER BY embedding <=> $2::vector LIMIT $7),
+      tenant_hits AS (SELECT id,intent_key,source,1-(embedding <=> $2::vector) AS score FROM space WHERE tenant_id=$1 ORDER BY embedding <=> $2::vector LIMIT $7)
+      SELECT COALESCE((SELECT jsonb_agg(h) FROM (SELECT * FROM system_hits UNION ALL SELECT * FROM shared_hits UNION ALL SELECT * FROM tenant_hits) h),'[]'::jsonb) AS hits,
       (SELECT count(*) FROM space) AS semantic_row_count`, [this.tenantId, literal, provider.model, provider.dimensions, provider.version, allowedKeys, this.topK]);
       const latency = performance.now() - start;
       // Rolling sample of 256 vector-query timings, never queries or embeddings.
@@ -34,7 +36,7 @@ export class PgSemanticSearch implements SemanticSearch {
           [this.tenantId,provider.model,provider.dimensions,provider.version,rows.rows[0].semantic_row_count,latency]);
       } catch { await c.query('ROLLBACK TO SAVEPOINT router_vector_telemetry'); }
       await c.query('RELEASE SAVEPOINT router_vector_telemetry');
-      return rows.rows[0].hits.map((r: {intent_key:string;score:number;source:string}) => ({ intentKey: r.intent_key, score: Number(r.score), promoted:r.source==='promoted_query' }));
+      return rows.rows[0].hits.map((r: {id:string;intent_key:string;score:number;source:string}) => ({ intentKey: r.intent_key, score: Number(r.score), promoted:r.source==='promoted_query'||r.source==='shared',exampleId:r.id }));
     });
   }
 }
@@ -76,16 +78,16 @@ export async function promoteCandidate(tenant: string, reviewer: string, id: str
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [JSON.stringify([tenant,text,provider.model,provider.dimensions,provider.version])]);
     const existing = (await c.query(`SELECT intent_key FROM router_semantic_examples WHERE (tenant_id IS NULL OR tenant_id=$1) AND normalized_text=$2 AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5`, [tenant,text,provider.model,provider.dimensions,provider.version])).rows[0];
     if (existing && existing.intent_key !== candidate.proposed_intent) throw Error('CONTRADICTORY_EXAMPLE');
-    if(template)await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[JSON.stringify(['entity-promotion',tenant,provider.model,provider.dimensions,provider.version])]);
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[JSON.stringify(['entity-promotion',tenant,provider.model,provider.dimensions,provider.version])]);
     let nearDuplicate=false;
-    if(template&&vector){
+    if(vector){
       const near=(await c.query(`WITH space AS MATERIALIZED(SELECT intent_key,embedding FROM router_semantic_examples WHERE (tenant_id IS NULL OR tenant_id=$1) AND approval_state='approved' AND embedding_model=$3 AND embedding_dimensions=$4 AND embedding_version=$5)
         SELECT intent_key,max(1-(embedding <=> $2::vector)) AS score FROM space GROUP BY intent_key ORDER BY score DESC LIMIT 8`,[tenant,JSON.stringify(vector),provider.model,provider.dimensions,provider.version])).rows;
-      if(near.some(r=>Number(r.score)>=.97&&r.intent_key!==candidate.proposed_intent))throw Error('CONTRADICTORY_EXAMPLE');
-      nearDuplicate=near.some(r=>Number(r.score)>=.97&&r.intent_key===candidate.proposed_intent);
+      if(near.some(r=>Number(r.score)>=duplicateBoundary(provider)&&r.intent_key!==candidate.proposed_intent))throw Error('CONTRADICTORY_EXAMPLE');
+      nearDuplicate=near.some(r=>Number(r.score)>=duplicateBoundary(provider)&&r.intent_key===candidate.proposed_intent);
     }
-    if (!existing && !nearDuplicate && vector) await c.query(`INSERT INTO router_semantic_examples(tenant_id,intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state,approved_by,entity_template)
-      VALUES($1,$2,$3,$3,$4::vector,$5,$6,$7,'promoted_query','approved',$8,$9::jsonb)`, [tenant,candidate.proposed_intent,text,JSON.stringify(vector),provider.model,provider.dimensions,provider.version,reviewer,template?JSON.stringify(template):null]);
+    if (!existing && !nearDuplicate && vector) await c.query(`INSERT INTO router_semantic_examples(tenant_id,intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state,approved_by,entity_template,source_candidate_id)
+      VALUES($1,$2,$11,$3,$4::vector,$5,$6,$7,'promoted_query','approved',$8,$9::jsonb,$10)`, [tenant,candidate.proposed_intent,text,JSON.stringify(vector),provider.model,provider.dimensions,provider.version,reviewer,template?JSON.stringify(template):null,id,template?.text??text]);
     await c.query("UPDATE router_candidates SET review_state='approved',embedding_status='embedded',reviewed_at=now(),reviewed_by=$3 WHERE tenant_id=$1 AND id=$2", [tenant,id,reviewer]);
     await recordAuditEvent(c,{tenantId:tenant,actorId:reviewer,action:'router.example_approved',targetType:'router_candidate',targetId:id,metadata:{intentKey:candidate.proposed_intent,embeddingModel:provider.model,embeddingVersion:provider.version,duplicate:Boolean(existing)||nearDuplicate}});
     await recordMetric(c,tenant,{method:'semantic',outcome:'matched',intentKey:candidate.proposed_intent,fallbackUsed:false},0,existing||nearDuplicate ? 0 : 1,false);

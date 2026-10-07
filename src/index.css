@@ -1513,15 +1513,6 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
 .stanza-lanyard-view:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
 .stanza-id-dialog { margin: auto; padding: 0; border: 0; background: transparent; overflow: visible; width: min(26rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); color: var(--id-text); }
 .stanza-id-dialog::backdrop { background: rgb(0 0 0 / .65); animation: stanza-id-backdrop 180ms ease-out; }
-.stanza-id-details { position: relative; overflow: auto; max-height: calc(100dvh - 2rem); padding: 3.5rem 2rem 2rem; border: 1px solid var(--id-accent); border-radius: 1.5rem; background: var(--id-card); animation: stanza-id-arrive 240ms cubic-bezier(.2,.8,.2,1); overflow-wrap: anywhere; }
-.stanza-id-details h2 { font-size: calc(1.6rem * var(--stanza-font-scale, 1)); font-weight: 800; }
-.stanza-id-details p { margin-top: .65rem; }
-.stanza-id-details dl { border-top: 1px solid var(--id-accent); margin-top: 1.5rem; padding-top: 1rem; }
-.stanza-id-details dt { font-size: calc(.75rem * var(--stanza-font-scale, 1)); font-weight: 700; }
-.stanza-id-details dd { font: .8rem monospace; margin-top: .4rem; }
-.stanza-id-close { position: absolute; inset-inline-end: .75rem; top: .75rem; padding: .5rem; }
-.stanza-id-portrait { width: 5rem; height: 5rem; border-radius: 50%; object-fit: cover; margin-bottom: 1rem; }
-@keyframes stanza-id-arrive { from { opacity: 0; transform: perspective(900px) translate(var(--id-from-x, 0px), var(--id-from-y, 24px)) rotateX(8deg) scale(.78); } to { opacity: 1; transform: none; } }
 @keyframes stanza-id-backdrop { from { opacity: 0; } to { opacity: 1; } }
 .geo-operations-content button:not(.stanza-geo-clock):not(.stanza-geo-break-primary) { transition: transform 160ms cubic-bezier(.2,.8,.2,1), border-color 160ms ease, background-color 180ms ease, color 160ms ease; }
 @media (hover: hover) {
@@ -1535,16 +1526,13 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
 .stanza-geo-clock:not(:disabled):hover > div, .stanza-geo-break-primary:not(:disabled):hover .stanza-geo-action-content { scale: 1.02; }
 .stanza-geo-clock:not(:disabled):active > div, .stanza-geo-break-primary:not(:disabled):active .stanza-geo-action-content { scale: .97; transition-duration: 80ms; }
 @media (prefers-reduced-motion: reduce) {
-  .stanza-id-details, .stanza-id-dialog::backdrop { animation: none; }
+  .stanza-id-dialog::backdrop { animation: none; }
   .geo-operations-content button, .stanza-geo-clock > div, .stanza-geo-action-content { transition: none !important; scale: none !important; transform: none !important; }
 }
 
-.stanza-id-brand { display: flex; align-items: center; gap: .6rem; color: var(--id-accent); font-weight: 800; margin-bottom: 1.25rem; }
 
 /* Shared presentation: Auto is opaque; Glass is an explicit, static opt-in. */
 .stanza-surface {background:var(--stanza-surface);color:var(--stanza-text-primary);border:1px solid var(--stanza-border-subtle);border-radius:var(--stanza-radius-md);min-width:0;backdrop-filter:none}
-@supports (backdrop-filter:blur(4px)) {@media(min-width:900px) and (prefers-reduced-motion:no-preference) and (prefers-reduced-transparency:no-preference) {.stanza-surface[data-surface=glass]:not([data-dragging]) {background:color-mix(in srgb,var(--stanza-surface) 92%,transparent);backdrop-filter:blur(4px)}}}
-@media(prefers-reduced-motion:reduce),(prefers-reduced-transparency:reduce),(max-width:899px){.stanza-surface[data-surface=glass]{background:var(--stanza-surface);backdrop-filter:none}}
 .stanza-form-control {width:100%;min-width:0;max-width:100%;min-height:var(--stanza-control-height);padding:.65rem .75rem;border:1px solid var(--stanza-border-default);border-radius:var(--stanza-radius-sm);background:var(--stanza-input-bg);color:var(--stanza-text-primary);font-size:var(--text-sm);line-height:1.5;text-align:start}
 .stanza-form-control:hover:not(:disabled){border-color:var(--stanza-border-strong)}
 .stanza-form-control:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:2px}
@@ -1584,8 +1572,42 @@ body{font-size:var(--text-base)}
 .stanza-module-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
 .stanza-module-toolbar .module-add {margin-inline-start:auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .stanza-module-toolbar button,.stanza-module-toolbar select {min-height:36px}
-.stanza-surface[data-surface=transparent] {background:color-mix(in srgb,var(--stanza-surface) 92%,transparent);backdrop-filter:none}
-@media (prefers-reduced-transparency:reduce),(prefers-reduced-motion:reduce),(max-width:899px) {
- .stanza-surface[data-surface=transparent] {background:var(--stanza-surface)}
-}
-[data-perf-flat-surfaces=true] .stanza-surface {background:var(--stanza-surface);backdrop-filter:none}
+
+/* One shell control family, driven by the existing appearance tokens. */
+.stanza-logout,.stanza-history-controls button {display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:40px;padding:.5rem .8rem;border:1px solid var(--stanza-border-default);border-radius:999px;font-size:var(--text-sm);font-weight:700}
+.stanza-logout {color:var(--stanza-text-primary);border-color:color-mix(in srgb,#dc2626 55%,var(--stanza-border-default));background:color-mix(in srgb,#dc2626 9%,var(--stanza-surface));}
+.stanza-logout svg {color:#dc2626}.stanza-logout:hover {border-color:#dc2626}.stanza-history-controls {display:flex;gap:.3rem}
+.stanza-history-controls button {background:var(--stanza-surface-muted);border-color:transparent;transition:transform 120ms ease,background-color 120ms ease}
+.stanza-history-controls button:hover:not(:disabled){background:var(--stanza-hover-surface)}.stanza-history-controls button:active:not(:disabled){transform:scale(.96)}
+.stanza-history-controls button:disabled{opacity:.38;cursor:not-allowed;border-style:dashed;border-color:var(--stanza-border-default)}
+.stanza-surface-selector {display:flex;flex-wrap:wrap;gap:3px;padding:3px;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-muted)}
+.stanza-surface-selector button {display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:.4rem .55rem;border-radius:8px;font-size:var(--text-xs);min-height:36px;border:1px solid transparent;background:transparent;color:var(--stanza-text-secondary)}
+.stanza-surface-selector button[aria-pressed=true]{background:var(--stanza-selected-surface);border-color:var(--stanza-accent);color:var(--stanza-text-primary)}
+.stanza-surface-selector button:focus-visible,.stanza-history-controls button:focus-visible,.stanza-logout:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:3px}
+/* Inner module shells inherit the frame rather than covering its surface with opaque legacy utilities. */
+/* Legacy panel utilities must not paint opaque layers over the chosen frame.
+   Controls, status fills and explicit Surface instances retain their own tokens. */
+:root[data-theme] .stanza-module-frame :is(section,div)[class*="bg-"][class*="rounded"][class*="border"]:not(.stanza-surface) {background:transparent!important;backdrop-filter:none!important}
+.stanza-surface[data-surface=auto],.stanza-surface[data-surface=solid]{background:var(--stanza-surface);backdrop-filter:none;box-shadow:0 2px 10px #00000008}
+.stanza-surface[data-surface=transparent]{background:color-mix(in srgb,var(--stanza-surface) 76%,transparent);backdrop-filter:none;box-shadow:none}
+@supports(backdrop-filter:blur(4px)){@media(min-width:900px) and (prefers-reduced-motion:no-preference) and (prefers-reduced-transparency:no-preference){.stanza-surface[data-surface=glass]:not([data-dragging]){background:color-mix(in srgb,var(--stanza-surface) 82%,transparent);backdrop-filter:blur(4px);box-shadow:0 4px 16px #00000010}}}
+@media(prefers-reduced-transparency:reduce),(prefers-reduced-motion:reduce),(max-width:899px){.stanza-surface[data-surface=glass],.stanza-surface[data-surface=transparent]{background:var(--stanza-surface);backdrop-filter:none}}
+[data-perf-flat-surfaces=true] .stanza-surface{background:var(--stanza-surface);backdrop-filter:none}
+.stanza-expanded-id {inset:0;margin:auto;padding:0;border:0;background:transparent;color:var(--stanza-text-primary);width:min(430px,calc(100vw - 32px));max-height:calc(100dvh - 24px);overflow:visible;box-shadow:none}
+.stanza-expanded-id::backdrop {background:#000b;backdrop-filter:none}.stanza-id-controls{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px}
+.stanza-id-controls button {display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--stanza-border-default);border-radius:999px;background:var(--stanza-surface);color:var(--stanza-text-primary);min-height:40px}
+.stanza-card-perspective{perspective:1400px;width:min(100%,calc((100dvh - 140px) * .66));margin:auto}.stanza-card-faces{position:relative;aspect-ratio:660/1000;transform-style:preserve-3d;transition:transform 420ms cubic-bezier(.2,.8,.2,1);border-radius:24px}
+.stanza-card-faces[data-flipped=true]{transform:rotateY(180deg)}.stanza-card-faces img{position:absolute;inset:0;width:100%;height:100%;border-radius:24px;backface-visibility:hidden;box-shadow:0 18px 60px #0005}
+.stanza-card-back{transform:rotateY(180deg)}.stanza-id-caption{font-size:var(--text-xs);text-align:center;color:#fff;margin-top:12px}
+@media(prefers-reduced-motion:reduce){.stanza-card-faces,.stanza-history-controls button{transition:none}}
+
+.stanza-support-button{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:40px;padding:.55rem .8rem;border:1px solid var(--stanza-border-default);border-radius:10px;background:var(--stanza-surface-muted);color:var(--stanza-text-primary);font-size:var(--text-sm)}.stanza-support-button:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:3px}.stanza-support-button:disabled{opacity:.5}.stanza-support-form{display:grid;gap:14px}.stanza-support-form label{display:grid;gap:7px;min-width:0}.stanza-support-form textarea{width:100%;resize:vertical;min-height:6rem}
+
+:is(.composer,.composer-dialog) .stanza-surface-selector button{border:1px solid transparent;border-radius:8px;background:transparent;padding:.4rem .55rem}
+:is(.composer,.composer-dialog) .stanza-surface-selector button[aria-pressed=true]{background:var(--stanza-selected-surface);border-color:var(--stanza-accent);color:var(--stanza-text-primary)}
+
+.composer-dialog .stanza-support-form label{display:grid;gap:7px;align-items:start;margin:0}
+.composer-dialog header h2{min-width:0;overflow-wrap:anywhere;flex:1}
+.composer-dialog header button{flex:none;min-width:40px;min-height:40px}
+
+.stanza-id-controls button.stanza-close-action,.stanza-id-controls button.stanza-close-action:not(:disabled):hover{color:#fff!important}

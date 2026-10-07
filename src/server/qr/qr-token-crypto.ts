@@ -35,3 +35,5 @@ export function decryptQrToken(payload: string | null | undefined, environment: 
     return null;
   }
 }
+
+export function qrEncryptionConfigured(environment:NodeJS.ProcessEnv=process.env){try{keyFromEnvironment(environment);return true;}catch{return false;}}

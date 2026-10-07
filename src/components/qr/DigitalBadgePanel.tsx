@@ -1,3 +1,5 @@
+import {ComposerDialog} from '../workspace-composer/ComposerDialog';
+import {StanzaIcon} from '../ui/StanzaIcon';
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Copy, QrCode, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -13,6 +15,7 @@ type Badge = {
   canRevoke: boolean;
   requiresRotation: boolean;
   verificationUnavailable?: boolean;
+  issuanceUnavailable?: boolean;
   verificationUrl: string | null;
   issuedAt: string | null;
   lastUpdatedAt: string | null;
@@ -84,10 +87,11 @@ export function DigitalBadgePanel({ offline = false }: { offline?: boolean }) {
   return (
     <section className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35" aria-labelledby="digital-badge-title">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-3"><QrCode className="h-6 w-6 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /><div><h3 id="digital-badge-title" className="text-sm font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('badge.title')}</h3><p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">{t('badge.subtitle')}</p></div></div>
+        <div className="flex items-center gap-3"><StanzaIcon name="badge" className="h-6 w-6"/><div><h3 id="digital-badge-title" className="text-sm font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('badge.title')}</h3><p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">{t('badge.subtitle')}</p></div></div>
         <button type="button" onClick={() => void load()} disabled={loading || busy !== null} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold text-emerald-700 hover:border-emerald-400 disabled:opacity-60 dark:text-emerald-300"><RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} aria-hidden="true" />{t('badge.refresh')}</button>
       </div>
 
+      <p className="mt-4 text-sm leading-relaxed">{lang==='ar'?'يمكن لزميل أو زائر مسح الرمز بهاتفه لفتح صفحة عامة محدودة تعرض الاسم والشركة والمسمى والقسم المعتمدين فقط. لا يسجل دخولك ولا يسجل حضورك. يمكنك تدوير الرمز أو إلغاء البطاقة.':'A colleague or visitor scans your QR with their phone to open a limited public page showing approved name, company, job title and department. It does not sign you in or clock you in. Rotate or revoke the badge when needed.'}</p>
       {loading ? <div className="mt-4 min-h-64 animate-pulse rounded-xl bg-emerald-500/5" aria-label={t('badge.loading')} /> : badge ? (
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
           <div className="rounded-xl border border-emerald-500/15 bg-black/[0.025] p-4 dark:bg-black/25">
@@ -104,13 +108,13 @@ export function DigitalBadgePanel({ offline = false }: { offline?: boolean }) {
             </div>
           </div>
           <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-emerald-500/15 bg-[#f8fffc] p-3 text-center">
-            {badge.verificationUrl ? <div><QRCodeSVG value={badge.verificationUrl} size={184} level="M" marginSize={4} bgColor="#ffffff" fgColor="#061411" aria-label={t('badge.qrAlt')} /><p className="mt-3 text-xs font-bold text-[#061411]">{t('badge.scanToVerify')}</p><a href={badge.verificationUrl} className="mt-2 block break-all text-xs underline">{t('badge.openVerification')}</a></div> : <div className="max-w-[180px] text-xs leading-5 text-neutral-600">{badge.state === 'inactive' ? t('badge.inactiveHelp') : t('badge.noActiveBadge')}</div>}
+            {badge.verificationUrl ? <div><QRCodeSVG value={badge.verificationUrl} size={184} level="M" marginSize={4} bgColor="#ffffff" fgColor="#061411" aria-label={t('badge.qrAlt')} /><p className="mt-3 text-xs font-bold text-[#061411]">{t('badge.scanToVerify')}</p><a href={badge.verificationUrl} className="mt-2 block break-all text-xs underline">{t('badge.openVerification')}</a></div> : <div className="max-w-[180px] text-xs leading-5 text-neutral-600">{badge.verificationUnavailable?t('badge.originUnavailable'):badge.issuanceUnavailable?(lang==='ar'?'إصدار QR غير متاح حتى يضبط المسؤول مفتاح تشفير البطاقات في الخادم. لا توجد بيانات دخول داخل الرمز.':'QR issuance is unavailable until your administrator configures the server’s badge encryption key. The QR never contains login credentials.'):badge.state === 'inactive' ? t('badge.inactiveHelp') : t('badge.noActiveBadge')}</div>}
           </div>
         </div>
       ) : <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200" role="status">{message || t('badge.loadError')}<button type="button" onClick={() => void load()} className="ms-3 underline">{t('badge.retry')}</button></div>}
 
       {message && badge && <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-200" role="status">{message}</p>}
-      {confirmation && <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4" role="dialog" aria-modal="true" aria-label={t('badge.confirmTitle')}><p className="text-sm font-bold text-neutral-900 dark:text-emerald-50">{confirmation === 'rotate' ? t('badge.rotateConfirm') : confirmation === 'revoke' ? t('badge.revokeConfirm') : t('badge.issueConfirm')}</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => void mutate(confirmation)} disabled={busy !== null} className="min-h-10 rounded-lg bg-emerald-500 px-3 text-xs font-black text-black disabled:opacity-60">{busy === confirmation ? t('badge.working') : t('badge.confirm')}</button><button type="button" onClick={() => { setConfirmation(null); triggerRef.current?.focus(); }} disabled={busy !== null} className="min-h-10 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold text-neutral-700 dark:text-emerald-100">{t('badge.cancel')}</button></div></div>}
+      {confirmation && <ComposerDialog title={t('badge.confirmTitle')} onClose={()=>{if(!busy)setConfirmation(null);}}><p className="text-sm font-bold text-neutral-900 dark:text-emerald-50">{confirmation === 'rotate' ? t('badge.rotateConfirm') : confirmation === 'revoke' ? t('badge.revokeConfirm') : t('badge.issueConfirm')}</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => void mutate(confirmation)} disabled={busy !== null} className="min-h-10 rounded-lg bg-emerald-500 px-3 text-xs font-black text-black disabled:opacity-60">{busy === confirmation ? t('badge.working') : t('badge.confirm')}</button><button type="button" onClick={() => { setConfirmation(null); triggerRef.current?.focus(); }} disabled={busy !== null} className="min-h-10 rounded-lg border border-emerald-500/20 px-3 text-xs font-bold text-neutral-700 dark:text-emerald-100">{t('badge.cancel')}</button></div></ComposerDialog>}
     </section>
   );
 }

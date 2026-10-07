@@ -19,6 +19,8 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
+ 'support.updated':{canonicalAction:'support.updated',module:'assets',summary:'Support ticket updated',metadataKeys:['status']},
+ ...Object.fromEntries(['privacy_changed','candidate_confirmed','candidate_approved','candidate_reject','candidate_change_intent','candidate_private_only','candidate_dismiss_duplicate','example_deactivate','example_reactivate','example_delete','shared_candidate_created','shared_reject','shared_sensitive','shared_duplicate','shared_text_edited','shared_approved','corpus_deactivate','corpus_reactivate','tenant_drilldown'].map(action=>['semantic.'+action,{canonicalAction:'semantic.'+action,module:'workspace',summary:'Semantic intelligence '+action.replaceAll('_',' '),metadataKeys:['actorReference','intent','sourceExample','sharedExample','previousMode','mode']}])),
   'router.example_approved': {canonicalAction:'router.example_approved',module:'workspace',summary:'Routing example approved',metadataKeys:['intentKey','embeddingModel','embeddingVersion','duplicate']},
   'router.example_rejected': {canonicalAction:'router.example_rejected',module:'workspace',summary:'Routing example rejected'},
  'grievance.department_changed': {canonicalAction:'grievance.department_changed',module:'grievances',summary:'Grievance department changed',metadataKeys:['previousDepartment','department']},
@@ -274,6 +276,8 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
+ 'support.updated':['status'],
+ ...Object.fromEntries(Object.entries(DEFINITIONS).filter(([k])=>k.startsWith('semantic.')).map(([k,v])=>[k,v.metadataKeys??[]])),
   'router.example_approved': ['intentKey','embeddingModel','embeddingVersion','duplicate'],
   'router.example_rejected': [],
   ...Object.fromEntries(Object.entries(DEFINITIONS).filter(([key]) => key.startsWith('grievance.')).map(([key, value]) => [key, value.metadataKeys || []])),

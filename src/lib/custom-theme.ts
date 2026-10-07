@@ -123,8 +123,8 @@ export function deriveCustomTheme(value: string | CustomThemeConfig, mode: 'ligh
   const accentHover = mixColor(accent, light ? '#000000' : '#FFFFFF', .08);
   const foreground = light ? '#FFFFFF' : '#000000';
   const requestedText = config.textColor ?? (light ? '#172033' : '#F1F5F9');
-  // Bound Glass contrast even when its 8% transparency overlays extreme content.
-  const textSurfaces = [...surfaces, mixColor(surface, light ? '#000000' : '#FFFFFF', .08)];
+  // Protect the most transparent shared surface (24%) even over extreme content.
+  const textSurfaces = [...surfaces, mixColor(surface, light ? '#000000' : '#FFFFFF', .24)];
   const primary = readableAccent(requestedText, textSurfaces, light);
   const secondary = readableAccent(config.textColor ? mixColor(primary, surface, .18) : light ? '#39465A' : '#CBD5E1', textSurfaces, light);
   const muted = readableAccent(config.textColor ? mixColor(primary, surface, .28) : light ? '#4B586D' : '#B1BDCE', textSurfaces, light);

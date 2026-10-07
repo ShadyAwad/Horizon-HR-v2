@@ -11,5 +11,6 @@ export function hasPermissionClaim(
   user: PermissionClaimUser | null | undefined,
   permissionKey: string,
 ) {
+  if(permissionKey.startsWith('platform.'))return false; // Platform authority never comes from tenant claims.
   return user?.role === 'hr_admin' || Boolean(user?.permissions?.includes(permissionKey));
 }

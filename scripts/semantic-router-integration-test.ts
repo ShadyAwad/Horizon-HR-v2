@@ -33,7 +33,7 @@ try{
   assert.equal(flags.length,5);assert(flags.every(r=>r.relrowsecurity&&r.relforcerowsecurity),'every router table forces RLS');
   for(const name of ['a','b'])tenants.push((await pool.query('INSERT INTO tenants(slug,company_name) VALUES($1,$2) RETURNING id',[`router-${name}-${tag}`,name])).rows[0].id);
   const [tenant,other]=tenants;
-  await employee(tenant,'user',['leave.request.self']);await employee(tenant,'admin',['roles.manage','leave.request.self']);await employee(other,'other',['roles.manage','leave.request.self']);await employee(tenant,'denied',[]);
+  await employee(tenant,'user',['leave.request.self']);await employee(tenant,'admin',['roles.manage','semantic.review_candidates','leave.request.self']);await employee(other,'other',['roles.manage','semantic.review_candidates','leave.request.self']);await employee(tenant,'denied',[]);
   await employee(tenant,'presence-only',['attendance.view_live']);
   const presenceDenied=await api('presence-only','/resolve',{query:'live employees',allowReasoning:false});assert.equal(presenceDenied.result.outcome,'unauthorized');assert.equal(presenceDenied.result.answer,undefined,'presence permission alone never bypasses existing HR-admin boundary');
   assert.equal((await api('','/resolve',{query:'request leave'})).status,401);
@@ -65,6 +65,7 @@ try{
     await roleClient.query('BEGIN');const role='router_rls_'+tag.replaceAll('-','');assert.match(role,/^router_rls_[a-f0-9]+$/);
     await roleClient.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
     await roleClient.query(`GRANT USAGE ON SCHEMA public TO ${role}`);
+    await roleClient.query(`GRANT SELECT ON router_privacy_settings,router_platform_authorities,employees TO ${role}`);
     await roleClient.query(`GRANT SELECT,INSERT,UPDATE ON router_candidates,router_semantic_examples,router_daily_metrics,router_vector_metrics,router_embedding_metrics TO ${role}`);
     await roleClient.query("INSERT INTO router_semantic_examples(intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state) VALUES('request_leave','rls shared fixture','rls shared fixture','[1,0,0]',$1,3,'1','system','approved')",['rls-'+tag]);
     await roleClient.query(`SET LOCAL ROLE ${role}`);await roleClient.query("SELECT set_config('app.current_tenant',$1,true)",[other]);

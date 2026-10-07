@@ -25,7 +25,7 @@ for (const cardColor of ['#FFFFFF', '#000000', '#777777', '#FF00FF']) {
  assert.ok(contrastRatio(colors.card, colors.accent) >= 4.5);
 }
 const dialog = readFileSync('src/components/lanyard/LanyardDetails.tsx', 'utf8');
-assert.match(dialog, /showModal\(\)/); assert.match(dialog, /onCancel=/); assert.match(dialog, /event.target === event.currentTarget/); assert.match(dialog, /returnFocus\?\.focus/);
+assert.match(dialog, /showModal\(\)/); assert.match(dialog, /onCancel=/); assert.match(dialog, /(?:event|e)\.target\s*===\s*(?:event|e)\.currentTarget/); assert.match(dialog, /returnFocus(?:\?\.)?\.?focus/);
 const css = readFileSync('src/index.css', 'utf8');
 assert.ok(css.includes('button.stanza-theme-primary.stanza-geo-clock-primary:not(:disabled):hover'));
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');

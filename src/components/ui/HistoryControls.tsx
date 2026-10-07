@@ -1,0 +1,3 @@
+import {useLanguage} from '../../lib/LanguageContext';
+import {StanzaIcon} from './StanzaIcon';
+export function HistoryControls({canBack,canForward,back,forward}:{canBack:boolean;canForward:boolean;back:()=>void;forward:()=>void}){const {isRtl}=useLanguage();return <div className="stanza-history-controls"><button type="button" className="stanza-interactive-control" disabled={!canBack} onClick={back}><StanzaIcon name={isRtl?'forward':'back'}/><span>{isRtl?'رجوع':'Back'}</span></button><button type="button" className="stanza-interactive-control" disabled={!canForward} onClick={forward}><span>{isRtl?'تقدم':'Forward'}</span><StanzaIcon name={isRtl?'back':'forward'}/></button></div>;}

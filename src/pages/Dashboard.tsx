@@ -1,3 +1,7 @@
+import {DigitalCardPreviewButton} from '../components/lanyard/DigitalCardPreviewButton';
+import {LogoutControl} from '../components/ui/LogoutControl';
+import {HistoryControls} from '../components/ui/HistoryControls';
+import {SurfaceSelector} from '../components/ui/SurfaceSelector';
 import { PlannedBreakEditor, type BreakWindow } from '../components/roster/PlannedBreakEditor';
 import { validatePlannedBreaks } from '../lib/roster-breaks';
 import { Surface } from '../components/ui/Surface';
@@ -81,6 +85,7 @@ import {
   normalisePinnedQuickActionIds,
 } from '../components/command-palette/pinned-quick-actions';
 
+const SemanticIntelligencePanel = lazy(()=>import('../components/semantic-intelligence/SemanticIntelligencePanel'));
 const GrievancesPanel = lazy(() => import('../components/grievances/GrievancesPanel'));
 const CommunicationsPanel = lazy(() => import('../components/communications/CommunicationsPanel'));
 const WorkspaceComposer = lazy(() => import('../components/workspace-composer/WorkspaceComposer'));
@@ -93,6 +98,7 @@ const AuditTrailPanel = lazy(() => import('../components/audit/AuditTrailPanel')
 const SessionManagementPanel = lazy(() => import('../components/sessions/SessionManagementPanel').then((module) => ({ default: module.SessionManagementPanel })));
 const SessionCenterPanel = lazy(() => import('../components/sessions/SessionCenterPanel').then((module) => ({ default: module.SessionCenterPanel })));
 const AssetsPanel = lazy(() => import('../components/assets/AssetsPanel').then((module) => ({ default: module.AssetsPanel })));
+const SupportPanel = lazy(()=>import('../components/support/SupportPanel'));
 const MyEquipmentPanel = lazy(() => import('../components/assets/MyEquipmentPanel').then((module) => ({ default: module.MyEquipmentPanel })));
 const DigitalBadgePanel = lazy(() => import('../components/qr/DigitalBadgePanel').then((module) => ({ default: module.DigitalBadgePanel })));
 const PerformancePanel = lazy(() => import('../components/performance/PerformancePanel').then((module) => ({ default: module.PerformancePanel })));
@@ -1426,6 +1432,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canManageSessions = hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
+  const [semanticCaps,setSemanticCaps]=useState<{tenant:string[];platform:string[]}>({tenant:[],platform:[]});
+  useEffect(()=>{let alive=true;setSemanticCaps({tenant:[],platform:[]});void apiFetch('/api/semantic-intelligence/capabilities').then(async r=>{if(r.ok&&alive)setSemanticCaps(await r.json());}).catch(()=>{});return()=>{alive=false;};},[user.id]);
+  const canViewSemantic=semanticCaps.tenant.length>0,canViewSemanticPlatform=semanticCaps.platform.some(k=>['view_all','view_tenants','review_global'].includes(k));
   const canViewOrganisation = hasPermission(user, 'organisation.view');
   const canViewLocations = hasPermission(user, 'locations.view');
   const canShowPayrollActions = canApprovePayroll || canMarkPayrollPaid;
@@ -1497,6 +1506,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     });
   }, []);
   const workspaceCapabilities = useMemo<Record<WorkspaceVisibilityKey, boolean>>(() => ({
+    semanticIntelligence:canViewSemantic,
+    semanticPlatform:canViewSemanticPlatform,
     communications: canViewCommunications,
     hiring: canViewHiring,
     performance: canViewPerformance,
@@ -1508,6 +1519,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     audit: canViewAudit,
     sessionCenter: canManageSessions,
   }), [
+    canViewSemantic,canViewSemanticPlatform,
     canManageSessions,
     canUsePayrollPanel,
     canViewAssets,
@@ -2141,8 +2153,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     if (value.startsWith('composer:')) { composerPreferences.dispatch({type:'select',id:value.slice(9)}); selectNavigationItem('composer'); }
     else selectNavigationItem(value as DashboardWorkspaceId);
   });
-  const moduleWidgets = WIDGETS.filter(widget => widget.module === destination && canUseWidget(user,widget));
-  const framedModule = ['geofence','roster','performance','assets',...WIDGETS.map(widget => widget.module)].includes(destination);
+  const moduleWidgets = WIDGETS.filter(widget => (widget.module === destination || widget.additionalModules?.some(module=>module===destination)) && canUseWidget(user,widget));
+  const framedModule = destination !== 'composer' && destination !== 'profile';
 
   const hasActiveShift = isClockedIn || Boolean(activeTimeLogId);
 
@@ -4331,14 +4343,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onLogout}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-500 dark:text-emerald-300"
-        >
-          <StanzaFingerprintMark size={20} />
-          {t('dash.logout')}
-        </button>
+        <LogoutControl onClick={onLogout} />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -5314,9 +5319,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </div>
         </header>
         <nav aria-label={isRtl ? 'سجل التنقل' : 'Navigation history'} className="stanza-module-toolbar">
-          <button type="button" className="stanza-interactive-control rounded-lg border px-3 py-2 text-sm" disabled={!navigationHistory.canBack} onClick={navigationHistory.back}>{isRtl ? '→ رجوع' : '← Back'}</button>
-          <button type="button" className="stanza-interactive-control rounded-lg border px-3 py-2 text-sm" disabled={!navigationHistory.canForward} onClick={navigationHistory.forward}>{isRtl ? 'تقدم ←' : 'Forward →'}</button>
-          {framedModule && <label className="flex items-center gap-2 text-xs">{isRtl ? 'سطح اللوحات' : 'Panel surface'}<select className="stanza-select stanza-form-control" aria-label={isRtl ? 'سطح اللوحات' : 'Panel surface'} value={composerPreferences.state.surface} onChange={e=>composerPreferences.dispatch({type:'surface',value:e.target.value as typeof composerPreferences.state.surface})}>{['auto','solid','glass','transparent'].map(value=><option key={value} value={value}>{isRtl ? ({auto:'تلقائي',solid:'مصمت',glass:'زجاجي',transparent:'شفاف'}[value]) : value[0].toUpperCase()+value.slice(1)}</option>)}</select></label>}
+          <HistoryControls {...navigationHistory} />
+          {framedModule && <SurfaceSelector value={composerPreferences.state.surface} onChange={value=>composerPreferences.dispatch({type:'surface',value})} />}
           {moduleWidgets.length > 0 && <div className="module-add"><AddToWorkspace key={destination} widgetId={moduleWidgets[0].id} widgetIds={moduleWidgets.map(widget=>widget.id)} user={user} /></div>}
         </nav>
         {/* Dashboard Grid Container */}
@@ -5530,6 +5534,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     <PerformancePanel user={user} />
                   </Suspense>
                 )}
+                {((activeTab==='semanticIntelligence'&&canViewSemantic)||(activeTab==='semanticPlatform'&&canViewSemanticPlatform))&&<Suspense fallback={<div aria-live="polite">{lang==='ar'?'جار التحميل…':'Loading…'}</div>}><SemanticIntelligencePanel key={activeTab} platform={activeTab==='semanticPlatform'}/></Suspense>}
                 {activeTab === 'organisation' && canViewOrganisation && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <OrganisationPanel initialView={organisationCommandView} openViewSignal={organisationCommandSignal} />
@@ -5574,6 +5579,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     </div>
                   </Suspense>
                 )}
+                {activeTab === 'support' && <Suspense fallback={<p>Loading…</p>}><SupportPanel /></Suspense>}
                 {activeTab === 'assets' && canViewAssets && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <AssetsPanel user={user} openCreateSignal={assetCreateSignal} />
@@ -6773,7 +6779,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </div>
                           <div id="stanza-digital-id-panel" className="md:col-span-2">
                            <Suspense fallback={<div className="min-h-64 animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                             <DigitalBadgePanel offline={isOffline} />
+                             <DigitalCardPreviewButton user={user} /><DigitalBadgePanel offline={isOffline} />
                            </Suspense>
                          </div>
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">

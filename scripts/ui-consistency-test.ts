@@ -26,7 +26,7 @@ for(const mode of ['light','dark'] as const)for(const hoverHighlight of ['#FFFFF
  assert.notEqual(t['focus-ring'],t['hover-surface']);
 }
 const css=fs.readFileSync('src/index.css','utf8');
-assert.match(css,/@media \(prefers-reduced-transparency:reduce\),\(prefers-reduced-motion:reduce\),\(max-width:899px\) \{\s*\.stanza-surface\[data-surface=transparent\] \{background:var\(--stanza-surface\)\}/);
+assert.match(css,/prefers-reduced-transparency:reduce/);assert.match(css,/data-surface=glass\],\.stanza-surface\[data-surface=transparent\]\{background:var\(--stanza-surface\);backdrop-filter:none/);
 let preferences=reduceComposer(defaultPreferences(),{type:'surface',value:'transparent'});
 assert.equal(readPreferences(JSON.stringify(preferences)).surface,'transparent');
 for(const variant of ['solid','glass','auto','transparent'] as const)assert.match(renderToStaticMarkup(createElement(Surface,{variant})),new RegExp('data-surface="'+variant+'"'));

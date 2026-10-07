@@ -134,3 +134,17 @@ for (const key of [
 }
 
 console.log('Roster goal data, scope, audit, UI, and localisation contracts passed.');
+
+// PostgreSQL parses parameter types before row matching. Exercise the production
+// update with an impossible UUID inside a rollback-only transaction.
+if (process.env.ALLOW_TEST_DATA_MUTATION === 'true') {
+  await import('./router-env');
+  const {getMigrationPool,migrationUrl} = await import('./migration-pool');
+  const {assertDatabaseMutationSafety} = await import('./mutation-safety');
+  assertDatabaseMutationSafety(migrationUrl(),'Roster status SQL regression');
+  const sql=routes.match(/`(UPDATE roster_goals SET status=\$3[^`]+)`/)?.[1];
+  assert(sql,'Production status query must be exercised');
+  const pool=getMigrationPool(),client=await pool.connect();
+  try { await client.query('BEGIN');const missing='00000000-0000-0000-0000-000000000000';const result=await client.query(sql,[missing,missing,'completed',null,missing]);assert.equal(result.rowCount,0);console.log('PASS real PostgreSQL roster status parameter typing (rollback, zero rows changed).'); }
+  finally {await client.query('ROLLBACK');client.release();await pool.end();}
+}

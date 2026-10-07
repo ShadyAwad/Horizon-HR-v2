@@ -1,3 +1,4 @@
+import {supportAuthority} from '../support/support-routes';
 import { logServerError } from '../../lib/server-logging';
 import crypto from 'crypto';
 import type express from 'express';
@@ -79,7 +80,7 @@ export function registerAssetEvidenceRoutes(
         if (!canManage && !assignment.rows[0]) throw Object.assign(new Error('Active asset assignment not found.'), { statusCode: 404 });
         if (asset.rows[0].status === 'lost' || asset.rows[0].status === 'retired') throw Object.assign(new Error('Evidence cannot be added for this asset state.'), { statusCode: 409 });
         const created = await client.query(`INSERT INTO asset_condition_reports(tenant_id,asset_id,assignment_id,reported_by,condition,notes,evidence_url) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [authUser.tenantId, assetId, assignment.rows[0]?.id || null, authUser.employeeId, condition, notes || null, storageKey]);
-        await client.query(`UPDATE assets SET condition=$3,status=CASE WHEN $3 IN ('damaged','unusable') AND status='available' THEN 'maintenance' ELSE status END,updated_at=NOW() WHERE tenant_id=$1 AND id=$2`, [authUser.tenantId, assetId, condition]);
+        await client.query(`UPDATE assets SET condition=$3::text,status=CASE WHEN $3::text IN ('damaged','unusable') AND status='available' THEN 'maintenance' ELSE status END,updated_at=NOW() WHERE tenant_id=$1 AND id=$2`, [authUser.tenantId, assetId, condition]);
         await recordAuditEvent(client, { tenantId: authUser.tenantId, actorId: authUser.employeeId, action: 'asset.condition_reported', targetType: 'asset', targetId: assetId, metadata: { assetTag: asset.rows[0].asset_tag, condition } });
         return created.rows[0];
       });
@@ -98,7 +99,9 @@ export function registerAssetEvidenceRoutes(
     const authUser = req.authUser!;
     try {
       const report = await withTenant(authUser.tenantId, async (client) => {
-        const canView = hasPermissionClaim(authUser, 'assets.view');
+        const canSupport=await supportAuthority(client,authUser)||await supportAuthority(client,authUser,'support.manage');
+        const ticketEvidence=canSupport&&Boolean((await client.query('SELECT 1 FROM support_tickets WHERE tenant_id=$1 AND evidence_report_id=$2',[authUser.tenantId,req.params.reportId])).rowCount);
+        const canView = hasPermissionClaim(authUser, 'assets.view')||ticketEvidence;
         const result = await client.query<{ evidence_url: string }>(`SELECT evidence_url FROM asset_condition_reports WHERE tenant_id=$1 AND id=$2 AND evidence_url IS NOT NULL AND ($3::boolean OR reported_by=$4 OR EXISTS(SELECT 1 FROM asset_assignments WHERE tenant_id=asset_condition_reports.tenant_id AND asset_id=asset_condition_reports.asset_id AND employee_id=$4 AND status='active'))`, [authUser.tenantId, req.params.reportId, canView, authUser.employeeId]);
         return result.rows[0] || null;
       });

@@ -23,7 +23,7 @@ Object.defineProperty(globalThis,'document',{configurable:true,value:original});
 let checks=0;
 for(const accent of ['#FFFFFF','#000000','#FF0000','#00FFFF','#FF00FF','#234567']) for(const textColor of ['#FFFFFF','#000000','#FF0000','#00FF00','#808080',null]) for(const mode of ['light','dark'] as const){
  const p=deriveCustomTheme({...DEFAULT_CUSTOM_THEME,accent,textColor},mode);const t=p.tokens;
- const surfaces=['page-bg','surface','surface-elevated','selected-surface','hover-surface','input-bg','dropdown-bg'].map(k=>t[k]);surfaces.push(mixColor(t.surface,t['page-bg'],.08),mixColor(t.surface,'#FFFFFF',.08),mixColor(t.surface,'#000000',.08));
+ const surfaces=['page-bg','surface','surface-elevated','selected-surface','hover-surface','input-bg','dropdown-bg'].map(k=>t[k]);for(const alpha of [.08,.18,.24])surfaces.push(mixColor(t.surface,t['page-bg'],alpha),mixColor(t.surface,'#FFFFFF',alpha),mixColor(t.surface,'#000000',alpha));
  for(const k of ['text-primary','text-secondary','text-muted','text-disabled'])for(const surface of surfaces){assert(contrastRatio(t[k],surface)>=4.5,`${mode} ${accent} ${textColor} ${k}`);checks++;}
  assert(contrastRatio(t['primary-action'],t['primary-action-foreground'])>=4.5);
  if(textColor=== (mode==='light'?'#FFFFFF':'#000000'))assert(p.textAdjusted);

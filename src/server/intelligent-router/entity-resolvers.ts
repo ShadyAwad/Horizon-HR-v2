@@ -31,11 +31,13 @@ async function resolve(type: EntityType, { client: c, actor: u, query, proposed,
  const employee = type === 'employee', table = employee ? 'employees' : 'company_locations', label = employee ? 'full_name' : 'name';
  const visibility = employee
  ? `EXISTS(SELECT 1 FROM grievances g WHERE g.tenant_id=e.tenant_id AND g.employee_id=e.id AND ${handlerVisibilitySql()})`
- : `EXISTS(SELECT 1 FROM organisation_teams team JOIN employees target ON target.tenant_id=team.tenant_id AND target.team_id=team.id JOIN grievances g ON g.tenant_id=target.tenant_id AND g.employee_id=target.id WHERE team.tenant_id=e.tenant_id AND team.location_id=e.id AND ${handlerVisibilitySql()})`;
- const rows = (await c.query<Candidate>(`SELECT e.id,e.${label} AS label,${employee ? 'e.email' : 'e.code'} AS identifier,position(' '||stanza_entity_normalize(e.${label})||' ' in ' '||$3||' ')>0 AS exact
+ : `EXISTS(SELECT 1 FROM organisation_teams team JOIN employees target ON target.tenant_id=team.tenant_id AND target.team_id=team.id JOIN grievances g ON g.tenant_id=target.tenant_id AND g.employee_id=target.id WHERE team.tenant_id=e.tenant_id AND team.location_id=e.id AND ${handlerVisibilitySql()} LIMIT 1 OFFSET 0)`;
+ const sql=`SELECT e.id,e.${label} AS label,${employee ? 'e.email' : 'e.code'} AS identifier,position(' '||stanza_entity_normalize(e.${label})||' ' in ' '||$3||' ')>0 AS exact
  FROM ${table} e WHERE e.tenant_id=$1 AND ${employee ? 'true' : 'e.is_active'} AND ${visibility}
  AND (regexp_split_to_array(stanza_entity_normalize(e.${label}),' ') && $4::text[] OR e.id=ANY($5::uuid[]) ${employee ? 'OR lower(e.email)=ANY($6::text[])' : ''})
- ORDER BY exact DESC,e.${label},e.id LIMIT 51`, employee ? [u.tenantId, u.employeeId, normalized, tokens, ids, emails] : [u.tenantId, u.employeeId, normalized, tokens, ids])).rows;
+ ORDER BY exact DESC,e.${label},e.id LIMIT 51`;
+ const params=employee?[u.tenantId,u.employeeId,normalized,tokens,ids,emails]:[u.tenantId,u.employeeId,normalized,tokens,ids];
+ const rows=(await c.query<Candidate>(sql,params)).rows;
  const evaluated = Math.min(rows.length, LIMIT), truncated = rows.length > LIMIT;
  const matches = rows.slice(0, LIMIT).map(row => {
   const full = findEntitySpan(text, row.label, type);

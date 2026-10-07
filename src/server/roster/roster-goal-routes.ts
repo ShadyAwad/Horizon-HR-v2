@@ -325,7 +325,7 @@ export function registerRosterGoalRoutes(app: express.Express, dependencies: Dep
           : current.status === 'in_progress' ? new Set(['completed']) : new Set<string>();
         if (!allowed.has(nextStatus)) throw fail(409, 'Roster goal status has already changed.');
         await client.query(
-          `UPDATE roster_goals SET status=$3,completion_note=$4,completed_at=CASE WHEN $3='completed' THEN NOW() ELSE NULL END,updated_by=$5,updated_at=NOW()
+          `UPDATE roster_goals SET status=$3::text,completion_note=$4,completed_at=CASE WHEN $3::text='completed' THEN NOW() ELSE NULL END,updated_by=$5,updated_at=NOW()
            WHERE tenant_id=$1 AND id=$2`,
           [user.tenantId, current.id, nextStatus, nextStatus === 'completed' ? completionNote : null, user.employeeId],
         );

@@ -130,7 +130,9 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
     propertyOf: 'PROPERTY OF'
   };
   const textX = isRtl ? 586 : 74;
-  const textAnchor = isRtl ? 'end' : 'start';
+  // SVG start follows direction; using end with RTL would push text off-card.
+  const textAnchor = 'start';
+  const latinAnchor = isRtl ? 'end' : 'start';
   const tenant = tenantDetails(user);
   const name = cleanText(user.name, 'Stanza User', 30);
   const role = cleanText(roleLabel(user), 'Authorized Staff', 34);
@@ -161,9 +163,9 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
       <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#6ee7b7" stroke-opacity="0.17" stroke-width="2"/>
       <rect x="42" y="42" width="576" height="152" rx="34" fill="url(#header)"/>
       <rect x="42" y="160" width="576" height="34" fill="#071a13"/>
-      ${fingerprintMark(72, 68, 3.75)}
-      <text x="174" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">${labels.access}</text>
-      <text x="174" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">${labels.identity}</text>
+      ${fingerprintMark(isRtl ? 498 : 72, 68, 3.75)}
+      <text x="${isRtl ? 486 : 174}" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">${labels.access}</text>
+      <text x="${isRtl ? 486 : 174}" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">${labels.identity}</text>
 
       <text x="${textX}" y="258" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3">${labels.employee}</text>
       <text x="${textX}" y="310" text-anchor="${textAnchor}" fill="#ecfdf5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="42" font-weight="750">${name}</text>
@@ -175,10 +177,10 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
       <text x="${textX}" y="496" text-anchor="${textAnchor}" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="650">${company}</text>
 
       <text x="${textX}" y="574" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">${labels.email}</text>
-      <text x="${textX}" y="614" text-anchor="${textAnchor}" direction="ltr" unicode-bidi="embed" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22">${email}</text>
+      <text x="${textX}" y="614" text-anchor="${latinAnchor}" direction="ltr" unicode-bidi="embed" fill="#d1fae5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22">${email}</text>
 
       <text x="${textX}" y="694" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="3">${labels.workspaceId}</text>
-      <text x="${textX}" y="732" text-anchor="${textAnchor}" direction="ltr" unicode-bidi="embed" fill="#86bba5" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18" letter-spacing="1">${identifier}</text>
+      <text x="${textX}" y="732" text-anchor="${latinAnchor}" direction="ltr" unicode-bidi="embed" fill="#86bba5" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18" letter-spacing="1">${identifier}</text>
 
       <rect x="74" y="790" width="512" height="1" fill="#34d399" opacity="0.2"/>
       ${barcodeBars(user.id || tenant.identifier)}

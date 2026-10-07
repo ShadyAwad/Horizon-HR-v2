@@ -1,38 +1,17 @@
-import { StanzaFingerprintMark } from '../StanzaFingerprintMark';
-import { useEffect, useRef, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
-import type { AuthUser } from '../../auth/auth-contract';
-import { useLanguage } from '../../lib/LanguageContext';
-import { resolveLanyardColors, type LanyardStyle } from '../../lib/custom-theme';
-
-export function LanyardDetails({ user, portrait, style, onClose, returnFocus, origin }: {
-  origin: { x: number; y: number } | null;
-  user: AuthUser; portrait: string | null; style: LanyardStyle; onClose: () => void; returnFocus: HTMLElement | null;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const { t, isRtl } = useLanguage();
-  const colors = resolveLanyardColors(style);
-  useEffect(() => {
-    const dialog = ref.current!;
-    dialog.showModal();
-    return () => { dialog.close(); returnFocus?.focus({ preventScroll: true }); };
-  }, [returnFocus]);
-  const company = typeof user.tenant === 'string' ? user.tenant : user.tenant?.companyName;
-  return createPortal(<dialog ref={ref} className="stanza-id-dialog" dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby="stanza-id-title"
-    style={{ '--id-from-x': `${origin ? (origin.x - window.innerWidth / 2) * .4 : 0}px`, '--id-from-y': `${origin ? (origin.y - window.innerHeight / 2) * .4 : 24}px`, '--id-card': colors.card, '--id-accent': colors.accent, '--id-text': colors.text } as CSSProperties}
-    onCancel={(event) => { event.preventDefault(); onClose(); }}
-    onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <article className="stanza-id-details">
-      <button autoFocus type="button" className="stanza-close-action stanza-id-close" aria-label={t('lanyard.close')} onClick={onClose}><X size={20} /></button>
-      <div className="stanza-id-brand"><StanzaFingerprintMark className="h-7 w-7" /><span>Stanza</span></div>
-      {portrait && <img src={portrait} alt="" className="stanza-id-portrait" />}
-      <h2 id="stanza-id-title">{user.name}</h2>
-      <p>{user.jobTitle || user.role}</p>
-      {company && <p>{company}</p>}
-      <p dir="ltr">{user.email}</p>
-      <dl><dt>{t('lanyard.identifier')}</dt><dd dir="ltr">{user.id}</dd></dl>
-    </article>
-  </dialog>, document.body);
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
+import type {AuthUser} from '../../auth/auth-contract';
+import {useLanguage} from '../../lib/LanguageContext';
+import {StanzaIcon} from '../ui/StanzaIcon';
+/** The exact SVG artwork supplied to the compact WebGL card is reused here. */
+export function LanyardDetails({user,frontImage,backImage,onClose,returnFocus}:{user:AuthUser;frontImage:string;backImage:string;onClose:()=>void;returnFocus:HTMLElement|null}){
+ const frontUrl=useMemo(()=> 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(frontImage),[frontImage]);
+ const backUrl=useMemo(()=> 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(backImage),[backImage]);
+ const ref=useRef<HTMLDialogElement>(null);const [flipped,setFlipped]=useState(false);const {isRtl,t}=useLanguage();
+ useEffect(()=>{const dialog=ref.current!;dialog.showModal();return()=>{dialog.close();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});};},[returnFocus]);
+ return createPortal(<dialog ref={ref} className="stanza-id-dialog stanza-expanded-id" dir={isRtl?'rtl':'ltr'} aria-label={isRtl?'هوية الموظف '+user.name:'Employee ID '+user.name} onCancel={e=>{e.preventDefault();onClose();}} onClick={e=>{if(e.target===e.currentTarget){const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)onClose();}}}>
+ <div className="stanza-id-controls"><button type="button" className="stanza-interactive-control" aria-pressed={flipped} onClick={()=>setFlipped(v=>!v)}><StanzaIcon name="flip"/>{isRtl?'قلب البطاقة':'Flip card'}</button><button autoFocus type="button" className="stanza-close-action" aria-label={t('lanyard.close')} onClick={onClose}><StanzaIcon name="close"/></button></div>
+ <div className="stanza-card-perspective"><div className="stanza-card-faces" data-flipped={flipped}><img className="stanza-card-front" src={frontUrl} alt={isRtl?'واجهة بطاقة ستانزا':'Stanza card front'} aria-hidden={flipped}/><img className="stanza-card-back" src={backUrl} alt={isRtl?'هوية الموظف '+user.name:'Employee identity '+user.name} aria-hidden={!flipped}/></div></div>
+ <p className="stanza-id-caption" role="status">{flipped?user.name:'Stanza'} · {isRtl?'بطاقة الهوية الرقمية؛ ليست وسيلة لتسجيل الدخول':'Digital identity card; not a sign-in credential'}</p>
+ </dialog>,document.body);
 }
-

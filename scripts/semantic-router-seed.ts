@@ -23,7 +23,7 @@ try{
  const pending=corpus.filter(row=>!existing.has(row.text));let inserted=0;
  for(let offset=0;offset<pending.length;offset+=8){
   const batch=pending.slice(offset,offset+8),vectors=provider.embedBatch?await provider.embedBatch(batch.map(r=>r.text)):await Promise.all(batch.map(r=>provider.embed(r.text)));
-  for(let i=0;i<batch.length;i++)inserted+=(await pool.query("INSERT INTO router_semantic_examples(intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,approval_state) VALUES($1,$2,$3,$4::vector,$5,$6,$7,'system','approved') ON CONFLICT DO NOTHING",[batch[i].intent,batch[i].phrase,batch[i].text,JSON.stringify(vectors[i]),provider.model,provider.dimensions,provider.version])).rowCount??0;
+  for(let i=0;i<batch.length;i++)inserted+=(await pool.query("INSERT INTO router_semantic_examples(intent_key,example_text,normalized_text,embedding,embedding_model,embedding_dimensions,embedding_version,source,scope,approval_state) VALUES($1,$2,$3,$4::vector,$5,$6,$7,'system','SYSTEM','approved') ON CONFLICT DO NOTHING",[batch[i].intent,batch[i].phrase,batch[i].text,JSON.stringify(vectors[i]),provider.model,provider.dimensions,provider.version])).rowCount??0;
  }
  console.log({inserted,expectedExamples:corpus.length,intents:INTENTS.length,model:provider.model,dimensions:provider.dimensions,version:provider.version});
 }finally{await provider.close?.();await pool.end();}

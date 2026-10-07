@@ -2,14 +2,17 @@ import type { SurfaceVariant } from '../ui/Surface';
 import { widgetDefinition, type WidgetId, type WidgetConfig } from './widget-catalog';
 export const COLUMNS=12, MAX_WIDGETS=20, MAX_WORKSPACES=10;
 export type Surface=SurfaceVariant;
-export type WidgetInstance={instanceId:string;widgetId:WidgetId;x:number;y:number;width:number;height:number;config:WidgetConfig;surfaceOverride:Surface};
+export const WIDGET_ACCENTS=['default','green','blue','purple','amber','red','neutral'] as const;
+export type WidgetAccent=typeof WIDGET_ACCENTS[number];
+export const layoutHeight=(w:WidgetInstance)=>w.collapsed?2:w.height;
+export type WidgetInstance={instanceId:string;widgetId:WidgetId;x:number;y:number;width:number;height:number;config:WidgetConfig;surfaceOverride:Surface;collapsed?:boolean;accent?:WidgetAccent};
 export type SavedWorkspace={id:string;name:string;widgets:WidgetInstance[]};
 export type ComposerPreferences={version:1;activeId:string;surface:Surface;workspaces:SavedWorkspace[]};
 export const newId=()=>crypto.randomUUID();
 export const defaultPreferences=():ComposerPreferences=>({version:1,activeId:'my-workspace',surface:'auto',workspaces:[{id:'my-workspace',name:'My Workspace',widgets:[]}]});
 const integer=(v:unknown,fallback:number,min:number,max:number)=>typeof v==='number'&&Number.isFinite(v)?Math.max(min,Math.min(max,Math.round(v))):fallback;
 export const surface=(v:unknown):Surface=>v==='solid'||v==='glass'||v==='transparent'?v:'auto';
-export const overlap=(a:WidgetInstance,b:WidgetInstance)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+export const overlap=(a:WidgetInstance,b:WidgetInstance)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+layoutHeight(b)&&a.y+layoutHeight(a)>b.y;
 export function boundGeometry(w:WidgetInstance):WidgetInstance {
  const def=widgetDefinition(w.widgetId)!;const width=integer(w.width,def.defaultWidth,def.minWidth,COLUMNS);
  return {...w,width,height:integer(w.height,def.defaultHeight,def.minHeight,12),x:integer(w.x,0,0,COLUMNS-width),y:integer(w.y,0,0,240)};
@@ -18,7 +21,7 @@ export function boundGeometry(w:WidgetInstance):WidgetInstance {
 export function settle(widgets:WidgetInstance[],priority?:string):WidgetInstance[] {
  const placed:WidgetInstance[]=[];
  const order=priority?[...widgets.filter(w=>w.instanceId===priority),...widgets.filter(w=>w.instanceId!==priority)]:widgets;
- for(const value of order){let w=boundGeometry(value);let hits:WidgetInstance[];while((hits=placed.filter(p=>overlap(w,p))).length)w={...w,y:Math.max(...hits.map(p=>p.y+p.height))};placed.push(w);}
+ for(const value of order){let w=boundGeometry(value);let hits:WidgetInstance[];while((hits=placed.filter(p=>overlap(w,p))).length)w={...w,y:Math.max(...hits.map(p=>p.y+layoutHeight(p)))};placed.push(w);}
  return widgets.map(w=>placed.find(p=>p.instanceId===w.instanceId)!);
 }
 export function normalizePreferences(raw:unknown):ComposerPreferences {
@@ -30,7 +33,7 @@ export function normalizePreferences(raw:unknown):ComposerPreferences {
   const ids=new Set<string>();const widgets:WidgetInstance[]=[];
   for(const v of (Array.isArray(value.widgets)?value.widgets:[]).slice(0,MAX_WIDGETS)){
    if(!v||!widgetDefinition(v.widgetId)||typeof v.instanceId!=='string'||v.instanceId.length>80||ids.has(v.instanceId))continue;ids.add(v.instanceId);
-   widgets.push(boundGeometry({instanceId:v.instanceId,widgetId:v.widgetId,x:v.x,y:v.y,width:v.width,height:v.height,config:{compact:v.config?.compact===true,limit:[2,5,10].includes(v.config?.limit)?v.config.limit:5},surfaceOverride:surface(v.surfaceOverride)}));
+   widgets.push(boundGeometry({instanceId:v.instanceId,widgetId:v.widgetId,x:v.x,y:v.y,width:v.width,height:v.height,config:{compact:v.config?.compact===true,limit:[2,5,10].includes(v.config?.limit)?v.config.limit:5},surfaceOverride:surface(v.surfaceOverride),collapsed:v.collapsed===true,accent:WIDGET_ACCENTS.includes(v.accent!)?v.accent:'default'}));
   }
   workspaces.push({id:value.id,name:typeof value.name==='string'&&value.name.trim()?value.name.trim().slice(0,60):'My Workspace',widgets:settle(widgets)});
  }
@@ -65,5 +68,5 @@ export function placeNew(widgets:WidgetInstance[],value:WidgetInstance):WidgetIn
  }
  return candidate;
 }
-export function createWidget(widgetId:WidgetId):WidgetInstance{const d=widgetDefinition(widgetId)!;return {instanceId:newId(),widgetId,x:0,y:0,width:d.defaultWidth,height:d.defaultHeight,config:{limit:5},surfaceOverride:'auto'};}
+export function createWidget(widgetId:WidgetId):WidgetInstance{const d=widgetDefinition(widgetId)!;return {instanceId:newId(),widgetId,x:0,y:0,width:d.defaultWidth,height:d.defaultHeight,config:{limit:5},surfaceOverride:'auto',collapsed:false,accent:'default'};}
 export const stackedOrder=(widgets:WidgetInstance[])=>[...widgets].sort((a,b)=>a.y-b.y||a.x-b.x||a.instanceId.localeCompare(b.instanceId));

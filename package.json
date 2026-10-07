@@ -94,7 +94,12 @@
     "test:ui-consistency": "tsx scripts/ui-consistency-test.ts",
     "test:roster-breaks:integration": "tsx scripts/roster-breaks-integration-test.ts",
     "test:router-coverage:live": "tsx scripts/router-coverage-live-test.ts",
-    "test:router-entities": "tsx scripts/entity-resolution-test.ts"
+    "test:router-entities": "tsx scripts/entity-resolution-test.ts",
+    "test:semantic-admin": "tsx scripts/semantic-admin-test.ts",
+    "test:semantic-duplicates:local": "tsx scripts/semantic-duplicate-calibration.ts",
+    "semantic:platform-authority": "tsx scripts/semantic-platform-authority.ts",
+    "test:support": "tsx scripts/support-integration-test.ts",
+    "test:product-polish": "tsx scripts/product-polish-test.ts && tsx scripts/cursor-motion-benchmark.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
