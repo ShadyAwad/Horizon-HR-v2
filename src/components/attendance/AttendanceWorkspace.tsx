@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, apiUrl } from '../../lib/api';
+import { apiFetch, apiFetchShared, apiUrl } from '../../lib/api';
 import { readApiJson } from '../../lib/api-response';
 import { useLanguage } from '../../lib/LanguageContext';
 
@@ -10,7 +10,7 @@ const input = 'min-h-11 min-w-0 rounded-lg border border-[var(--stanza-border-su
 const button = 'stanza-secondary-action min-h-11 rounded-lg border border-[var(--stanza-border-subtle)] px-3 py-2 text-sm font-bold disabled:opacity-50';
 async function api(path: string, body?: unknown, method = 'POST') {
   let res: Response;
-  try { res=await apiFetch(apiUrl(path),body===undefined?{cache:'no-store'}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  try { res=await (body===undefined?apiFetchShared:apiFetch)(apiUrl(path),body===undefined?{cache:'no-store'}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
   catch { throw new Error('Unable to reach the attendance service. Check your connection and try again.'); }
   return readApiJson(res);
 }

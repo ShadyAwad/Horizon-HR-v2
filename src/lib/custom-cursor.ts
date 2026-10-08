@@ -1,3 +1,4 @@
+import {cursorProfileActive,recordCursorWork} from './cursor-profile';
 import { hasCustomCursor, normaliseCustomTheme, type CustomThemeConfig } from './custom-theme';
 
 // One shared RAF queue for the applied cursor and all local previews. Switching
@@ -10,9 +11,10 @@ function requestFrame(callback: Frame) {
   if (!sharedRaf) sharedRaf = window.requestAnimationFrame((now) => {
     sharedRaf = 0;
     const batch = [...pending]; pending.clear();
-    for (const frame of batch) frame(now);
+    for (const frame of batch) {const start=import.meta.env?.DEV&&cursorProfileActive()?performance.now():0;frame(now);if(import.meta.env?.DEV)recordCursorWork('frame',start);}
   });
 }
+export const cursorSchedulingState=()=>({pending:pending.size,raf:Boolean(sharedRaf)});
 function cancelFrame(callback: Frame) {
   pending.delete(callback);
   if (!pending.size && sharedRaf) { window.cancelAnimationFrame(sharedRaf); sharedRaf = 0; }
@@ -139,6 +141,8 @@ export function installCustomCursor(value: CustomThemeConfig, target: HTMLElemen
       requestFrame(frame); // Finite fade; movement is the only way to extend it.
     };
     const move = (event: PointerEvent) => {
+      const profileStart=import.meta.env?.DEV&&cursorProfileActive()?performance.now():0;
+      try {
       if (event.pointerType === 'touch') { stop(); return; }
       const element = event.target instanceof Element ? event.target : null;
       if (!preview && element?.closest('dialog, [role="dialog"], [role="alertdialog"], [data-custom-cursor-preview]')) { stop(); return; }
@@ -156,6 +160,7 @@ export function installCustomCursor(value: CustomThemeConfig, target: HTMLElemen
         started = true; lastFrame = lastMove - 16;
       }
       requestFrame(frame);
+      } finally {if(import.meta.env?.DEV)recordCursorWork('handler',profileStart);}
     };
     const down = (event: PointerEvent) => { move(event); if (started) { pressed = true; requestFrame(frame); } };
     const up = () => { if (started) { pressed = false; requestFrame(frame); } };

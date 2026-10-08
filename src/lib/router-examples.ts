@@ -1,6 +1,14 @@
 // Approved multilingual corpus, separate from short exact aliases. Examples are navigation requests,
 // never tenant facts. Keep different operational intents separate; cancellation is unsupported.
 export const INTENT_EXAMPLES:Record<string,readonly string[]>={
+ employee_equipment:['Show equipment allocated to an employee','Find an employee’s assigned laptop','اعرض معدات موظف','عايز اشوف عهدة موظف','employee assigned equipmnt'],
+ asset_holder:['Find the person assigned to an asset','Who is responsible for this inventory item','من يحمل هذا الجهاز','الجهاز ده متسلم لمين','asset custdy holder'],
+ support_lookup:['Find unresolved IT service requests','Show my service desk tickets','اعرض طلبات الدعم المفتوحة','وريني طلبات الدعم بتاعتي','open IT tickets بتاعتي','unresolved suport tickets'],
+ support_report:['Prepare an equipment damage report','Open a support request form for a broken device','افتح نموذج للإبلاغ عن تلف جهاز','عايز ابلغ عن جهاز مكسور','prefill a damaged equipmnt request'],
+ hiring_jobs_query:['List current open vacancies','Show available recruitment positions','اعرض الوظائف الشاغرة','وريني الوظايف المتاحة','open vacncies'],
+ hiring_candidates_query:['List candidates awaiting an offer','Count applicants in screening','اعرض المرشحين في مرحلة الفحص','وريني المرشحين في مرحلة العرض','candidate screeening count'],
+ hiring_interviews_query:['List candidate interviews scheduled today','Who has a recruiting interview today','اعرض مقابلات التوظيف اليوم','مين عنده مقابلة توظيف النهارده','intervews today'],
+
  employee_grievance_lookup:["show me an employee's grievance",'open the grievance for this employee',"find {employee}'s grievance","show me {employee}'s disciplinary grievance",'grievance case for {employee}','grievance for the employee at {location}','employee complaint case','disciplinary case for an employee',"show me {employee}'s disciplinary grievance from {location}",'وريني الشكوى بتاعت الموظف','افتح قضية الموظف','اعرض شكوى الموظف في الموقع','عايز اشوف شكوى {employee}','grievance بتاعت الموظف','find employee greivance','look up the complaint belonging to a colleague'],
  appearance_settings:['How do I customize the theme','Where can I change the pointer effects','I want a darker interface','Use a light appearance','change my cursor','عايز اغير شكل البرنامج','اختيار مظهر التطبيق','عايز الوضع الداكن','dark mode عايز','cursor effects فين','thme settings'],
  font_settings:['Make the text easier to read','Where can I enlarge the font','How do I change text size','عايز اكبر الخط','تغيير حجم النص','غير الخط','font size عايز','larger txt'],

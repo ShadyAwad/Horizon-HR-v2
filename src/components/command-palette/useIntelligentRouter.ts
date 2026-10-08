@@ -32,7 +32,7 @@ export function useIntelligentRouter(query:string,normalResults:number,commands:
   // Re-resolve server proposals through both allowlists and currently visible commands.
   const intents=result?.outcome==='matched'?[getIntent(result.intentKey)]:result?.outcome==='ambiguous'&&Array.isArray(result.choices)?result.choices.map(getIntent):[];
   const routedCommands=[...new Map(intents.flatMap(i=>{
-    if(i?.entities && (result?.entityRoute?.status!=='resolved'||!result.entityRoute.caseId||!/^[0-9a-f-]{36}$/i.test(result.entityRoute.caseId)||!Array.isArray(result.entityRoute.cases)||!result.entityRoute.cases.some(row=>row.id===result.entityRoute!.caseId)))return [];
+    if(i?.key==='employee_grievance_lookup' && (result?.entityRoute?.status!=='resolved'||!result.entityRoute.caseId||!/^[0-9a-f-]{36}$/i.test(result.entityRoute.caseId)||!Array.isArray(result.entityRoute.cases)||!result.entityRoute.cases.some(row=>row.id===result.entityRoute!.caseId)))return [];
     if(!i || !ACTIONS.has(i.actionKey) || result?.outcome==='matched'&&(result.actionKey!==i.actionKey || result.commandId!==i.commandId))return [];
     const command=commands.find(c=>c.id===i.commandId);return command?[command]:[];
   }).map(command=>[command.id,command] as const)).values()];

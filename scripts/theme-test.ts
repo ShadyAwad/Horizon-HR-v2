@@ -305,10 +305,11 @@ for (const path of ['src/components/navigation/DashboardNavigation.tsx', 'src/co
 }
 console.log('Semantic primary Passkey and transparent close glyph interaction contracts passed');
 
-// Existing custom palettes retain their exact values when new fields are unset.
+// Snapshot includes the committed 24% transparent-surface contrast guard.
+// Exhaustive contrast assertions above remain the safety authority.
 const legacyTokens = samples.flatMap((color) => (['light', 'dark'] as const).map((mode) =>
   Object.fromEntries(Object.entries(deriveCustomTheme(color, mode).tokens).filter(([key]) => key !== 'text-disabled' && !key.startsWith('primary-action') && !key.startsWith('secondary-action')))));
-assert.equal(createHash('sha256').update(JSON.stringify(legacyTokens)).digest('hex'), '34ff665118583a9f0f4d00ce33a39e6bae25fbb7b49072747be5e264e8eb835b');
+assert.equal(createHash('sha256').update(JSON.stringify(legacyTokens)).digest('hex'), '13ad2c5f1278ac0b410019066e3f8edfff8be258e38de900632a6e8cb6a4d181');
 const migrated = readStanzaPreferences(JSON.stringify({ customAccent: '#2563eb', backgroundPreset: 'custom' }));
 assert.deepEqual(migrated.customTheme, { ...DEFAULT_CUSTOM_THEME, accent: '#2563EB' });
 for (const malformed of [null, [], 'invalid', 7, { accent: 'bad', primaryAction: 'red', cursorEffect: 'anything', cursorTrailLength: Infinity, cursorTrailIntensity: '90' }]) {

@@ -1,3 +1,4 @@
+import {setApiRequestIdentity} from './lib/api';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Login } from './pages/Login';
 import { LanguageProvider } from './lib/LanguageContext';
@@ -16,6 +17,7 @@ const loadResetPassword = () => import('./pages/ResetPassword').then((module) =>
 const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
 const loadPublicAssetVerification = () => import('./pages/PublicAssetVerification').then((module) => ({ default: module.PublicAssetVerification }));
 const loadInteractionMicrobenchmark = () => import('./components/dev/InteractionMicrobenchmark');
+const PublicJobApplication=lazy(()=>import('./pages/PublicJobApplication'));
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
 const ResetPassword = lazy(loadResetPassword);
@@ -77,6 +79,7 @@ function getStoredUser() {
 }
 
 export default function App() {
+  const publicJobMatch=/^\/careers\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const isInteractionMicrobenchmark = import.meta.env.DEV && new URLSearchParams(window.location.search).get('stanzaPerfLab') === '1';
   const publicEmployeeMatch = /^\/verify\/employee\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const isPublicEmployeeVerification = Boolean(publicEmployeeMatch);
@@ -122,7 +125,7 @@ export default function App() {
       .then((user) => {
         if (!user) return;
         if (cancelled) return;
-        setAuthUser(user);
+        setApiRequestIdentity(user); setAuthUser(user);
         window.localStorage.setItem('horizon-auth-user', JSON.stringify(user));
         setAuthState('authenticated');
       })
@@ -218,7 +221,7 @@ export default function App() {
     const pulseComplete = waitForAuthPulse();
     startAuthTransition('logging-in', async () => {
       await Promise.all([loadDashboard(), pulseComplete]);
-      setAuthUser(nextUser);
+      setApiRequestIdentity(nextUser); setAuthUser(nextUser);
       setPendingRecognition(recognition || null);
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
       setAuthState('authenticated');
@@ -232,12 +235,12 @@ export default function App() {
       await apiFetch(apiUrl('/api/auth/logout'), { method: 'POST' }).catch(() => undefined);
       window.localStorage.removeItem('horizon-auth-user');
       setFocusLoginEmail(true);
-      setAuthState('login');
+      setApiRequestIdentity(null); setAuthState('login');
     });
   };
 
   const updateAuthUser = (nextUser: AuthUser) => {
-    setAuthUser(nextUser);
+    setApiRequestIdentity(nextUser); setAuthUser(nextUser);
     window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
   };
 
@@ -254,7 +257,7 @@ export default function App() {
     setAuthBackgroundPulse('loading');
     startAuthTransition('returning-login', () => {
       setFocusLoginEmail(true);
-      setAuthState('login');
+      setApiRequestIdentity(null); setAuthState('login');
     });
   };
 
@@ -263,7 +266,7 @@ export default function App() {
     startAuthTransition('returning-login', () => {
       window.history.replaceState({}, '', '/');
       setFocusLoginEmail(true);
-      setAuthState('login');
+      setApiRequestIdentity(null); setAuthState('login');
     });
   };
 
@@ -275,7 +278,7 @@ export default function App() {
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <InteractionMicrobenchmark />
            </Suspense>
-         ) : isPublicEmployeeVerification ? (
+         ) : publicJobMatch ? (<Suspense fallback={<p>Loading…</p>}><PublicJobApplication token={publicJobMatch[1]}/></Suspense>) : isPublicEmployeeVerification ? (
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <PublicEmployeeVerification token={publicEmployeeMatch![1]} />
            </Suspense>

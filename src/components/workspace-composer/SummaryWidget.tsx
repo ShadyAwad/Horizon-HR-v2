@@ -25,6 +25,9 @@ export default function SummaryWidget({widget,result,onRefresh}:{widget:WidgetIn
  case 'expenses':rows=(data.claims||[]).map((r:any)=>({title:r.merchantName,detail:`${r.amount} ${r.currency} · ${r.status}`}));break;
 
  case 'grievances':rows=(data.grievances||[]).map((r:any)=>({title:`${r.case_number} · ${r.title}`,detail:GRIEVANCE_COPY[r.status as keyof typeof GRIEVANCE_COPY]?.[isRtl?1:0]||r.status}));break;
+ case 'openRoles':rows=(data.jobs||[]).map((r:any)=>({title:r.title,detail:r.status}));break;
+ case 'hiringInterviews':rows=(data.interviews||[]).map((r:any)=>({title:r.title,detail:new Date(r.starts_at).toLocaleString(isRtl?'ar':'en')}));break;
+ case 'pendingOffers':return <p className="composer-metric">{data.offersPending??text('Permission required','تتطلب صلاحية')}</p>;
  case 'hiring':rows=(data.applicants||[]).map((r:any)=>({title:r.positionTitle,detail:`${r.fullName} · ${r.stage}`}));break;
  case 'feed':rows=(data.posts||[]).map((r:any)=>({title:r.title,detail:(r.content_text||r.contentText||'').slice(0,180)}));break;
  }

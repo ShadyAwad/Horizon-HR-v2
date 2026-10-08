@@ -162,7 +162,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         if (!applicant) throw fail(404, 'HIRING_APPLICANT_NOT_FOUND', 'Applicant not found.');
         const notes = canViewNotes ? (await client.query(`SELECT n.id,n.note_text,n.note_type,n.visibility,n.created_at,n.updated_at,e.full_name AS author_name,e.role AS author_role FROM hiring_applicant_notes n JOIN employees e ON e.tenant_id=n.tenant_id AND e.id=n.author_id WHERE n.tenant_id=$1 AND n.applicant_id=$2 AND n.deleted_at IS NULL AND ($3::boolean OR n.visibility='hiring_team') ORDER BY n.created_at DESC`, [tenantId,id,canViewHrOnly])).rows : [];
         const handoffs = (await client.query(`SELECT h.*,f.full_name AS from_user_name,t.full_name AS to_user_name,b.full_name AS handed_off_by_name FROM hiring_handoffs h LEFT JOIN employees f ON f.tenant_id=h.tenant_id AND f.id=h.from_user_id JOIN employees t ON t.tenant_id=h.tenant_id AND t.id=h.to_user_id JOIN employees b ON b.tenant_id=h.tenant_id AND b.id=h.handed_off_by WHERE h.tenant_id=$1 AND h.applicant_id=$2 ORDER BY h.created_at DESC`, [tenantId,id])).rows;
-        const history = (await client.query(`SELECT s.*,e.full_name AS actor_name FROM hiring_stage_history s JOIN employees e ON e.tenant_id=s.tenant_id AND e.id=s.actor_id WHERE s.tenant_id=$1 AND s.applicant_id=$2 ORDER BY s.created_at DESC`, [tenantId,id])).rows;
+        const history = (await client.query(`SELECT s.*,e.full_name AS actor_name FROM hiring_stage_history s LEFT JOIN employees e ON e.tenant_id=s.tenant_id AND e.id=s.actor_id WHERE s.tenant_id=$1 AND s.applicant_id=$2 ORDER BY s.created_at DESC`, [tenantId,id])).rows;
         return { applicant, notes, handoffs, stageHistory: history };
       });
       res.json({ success: true, ...detail });
@@ -204,6 +204,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
           const finalTransition = isFinalHiringTransition(current.stage, target);
           throw fail(finalTransition ? 403 : 409, finalTransition ? 'HIRING_PERMISSION_DENIED' : 'HIRING_INVALID_TRANSITION', 'Stage transition is not allowed.');
         }
+        if(target==='hired'&&current.job_id)throw fail(409,'HIRING_CONVERSION_REQUIRED','Confirm Hire from the accepted offer workflow.');
         const row = (await client.query(`UPDATE hiring_applicants SET stage=$3,updated_by=$4,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING *`, [tenantId, id, target, employeeId])).rows[0];
         await client.query(`INSERT INTO hiring_stage_history(tenant_id,applicant_id,actor_id,previous_stage,new_stage,reason)VALUES($1,$2,$3,$4,$5,$6)`, [tenantId, id, employeeId, current.stage, target, reason]);
         await client.query(`UPDATE hiring_handoffs SET status='completed',completed_at=NOW() WHERE tenant_id=$1 AND applicant_id=$2 AND status IN('pending','acknowledged')`, [tenantId, id]);
@@ -236,6 +237,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
       const result = await withTenant(tenantId, async (client) => {
         const applicant = (await client.query(`SELECT * FROM hiring_applicants WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId, id])).rows[0];
         if (!applicant) throw fail(404, 'HIRING_APPLICANT_NOT_FOUND', 'Applicant not found.');
+        if(target==='hired'&&applicant.job_id)throw fail(409,'HIRING_CONVERSION_REQUIRED','Use accepted offer conversion.');
         const reviewer = (await client.query(
           `SELECT e.id
              FROM employees e

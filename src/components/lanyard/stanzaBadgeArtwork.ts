@@ -77,7 +77,7 @@ export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}
   const secureWorkforce = isRtl ? 'منصة القوى العاملة' : 'SECURE WORKFORCE';
   const verifiedAccess = isRtl ? 'وصول موثق' : 'VERIFIED ACCESS';
   return styleBadge(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
+    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" preserveAspectRatio="none" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#020604"/>
@@ -146,7 +146,7 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
     : '';
 
   return styleBadge(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" direction="${isRtl ? 'rtl' : 'ltr'}">
+    <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" preserveAspectRatio="none" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#020604"/>

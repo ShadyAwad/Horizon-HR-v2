@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './live-employees-authorization-test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
@@ -74,13 +75,8 @@ test('elapsed duration formatting is stable', () => {
 });
 
 const routeSource = await readFile(new URL('../src/server/live-employees/live-employees-routes.ts', import.meta.url), 'utf8');
-const dashboardSource = await readFile(new URL('../src/pages/Dashboard.tsx', import.meta.url), 'utf8');
 const panelSource = await readFile(new URL('../src/components/live-employees/LiveEmployeesPanel.tsx', import.meta.url), 'utf8');
 const languageSource = await readFile(new URL('../src/lib/LanguageContext.tsx', import.meta.url), 'utf8');
-
-test('endpoint requires authentication, exact HR role, and live-attendance permission', () => {
-  assert.match(routeSource, /demoAuth,\s*requireRole\(\['hr_admin'\]\),\s*requirePermission\('attendance\.view_live'\)/s);
-});
 
 test('query is tenant scoped and excludes inactive or closed-shift employees', () => {
   assert.match(routeSource, /time_log\.tenant_id = \$1/);
@@ -100,13 +96,6 @@ test('public contract minimizes employee and location data', () => {
   for (const forbidden of ['email AS', 'salary', 'phone', 'latitude AS', 'longitude AS', 'clock_in_location AS']) {
     assert.equal(routeSource.includes(forbidden), false, `unexpected response projection: ${forbidden}`);
   }
-});
-
-test('dashboard uses permission visibility while the server retains role and permission authority', () => {
-  assert.match(dashboardSource, /canViewLiveEmployees = hasPermission\(user, 'attendance\.view_live'\)/);
-  assert.match(dashboardSource, /activeTab === 'liveEmployees' && canViewLiveEmployees/);
-  assert.match(routeSource, /requireRole\(\['hr_admin'\]\)/);
-  assert.match(routeSource, /requirePermission\('attendance\.view_live'\)/);
 });
 
 test('polling pauses while hidden, refreshes on visibility, and aborts on cleanup', () => {
@@ -175,11 +164,16 @@ if (process.env.LIVE_EMPLOYEES_INTEGRATION === 'true') {
     );
   }
 
-  const { getDbPool } = await import('../src/lib/hr-background');
-  const tenantRows = await getDbPool().query<{ id: string }>(
+  const { getDbPool, withTenant } = await import('../src/lib/hr-background');
+  const { canReadLivePresence } = await import('../src/server/intelligent-router/live-presence');
+  for (const session of [admin, manager, employee]) {
+    const allowed = await withTenant(session.user.tenantId, client => canReadLivePresence(client, {tenantId: session.user.tenantId, employeeId: session.user.id}));
+    assert.equal(allowed, session === admin, 'Semantic live-employee intent must enforce the real server authority');
+  }
+  const tenantRows = await withTenant(admin.user.tenantId, client => client.query<{ id: string }>(
     'SELECT id FROM employees WHERE tenant_id = $1',
     [admin.user.tenantId],
-  );
+  ));
   const tenantEmployeeIds = new Set(tenantRows.rows.map((row) => row.id));
   assert(ids.every((id) => tenantEmployeeIds.has(id)), 'response included a cross-tenant employee');
 

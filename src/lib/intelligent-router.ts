@@ -1,9 +1,11 @@
+import {normalizeQuery} from './router-normalization';
+export {normalizeQuery} from './router-normalization';
 import type { EntityRoute, EntityParameters, EntityTemplate } from './router-entities';
 import { ADDITIONAL_INTENTS } from './router-intents';
 /** Shared allowlist. IDs refer to existing palette commands, never provider URLs/tools. */
 export type ActionCategory = 'navigate' | 'display' | 'open_existing_flow';
 export type SafetyLevel = 'read_only' | 'requires_confirmation' | 'mutation';
-export type Intent = { key: string; commandId: string; actionKey: string; category: ActionCategory; safety: SafetyLevel; description: string; permissions: readonly string[]; aliases: readonly string[]; rule?: RegExp; enabled: boolean; entities?: { required: readonly ['employee']; optional: readonly ['location'] } };
+export type Intent = { key: string; commandId: string; actionKey: string; category: ActionCategory; safety: SafetyLevel; description: string; permissions: readonly string[]; aliases: readonly string[]; rule?: RegExp; enabled: boolean; entities?: { required: readonly import('./router-entities').EntityType[]; optional: readonly import('./router-entities').EntityType[] } };
 const intent = (key: string, commandId: string, description: string, permissions: string[], aliases: string[], rule?: RegExp): Intent => ({ key, commandId, actionKey: `OPEN_${key.toUpperCase()}`, category: ['leave:request','expenses:new','router:submit-grievance'].includes(commandId) ? 'open_existing_flow' : 'navigate', safety: 'read_only', description, permissions, aliases, rule, enabled: true });
 export const INTENTS: readonly Intent[] = [
   intent('request_leave', 'leave:request', 'Open personal leave request form for user review; never submit.', ['leave.request.self', 'leave.create'], ['request leave', 'apply for leave', 'طلب اجازة', 'عايز اجازة'], /^(?:i (?:want|need|would like) (?:to request |to take )?(?:leave|time off)|(?:عايز|محتاج) (?:اخد )?اجازه)(?:\s.*)?$/u),
@@ -22,16 +24,20 @@ export const INTENTS: readonly Intent[] = [
   intent('company_feed', 'navigation:feed', 'Open company feed.', [], ['company feed', 'company news', 'announcement', 'announcements', 'company announcement', 'company announcements', 'news', 'updates', 'company updates', 'feed', 'اخبار الشركة', 'اعلانات الشركة']),
   intent('workspace_composer', 'navigation:composer', 'Open Workspace Composer.', [], ['workspace composer', 'composer', 'منشئ مساحة العمل']),
   intent('hiring', 'hiring:applicants', 'Open authorized hiring workspace.', ['hiring.view'], ['hiring', 'applicants', 'التوظيف']),
+  {...intent('employee_equipment','navigation:assets','Read an authorized employee’s assigned assets.',['assets.view'],['employee equipment'],/^(?:what (?:laptop|equipment).+ (?:using|have)\??|show .+ assigned equipment|.+ معاه لابتوب ايه\??)$/u),entities:{required:['employee'],optional:['asset']}},
+  {...intent('asset_holder','navigation:assets','Read authorized asset assignment; resolve asset explicitly.',['assets.view'],['asset holder'],/^(?:who has .+|الجهاز ده مع مين(?: .+)?)$/u),entities:{required:['asset'],optional:[]}},
+  {...intent('support_lookup','navigation:support','Read own tickets or authorized support queue and employee/asset/location filters.',[],['show my it tickets','show open it tickets','show unresolved support requests','show tickets assigned to me','طلبات الدعم الخاصة بي'],/^(?:show (?:open |unresolved )?(?:it |support )?(?:tickets|requests|support issues)(?: .*)?|show .+ support tickets|(?:اعرض|وريني) (?:طلبات|تذاكر) (?:الدعم|دعم).*)$/u),entities:{required:[],optional:['employee','asset','location']}},
+  {...intent('support_report','navigation:support','Resolve equipment and prefill the existing support form; never submit.',[],['report equipment damage'],/^(?:report .+ (?:as )?(?:damaged|broken)|open an it ticket for .+|(?:بلغ|ابلغ) .+ (?:تالف|مكسور))$/u),category:'open_existing_flow',safety:'read_only',entities:{required:['asset'],optional:['employee']}},
+  {...intent('hiring_jobs_query','hiring:applicants','Read authorized open job summaries.',['hiring.view'],['show open jobs','اعرض الوظائف المفتوحة']),entities:{required:[],optional:['job_opening']}},
+  {...intent('hiring_candidates_query','hiring:applicants','Read authorized candidates by job or stage or resolve a named candidate.',['hiring.view'],['show candidates in offer stage','how many candidates are in screening','اعرض المرشحين في مرحلة العرض'],/^(?:show applicants for .+|اعرض المتقدمين لوظيفة .+|open .+ application|show candidates in (?:offer|screening)(?: stage)?|how many candidates are in screening|افتح طلب .+)$/u),entities:{required:[],optional:['job_opening','candidate']}},
+  {...intent('hiring_interviews_query','hiring:applicants','Read upcoming hiring interviews.',['hiring.view'],['who is interviewing today','who is interviewing today?','من لديه مقابلة اليوم']),entities:{required:[],optional:[]}},
   ...ADDITIONAL_INTENTS.map(([key,command,description,permissions,aliases])=>intent(key,command,description,[...permissions],aliases.split('|'))),
 ];
 // Existing module commands remain the final authority; aliases never grant permissions.
 export const ACTIONS = new Map(INTENTS.map(i => [i.actionKey, { commandId: i.commandId, category: i.category, safety: i.safety }]));
 export const getIntent = (key: unknown) => typeof key === 'string' ? INTENTS.find(i => i.key === key && i.enabled && i.safety !== 'mutation' && ACTIONS.has(i.actionKey)) : undefined;
-export function normalizeQuery(text: string) {
-  return text.normalize('NFKC').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640]/gu, '').replace(/[أإآ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ة/gu, 'ه').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/gu, ' ').trim();
-}
 /** Unsupported operational verbs must not become equivalent to read/open intents. */
-export const unsafeOperation = (text: string) => /(?:\b(?:cancel|delete|close|modify|change salary|approve|reject|execute|sql|javascript)\b|الغاء|الغي|احذف|اغلاق|اقفل|تعديل الراتب|غير المرتب)/u.test(text);
+export const unsafeOperation = (text: string) => /(?:\b(?:cancel|delete|close|modify|change salary|change compensation|hire|send (?:an? )?offer|approve|reject|execute|sql|javascript)\b|الغاء|الغي|احذف|اغلاق|اقفل|تعديل الراتب|غير المرتب|وظف|عيّن|ارفض|ارسل عرض)/u.test(text);
 export type RouteMethod = 'existing' | 'exact' | 'rule' | 'semantic' | 'llm' | 'none';
 export type ProviderFailureReason = 'model_unavailable' | 'authorization_rejected' | 'rate_limited' | 'request_rejected' | 'network_error' | 'incomplete_response' | 'catalog_invalid';
 export type ProviderDiagnostics = { upstreamCode?:string; errorType?:string; parameter?:string; detail?:string; requestId?:string; eventType?:string; responseStatus?:string; termination?:string; contentType?:string };

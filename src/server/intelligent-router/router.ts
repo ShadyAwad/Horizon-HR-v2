@@ -2,7 +2,7 @@ import { INTENTS, getIntent, normalizeQuery, unsafeOperation, type Intent, type 
 import { ReasoningUnavailable, EmbeddingCache, validateReasoning, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
 export type SemanticHit = { intentKey: string; score: number; promoted?:boolean; exampleId?:string };
 export interface SemanticSearch { search(vector: number[], provider: EmbeddingProvider, allowedKeys: string[]): Promise<SemanticHit[]> }
-export type RouterDependencies = { allowed: (intent: Intent) => Promise<boolean>; available?: () => Promise<Intent[]>; search: SemanticSearch; embedding?: EmbeddingProvider; authorization: ReasoningAuthorization; actor: { tenantId: string; employeeId: string; sessionId?: string }; cache?: EmbeddingCache; minimumScore: number; minimumMargin: number };
+export type RouterDependencies = { prepareEntityQueries?: (query:string,allowedKeys:string[])=>Promise<string[]>; allowed: (intent: Intent) => Promise<boolean>; available?: () => Promise<Intent[]>; search: SemanticSearch; embedding?: EmbeddingProvider; authorization: ReasoningAuthorization; actor: { tenantId: string; employeeId: string; sessionId?: string }; cache?: EmbeddingCache; minimumScore: number; minimumMargin: number };
 export function aggregateIntents(hits: SemanticHit[], allowed: readonly Intent[]) {
   const keys = new Set(allowed.map(i => i.key)), scores = new Map<string, number>();
   for (const hit of hits) if (keys.has(hit.intentKey) && Number.isFinite(hit.score) && hit.score <= 1 && hit.score >= -1) scores.set(hit.intentKey, Math.max(scores.get(hit.intentKey) ?? -1, hit.score));
@@ -33,7 +33,16 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
       const embeddingStart=performance.now();
       const vector = await (d.cache ?? new EmbeddingCache()).embed(d.embedding, query, `${d.actor.tenantId}:${d.actor.employeeId}`);
       semantic.embeddingLatencyMs=performance.now()-embeddingStart;
-      const hits = aggregateIntents(await d.search.search(vector, d.embedding, allowed.map(i => i.key)), allowed);
+      const allowedKeys=allowed.map(i=>i.key);
+      let hits = aggregateIntents(await d.search.search(vector,d.embedding,allowedKeys),allowed);
+      if((!hits.length||hits[0].score<d.minimumScore)&&d.prepareEntityQueries){
+        const typedHits:SemanticHit[]=[];
+        for(const template of (await d.prepareEntityQueries(raw,allowedKeys)).slice(0,3)){
+          const typedVector=await (d.cache??new EmbeddingCache()).embed(d.embedding,normalizeQuery(template),`${d.actor.tenantId}:${d.actor.employeeId}`);
+          typedHits.push(...await d.search.search(typedVector,d.embedding,allowedKeys));
+        }
+        hits=aggregateIntents([...hits,...typedHits],allowed);
+      }
       if (hits.length) {
         const top = hits[0], competing = hits[1]?.score ?? 0, margin = top.score - competing;
         semantic = { ...semantic, score: top.score, competingScore: competing, margin };

@@ -15,9 +15,9 @@ try {
   clicks.click(); clicks.cancel(); assert.equal(pending.size, 0, 'Drag/unmount cancels the pending single click');
 } finally { globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear; }
 const auto = normaliseCustomTheme({}).lanyardStyle;
-assert.deepEqual(auto, { cardColor: null, accentColor: null, strapColor: null });
+assert.deepEqual(auto, { appearanceMode: 'theme', cardColor: null, accentColor: null, strapColor: null });
 assert.deepEqual(normaliseCustomTheme({ lanyardStyle: { cardColor: 'url(bad)', accentColor: '#ff0000', strapColor: 9 } }).lanyardStyle,
-  { cardColor: null, accentColor: '#FF0000', strapColor: null });
+  { appearanceMode: 'custom', cardColor: null, accentColor: '#FF0000', strapColor: null });
 assert.equal(buildStanzaFrontBadgeSvg(), buildStanzaFrontBadgeSvg({ style: auto }), 'Auto preserves original artwork exactly');
 for (const cardColor of ['#FFFFFF', '#000000', '#777777', '#FF00FF']) {
  const colors = resolveLanyardColors({ ...auto, cardColor, accentColor: cardColor });

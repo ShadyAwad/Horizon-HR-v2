@@ -95,6 +95,48 @@ async function draftInput(c: PoolClient, u: Actor, b: Record<string, unknown>) {
     return { kind, ids, subject, body, bodyJson, link, templateId, vars };
 }
 export async function createCommunicationDraft(c:PoolClient,u:Actor,body:Record<string,unknown>){await requirePermission(c, u, 'communications.send'); const d = await draftInput(c, u, body); const row = (await c.query('INSERT INTO communication_messages(tenant_id,sender_id,subject,body,body_json,category,recipient_ids,template_id,related_employee_id,related_candidate_id,related_meeting_id,variables,related_grievance_id) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12::jsonb,$13) RETURNING *', [u.tenantId, u.employeeId, d.subject, d.body, JSON.stringify(d.bodyJson), d.kind, d.ids, d.templateId, d.link.employee, d.link.candidate, d.link.meeting, JSON.stringify(d.vars),d.link.grievance])).rows[0]; return { message: row };}
+/** Candidate calendar invitations reuse private drafts, snapshot validation and delivery. */
+export async function createCandidateInterviewInvitation(c:PoolClient,u:Actor,interviewId:string) {
+    await requirePermission(c,u,'communications.send');
+    await requirePermission(c,u,'communications.meetings.manage');
+    await requirePermission(c,u,'hiring.schedule_interviews');
+    await requirePermission(c,u,'hiring.view');
+    const row=(await c.query(`SELECT m.*,a.id candidate_id,a.email candidate_email FROM hiring_interviews i JOIN communication_meetings m ON m.tenant_id=i.tenant_id AND m.id=i.meeting_id JOIN hiring_applicants a ON a.tenant_id=i.tenant_id AND a.id=i.applicant_id WHERE i.tenant_id=$1 AND i.id=$2 FOR SHARE OF m`,[u.tenantId,safeId(interviewId)])).rows[0];
+    if(!row||row.status!=='scheduled')throw fail(404,'NOT_FOUND','Interview unavailable.');
+    if(typeof row.candidate_email!=='string'||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.candidate_email))throw fail(400,'INVALID_RECIPIENT','Candidate email is unavailable.');
+    const key=`${row.id}-${row.version}-${u.employeeId}-candidate-${row.candidate_id}`;
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[key]);
+    const existing=(await c.query('SELECT * FROM communication_messages WHERE tenant_id=$1 AND invitation_key=$2 AND sender_id=$3',[u.tenantId,key,u.employeeId])).rows[0];
+    if(existing)return {message:existing};
+    const organizer=(await c.query('SELECT email FROM employees WHERE tenant_id=$1 AND id=$2',[u.tenantId,row.organizer_id])).rows[0];
+    const {message}=await createCommunicationDraft(c,u,{subject:row.title,body:`${row.title}\n${new Date(row.starts_at).toISOString()} — ${new Date(row.ends_at).toISOString()}\n${row.timezone}\n${row.location}`,category:'hiring',recipientIds:[],related:{type:'candidate',id:row.candidate_id}});
+    const invitation=calendarInvitation(row,organizer.email,[row.candidate_email]);
+    return {message:(await c.query('UPDATE communication_messages SET invitation_ics=$3,invitation_key=$4 WHERE tenant_id=$1 AND id=$2 RETURNING *',[u.tenantId,message.id,invitation,key])).rows[0]};
+}
+
+export async function saveCommunicationMeeting(c: PoolClient,u: Actor,b: Record<string,any>,meetingId?:string) {
+        await requirePermission(c, u, 'communications.meetings.manage');
+        const times = meetingTimes(b.startsAt, b.endsAt, b.timezone), title = text(b.title, 'Title', 200), notes = text(b.notes || '', 'Notes', 10000, false), location = text(b.location || '', 'Location', 500, false), ids = recipients(b.attendeeIds || []);
+        await employeeEmails(c, u, ids);
+        const link = await related(c, u, b.relatedEmployeeId ? { type: 'employee', id: b.relatedEmployeeId } : null);
+        if (/^\w+:/.test(location) && !/^https:\/\//i.test(location))
+            throw fail(400, 'VALIDATION_ERROR', 'Meeting links must use HTTPS.');
+        let row;
+        if (meetingId) {
+            row = (await c.query("UPDATE communication_meetings SET title=$3,notes=$4,starts_at=$5,ends_at=$6,timezone=$7,location=$8,related_employee_id=$9,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND status='scheduled' AND version=$10 RETURNING *", [u.tenantId, safeId(meetingId), title, notes, times.startsAt, times.endsAt, times.timezone, location, link.employee, b.version])).rows[0];
+            if (!row)
+                throw fail(409, 'MEETING_CONFLICT', 'Meeting changed or is unavailable.');
+            await c.query('DELETE FROM communication_meeting_attendees WHERE tenant_id=$1 AND meeting_id=$2', [u.tenantId, row.id]);
+        }
+        else
+            row = (await c.query('INSERT INTO communication_meetings(tenant_id,organizer_id,title,notes,starts_at,ends_at,timezone,location,related_employee_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [u.tenantId, u.employeeId, title, notes, times.startsAt, times.endsAt, times.timezone, location, link.employee])).rows[0];
+        for (const id of ids)
+            await c.query('INSERT INTO communication_meeting_attendees(tenant_id,meeting_id,employee_id) VALUES($1,$2,$3)', [u.tenantId, row.id, id]);
+        await audit(c, u, meetingId ? 'meeting.updated' : 'meeting.created', row.id, row.status);
+        for (const employeeId of ids)
+            await c.query("INSERT INTO outbox_events(tenant_id,event_type,payload) VALUES($1,'notification.meeting_scheduled',$2::jsonb)", [u.tenantId, JSON.stringify({ meetingId: row.id, employeeId, notificationKey: 'system_alerts', idempotencyKey: `meeting-${row.id}-${row.version}-${employeeId}` })]);
+        return { meeting: row };
+    }
 export function registerCommunicationsRoutes(app: express.Express, { standardAuth, mutationGuard, rateLimiter, providerConfigured = emailProviderConfigured, dispatch = enqueueMessage }: Dependencies) {
     const route = (method: 'get' | 'post' | 'put', path: string, handler: (req: express.Request, c: PoolClient, u: Actor) => Promise<Record<string, unknown>>) => {
         app[method]('/api/communications' + path, standardAuth, ...(method === 'get' ? [] : [mutationGuard, rateLimiter]), async (req, res) => { try {
@@ -200,8 +242,9 @@ export function registerCommunicationsRoutes(app: express.Express, { standardAut
                     await categoryAccess(c, u, t.category);
                 }
                 if (current.invitation_ics) {
-                    const m = (await c.query('SELECT version FROM communication_meetings WHERE tenant_id=$1 AND id=$2', [u.tenantId, current.related_meeting_id])).rows[0];
-                    if (!m || !current.invitation_key.startsWith(`${current.related_meeting_id}-${m.version}-`))
+                    const meetingId=current.related_meeting_id||(current.related_candidate_id?(await c.query("SELECT meeting_id FROM hiring_interviews WHERE tenant_id=$1 AND applicant_id=$2 AND position(meeting_id::text||'-' in $3)=1",[u.tenantId,current.related_candidate_id,current.invitation_key])).rows[0]?.meeting_id:null);
+                    const m = (await c.query('SELECT version FROM communication_meetings WHERE tenant_id=$1 AND id=$2', [u.tenantId, meetingId])).rows[0];
+                    if (!m || !current.invitation_key.startsWith(`${meetingId}-${m.version}-`))
                         throw fail(409, 'STALE_INVITATION', 'Meeting changed. Prepare a new invitation.');
                 }
                 const people = await employeeEmails(c, u, current.recipient_ids);
@@ -261,29 +304,7 @@ function registerMeetings(route: Route) {
     route('get', '/meetings', async (req, c, u) => { const manage = await permitted(c, u, 'communications.meetings.manage'); if (!manage)
         await requirePermission(c, u, 'communications.meetings.view'); const page = Math.max(1, Math.min(1000, Math.floor(Number(req.query.page)) || 1)); return { meetings: (await c.query("SELECT m.*,e.full_name AS organizer_name FROM communication_meetings m JOIN employees e ON e.tenant_id=m.tenant_id AND e.id=m.organizer_id WHERE m.tenant_id=$1 AND ($3 OR m.organizer_id=$2 OR EXISTS(SELECT 1 FROM communication_meeting_attendees a WHERE a.tenant_id=m.tenant_id AND a.meeting_id=m.id AND a.employee_id=$2)) AND m.starts_at>now()-interval '1 year' AND ($5::boolean=false OR (m.status='scheduled' AND m.starts_at>=now())) ORDER BY CASE WHEN $5 THEN m.starts_at END ASC,m.starts_at DESC LIMIT 20 OFFSET $4", [u.tenantId, u.employeeId, manage, (page - 1) * 20, req.query.upcoming === 'true'])).rows, page }; });
     route('get', '/meetings/:id', async (req, c, u) => { const m = await accessible(c, u, safeId(req.params.id)); const attendees = (await c.query('SELECT e.id,e.full_name AS name,e.email FROM communication_meeting_attendees a JOIN employees e ON e.id=a.employee_id AND e.tenant_id=a.tenant_id WHERE a.tenant_id=$1 AND a.meeting_id=$2', [u.tenantId, m.id])).rows; const organizer = (await c.query('SELECT email,full_name FROM employees WHERE tenant_id=$1 AND id=$2', [u.tenantId, m.organizer_id])).rows[0]; m.organizer_name = organizer.full_name; return { meeting: m, attendees, ics: calendarInvitation(m, organizer.email, attendees.map(a => a.email)) }; });
-    const save = async (req: express.Request, c: PoolClient, u: Actor) => {
-        await requirePermission(c, u, 'communications.meetings.manage');
-        const b = req.body || {}, times = meetingTimes(b.startsAt, b.endsAt, b.timezone), title = text(b.title, 'Title', 200), notes = text(b.notes || '', 'Notes', 10000, false), location = text(b.location || '', 'Location', 500, false), ids = recipients(b.attendeeIds || []);
-        await employeeEmails(c, u, ids);
-        const link = await related(c, u, b.relatedEmployeeId ? { type: 'employee', id: b.relatedEmployeeId } : null);
-        if (/^\w+:/.test(location) && !/^https:\/\//i.test(location))
-            throw fail(400, 'VALIDATION_ERROR', 'Meeting links must use HTTPS.');
-        let row;
-        if (req.params.id) {
-            row = (await c.query("UPDATE communication_meetings SET title=$3,notes=$4,starts_at=$5,ends_at=$6,timezone=$7,location=$8,related_employee_id=$9,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND status='scheduled' AND version=$10 RETURNING *", [u.tenantId, safeId(req.params.id), title, notes, times.startsAt, times.endsAt, times.timezone, location, link.employee, b.version])).rows[0];
-            if (!row)
-                throw fail(409, 'MEETING_CONFLICT', 'Meeting changed or is unavailable.');
-            await c.query('DELETE FROM communication_meeting_attendees WHERE tenant_id=$1 AND meeting_id=$2', [u.tenantId, row.id]);
-        }
-        else
-            row = (await c.query('INSERT INTO communication_meetings(tenant_id,organizer_id,title,notes,starts_at,ends_at,timezone,location,related_employee_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [u.tenantId, u.employeeId, title, notes, times.startsAt, times.endsAt, times.timezone, location, link.employee])).rows[0];
-        for (const id of ids)
-            await c.query('INSERT INTO communication_meeting_attendees(tenant_id,meeting_id,employee_id) VALUES($1,$2,$3)', [u.tenantId, row.id, id]);
-        await audit(c, u, req.params.id ? 'meeting.updated' : 'meeting.created', row.id, row.status);
-        for (const employeeId of ids)
-            await c.query("INSERT INTO outbox_events(tenant_id,event_type,payload) VALUES($1,'notification.meeting_scheduled',$2::jsonb)", [u.tenantId, JSON.stringify({ meetingId: row.id, employeeId, notificationKey: 'system_alerts', idempotencyKey: `meeting-${row.id}-${row.version}-${employeeId}` })]);
-        return { meeting: row };
-    };
+    const save = (req:express.Request,c:PoolClient,u:Actor)=>saveCommunicationMeeting(c,u,req.body||{},req.params.id);
     route('post', '/meetings', save);
     route('put', '/meetings/:id', save);
     route('post', '/meetings/:id/status', async (req, c, u) => { await requirePermission(c, u, 'communications.meetings.manage'); if (!['completed', 'cancelled'].includes(req.body.status))

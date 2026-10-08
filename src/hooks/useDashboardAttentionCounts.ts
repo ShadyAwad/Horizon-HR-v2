@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, apiUrl } from '../lib/api';
+import { apiFetchShared, apiUrl } from '../lib/api';
 import { beginDevSpan, markDevPerformance } from '../lib/dev-performance';
 
 export type DashboardAttentionCounts = {
@@ -57,7 +57,7 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     markDevPerformance('startup:attention-count-request-start', undefined, true);
 
     try {
-      const response = await apiFetch(apiUrl('/api/dashboard/attention-counts'), {
+      const response = await apiFetchShared(apiUrl('/api/dashboard/attention-counts'), {
         headers: {
           'x-employee-id': user.id,
           'x-tenant-id': user.tenantId,

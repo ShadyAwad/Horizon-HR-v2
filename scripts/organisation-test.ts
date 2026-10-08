@@ -41,8 +41,12 @@ assert.match(demoSeed, /seedOrganisation/);
 assert.ok(demoSeed.includes("process.argv.includes('--organisation')"));
 assert.match(demoSeed, /STANZA_DEMO_ENV\s*!==\s*'true'/);
 assert.match(demoSeed, /ALLOW_DEMO_DATA_MUTATION\s*!==\s*'true'/);
-assert.match(demoSeed, /assertDatabaseMutationSafety\(process\.env\.DATABASE_URL,\s*'Demo seed',\s*true,\s*true\)/);
-const demoFixtures = await readFile('scripts/demo/core.ts', 'utf8');
+assert.match(demoSeed, /assertDatabaseMutationSafety\(migrationUrl\(\),\s*'Demo seed',\s*true,\s*true\)/);
+assert.match(demoSeed, /migrationUrl.*from ['"]\.\/migration-pool['"]/);
+  const poolSafety = await readFile('scripts/migration-pool.ts','utf8');
+  assert.match(poolSafety,/runtime\.hostname!==migration\.hostname/);
+  assert.match(poolSafety,/runtime\.pathname!==migration\.pathname/);
+  const demoFixtures = await readFile('scripts/demo/core.ts', 'utf8');
 for (const value of ['Human Resources', 'Engineering', 'Finance', 'Operations', 'Product', 'Sales & Success', 'IT', 'Executive']) {
   assert.ok(demoFixtures.includes(value), value);
 }

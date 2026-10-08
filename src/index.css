@@ -1611,3 +1611,17 @@ body{font-size:var(--text-base)}
 .composer-dialog header button{flex:none;min-width:40px;min-height:40px}
 
 .stanza-id-controls button.stanza-close-action,.stanza-id-controls button.stanza-close-action:not(:disabled):hover{color:#fff!important}
+
+/* The preview uses the physical card body's proportions, not the clip bounds. */
+.stanza-card-perspective{width:min(100%,calc((100dvh - 140px) * .716418))}
+.stanza-id-controls{justify-content:center;gap:4px;margin:0 auto 12px;width:max-content;padding:3px;border:1px solid #ffffff30;border-radius:999px;background:#111b}
+.stanza-id-controls button{border:none;background:transparent;color:#fff;padding:6px 10px;min-height:36px;font-size:var(--text-sm)}
+.stanza-id-controls button:hover{background:#ffffff18}.stanza-id-controls button:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:2px}
+
+/* Compact shared panel-surface menu. Logical edges keep it safe in RTL. */
+.stanza-surface-selector {position:relative;display:inline-flex;flex:none;padding:0;border:0;background:transparent}
+.stanza-surface-selector .stanza-surface-trigger {width:40px;min-height:40px;padding:8px;border:1px solid var(--stanza-border-default);background:var(--stanza-surface-muted)}
+.stanza-surface-menu {position:absolute;z-index:80;inset-block-start:calc(100% + 6px);inset-inline-end:0;width:190px;max-width:calc(100vw - 24px);padding:5px;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-elevated);color:var(--stanza-text-primary);box-shadow:0 8px 28px #0003}
+.stanza-surface-menu button {display:flex;width:100%;justify-content:flex-start;text-align:start;min-height:40px}
+.stanza-surface-menu button span:last-child {margin-inline-start:auto}
+.stanza-surface-menu button[aria-checked=true] {background:var(--stanza-selected-surface);color:var(--stanza-text-primary)}

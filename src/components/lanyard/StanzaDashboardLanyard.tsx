@@ -66,11 +66,12 @@ export default function StanzaDashboardLanyard({
           paused={paused || expanded}
           onExpand={expand}
           strapColor={style.strapColor}
+          cardEdgeColor={style.cardColor}
           interactionEnabled={interactionEnabled && !expanded}
           artworkLanguage={language}
           frontImage={stanzaFrontImage}
           backImage={stanzaBackImage}
-          imageFit="cover"
+          imageFit="fill"
           transparent
         />
       </LanyardRuntimeBoundary>

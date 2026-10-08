@@ -20,6 +20,8 @@ if (import.meta.env.LOGIN_CONTROL_DIAGNOSTIC) {
   void import('./diagnostics/login-control-transitions').then(({ installLoginControlTransitions }) => installLoginControlTransitions());
 }
 
+if(import.meta.env.DEV && new URLSearchParams(location.search).get('cursorProfile')==='1') void import('./diagnostics/cursor-browser-profile').then(m=>m.installCursorBrowserProfile());
+
 markDevPerformance('startup:react-bootstrap-start', undefined, true);
 initializeStanzaPreferences();
 

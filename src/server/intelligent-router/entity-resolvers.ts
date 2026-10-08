@@ -58,4 +58,4 @@ async function resolve(type: EntityType, { client: c, actor: u, query, proposed,
 export const entityResolvers = {
  employee: (context: Context) => resolve('employee', context),
  location: (context: Context) => resolve('location', context),
-} satisfies Record<EntityType, (context: Context) => Promise<EntityResolution>>;
+} satisfies Partial<Record<EntityType, (context: Context) => Promise<EntityResolution>>>;

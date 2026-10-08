@@ -1,3 +1,4 @@
+import ts from 'typescript';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +29,6 @@ function walk(directory: string): string[] {
 
 const sourceFiles = walk(sourceRoot).filter((file) => /\.(?:ts|tsx)$/.test(file));
 const sourceFileSet = new Set(sourceFiles.map((file) => path.normalize(file)));
-const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g;
 
 function resolveImport(importer: string, specifier: string) {
   const base = path.resolve(path.dirname(importer), specifier);
@@ -45,8 +45,13 @@ function resolveImport(importer: string, specifier: string) {
 const importGraph = new Map<string, string[]>();
 for (const file of sourceFiles) {
   const dependencies: string[] = [];
-  for (const match of read(path.relative(root, file)).matchAll(importPattern)) {
-    const resolved = resolveImport(file, match[1]);
+  const parsed=ts.createSourceFile(file,read(path.relative(root,file)),ts.ScriptTarget.Latest,true);
+  for (const statement of parsed.statements) {
+    if(!ts.isImportDeclaration(statement)&&!ts.isExportDeclaration(statement))continue;
+    if(!statement.moduleSpecifier||!ts.isStringLiteral(statement.moduleSpecifier))continue;
+    if(ts.isImportDeclaration(statement)&&statement.importClause?.isTypeOnly)continue;
+    if(ts.isExportDeclaration(statement)&&statement.isTypeOnly)continue;
+    const resolved = resolveImport(file, statement.moduleSpecifier.text);
     if (resolved) dependencies.push(path.normalize(resolved));
   }
   importGraph.set(path.normalize(file), dependencies);

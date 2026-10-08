@@ -1,11 +1,11 @@
-import { normalizeQuery } from './intelligent-router';
-export type EntityType = 'employee' | 'location';
+import { normalizeQuery } from './router-normalization';
+export type EntityType = 'employee' | 'location' | 'asset' | 'job_opening' | 'candidate';
 export type EntitySpan = { start: number; end: number; type: EntityType };
 export type EntityCandidate = { id: string; label: string };
 export type EntityResolution = { type: EntityType; status: 'resolved' | 'ambiguous' | 'unresolved' | 'forbidden'; entityId?: string; label?: string; span?: EntitySpan; candidates?: EntityCandidate[]; truncated?: boolean; evaluated: number; latencyMs: number };
-export type EntityRoute = { status: 'resolved' | 'ambiguous' | 'unresolved' | 'forbidden'; entities: EntityResolution[]; cases: { id: string; reference: string; title: string; status: string }[]; caseId?: string; locationMeaning: 'employee_current_team' };
+export type EntityRoute = { status: 'resolved' | 'ambiguous' | 'unresolved' | 'forbidden'; entities: EntityResolution[]; cases: { id: string; reference: string; title: string; status: string }[]; caseId?: string; summary?:string; items?:{id:string;label:string;detail?:string}[]; total?:number; prefill?:{assetId:string;assetName:string;requesterId:string;summary:string;description:string}; candidateId?:string; locationMeaning: 'employee_current_team' };
 export type EntityChoices = Partial<Record<EntityType | 'case', string>>;
-export type EntityParameters = { employeeName?: string; locationName?: string };
+export type EntityParameters = { employeeName?: string; locationName?: string; assetName?:string; jobName?:string; candidateName?:string };
 export type EntityTemplate = { text: string; placeholders: EntitySpan[]; version: 1 };
 // Offsets refer to the original UTF-16 string, including Arabic diacritics.
 export function entityTokens(text: string) {
@@ -29,8 +29,8 @@ export function generalizeEntities(query: string, resolutions: EntityResolution[
 }
 /** Unidentified residual names cannot enter learning. */
 export function safeEntityTemplate(template: EntityTemplate) {
- if(!template||typeof template.text!=='string'||template.text.length>500||template.version!==1||!Array.isArray(template.placeholders)||!template.placeholders.length||template.placeholders.length>2||template.placeholders.some((p,i)=>!['employee','location'].includes(p.type)||!Number.isInteger(p.start)||!Number.isInteger(p.end)||p.start<0||p.end>template.text.length||p.start>=p.end||template.text.slice(p.start,p.end)!=='{'+p.type+'}'||i>0&&p.start<template.placeholders[i-1].end))return false;
- const residual = template.text.replace(/\{(?:employee|location)\}/g, '');
- const vocabulary = new Set(normalizeQuery("show me find open the a an s disciplinary grievance grievances complaint complaints case for from at in employee please this current submitted triaged assigned in progress waiting resolved closed conduct وريني اعرض افتح شوف شكوى شكوي شكوه شكاوى الشكوى قضية قضيه تأديبية تاديبيه للموظف الموظف بتاعت بتاعة بتاع من في لو سمحت").split(' '));
+ if(!template||typeof template.text!=='string'||template.text.length>500||template.version!==1||!Array.isArray(template.placeholders)||!template.placeholders.length||template.placeholders.length>3||template.placeholders.some((p,i)=>!['employee','location','asset','job_opening','candidate'].includes(p.type)||!Number.isInteger(p.start)||!Number.isInteger(p.end)||p.start<0||p.end>template.text.length||p.start>=p.end||template.text.slice(p.start,p.end)!=='{'+p.type+'}'||i>0&&p.start<template.placeholders[i-1].end))return false;
+ const residual = template.text.replace(/\{(?:employee|location|asset|job_opening|candidate)\}/g, '');
+ const vocabulary = new Set(normalizeQuery("what laptop is using equipment does have who has assigned report as damaged broken it support tickets requests unresolved jobs applicants candidates offer screening interviews today how many with for backend engineer معاه لابتوب ايه الجهاز ده مع مين طلبات دعم تقني مفتوحه تذاكر وظائف مرشحين مقابلات عروض show me find open the a an s disciplinary grievance grievances complaint complaints case for from at in employee please this current submitted triaged assigned in progress waiting resolved closed conduct وريني اعرض افتح شوف شكوى شكوي شكوه شكاوى الشكوى قضية قضيه تأديبية تاديبيه للموظف الموظف بتاعت بتاعة بتاع من في لو سمحت").split(' '));
  return entityTokens(residual).every(t => vocabulary.has(t.value));
 }

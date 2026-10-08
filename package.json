@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "dev:setup:badge-key": "node scripts/setup-badge-key.mjs",
+    "test:polish-correctness": "tsx scripts/polish-correctness-test.ts",
     "dev:server": "node --watch --import tsx server.ts",
     "dev:worker": "node --watch --import tsx src/workers/hr-worker.ts",
     "dev": "concurrently -n \"Server,Worker\" -c \"cyan,green\" \"npm:dev:server\" \"npm:dev:worker\"",
@@ -17,6 +19,7 @@
     "test:smoke": "tsx scripts/smoke-test.ts",
     "test:security": "tsx scripts/security-test.ts",
     "test:authorization": "tsx scripts/authorization-test.ts",
+    "test:ats-service-desk": "tsx scripts/ats-service-desk-test.ts",
     "test:hiring": "tsx scripts/hiring-rules-test.ts",
     "test:hiring:integration": "tsx scripts/hiring-integration-test.ts",
     "test:live-employees": "tsx scripts/live-employees-test.ts",

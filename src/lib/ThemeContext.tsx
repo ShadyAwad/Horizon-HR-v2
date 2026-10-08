@@ -23,6 +23,7 @@ function getInitialTheme(): Theme {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  useEffect(()=>{const sync=(event:StorageEvent)=>{if(event.key==='horizon-theme'&&(event.newValue==='light'||event.newValue==='dark'))setThemeState(event.newValue);};window.addEventListener('storage',sync);return()=>window.removeEventListener('storage',sync);},[]);
 
   useEffect(() => {
     const root = document.documentElement;

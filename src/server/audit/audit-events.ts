@@ -19,7 +19,7 @@ type AuditDefinition = {
 };
 
 const DEFINITIONS: Record<string, AuditDefinition> = {
- 'support.updated':{canonicalAction:'support.updated',module:'assets',summary:'Support ticket updated',metadataKeys:['status']},
+ 'support.updated':{canonicalAction:'support.updated',module:'assets',summary:'Support ticket updated',metadataKeys:['status','kind','visibility']},
  ...Object.fromEntries(['privacy_changed','candidate_confirmed','candidate_approved','candidate_reject','candidate_change_intent','candidate_private_only','candidate_dismiss_duplicate','example_deactivate','example_reactivate','example_delete','shared_candidate_created','shared_reject','shared_sensitive','shared_duplicate','shared_text_edited','shared_approved','corpus_deactivate','corpus_reactivate','tenant_drilldown'].map(action=>['semantic.'+action,{canonicalAction:'semantic.'+action,module:'workspace',summary:'Semantic intelligence '+action.replaceAll('_',' '),metadataKeys:['actorReference','intent','sourceExample','sharedExample','previousMode','mode']}])),
   'router.example_approved': {canonicalAction:'router.example_approved',module:'workspace',summary:'Routing example approved',metadataKeys:['intentKey','embeddingModel','embeddingVersion','duplicate']},
   'router.example_rejected': {canonicalAction:'router.example_rejected',module:'workspace',summary:'Routing example rejected'},
@@ -130,6 +130,15 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
   grievance_created: { canonicalAction: 'grievance.created', module: 'grievances', summary: 'Grievance submitted' },
   grievance_status_updated: { canonicalAction: 'grievance.status_changed', module: 'grievances', summary: 'Grievance status changed', metadataKeys: ['previousStatus', 'newStatus'] },
   'grievance.status_changed': { canonicalAction: 'grievance.status_changed', module: 'grievances', summary: 'Grievance status changed', metadataKeys: ['previousStatus', 'newStatus'] },
+  'hiring.job_created': {canonicalAction:'hiring.job_created',module:'hiring',summary:'Hiring job created',metadataKeys:['status']},
+  'hiring.job_status': {canonicalAction:'hiring.job_status',module:'hiring',summary:'Hiring job status',metadataKeys:['status']},
+  'hiring.application_received': {canonicalAction:'hiring.application_received',module:'hiring',summary:'Hiring application received',metadataKeys:['status']},
+  'hiring.interview_scheduled': {canonicalAction:'hiring.interview_scheduled',module:'hiring',summary:'Hiring interview scheduled',metadataKeys:['status']},
+  'hiring.evaluation_submitted': {canonicalAction:'hiring.evaluation_submitted',module:'hiring',summary:'Hiring evaluation submitted',metadataKeys:['status']},
+  'hiring.message_drafted': {canonicalAction:'hiring.message_drafted',module:'hiring',summary:'Hiring message drafted',metadataKeys:['status']},
+  'hiring.offer_created': {canonicalAction:'hiring.offer_created',module:'hiring',summary:'Hiring offer created',metadataKeys:['status']},
+  'hiring.offer_status': {canonicalAction:'hiring.offer_status',module:'hiring',summary:'Hiring offer status',metadataKeys:['status']},
+  'hiring.hire_confirmed': {canonicalAction:'hiring.hire_confirmed',module:'hiring',summary:'Hiring hire confirmed',metadataKeys:['status']},
   'hiring.applicant.created': { canonicalAction: 'hiring.applicant.created', module: 'hiring', summary: 'Hiring applicant created', metadataKeys: ['stage'] },
   'hiring.applicant.updated': { canonicalAction: 'hiring.applicant.updated', module: 'hiring', summary: 'Hiring applicant updated', metadataKeys: ['changedFields'] },
   'hiring.applicant.archived': { canonicalAction: 'hiring.applicant.archived', module: 'hiring', summary: 'Hiring applicant archived' },
@@ -268,6 +277,15 @@ export function inferAuditModule(action: string, entityType: string) {
   return direct[prefix] || 'workspace';
 }
 
+/** Keep server-side module filtering aligned with the safe event presentation registry. */
+export function auditModuleSql() {
+  const literal = (value: string) => "'" + value.replaceAll("'", "''") + "'";
+  const known = Object.entries(DEFINITIONS).map(([action, definition]) => `WHEN audit_logs.action=${literal(action)} THEN ${literal(definition.module)}`).join('\n');
+  const prefixes: Record<string,string> = {passkey:'auth',asset:'assets',software:'assets',clock:'attendance',employee:'employees',grievance:'grievances',hiring:'hiring',leave:'leave',payroll:'payroll',performance:'performance',profile:'employees',resignation:'resignations',roster:'roster',offboarding:'resignations',tenant:'workspace'};
+  const fallback = Object.entries(prefixes).map(([prefix,module]) => `WHEN ${literal(prefix)} THEN ${literal(module)}`).join('\n');
+  return `CASE ${known} ELSE CASE substring(audit_logs.action from '^[^._]+') ${fallback} WHEN 'company' THEN CASE WHEN audit_logs.entity_type='company_location' THEN 'geofence' ELSE 'feed' END ELSE 'workspace' END END`;
+}
+
 export function storedActionsForFilter(action: string) {
   const matches = Object.entries(DEFINITIONS)
     .filter(([storedAction, definition]) => storedAction === action || definition.canonicalAction === action)
@@ -276,7 +294,7 @@ export function storedActionsForFilter(action: string) {
 }
 
 const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
- 'support.updated':['status'],
+ 'support.updated':['status','kind','visibility'],
  ...Object.fromEntries(Object.entries(DEFINITIONS).filter(([k])=>k.startsWith('semantic.')).map(([k,v])=>[k,v.metadataKeys??[]])),
   'router.example_approved': ['intentKey','embeddingModel','embeddingVersion','duplicate'],
   'router.example_rejected': [],
@@ -348,6 +366,15 @@ const WRITE_METADATA_ALLOWLIST: Record<string, readonly string[]> = {
   'leave.rejected': ['requestId', 'employeeId', 'approverEmployeeId', 'leaveType', 'startDate', 'endDate', 'approvalSource', 'scopeType', 'status'],
   'leave.schedule_conflict_detected': ['leaveRequestId', 'employeeId', 'conflictCount', 'status'],
   'grievance.status_changed': ['previousStatus', 'newStatus'],
+  'hiring.job_created': ['status'],
+  'hiring.job_status': ['status'],
+  'hiring.application_received': ['status'],
+  'hiring.interview_scheduled': ['status'],
+  'hiring.evaluation_submitted': ['status'],
+  'hiring.message_drafted': ['status'],
+  'hiring.offer_created': ['status'],
+  'hiring.offer_status': ['status'],
+  'hiring.hire_confirmed': ['status'],
   'hiring.stage_changed': ['previousStage', 'newStage'],
   'auth.session.revoked': ['revocationType'],
   'auth.sessions.revoked_all': ['revokedCount', 'revocationType'],

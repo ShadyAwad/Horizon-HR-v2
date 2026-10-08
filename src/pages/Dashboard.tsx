@@ -1,3 +1,4 @@
+import {apiFetchShared} from '../lib/api';
 import {DigitalCardPreviewButton} from '../components/lanyard/DigitalCardPreviewButton';
 import {LogoutControl} from '../components/ui/LogoutControl';
 import {HistoryControls} from '../components/ui/HistoryControls';
@@ -1433,7 +1434,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
   const [semanticCaps,setSemanticCaps]=useState<{tenant:string[];platform:string[]}>({tenant:[],platform:[]});
-  useEffect(()=>{let alive=true;setSemanticCaps({tenant:[],platform:[]});void apiFetch('/api/semantic-intelligence/capabilities').then(async r=>{if(r.ok&&alive)setSemanticCaps(await r.json());}).catch(()=>{});return()=>{alive=false;};},[user.id]);
+  useEffect(()=>{let alive=true;setSemanticCaps({tenant:[],platform:[]});void apiFetchShared('/api/semantic-intelligence/capabilities').then(async r=>{if(r.ok&&alive)setSemanticCaps(await r.json());}).catch(()=>{});return()=>{alive=false;};},[user.id]);
   const canViewSemantic=semanticCaps.tenant.length>0,canViewSemanticPlatform=semanticCaps.platform.some(k=>['view_all','view_tenants','review_global'].includes(k));
   const canViewOrganisation = hasPermission(user, 'organisation.view');
   const canViewLocations = hasPermission(user, 'locations.view');
@@ -2097,10 +2098,14 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       recordModuleNavigation(command.sourceNavigationId);
     }
   }, [availableCommandIds, recentCommandIds, recordModuleNavigation, setRecentCommandIds]);
+  const [supportPrefill,setSupportPrefill]=useState<import('../lib/router-entities').EntityRoute['prefill']>();
+  const [hiringCandidateId,setHiringCandidateId]=useState<string>();
   const executeCommandPaletteCommand = useCallback((command: StanzaCommand,result?:import('../lib/intelligent-router').RouterResult|null) => {
     commandPaletteReturnFocusRef.current = null;
     executeRegisteredCommand(command);
     if(command.id==='router:grievance-inbox'&&result?.intentKey==='employee_grievance_lookup'&&result.entityRoute?.status==='resolved'&&result.entityRoute.caseId)setGrievanceCaseId(result.entityRoute.caseId);
+    if(command.id==='navigation:support'&&result?.intentKey==='support_report'&&result.entityRoute?.status==='resolved')setSupportPrefill(result.entityRoute.prefill);
+    if(command.id==='hiring:applicants'&&result?.entityRoute?.status==='resolved'&&result.entityRoute.candidateId)setHiringCandidateId(result.entityRoute.candidateId);
     setShowCommandPalette(false);
   }, [executeRegisteredCommand]);
   const executePinnedQuickAction = useCallback((command: StanzaCommand) => {
@@ -2542,7 +2547,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     let cancelled = false;
     const loadRosterEmployees = async () => {
       try {
-        const response = await fetch(apiUrl('/api/roster/employees'), { headers: rosterHeaders() });
+        const response = await apiFetchShared(apiUrl('/api/roster/employees'), { headers: rosterHeaders() });
         const data = await response.json();
         if (!response.ok || !data.success || cancelled) return;
         const employees = data.employees as RosterEmployee[];
@@ -2556,7 +2561,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     };
     void loadRosterEmployees();
     return () => { cancelled = true; };
-  }, [hasAuthenticatedDashboardUser, selectedRosterEmployeeId, user.id, user.tenantId]);
+  }, [hasAuthenticatedDashboardUser, user.id, user.tenantId]);
 
   const loadRosterShifts = async () => {
     if (!hasAuthenticatedDashboardUser || !selectedRosterEmployeeId || rosterRange.error) return;
@@ -2928,7 +2933,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     if (!hasAuthenticatedDashboardUser) return;
 
     try {
-      const res = await fetch(apiUrl('/api/clock-status'), { headers: payrollHeaders });
+      const res = await apiFetchShared(apiUrl('/api/clock-status'), { headers: payrollHeaders });
       const data = await readApiJson(res);
 
       if (res.ok && data.success) {
@@ -3999,7 +4004,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   useEffect(() => {
     const loadCompanyLocations = async () => {
       try {
-        const res = await fetch(apiUrl('/api/company-locations'), { headers: payrollHeaders });
+        const res = await apiFetchShared(apiUrl('/api/company-locations'), { headers: payrollHeaders });
         const data = await readApiJson(res);
 
         if (res.ok && data.success) {
@@ -5526,7 +5531,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <HiringPanel user={user} onRefreshAttentionCounts={refreshAttentionCounts} openCreateSignal={hiringCreateSignal} />
+                    <HiringPanel onOnboardingNavigate={selectNavigationItem} openCandidateId={hiringCandidateId} user={user} onRefreshAttentionCounts={refreshAttentionCounts} openCreateSignal={hiringCreateSignal} />
                   </Suspense>
                 )}
                 {activeTab === 'performance' && canViewPerformance && (
@@ -5579,7 +5584,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     </div>
                   </Suspense>
                 )}
-                {activeTab === 'support' && <Suspense fallback={<p>Loading…</p>}><SupportPanel /></Suspense>}
+                {activeTab === 'support' && <Suspense fallback={<p>Loading…</p>}><SupportPanel prefill={supportPrefill} onPrefillConsumed={()=>setSupportPrefill(undefined)}/></Suspense>}
                 {activeTab === 'assets' && canViewAssets && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <AssetsPanel user={user} openCreateSignal={assetCreateSignal} />

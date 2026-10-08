@@ -5,6 +5,7 @@ import type { RequestHandler } from 'express';
 import { withTenant } from '../../lib/hr-background';
 import {
   AUDIT_MODULES,
+  auditModuleSql,
   presentAuditEvent,
   storedActionsForFilter,
 } from './audit-events';
@@ -16,24 +17,7 @@ type Dependencies = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY_PATTERN = /^[a-z0-9_.-]{1,120}$/i;
-const MODULE_SQL = `
-  CASE
-    WHEN audit_logs.action LIKE 'auth.%' OR audit_logs.action LIKE 'passkey.%' OR audit_logs.entity_type = 'user_webauthn_credentials' THEN 'auth'
-    WHEN audit_logs.action LIKE 'clock_%' OR audit_logs.action LIKE 'attendance.%' OR audit_logs.entity_type = 'time_log' THEN 'attendance'
-    WHEN audit_logs.action LIKE 'break_%' OR audit_logs.entity_type = 'break_request' THEN 'breaks'
-    WHEN audit_logs.action LIKE 'employee_%' OR audit_logs.action LIKE 'profile.%' OR audit_logs.action LIKE '%role%' OR audit_logs.entity_type IN ('employee', 'employee_compensation_profile', 'employee_loan', 'tenant_role') THEN 'employees'
-    WHEN audit_logs.action LIKE 'company_feed_%' OR audit_logs.action LIKE 'feed.%' OR audit_logs.entity_type = 'company_feed_post' THEN 'feed'
-    WHEN audit_logs.action LIKE 'company_location_%' OR audit_logs.action LIKE 'geofence.%' OR audit_logs.entity_type = 'company_location' THEN 'geofence'
-    WHEN audit_logs.action LIKE 'grievance%' OR audit_logs.entity_type = 'grievance' THEN 'grievances'
-    WHEN audit_logs.action LIKE 'hiring.%' OR audit_logs.entity_type LIKE 'hiring_%' THEN 'hiring'
-    WHEN audit_logs.action LIKE 'leave_%' OR audit_logs.action LIKE 'leave.%' OR audit_logs.entity_type = 'leave_request' THEN 'leave'
-    WHEN audit_logs.action LIKE 'notification_%' OR audit_logs.entity_type = 'notification_settings' THEN 'notifications'
-    WHEN audit_logs.action LIKE 'payroll%' OR audit_logs.entity_type IN ('payroll', 'payroll_record') THEN 'payroll'
-    WHEN audit_logs.action LIKE 'resignation.%' OR audit_logs.entity_type = 'resignation_request' THEN 'resignations'
-    WHEN audit_logs.action LIKE 'roster.%' OR audit_logs.entity_type = 'roster_shift' THEN 'roster'
-    ELSE 'workspace'
-  END
-`;
+const MODULE_SQL = auditModuleSql();
 
 function parsePositiveInteger(value: unknown, fallback: number, label: string) {
   if (value === undefined) return fallback;

@@ -177,7 +177,7 @@ interface LanyardProps {
   transparent?: boolean;
   frontImage?: string | null;
   backImage?: string | null;
-  imageFit?: 'cover' | 'contain';
+  imageFit?: 'cover' | 'contain' | 'fill';
   lanyardImage?: string | null;
   lanyardWidth?: number;
   anchorNdc?: { x: number; y: number } | null;
@@ -188,6 +188,7 @@ interface LanyardProps {
   onReady?: () => void;
   onExpand?: (point: { x: number; y: number }) => void;
   strapColor?: string | null;
+  cardEdgeColor?: string | null;
 }
 
 type LanyardFrameRuntime = {
@@ -230,6 +231,7 @@ function LanyardScene({
   artworkLanguage,
   onExpand,
   strapColor,
+  cardEdgeColor,
   onReady,
   experiment,
 }: LanyardProps & { experiment: GpuExperiment }) {
@@ -290,6 +292,7 @@ function LanyardScene({
             paused={paused}
             onExpand={onExpand}
             strapColor={strapColor}
+            cardEdgeColor={cardEdgeColor}
           />
         </Physics>
       </Canvas>
@@ -430,7 +433,7 @@ interface BandProps {
   paused?: boolean;
   frontImage?: string | null;
   backImage?: string | null;
-  imageFit?: 'cover' | 'contain';
+  imageFit?: 'cover' | 'contain' | 'fill';
   lanyardImage?: string | null;
   lanyardWidth?: number;
   anchorNdc?: { x: number; y: number } | null;
@@ -441,6 +444,7 @@ interface BandProps {
   onReady?: () => void;
   onExpand?: (point: { x: number; y: number }) => void;
   strapColor?: string | null;
+  cardEdgeColor?: string | null;
 }
 
 type LanyardRigidBody = RapierRigidBody & {
@@ -504,6 +508,7 @@ function Band({
   artworkLanguage,
   onExpand,
   strapColor,
+  cardEdgeColor,
   frameRuntime,
   onReady
 }: BandProps) {
@@ -630,7 +635,8 @@ function Band({
       ctx.beginPath();
       ctx.rect(rx, ry, rw, rh);
       ctx.clip();
-      ctx.drawImage(img, dx, dy, dw, dh);
+      if (imageFit === 'fill') ctx.drawImage(img, rx, ry, rw, rh);
+      else ctx.drawImage(img, dx, dy, dw, dh);
       ctx.restore();
     };
 
@@ -645,14 +651,8 @@ function Band({
     return composite;
   }, [frontImage, backImage, imageFit, frontTex, backTex, materials.base.map]);
 
-  const [faceMaterial] = useState(() => new THREE.MeshPhysicalMaterial({
-    map: cardMap,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.15,
-    roughness: 0.9,
-    metalness: 0.8
-  }));
-  const faceMesh = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>>(null!);
+  const [faceMaterial] = useState(() => new THREE.MeshBasicMaterial({map: cardMap, toneMapped: false}));
+  const faceMesh = useRef<THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>>(null!);
   const activeCardMap = useRef<THREE.Texture>(cardMap);
 
   const edgeMaterial = useMemo(() => {
@@ -666,6 +666,11 @@ function Band({
     material.needsUpdate = true;
     return material;
   }, [materials.base]);
+
+  useEffect(() => {
+    edgeMaterial.color.set(cardEdgeColor ?? '#0A3A2A');
+    frameRuntime.current.requestFrame('passive');
+  }, [cardEdgeColor, edgeMaterial, frameRuntime]);
 
   useEffect(() => () => {
     faceGeometry.dispose();

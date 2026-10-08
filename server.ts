@@ -1,3 +1,4 @@
+import {registerAtsRoutes} from './src/server/hiring/ats-routes';
 import {registerSupportRoutes} from './src/server/support/support-routes';
 import { shouldUseSecureCookie } from './src/server/auth/session-cookie-policy';
 import { validateProductionConfig } from './src/lib/production-config';
@@ -1319,6 +1320,7 @@ async function startServer() {
 
   registerCommunicationsRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerHiringRoutes(app, { demoAuth, requirePermission });
+  registerAtsRoutes(app,{standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
   registerAuditRoutes(app, { demoAuth, requirePermission });
   registerAssetRoutes(app, { demoAuth, requirePermission });

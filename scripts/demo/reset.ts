@@ -18,17 +18,18 @@ export async function resetDemoFixtures(client: PoolClient, tenantId: string) {
     if (!tables.length)
         return 0;
     // Break the existing organisation cycle without touching other employees.
-    await client.query('UPDATE employees SET manager_id=NULL,department_id=NULL,team_id=NULL,job_title_id=NULL WHERE tenant_id=$1 AND id=ANY($2::uuid[])', [tenantId, fixtures.employees ?? []]);
+    await client.query('UPDATE employees SET manager_id=NULL,department_id=NULL,team_id=NULL,job_title_id=NULL,primary_location_id=NULL WHERE tenant_id=$1 AND id=ANY($2::uuid[])', [tenantId, fixtures.employees ?? []]);
     await client.query('UPDATE organisation_departments SET department_head_id=NULL,parent_department_id=NULL WHERE tenant_id=$1 AND id=ANY($2::uuid[])', [tenantId, fixtures.organisation_departments ?? []]);
     await client.query('UPDATE organisation_teams SET team_lead_id=NULL WHERE tenant_id=$1 AND id=ANY($2::uuid[])', [tenantId, fixtures.organisation_teams ?? []]);
-    const dependencies = (await client.query("SELECT child.relname AS child,parent.relname AS parent FROM pg_constraint fk JOIN pg_class child ON child.oid=fk.conrelid JOIN pg_class parent ON parent.oid=fk.confrelid WHERE fk.contype='f' AND child.relnamespace='public'::regnamespace")).rows as {
+    const dependencies = (await client.query("SELECT child.relname AS child,parent.relname AS parent,fk.conname AS constraint FROM pg_constraint fk JOIN pg_class child ON child.oid=fk.conrelid JOIN pg_class parent ON parent.oid=fk.confrelid WHERE fk.contype='f' AND child.relnamespace='public'::regnamespace")).rows as {
+        constraint: string;
         child: string;
         parent: string;
     }[];
     const remaining = new Set(tables);
     let count = 0;
     while (remaining.size) {
-        const leaves = [...remaining].filter(t => !dependencies.some(d => d.parent === t && d.child !== t && remaining.has(d.child) && !(['employees', 'organisation_departments', 'organisation_teams'].includes(d.child) && ['employees', 'organisation_departments', 'organisation_teams', 'organisation_job_titles'].includes(d.parent))));
+        const leaves = [...remaining].filter(t => !dependencies.some(d => d.constraint !== 'employee_primary_location_tenant' && d.parent === t && d.child !== t && remaining.has(d.child) && !(['employees', 'organisation_departments', 'organisation_teams'].includes(d.child) && ['employees', 'organisation_departments', 'organisation_teams', 'organisation_job_titles'].includes(d.parent))));
         if (!leaves.length)
             throw new Error(`Cannot safely order demo reset: ${[...remaining].join(', ')}`);
         for (const table of leaves) {
