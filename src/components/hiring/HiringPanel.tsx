@@ -1,3 +1,4 @@
+import {OnboardingWorkspace} from './HiringDepth';
 import {JobOpenings,CandidateWorkflow} from './AtsWorkspace';
 import {toggleHiringStage,defaultHiringFilters,hasHiringFilters} from '../../lib/hiring-filters';
 import { HIRING_COUNTER_STAGES } from '../../lib/hiring-stages';
@@ -245,7 +246,7 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
 
   return (
     <section data-tutorial-target="hiring-workspace" className={cn('min-w-0 rounded-xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4', isRtl && 'text-right')}>
-      <JobOpenings/>
+      <JobOpenings/>{user.permissions?.includes('hiring.onboarding.view')&&<OnboardingWorkspace/>}
       <div className="mb-4 flex flex-col gap-3 border-b border-emerald-500/15 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div><div className="flex items-center gap-2"><BriefcaseBusiness className="h-5 w-5 text-emerald-500" /><h2 className="text-lg font-black text-slate-900 dark:text-emerald-50">{t('hiring.title')}</h2></div><p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('hiring.subtitle')}</p></div>
         <div className="flex flex-wrap items-center gap-2">

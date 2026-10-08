@@ -17,6 +17,7 @@ const loadResetPassword = () => import('./pages/ResetPassword').then((module) =>
 const loadPublicEmployeeVerification = () => import('./pages/PublicEmployeeVerification').then((module) => ({ default: module.PublicEmployeeVerification }));
 const loadPublicAssetVerification = () => import('./pages/PublicAssetVerification').then((module) => ({ default: module.PublicAssetVerification }));
 const loadInteractionMicrobenchmark = () => import('./components/dev/InteractionMicrobenchmark');
+const PublicOffer=lazy(()=>import('./pages/PublicOffer'));
 const PublicJobApplication=lazy(()=>import('./pages/PublicJobApplication'));
 const Dashboard = lazy(loadDashboard);
 const Signup = lazy(loadSignup);
@@ -79,6 +80,7 @@ function getStoredUser() {
 }
 
 export default function App() {
+  const publicOfferMatch=/^\/offers\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const publicJobMatch=/^\/careers\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
   const isInteractionMicrobenchmark = import.meta.env.DEV && new URLSearchParams(window.location.search).get('stanzaPerfLab') === '1';
   const publicEmployeeMatch = /^\/verify\/employee\/([A-Za-z0-9_-]{43})$/.exec(window.location.pathname);
@@ -278,7 +280,7 @@ export default function App() {
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <InteractionMicrobenchmark />
            </Suspense>
-         ) : publicJobMatch ? (<Suspense fallback={<p>Loading…</p>}><PublicJobApplication token={publicJobMatch[1]}/></Suspense>) : isPublicEmployeeVerification ? (
+         ) : publicOfferMatch ? (<Suspense fallback={<p>Loading…</p>}><PublicOffer token={publicOfferMatch[1]}/></Suspense>) : publicJobMatch ? (<Suspense fallback={<p>Loading…</p>}><PublicJobApplication token={publicJobMatch[1]}/></Suspense>) : isPublicEmployeeVerification ? (
            <Suspense fallback={<div className="min-h-screen bg-[#020f0a]" />}>
              <PublicEmployeeVerification token={publicEmployeeMatch![1]} />
            </Suspense>

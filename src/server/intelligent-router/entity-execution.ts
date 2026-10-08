@@ -1,3 +1,4 @@
+import {operationalExecutor} from './operational-execution';
 import {workforceExecutor} from './workforce-entity-execution';
 import type { PoolClient } from 'pg';
 import { CASE_STATUSES } from '../../lib/grievance-contract';
@@ -24,4 +25,4 @@ export async function executeEntityIntent(c: PoolClient, actor: CaseActor, query
  return { ...base, status: selected ? 'resolved' : cases.length && !choices.case ? 'ambiguous' : 'unresolved', cases: cases.slice(0, 8), caseId: selected?.id };
 }
 
-export const entityExecutors = { employee_grievance_lookup: executeEntityIntent, employee_equipment: workforceExecutor('employee_equipment'), asset_holder: workforceExecutor('asset_holder'), support_lookup: workforceExecutor('support_lookup'), support_report: workforceExecutor('support_report'), hiring_jobs_query: workforceExecutor('hiring_jobs_query'), hiring_candidates_query: workforceExecutor('hiring_candidates_query'), hiring_interviews_query: workforceExecutor('hiring_interviews_query') };
+export const entityExecutors = { operational_support_onboarding:operationalExecutor('operational_support_onboarding'),operational_support:operationalExecutor('operational_support'),operational_hiring:operationalExecutor('operational_hiring'),operational_onboarding:operationalExecutor('operational_onboarding'),operational_composition:operationalExecutor('operational_composition'), employee_grievance_lookup: executeEntityIntent, employee_equipment: workforceExecutor('employee_equipment'), asset_holder: workforceExecutor('asset_holder'), support_lookup: workforceExecutor('support_lookup'), support_report: workforceExecutor('support_report'), hiring_jobs_query: workforceExecutor('hiring_jobs_query'), hiring_candidates_query: workforceExecutor('hiring_candidates_query'), hiring_interviews_query: workforceExecutor('hiring_interviews_query') };

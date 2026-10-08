@@ -1,3 +1,4 @@
+import {registerHiringDepthRoutes} from './src/server/hiring/hiring-depth-routes';
 import {registerAtsRoutes} from './src/server/hiring/ats-routes';
 import {registerSupportRoutes} from './src/server/support/support-routes';
 import { shouldUseSecureCookie } from './src/server/auth/session-cookie-policy';
@@ -1321,6 +1322,7 @@ async function startServer() {
   registerCommunicationsRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
   registerHiringRoutes(app, { demoAuth, requirePermission });
   registerAtsRoutes(app,{standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
+registerHiringDepthRoutes(app,{standardAuth:demoAuth,mutationGuard:isSameOriginSessionMutation,rateLimiter:organisationMutationRateLimiter});
   registerLiveEmployeesRoutes(app, { demoAuth, requireRole, requirePermission });
   registerAuditRoutes(app, { demoAuth, requirePermission });
   registerAssetRoutes(app, { demoAuth, requirePermission });

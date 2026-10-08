@@ -1,3 +1,8 @@
+import {generalizeOperationalQuery,safeEntityTemplate as safeOperationalTemplate} from '../src/lib/router-entities';
+import {safeForTenant} from '../src/server/intelligent-router/semantic-privacy';
+import {registerHiringDepthRoutes} from '../src/server/hiring/hiring-depth-routes';
+import {operationalExecutor} from '../src/server/intelligent-router/operational-execution';
+import {parseOperationalPlan,operationalIntent} from '../src/lib/operational-plan';
 import { createEmbedding, routerConfig } from '../src/server/intelligent-router/config';
 import { registerSemanticAdminRoutes } from '../src/server/intelligent-router/semantic-admin';
 import { createCandidate, PgSemanticSearch } from '../src/server/intelligent-router/store';
@@ -34,7 +39,7 @@ const auth: express.RequestHandler = (r, s, n) => { const u = actors.get(String(
 } r.authUser = u; n(); };
 const deps = { standardAuth: auth, mutationGuard: ((_r, _s, n) => n()) as express.RequestHandler, rateLimiter: ((_r, _s, n) => n()) as express.RequestHandler };
 registerSemanticAdminRoutes(app, deps, learningProvider);
-registerAtsRoutes(app, deps);
+registerAtsRoutes(app, deps);registerHiringDepthRoutes(app,deps);
 registerSupportRoutes(app, deps);
 let testProviderConfigured=false;
 registerCommunicationsRoutes(app, { ...deps, providerConfigured: () => testProviderConfigured });
@@ -67,16 +72,20 @@ try {
     assert.equal((await request('outsider', '/api/hiring/jobs/' + job.id + '/status', { status: 'open' })).status, 404);
     assert.equal((await request('recruiter', '/api/public/jobs/' + job.public_token)).status, 404);
     assert.equal((await request('recruiter', '/api/hiring/jobs/' + job.id + '/status', { status: 'open' })).status, 200);
+    const questions=[{id:'authorization',label:'Do you have work authorization?',type:'yes_no',required:true,screening:{expected:true,hardRequirement:true}},{id:'availability',label:'Available hours',type:'numeric',required:true,screening:{expected:20,hardRequirement:false}},{id:'tools',label:'Preferred tools',type:'multi_select',required:false,options:['SQL','TypeScript']}];
+    assert.equal((await request('reader','/api/hiring/jobs/'+job.id+'/questions',{questions})).status,403);
+    assert.equal((await request('recruiter','/api/hiring/jobs/'+job.id+'/questions',{questions})).status,200);
+
     const publicPage = await request('', '/api/public/jobs/' + job.public_token);
     assert.equal(publicPage.status, 200);
     assert(!('tenant_id' in publicPage.job));
     assert(!('id' in publicPage.job));
-    assert(!('owner_id' in publicPage.job));
+    assert(!('owner_id' in publicPage.job));assert(!('screening' in publicPage.job.questions[0]));
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const bytes = await pdf.save();
     const email = 'candidate-' + tag + '@example.invalid';
-    async function apply(extra?: string) { const f = new FormData(); f.set('fullName', 'Sarah Application'); f.set('email', email); f.set('consent', 'true'); f.set('coverNote', 'Fictional verification application'); f.set('resume', new Blob([bytes as BlobPart], { type: 'application/pdf' }), 'resume.pdf'); if (extra)
+    async function apply(extra?: string) { const f = new FormData(); f.set('fullName', 'Sarah Application'); f.set('email', email); f.set('consent', 'true');f.set('answers',JSON.stringify({authorization:false,availability:10,tools:['SQL']})); f.set('coverNote', 'Fictional verification application'); f.set('resume', new Blob([bytes as BlobPart], { type: 'application/pdf' }), 'resume.pdf'); if (extra)
         f.set('tenantId', extra); const r = await fetch(base + '/api/public/jobs/' + job.public_token + '/apply', { method: 'POST', body: f }); return { status: r.status, ...await r.json() }; }
     assert.equal((await apply(b)).status, 400);
     assert.equal((await apply()).status, 201);
@@ -85,7 +94,7 @@ try {
     assert.equal(applicant.length, 1);
     const candidate = applicant[0];
     assert.equal(candidate.created_by, null);
-    assert(candidate.resume_key);
+    assert(candidate.resume_key);assert.equal(candidate.screening_flags.length,2);assert.equal(candidate.stage,'new');assert.equal((await request('recruiter','/api/hiring/applicants/'+candidate.id+'/reviews',{recommendation:'hold',score:2,notes:'Review criterion explicitly'})).status,200);assert.equal((await request('reader','/api/hiring/applicants/'+candidate.id+'/reviews',{recommendation:'reject',score:1})).status,403);
     assert.equal((await request('outsider', '/api/hiring/applicants/' + candidate.id + '/workflow')).status, 404);
     assert.equal((await fetch(base + '/api/hiring/applicants/' + candidate.id + '/resume', { headers: { 'x-test-actor': 'reader' } })).status, 200);
     assert.equal((await fetch(base + '/api/hiring/applicants/' + candidate.id + '/resume', { headers: { 'x-test-actor': 'outsider' } })).status, 404);
@@ -116,7 +125,15 @@ try {
     // Delivery state is an explicit database fixture, not a claimed provider send.
     await db.query("UPDATE communication_messages SET status='sent',sent_at=now() WHERE id=$1", [draft.message.id]);
     assert.equal((await request('recruiter', '/api/hiring/offers/' + offer.offer.id + '/status', { status: 'sent', messageId: draft.message.id })).status, 200);
-    assert.equal((await request('recruiter', '/api/hiring/offers/' + offer.offer.id + '/status', { status: 'accepted', confirmed: true, responseNote: 'Fixture verified acceptance, recorded for test' })).status, 200);
+    const oldLink=await request('recruiter','/api/hiring/offers/'+offer.offer.id+'/candidate-link',{confirmed:true});assert.equal(oldLink.status,200);
+    const revision=await request('recruiter','/api/hiring/offers/'+offer.offer.id+'/revise',{version:1,salary:'5500.00',currency:'EGP',...dates,notes:'Revised fixture'});assert.equal(revision.status,200,JSON.stringify(revision));assert.equal(revision.offer.version,2);assert(revision.offer.changed_fields.includes('salary'));
+    assert.equal((await request('','/api/public'+oldLink.path)).status,404,'superseded public token invalid');assert.equal((await request('recruiter','/api/hiring/offers/'+offer.offer.id+'/status',{status:'accepted',confirmed:true,responseNote:'old'})).status,409);
+    assert.equal((await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/status',{status:'sent',messageId:draft.message.id})).status,409,'older delivery is not revised-offer evidence');
+    const revisedMessage=await request('recruiter','/api/hiring/applicants/'+candidate.id+'/message',{subject:'Revised offer fixture',body:'Version 2 fixture, not an external email'});await db.query("UPDATE communication_messages SET status='sent',sent_at=now() WHERE id=$1",[revisedMessage.message.id]);assert.equal((await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/status',{status:'sent',messageId:revisedMessage.message.id})).status,200);
+    const link=await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/candidate-link',{confirmed:true});const publicOffer=await request('','/api/public'+link.path);assert.equal(publicOffer.status,200);assert.equal(publicOffer.offer.version,2);assert(!('tenant_id' in publicOffer.offer));assert(!('notes' in publicOffer.offer));assert.equal((await fetch(base+'/api/public'+link.path+'/document')).status,200);
+    assert.equal((await request('','/api/public'+link.path+'/respond',{version:1,response:'accepted',acknowledged:true})).status,409);assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:false})).status,400);assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:true})).status,200);
+    const awaitingHire=await withTenant(a,c=>operationalExecutor('operational_composition')(c,{tenantId:a,employeeId:recruiter},'show candidates who accepted offers but have incomplete onboarding'));assert.equal(awaitingHire.status,'resolved');assert(awaitingHire.items?.some(row=>row.id===candidate.id&&row.detail?.includes('Awaiting explicit hire conversion')));
+assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:true})).status,200);
     const hire = await request('recruiter', '/api/hiring/applicants/' + candidate.id + '/hire', { confirmed: true });
     assert.equal(hire.status, 200, JSON.stringify(hire));
     assert.equal((await request('recruiter', '/api/hiring/applicants/' + candidate.id + '/hire', { confirmed: true })).employeeId, hire.employeeId);
@@ -127,7 +144,8 @@ try {
     assert.equal(employee.department_id, dept);
     assert.equal(employee.primary_location_id, location);
     assert.equal(employee.employment_type, 'full_time');
-    assert.equal((await db.query('SELECT count(*)::int n FROM hiring_onboarding_tasks WHERE employee_id=$1', [hire.employeeId])).rows[0].n, 4);
+    assert.deepEqual((await db.query('SELECT kind FROM hiring_onboarding_tasks WHERE employee_id=$1 ORDER BY kind',[hire.employeeId])).rows.map(r=>r.kind),['access','badge','equipment','first_shift','policy']);
+    const template=await request('recruiter','/api/hiring/onboarding/templates',{name:'Fixture engineering',tasks:[{key:'orientation',title:'Fixture orientation',kind:'orientation',dueOffsetDays:0},{key:'manager',title:'Fixture manager meeting',kind:'manager_meeting',dueOffsetDays:1,dependsOn:'orientation'}]});assert.equal(template.status,200,JSON.stringify(template));assert.equal((await request('recruiter','/api/hiring/onboarding/employees/'+hire.employeeId+'/template',{templateId:template.template.id})).status,200);assert.equal((await request('recruiter','/api/hiring/onboarding/employees/'+hire.employeeId+'/template',{templateId:template.template.id})).applied,false);const readiness=await request('recruiter','/api/hiring/onboarding/readiness?employeeId='+hire.employeeId);assert.equal(readiness.hires[0].readiness,'needs_attention');const dependency=readiness.hires[0].tasks.find((t:any)=>t.kind==='manager_meeting');assert.equal((await request('recruiter','/api/hiring/onboarding/tasks/'+dependency.id,{status:'completed'})).status,409);const equipmentTask=readiness.hires[0].tasks.find((t:any)=>t.kind==='equipment');assert.equal((await request('recruiter','/api/hiring/onboarding/tasks/'+equipmentTask.id,{status:'blocked',notes:'Awaiting equipment'})).status,200);assert.equal((await request('recruiter','/api/hiring/onboarding/readiness?employeeId='+hire.employeeId)).hires[0].readiness,'blocked');assert.equal((await request('reader','/api/hiring/onboarding/readiness')).status,403);
     assert.equal((await request('', '/api/public/jobs/' + job.public_token)).status, 404, 'filled job is unpublished');
     const asset = (await db.query("INSERT INTO assets(tenant_id,name,asset_tag,category,status) VALUES($1,'Ahmed laptop','NS-LAP-003','laptop','assigned') RETURNING id", [a])).rows[0].id;
     await db.query('INSERT INTO asset_assignments(tenant_id,asset_id,employee_id) VALUES($1,$2,$3)', [a, asset, worker]);
@@ -217,6 +235,12 @@ try {
         times.sort((a, b) => a - b);
         console.log(JSON.stringify({ label, samples: times.length, p50Ms: times[10], p95Ms: times[18] }));
     }
+    const older=(await db.query("INSERT INTO support_tickets(tenant_id,requester_id,issue_type,summary,description,urgency,created_at) VALUES($1,$2,'it_help','Old operational fixture','Fixture','normal',now()-interval '10 days') RETURNING id",[a,hire.employeeId])).rows[0];await db.query('UPDATE employees SET employment_start_date=current_date WHERE id=$1',[hire.employeeId]);
+    for(const query of ['which open IT tickets are older than 3 days?','show candidates waiting for feedback','which new hires still need equipment?','who starts this week?','show onboarding tasks overdue','show unresolved IT tickets for employees starting this week','اعرض تذاكر الدعم المفتوحة أقدم من 3 أيام']){const plan=parseOperationalPlan(query);assert(plan,'Operational parse: '+query);const result=await withTenant(a,c=>operationalExecutor(operationalIntent(plan!))(c,actor,query));assert.equal(result.status,'resolved',query+JSON.stringify(result));}
+    const oldResult=await withTenant(a,c=>operationalExecutor('operational_support')(c,actor,'which open IT tickets are older than 3 days?'));assert(oldResult.items?.some(x=>x.id===older.id));const denied=await withTenant(a,c=>operationalExecutor('operational_support_onboarding')(c,{tenantId:a,employeeId:reader},'show unresolved IT tickets for employees starting this week'));assert.equal(denied.status,'forbidden');
+    for(const query of ['which open IT tickets are older than 3 days?','show candidates waiting for feedback','which new hires still need equipment?','show unresolved IT tickets for employees starting this week']){const durations:number[]=[];for(let i=0;i<20;i++){const start=performance.now();await withTenant(a,c=>operationalExecutor(operationalIntent(parseOperationalPlan(query)!))(c,actor,query));durations.push(performance.now()-start);}durations.sort((a,b)=>a-b);console.log(JSON.stringify({operationalQuery:query,p50Ms:durations[10],p95Ms:durations[18]}));}
+    const temporalTemplate=generalizeOperationalQuery('show open tickets older than 3 days',[]);assert(temporalTemplate&&safeOperationalTemplate(temporalTemplate));const temporalId=await withTenant(a,c=>createCandidate(c,a,recruiter,'show open tickets older than 3 days',{outcome:'matched',method:'rule',intentKey:'operational_support',fallbackUsed:false,entityRoute:{status:'resolved',entities:[],cases:[],locationMeaning:'employee_current_team'},entityTemplate:temporalTemplate}));assert(temporalId);await db.query("UPDATE router_candidates SET confirmation_state='confirmed' WHERE tenant_id=$1 AND id=$2",[a,temporalId]);assert.equal((await request('recruiter','/api/semantic-intelligence/candidates/'+temporalId+'/review',{decision:'approve'})).status,200);assert(await withTenant(a,c=>safeForTenant(c,a,temporalTemplate!.text,temporalTemplate)));const temporalHits=await new PgSemanticSearch(a,8).search(await learningProvider.embed(temporalTemplate.text),learningProvider,INTENTS.map(i=>i.key));assert.equal(temporalHits[0].intentKey,'operational_support');assert(temporalHits[0].score>=.84);assert.equal((await db.query('SELECT normalized_query FROM router_candidates WHERE tenant_id=$1 AND id=$2',[a,temporalId])).rows[0].normalized_query,'show open tickets older than duration');console.log('PASS real temporal-pattern candidate → authorized approval → actual local embedding → PostgreSQL cosine hit; raw duration removed and shared privacy check passed');
+    for(const query of ['which open IT tickets are older than 3 days?','show candidates waiting for feedback','which new hires still need equipment?','show unresolved IT tickets for employees starting this week']){await withTenant(a,async c=>{const captured:{sql:string;values:any[]}[]=[];const proxy=new Proxy(c,{get(target,key){if(key==='query')return async(sql:any,values:any[])=>{if(typeof sql==='string'&&(/SELECT t\.\*|SELECT a\.id|WITH hires AS/.test(sql)))captured.push({sql,values});return target.query(sql,values);};const value=(target as any)[key];return typeof value==='function'?value.bind(target):value;}});await operationalExecutor(operationalIntent(parseOperationalPlan(query)!))(proxy,actor,query);for(const statement of captured){const plan=(await c.query('EXPLAIN (ANALYZE,FORMAT JSON) '+statement.sql,statement.values)).rows[0]['QUERY PLAN'][0];console.log(JSON.stringify({operationalExplain:query,executionMs:plan['Execution Time'],rows:plan.Plan['Actual Rows']}));}});}
     const compositeTimes: number[] = [];
     for (let n = 0; n < 20; n++) {
         const start = performance.now();
@@ -236,7 +260,7 @@ finally {
     const storage = new PrivateExtractionStorage(path.join(process.env.GRIEVANCE_ATTACHMENT_DIRECTORY || 'uploads/private-grievances', 'hiring'), Infinity);
     for (const row of (await db.query('SELECT resume_key FROM hiring_applicants WHERE tenant_id=ANY($1::uuid[]) AND resume_key IS NOT NULL', [tenants])).rows)
         await storage.remove(row.resume_key);
-    for (const table of ['hiring_evaluations', 'hiring_interviews', 'hiring_offers', 'hiring_onboarding_tasks', 'support_tickets', 'asset_condition_reports', 'communication_messages', 'hiring_applicants', 'hiring_jobs'])
+    for (const table of ['hiring_application_reviews','hiring_onboarding_template_applications','hiring_evaluations', 'hiring_interviews', 'hiring_offers', 'hiring_onboarding_tasks','hiring_onboarding_templates', 'support_tickets', 'asset_condition_reports', 'communication_messages', 'hiring_applicants', 'hiring_jobs'])
         await db.query(`DELETE FROM ${table} WHERE tenant_id=ANY($1::uuid[])`, [tenants]);
     await db.query('DELETE FROM tenants WHERE id=ANY($1::uuid[])', [tenants]);
     await embedding.close?.();

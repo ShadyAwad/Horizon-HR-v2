@@ -41,7 +41,7 @@ const definePermission = (
 export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
   ...['view_analytics','review_candidates','manage_examples','manage_privacy'].map(k=>definePermission('semantic.'+k,k.replaceAll('_',' '),'Company semantic intelligence authority.','Semantic Intelligence','high',companyScope,true)),
   ...['view_all','review_global','manage_global','view_tenants','manage_models'].map(k=>definePermission('platform.semantic.'+k,k.replaceAll('_',' '),'Operator-provisioned platform authority; tenant roles cannot grant it.','Platform','high',companyScope,false,true)),
-  ...['manage_jobs','schedule_interviews','evaluate','manage_offers','hire'].map(key=>definePermission('hiring.'+key,key.replaceAll('_',' '),'Company hiring workflow authority.','Hiring','high',companyScope,false)),
+  ...['manage_jobs','schedule_interviews','evaluate','manage_offers','hire','review_applications','onboarding.view','onboarding.manage'].map(key=>definePermission('hiring.'+key,key.replaceAll('_',' '),'Company hiring workflow authority.','Hiring','high',companyScope,false)),
   definePermission('communications.view', 'View own communications', 'Read own messages and active templates.', 'Communications', 'low', companyScope, false),
   definePermission('communications.send', 'Send communications', 'Queue HR/company messages.', 'Communications', 'high', companyScope, false),
   definePermission('communications.templates.manage', 'Manage communication templates', 'Create, edit and deactivate templates.', 'Communications', 'high', companyScope, false),

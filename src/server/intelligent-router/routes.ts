@@ -2,7 +2,7 @@ import {prepareWorkforceSemanticQueries} from './workforce-entity-execution';
 import {registerSemanticAdminRoutes,semanticAudit} from './semantic-admin';
 import {entityExecutors} from './entity-execution';
 import {hasGrievanceLookupAuthority} from './entity-resolvers';
-import {generalizeEntities,safeEntityTemplate,type EntityChoices} from '../../lib/router-entities';
+import {generalizeEntities,generalizeOperationalQuery,safeEntityTemplate,type EntityChoices} from '../../lib/router-entities';
 import {canReadLivePresence} from './live-presence';
 import {dataAnswer} from './data-answers';
 import type express from 'express';
@@ -37,6 +37,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     if(i.key==='employee_grievance_lookup')return hasGrievanceLookupAuthority(c,u);
     if(i.key==='live_employees')return canReadLivePresence(c,u);
     if (!i.permissions.length) return true;
+    if(i.key.startsWith('operational_')){for(const p of i.permissions)if(!await permission(c,u,p,true))return false;return true;}
     for (const p of i.permissions) if (await permission(c,u,p)) return true;
     return false;
   });
@@ -48,6 +49,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       if(i.key==='employee_grievance_lookup'){if(await hasGrievanceLookupAuthority(c,u))intents.push(i);continue;}
       if(i.key==='live_employees'){if(await canReadLivePresence(c,u))intents.push(i);continue;}
       if (!i.permissions.length) { intents.push(i); continue; }
+      if(i.key.startsWith('operational_')){let granted=true;for(const p of i.permissions)if(!await permission(c,u,p,true))granted=false;if(granted)intents.push(i);continue;}
       for (const p of i.permissions) if (await permission(c,u,p)) { intents.push(i); break; }
     }
     return intents;
@@ -132,7 +134,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       if(!execute)throw Error('INVALID_QUERY');
       result.entityRoute=await withTenant(u.tenantId,c=>execute(c,u,req.body.query,choices as EntityChoices,result.entityParameters));
       if(result.entityRoute.status==='resolved'){
-        const template=generalizeEntities(req.body.query,result.entityRoute.entities);
+        const template=result.entityRoute.operational?generalizeOperationalQuery(req.body.query,result.entityRoute.entities):generalizeEntities(req.body.query,result.entityRoute.entities);
         if(template&&safeEntityTemplate(template))result.entityTemplate=template;
       }
       delete result.entityParameters; // never echo untrusted model proposals
@@ -142,6 +144,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     const persisted = await telemetry.record(() => withTenant(u.tenantId,async c => {
       if (config.learning && req.body.learn === true) result.candidateId = await createCandidate(c,u.tenantId,u.employeeId,req.body.query,result);
       await recordMetric(c,u.tenantId,result,result.candidateId ? 1 : 0);
+      const kind=result.entityRoute?.operational?.kind??(result.entityRoute?.entities.length?'entity':'single_intent');await c.query('INSERT INTO router_operational_metrics(tenant_id,kind,method,outcome,fallback,clarification) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,day,kind,method,outcome,fallback,clarification) DO UPDATE SET queries=router_operational_metrics.queries+1',[u.tenantId,kind,result.method,result.outcome,result.fallbackUsed,result.entityRoute?.status==='ambiguous'||result.outcome==='ambiguous']);
       if(result.promotedSemanticHit)await c.query("UPDATE router_daily_metrics SET semantic_after_promotion=semantic_after_promotion+1 WHERE tenant_id=$1 AND day=current_date AND method=$2 AND outcome=$3 AND intent_key=$4",[u.tenantId,result.method,result.outcome,result.intentKey]);
       if(result.outcome==='matched'&&result.method==='semantic'&&result.semanticExampleId)await c.query('INSERT INTO router_example_hits(tenant_id,example_id,hits) VALUES($1,$2,1) ON CONFLICT(tenant_id,example_id,day) DO UPDATE SET hits=router_example_hits.hits+1,last_hit=now()',[u.tenantId,result.semanticExampleId]);
       const timings=[{kind:'http',ms:performance.now()-httpStart},...(result.entityRoute?.entities??[]).map(e=>({kind:e.type,ms:e.latencyMs}))];

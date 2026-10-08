@@ -1,3 +1,4 @@
+import {parseOperationalPlan,operationalIntent} from '../../lib/operational-plan';
 import { INTENTS, getIntent, normalizeQuery, unsafeOperation, type Intent, type RouterResult } from '../../lib/intelligent-router';
 import { ReasoningUnavailable, EmbeddingCache, validateReasoning, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
 export type SemanticHit = { intentKey: string; score: number; promoted?:boolean; exampleId?:string };
@@ -20,6 +21,7 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
     if (!getIntent(i.key) || !await d.allowed(i)) return finish({ ...empty, ...extra, method, outcome: 'unauthorized' });
     return finish({ ...empty, ...extra, outcome: 'matched', method, intentKey: i.key, actionKey: i.actionKey, commandId: i.commandId });
   };
+  let plan;try { plan=parseOperationalPlan(raw); } catch (error) { if ((error as {statusCode?:number}).statusCode===400) return finish({...empty,unsupported:true}); throw error; } if(plan){const op=getIntent(operationalIntent(plan));if(op)return matched(op,'rule');}
   const exact = INTENTS.find(i => i.aliases.some(a => normalizeQuery(a) === query));
   if (exact) return matched(exact, 'exact');
   const rule = INTENTS.find(i => i.rule?.test(query));

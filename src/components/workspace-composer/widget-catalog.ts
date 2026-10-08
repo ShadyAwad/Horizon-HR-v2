@@ -1,6 +1,6 @@
 import type { AuthUser } from '../../auth/auth-contract';
 import type { DashboardWorkspaceId } from '../../navigation/workspace-registry';
-export type WidgetId = 'equipment' | 'inventory' | 'support' | 'communications' | 'meetings' | 'attendance' | 'breaks' | 'leave' | 'expenses' | 'goals' | 'grievances' | 'hiring' | 'openRoles' | 'hiringInterviews' | 'pendingOffers' | 'feed';
+export type WidgetId = 'equipment' | 'inventory' | 'support' | 'communications' | 'meetings' | 'attendance' | 'breaks' | 'leave' | 'expenses' | 'goals' | 'grievances' | 'hiring' | 'openRoles' | 'hiringInterviews' | 'pendingOffers' | 'newHires' | 'onboardingRisk' | 'equipmentPending' | 'accessPending' | 'firstDayReadiness' | 'feed';
 export type WidgetConfig = { compact?: boolean; limit?: number };
 export type WidgetDefinition = { id: WidgetId; title: string; titleAr: string; description: string; group: string; module: DashboardWorkspaceId; additionalModules?: readonly DashboardWorkspaceId[]; permissions: readonly string[]; minWidth: number; minHeight: number; defaultWidth: number; defaultHeight: number };
 const define = (id: WidgetId, title: string, titleAr: string, group: string, module: DashboardWorkspaceId, permissions: string[], description: string): WidgetDefinition => ({ id,title,titleAr,group,module,permissions,description,minWidth:4,minHeight:4,defaultWidth:6,defaultHeight:5 });
@@ -20,6 +20,11 @@ export const WIDGETS: readonly WidgetDefinition[] = [
  define('openRoles','Open Roles','الوظائف المفتوحة','Hiring','hiring',['hiring.view'],'Published company job openings.'),
  define('hiringInterviews','Upcoming Interviews','المقابلات القادمة','Hiring','hiring',['hiring.view'],'Upcoming hiring interviews.'),
  define('pendingOffers','Offers Pending','العروض المعلقة','Hiring','hiring',['hiring.manage_offers'],'Offers awaiting a recorded response.'),
+ define('newHires','New Hires This Week','التعيينات هذا الأسبوع','Hiring','hiring',['hiring.onboarding.view'],'Authoritative onboarding checklist snapshot.'),
+ define('onboardingRisk','Onboarding At Risk','تهيئة تحتاج متابعة','Hiring','hiring',['hiring.onboarding.view'],'Authoritative onboarding checklist snapshot.'),
+ define('equipmentPending','Equipment Pending','عهدة معلقة','Hiring','hiring',['hiring.onboarding.view'],'Authoritative onboarding checklist snapshot.'),
+ define('accessPending','Accounts / Access Pending','حسابات وصلاحيات معلقة','Hiring','hiring',['hiring.onboarding.view'],'Authoritative onboarding checklist snapshot.'),
+ define('firstDayReadiness','First-Day Readiness','استعداد اليوم الأول','Hiring','hiring',['hiring.onboarding.view'],'Authoritative onboarding checklist snapshot.'),
  define('feed','Company Feed','أخبار الشركة','Communications','feed',[],'Recent company announcements visible to you.'),
 ];
 export function widgetDefinition(id: string) { return WIDGETS.find(w=>w.id===id); }
@@ -29,6 +34,6 @@ export function canUseWidget(user: AuthUser, widget: WidgetDefinition) {
 export function widgetPath(id: WidgetId, now = new Date()) {
  const monday=new Date(now);monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
  const date=`${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
- const paths: Record<WidgetId,string>={equipment:'/api/me/assets',inventory:'/api/hr/assets',support:'/api/support',communications:'/api/communications/messages',meetings:'/api/communications/meetings?upcoming=true',attendance:'/api/clock-status',breaks:'/api/attendance/breaks?team=true',leave:'/api/hr/leave-requests?status=pending&pageSize=5',expenses:'/api/finance/expense-claims?status=pending&pageSize=5',goals:`/api/roster/goals?weekStart=${date}`,grievances:'/api/grievances',hiring:'/api/hiring/applicants?status=active&pageSize=5',openRoles:'/api/hiring/summary',hiringInterviews:'/api/hiring/summary',pendingOffers:'/api/hiring/summary',feed:'/api/company-feed'};
+ const paths: Record<WidgetId,string>={equipment:'/api/me/assets',inventory:'/api/hr/assets',support:'/api/support',communications:'/api/communications/messages',meetings:'/api/communications/meetings?upcoming=true',attendance:'/api/clock-status',breaks:'/api/attendance/breaks?team=true',leave:'/api/hr/leave-requests?status=pending&pageSize=5',expenses:'/api/finance/expense-claims?status=pending&pageSize=5',goals:`/api/roster/goals?weekStart=${date}`,grievances:'/api/grievances',hiring:'/api/hiring/applicants?status=active&pageSize=5',openRoles:'/api/hiring/summary',hiringInterviews:'/api/hiring/summary',pendingOffers:'/api/hiring/summary',newHires:'/api/hiring/onboarding/summary',onboardingRisk:'/api/hiring/onboarding/summary',equipmentPending:'/api/hiring/onboarding/summary',accessPending:'/api/hiring/onboarding/summary',firstDayReadiness:'/api/hiring/onboarding/summary',feed:'/api/company-feed'};
  return paths[id];
 }

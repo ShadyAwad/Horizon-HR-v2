@@ -1,6 +1,13 @@
 // Approved multilingual corpus, separate from short exact aliases. Examples are navigation requests,
 // never tenant facts. Keep different operational intents separate; cancellation is unsupported.
 export const INTENT_EXAMPLES:Record<string,readonly string[]>={
+ operational_support:['which open IT tickets are older than 3 days','show tickets created in the last 7 days','show support requests waiting on users','وريني تذاكر الدعم المفتوحة اكتر من 3 ايام','اعرض طلبات الدعم بانتظار المستخدم','show ticktes older than 3 days'],
+ operational_hiring:['show candidates waiting for feedback','show offers expiring this week','which jobs have no applicants','who is interviewing for {job_opening} today','اعرض المرشحين بانتظار التقييم','وريني المرشحين مستنيين التقييم','show canddates waiting for feedbak','show candidates in screening for more than 5 days'],
+ operational_onboarding:['which new hires still need equipment','who starts this week','show onboarding tasks overdue','which hires are blocked','who still needs a badge','show new hires without first shift assigned','وريني الموظفين الجدد محتاجين معدات','show onboarding tasks overdu'],
+ operational_support_onboarding:['show unresolved IT tickets for employees starting this week','اعرض تذاكر الدعم غير محلولة للموظفين الجدد هذا الاسبوع'],
+ operational_composition:['which new hires still need laptops'],
+
+
  employee_equipment:['Show equipment allocated to an employee','Find an employee’s assigned laptop','اعرض معدات موظف','عايز اشوف عهدة موظف','employee assigned equipmnt'],
  asset_holder:['Find the person assigned to an asset','Who is responsible for this inventory item','من يحمل هذا الجهاز','الجهاز ده متسلم لمين','asset custdy holder'],
  support_lookup:['Find unresolved IT service requests','Show my service desk tickets','اعرض طلبات الدعم المفتوحة','وريني طلبات الدعم بتاعتي','open IT tickets بتاعتي','unresolved suport tickets'],

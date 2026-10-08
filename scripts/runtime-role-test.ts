@@ -74,6 +74,6 @@ try {
   assert.equal((await runtime.query("SELECT * FROM stanza_session_identity('invalid')")).rowCount,0);
   const functions=(await admin.query("SELECT proname,prosecdef,proconfig,proacl::text[] AS proacl FROM pg_proc WHERE proname LIKE 'stanza_%' AND prosecdef")).rows;
   const normalizer=(await admin.query("SELECT prosecdef,provolatile,proparallel FROM pg_proc WHERE oid='stanza_entity_normalize(text)'::regprocedure")).rows[0];assert.equal(normalizer.prosecdef,false);assert.equal(normalizer.provolatile,'i');assert.equal(normalizer.proparallel,'s');
-  assert.deepEqual(functions.map(f=>f.proname).sort(),['stanza_auth_tenant','stanza_reset_tenant','stanza_session_identity','stanza_public_job_tenant','stanza_qr_tenant','stanza_maintenance_tenants'].sort());assert(functions.every(f=>f.prosecdef&&f.proconfig.includes('search_path=pg_catalog')&&!f.proacl.some((a:string)=>a.startsWith('='))));
+  assert.deepEqual(functions.map(f=>f.proname).sort(),['stanza_auth_tenant','stanza_reset_tenant','stanza_session_identity','stanza_public_job_tenant','stanza_public_offer_tenant','stanza_qr_tenant','stanza_maintenance_tenants'].sort());assert(functions.every(f=>f.prosecdef&&f.proconfig.includes('search_path=pg_catalog')&&!f.proacl.some((a:string)=>a.startsWith('='))));
   console.log(`PASS real restricted login: ${tables.length} tenant tables; own/missing/cross-tenant reads, cross-tenant updates/writes, tenant directory, invoker view, global corpus, sequence/function ACLs and rejected DDL/admin connection.`);
 } finally { await runtime.end(); await admin.end(); }

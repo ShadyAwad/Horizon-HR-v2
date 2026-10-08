@@ -19,6 +19,8 @@
     "test:smoke": "tsx scripts/smoke-test.ts",
     "test:security": "tsx scripts/security-test.ts",
     "test:authorization": "tsx scripts/authorization-test.ts",
+    "test:hiring-depth:browser": "tsx scripts/hiring-depth-browser-test.ts",
+    "test:hiring-depth-operational": "tsx scripts/hiring-depth-operational-test.ts",
     "test:ats-service-desk": "tsx scripts/ats-service-desk-test.ts",
     "test:hiring": "tsx scripts/hiring-rules-test.ts",
     "test:hiring:integration": "tsx scripts/hiring-integration-test.ts",
@@ -102,7 +104,8 @@
     "test:semantic-duplicates:local": "tsx scripts/semantic-duplicate-calibration.ts",
     "semantic:platform-authority": "tsx scripts/semantic-platform-authority.ts",
     "test:support": "tsx scripts/support-integration-test.ts",
-    "test:product-polish": "tsx scripts/product-polish-test.ts && tsx scripts/cursor-motion-benchmark.ts"
+    "test:product-polish": "tsx scripts/product-polish-test.ts && tsx scripts/cursor-motion-benchmark.ts",
+    "test:operational:browser": "tsx scripts/operational-browser-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

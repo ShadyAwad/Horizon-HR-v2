@@ -36,7 +36,7 @@ export async function grantRuntimeAccess(pool: Pool, role: string) {
     // Sequence USAGE permits nextval; no setval/ownership/DDL rights.
     await client.query(`GRANT USAGE ON SEQUENCE public.communication_message_events_id_seq TO ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION public.stanza_auth_tenant(text),public.stanza_session_identity(text),
-      public.stanza_public_job_tenant(text),public.stanza_reset_tenant(text),public.stanza_qr_tenant(text,text),public.stanza_maintenance_tenants(uuid),
+      public.stanza_public_job_tenant(text),public.stanza_public_offer_tenant(text),public.stanza_reset_tenant(text),public.stanza_qr_tenant(text,text),public.stanza_maintenance_tenants(uuid),
       public.attendance_break_seconds(uuid,uuid,timestamptz),public.attendance_unpaid_break_seconds(uuid,uuid,timestamptz) TO ${quoted}`);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }

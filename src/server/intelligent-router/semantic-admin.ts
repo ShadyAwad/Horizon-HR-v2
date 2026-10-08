@@ -29,7 +29,7 @@ export async function semanticAudit(c:PoolClient,tenant:string,actor:string,acti
 export async function privacyMode(c:PoolClient,tenant:string){return (await c.query('SELECT mode FROM router_privacy_settings WHERE tenant_id=$1',[tenant])).rows[0]?.mode??'PRIVATE';}
 async function privacyLock(c:PoolClient,tenant:string){await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['semantic-privacy:'+tenant]);}
 function templateFor(text:string):EntityTemplate|null{
- const placeholders=[...text.matchAll(/\{(employee|location)\}/g)].map(m=>({type:m[1] as 'employee'|'location',start:m.index,end:m.index+m[0].length}));
+ const placeholders=[...text.matchAll(/\{(employee|location|asset|job_opening|candidate|duration|date_range)\}/g)].map(m=>({type:m[1] as EntityTemplate['placeholders'][number]['type'],start:m.index,end:m.index+m[0].length}));
  return placeholders.length?{version:1,text,placeholders}:null;
 }
 async function tenantOverview(c:PoolClient,tenant:string,days:number){
@@ -47,7 +47,8 @@ async function tenantOverview(c:PoolClient,tenant:string,days:number){
  const health=(await c.query(`SELECT e.id,e.intent_key,e.created_at,COALESCE(sum(h.hits),0) hits FROM router_semantic_examples e LEFT JOIN router_example_hits h ON h.example_id=e.id AND h.tenant_id=$1 WHERE e.tenant_id=$1 AND e.created_at<now()-interval '30 days' GROUP BY e.id HAVING COALESCE(sum(h.hits),0)<3 ORDER BY hits,e.created_at LIMIT 50`,[tenant])).rows;
  const coverage=(await c.query("SELECT intent_key,count(*) examples FROM router_semantic_examples WHERE approval_state='approved' GROUP BY intent_key ORDER BY count(*),intent_key LIMIT 100")).rows;
  const lastActivity=(await c.query('SELECT max(day) last_activity FROM router_daily_metrics WHERE tenant_id=$1',[tenant])).rows[0]?.last_activity??null;
- return {lastActivity,counts,metrics,daily,intents,growth,timings,health,coverage,privacyMode:await privacyMode(c,tenant),windowDays:days};
+ const operational=(await c.query('SELECT kind,method,outcome,fallback,clarification,sum(queries)::int queries FROM router_operational_metrics WHERE tenant_id=$1 AND day>=current_date-($2::int-1) GROUP BY kind,method,outcome,fallback,clarification',[tenant,days])).rows;
+ return {lastActivity,counts,metrics,operational,daily,intents,growth,timings,health,coverage,privacyMode:await privacyMode(c,tenant),windowDays:days};
 }
 async function timingSamples(c:PoolClient,tenant:string,days:number){
  const data:{kind:string;value:number}[]=[];
