@@ -33,6 +33,8 @@ export type SerializedFeedImageNode = Spread<{
   altText: string;
   width: number;
   height: number;
+  caption?: string;
+  align?: 'start' | 'center' | 'end';
 }, SerializedLexicalNode>;
 
 type FeedImagePayload = {
@@ -41,6 +43,8 @@ type FeedImagePayload = {
   altText: string;
   width: number;
   height: number;
+  caption?: string;
+  align?: 'start' | 'center' | 'end';
 };
 
 function FeedImageComponent({
@@ -49,11 +53,14 @@ function FeedImageComponent({
   altText,
   width,
   height,
+  caption = '', align = 'start',
 }: FeedImagePayload & { nodeKey: NodeKey }) {
   const [editor] = useLexicalComposerContext();
   const editable = useLexicalEditable();
   const [selected, setSelected, clearSelected] = useLexicalNodeSelection(nodeKey);
   const [draftAlt, setDraftAlt] = useState(altText);
+  const [draftCaption, setDraftCaption] = useState(caption);
+  useEffect(()=>setDraftCaption(caption),[caption]);
   const dragRef = useRef<{ pointerId: number; startX: number; width: number; height: number } | null>(null);
   const { t, isRtl } = useLanguage();
 
@@ -131,6 +138,7 @@ function FeedImageComponent({
   return (
     <span
       dir={isRtl ? 'rtl' : 'ltr'}
+      data-align={align}
       role={editable ? 'button' : undefined}
       tabIndex={editable ? 0 : undefined}
       aria-label={editable ? t('editor.selectImage') : undefined}
@@ -141,14 +149,14 @@ function FeedImageComponent({
         setSelected(true);
       }}
       onKeyDown={(event) => {
-        if (editable && (event.key === 'Enter' || event.key === ' ')) {
+        if (editable && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault();
           clearSelected();
           setSelected(true);
         }
       }}
       className={cn(
-        'relative my-3 inline-flex max-w-full flex-col align-top text-start outline-none',
+        'stanza-document-image relative my-3 flex max-w-full flex-col align-top text-start outline-none',
         selected && editable && 'rounded ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-black',
       )}
     >
@@ -163,6 +171,7 @@ function FeedImageComponent({
         className="h-auto max-w-full rounded border border-emerald-500/15 object-contain"
         style={{ width: `${width}px`, aspectRatio: `${width} / ${height}` }}
       />
+      {caption && <span className="text-sm">{caption}</span>}
       {editable && selected && (
         <>
           <button
@@ -172,9 +181,13 @@ function FeedImageComponent({
             onPointerDown={startResize}
             className="absolute bottom-1 end-1 h-11 w-11 touch-none cursor-nwse-resize rounded border border-emerald-300/60 bg-black/75 text-emerald-100 shadow-lg after:absolute after:bottom-2 after:end-2 after:h-3 after:w-3 after:border-b-2 after:border-e-2 after:border-emerald-300 sm:h-8 sm:w-8"
           />
+          <label>{isRtl?'محاذاة الصورة':'Image alignment'}<select aria-label={isRtl?'محاذاة الصورة':'Image alignment'} className="stanza-select stanza-document-control" value={align} onChange={e=>editor.update(()=>{const n=$getNodeByKey(nodeKey);if($isFeedImageNode(n))n.setMetadata({align:e.target.value as 'start' | 'center' | 'end'});})}>{(['start','center','end'] as const).map((v,i)=><option key={v} value={v}>{isRtl?['بداية','وسط','نهاية'][i]:v}</option>)}</select></label>
+          <label>{isRtl?'شرح الصورة':'Image caption'}<input aria-label={isRtl?'شرح الصورة':'Image caption'} className="stanza-form-control w-full" value={draftCaption} maxLength={500} onChange={e=>setDraftCaption(e.target.value)} onBlur={()=>editor.update(()=>{const n=$getNodeByKey(nodeKey);if($isFeedImageNode(n))n.setMetadata({caption:draftCaption});})}/></label>
+          <label>{isRtl?'عرض الصورة':'Image width'}<input aria-label={isRtl?'عرض الصورة':'Image width'} type="number" min={80} max={1200} value={width} className="stanza-form-control w-full" onChange={e=>updateDimensions(Number(e.target.value),height*Number(e.target.value)/width)}/></label>
           <label className="mt-2 text-xs font-semibold text-neutral-600 dark:text-emerald-100/70">
             {t('editor.imageAltText')}
             <input
+              aria-label={t('editor.imageAltText')}
               value={draftAlt}
               maxLength={FEED_IMAGE_ALT_MAX_LENGTH}
               onChange={(event) => setDraftAlt(event.target.value)}
@@ -201,13 +214,15 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
   __altText: string;
   __width: number;
   __height: number;
+  __caption = '';
+  __align: 'start' | 'center' | 'end' = 'start';
 
   static getType() {
     return 'image';
   }
 
   static clone(node: FeedImageNode) {
-    return new FeedImageNode(
+    const clone = new FeedImageNode(
       node.__uploadId,
       node.__src,
       node.__altText,
@@ -215,6 +230,7 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
       node.__height,
       node.__key,
     );
+    clone.__caption=node.__caption; clone.__align=node.__align; return clone;
   }
 
   static importJSON(serialized: SerializedFeedImageNode) {
@@ -241,6 +257,7 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
       altText: this.__altText,
       width: this.__width,
       height: this.__height,
+      caption:this.__caption, align:this.__align,
     };
   }
 
@@ -257,8 +274,10 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
   }
 
   getTextContent() {
-    return this.__altText;
+    return [this.getLatest().__altText,this.getLatest().__caption].filter(Boolean).join('\n');
   }
+
+  setMetadata(meta: {caption?:string;align?:'start'|'center'|'end'}) { const n=this.getWritable(); if(meta.caption!=null)n.__caption=meta.caption.slice(0,500);if(meta.align)n.__align=meta.align;return n; }
 
   setAltText(altText: string) {
     const writable = this.getWritable();
@@ -283,19 +302,21 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
         altText={this.__altText}
         width={this.__width}
         height={this.__height}
+        caption={this.__caption} align={this.__align}
       />
     );
   }
 }
 
 export function $createFeedImageNode(payload: FeedImagePayload) {
-  return $applyNodeReplacement(new FeedImageNode(
+  const n = $applyNodeReplacement(new FeedImageNode(
     payload.uploadId,
     payload.src,
     payload.altText,
     payload.width,
     payload.height,
   ));
+  return n.setMetadata({caption:payload.caption || '',align:payload.align || 'start'});
 }
 
 export function $isFeedImageNode(node: LexicalNode | null | undefined): node is FeedImageNode {

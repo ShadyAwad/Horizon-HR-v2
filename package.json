@@ -105,7 +105,9 @@
     "semantic:platform-authority": "tsx scripts/semantic-platform-authority.ts",
     "test:support": "tsx scripts/support-integration-test.ts",
     "test:product-polish": "tsx scripts/product-polish-test.ts && tsx scripts/cursor-motion-benchmark.ts",
-    "test:operational:browser": "tsx scripts/operational-browser-test.ts"
+    "test:operational:browser": "tsx scripts/operational-browser-test.ts",
+    "test:document": "tsx scripts/document-integrity-test.ts",
+    "test:document:browser": "tsx scripts/document-browser-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
@@ -115,6 +117,7 @@
     "@lexical/react": "^0.46.0",
     "@lexical/rich-text": "^0.46.0",
     "@lexical/selection": "^0.46.0",
+    "@lexical/table": "^0.46.0",
     "@lexical/utils": "^0.46.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",

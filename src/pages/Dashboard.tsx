@@ -980,6 +980,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [feedMessage, setFeedMessage] = useState('');
   const [feedMessageType, setFeedMessageType] = useState<'success' | 'error'>('success');
   const [feedForm, setFeedForm] = useState<FeedFormState>(defaultFeedForm);
+  const [feedEditing,setFeedEditing]=useState<FeedPost|null>(null);
+  const [feedExpanded,setFeedExpanded]=useState(false);
   const [feedEditorKey, setFeedEditorKey] = useState(0);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationRecord[]>([]);
   const [locationsMessage, setLocationsMessage] = useState('');
@@ -1408,7 +1410,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const feedDraft = useCompanyFeedDraft({
     tenantId: user.tenantId,
     employeeId: user.id,
-    enabled: activeTab === 'feed' && canPublishFeed,
+    enabled: activeTab === 'feed' && canPublishFeed && !feedEditing,
     content: {
       title: feedForm.title,
       contentText: feedForm.contentText,
@@ -3904,6 +3906,11 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
     try {
       const submittedStatus = feedForm.status;
+      if(feedEditing){
+        const editRun=await feedSubmissionController.run(signal=>apiFetch(apiUrl(`/api/company-feed/posts/${feedEditing.id}/content`),{method:'PUT',signal,headers:payrollHeaders,body:JSON.stringify({title:feedForm.title,contentText:feedForm.contentText,contentJson:feedForm.contentJson,expectedUpdatedAt:feedEditing.updated_at})}));if(!editRun.started)return;const response=editRun.result;
+        const body=await response.json();if(!response.ok){setFeedMessageType('error');setFeedMessage(body.error||t('dash.feedSaveError'));return;}
+        setFeedEditing(null);setFeedExpanded(false);setFeedForm(defaultFeedForm);setFeedEditorKey(k=>k+1);loadFeed();loadAdminFeed();setFeedMessageType('success');setFeedMessage(t('dash.draftSaved'));return;
+      }
       const savedDraft = await feedDraft.saveNow();
       if (!savedDraft) {
         setFeedMessageType('error');
@@ -3941,6 +3948,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         if (submittedStatus === 'published') {
           setFeedPosts((current) => [createdPost, ...current.filter((post) => post.id !== createdPost.id)]);
         }
+        setFeedExpanded(false);
         setFeedForm(defaultFeedForm);
         setFeedEditorKey((current) => current + 1);
         if (submittedStatus === 'published') feedDraft.markPublished();
@@ -6071,16 +6079,19 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       </p>
 
                       {canPublishFeed && (
-                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <div popover={feedExpanded ? "manual" : undefined} role={feedExpanded ? 'dialog' : undefined} aria-modal={feedExpanded || undefined} aria-label={feedExpanded ? (isRtl ? 'محرر منشور الشركة' : 'Company publication editor') : undefined} className={cn("stanza-document-workspace mt-4 rounded-xl p-4",!feedExpanded&&"bg-white/70 dark:bg-black/35",feedExpanded&&"stanza-document-expanded")}>
+                          <div className="stanza-document-composer-grid">
                             <input
+                              aria-label={t('dash.postTitle')} maxLength={160}
                               value={feedForm.title}
                               onChange={(event) => updateFeedForm('title', event.target.value)}
                               placeholder={t('dash.postTitle')}
-                              className="rounded border border-emerald-500/15 bg-white px-3 py-2 text-xs text-neutral-800 outline-none focus:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50 md:col-span-2"
+                              className="stanza-document-title"
                             />
+                            <details className="stanza-document-metadata" open={feedExpanded ? undefined : true}><summary>{isRtl?"بيانات المنشور":"Publication details"}</summary><div className="stanza-document-metadata-body">
                             <select
                               aria-label={t('enum.announcement')}
+                              disabled={Boolean(feedEditing)}
                               value={feedForm.postType}
                               onChange={(event) => updateFeedForm('postType', event.target.value)}
                               className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20"
@@ -6092,6 +6103,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             </select>
                             <select
                               aria-label={t('enum.published')}
+                              disabled={Boolean(feedEditing)}
                               value={feedForm.status}
                               onChange={(event) => updateFeedForm('status', event.target.value)}
                               className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20"
@@ -6101,6 +6113,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             </select>
                             <select
                               aria-label={t('dash.everyone')}
+                              disabled={Boolean(feedEditing)}
                               value={feedForm.visibility}
                               onChange={(event) => updateFeedForm('visibility', event.target.value)}
                               className="stanza-feed-select rounded border border-emerald-500/15 px-3 py-2 text-xs outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-500/20 md:col-span-2"
@@ -6115,20 +6128,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                 </option>
                               ))}
                             </select>
+                            </div></details>
                             <div className="md:col-span-4">
                               <Suspense fallback={<div className="rounded-lg border border-emerald-500/15 bg-black/25 p-4 text-xs text-emerald-100/45">{t('dash.loadingEditor')}</div>}>
                                 <RichTextEditor
-                                  key={feedEditorKey}
-                                  valueJson={feedForm.contentJson}
-                                  onChange={updateFeedContent}
-                                  onImageUploadPendingChange={setFeedImageUploadPending}
-                                  placeholder={t('dash.writeAnnouncement')}
-                                />
-                              </Suspense>
-                            </div>
-                            <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-emerald-100/50 md:col-span-4">
-                              <span role="status" aria-live="polite">
-                                {feedDraft.status === 'saving'
+                                  readOnly={feedSubmitting}
+                                  documentActions={<>                              <span role="status" aria-live="polite">
+                                {feedEditing ? (isRtl?'التعديلات تُنشر عند حفظ التعديلات':'Changes publish when you save changes') : feedDraft.status === 'saving'
                                   ? t('dash.feedDraftSaving')
                                   : feedDraft.status === 'saved'
                                     ? t('dash.feedDraftSaved')
@@ -6144,31 +6150,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                               ? t('dash.feedDraftSaved')
                                               : ''}
                               </span>
-                              <span className="flex items-center gap-2">
-                                {feedDraft.hasDraft && (
-                                  <button type="button" onClick={() => void feedDraft.restore()} className="rounded border border-emerald-500/20 px-2 py-1 text-emerald-700 transition hover:border-emerald-500/50 dark:text-emerald-200">
-                                    {t('dash.feedDraftContinue')}
-                                  </button>
-                                )}
-                                {feedDraft.status === 'error' && (
-                                  <button type="button" onClick={() => void feedDraft.retry()} className="rounded border border-amber-500/30 px-2 py-1 text-amber-700 transition hover:border-amber-500/60 dark:text-amber-300">
-                                    {t('dash.feedDraftRetry')}
-                                  </button>
-                                )}
-                                {feedDraft.hasDraft && (
-                                  <button type="button" onClick={() => { if (window.confirm(t('dash.feedDraftDiscardConfirm'))) void feedDraft.discard(); }} className="rounded border border-red-400/25 px-2 py-1 text-red-700 transition hover:border-red-400/60 dark:text-red-300">
-                                    {t('dash.feedDraftDiscard')}
-                                  </button>
-                                )}
-                              </span>
-                            </div>
                             <button
                               type="button"
                               onClick={submitFeedPost}
                               disabled={feedPublishInteraction.disabled}
                               aria-busy={feedPublishInteraction.showSpinner}
                               className={cn(
-                                'inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60 md:col-span-4',
+                                'stanza-document-publish inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60',
                                 feedPublishInteraction.cursor === 'wait'
                                   ? 'cursor-wait'
                                   : feedPublishInteraction.cursor === 'progress'
@@ -6177,8 +6165,38 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                               )}
                             >
                               {feedPublishInteraction.showSpinner && <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                              {feedSubmitting ? t('dash.saving') : feedForm.status === 'published' ? t('dash.publishPost') : t('dash.saveDraft')}
-                            </button>
+                              {feedSubmitting ? t('dash.saving') : feedEditing ? (isRtl?'حفظ التعديلات':'Save changes') : feedForm.status === 'published' ? t('dash.publishPost') : t('dash.saveDraft')}
+                            </button></>}
+                                  advancedAvailable onExpandedChange={setFeedExpanded}
+                                  key={feedEditorKey}
+                                  valueJson={feedForm.contentJson}
+                                  onChange={updateFeedContent}
+                                  onImageUploadPendingChange={setFeedImageUploadPending}
+                                  placeholder={t('dash.writeAnnouncement')}
+                                />
+                              </Suspense>
+                            </div>
+                            <div className="stanza-document-draft-actions flex min-h-10 flex-wrap items-center justify-between gap-2 text-sm md:col-span-4">
+                              <span className="flex items-center gap-2">
+                                {!feedEditing && feedDraft.hasDraft && (
+                                  <button type="button" onClick={() => void feedDraft.restore()} className="rounded border border-emerald-500/20 px-2 py-1 text-emerald-700 transition hover:border-emerald-500/50 dark:text-emerald-200">
+                                    {t('dash.feedDraftContinue')}
+                                  </button>
+                                )}
+                                {!feedEditing && ['error','saved_local','offline'].includes(feedDraft.status) && (
+                                  <button type="button" onClick={() => void feedDraft.retry()} className="rounded border border-amber-500/30 px-2 py-1 text-amber-700 transition hover:border-amber-500/60 dark:text-amber-300">
+                                    {t('dash.feedDraftRetry')}
+                                  </button>
+                                )}
+                                {!feedEditing && feedDraft.hasDraft && (
+                                  <button type="button" onClick={async () => { if (window.confirm(t('dash.feedDraftDiscardConfirm')) && await feedDraft.discard()) { setFeedForm(defaultFeedForm); setFeedEditorKey(k=>k+1); } }} className="rounded border border-red-400/25 px-2 py-1 text-red-700 transition hover:border-red-400/60 dark:text-red-300">
+                                    {t('dash.feedDraftDiscard')}
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                            {feedEditing&&<p className="md:col-span-4 text-sm">{isRtl?'تحرير منشور موجود. نوع المنشور والجمهور لا يتغيران.':'Editing an existing publication. Category and audience stay as published.'}<button type="button" className="stanza-document-control ms-2" onClick={()=>{setFeedEditing(null);setFeedForm(defaultFeedForm);setFeedEditorKey(k=>k+1);void feedDraft.restore();}}>{isRtl?'إلغاء التحرير':'Cancel editing'}</button></p>}
+
                           </div>
                         </div>
                       )}
@@ -6245,7 +6263,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                     {displayEnum(post.post_type)} · <span dir="ltr">{formatShortDateTime(post.created_at)}</span>
                                   </p>
                                 </div>
+                                <button type="button" className="stanza-document-control" onClick={async()=>{if(!feedEditing&&feedForm.contentText.trim()&&!window.confirm(isRtl?'حفظ المسودة وفتح المنشور؟':'Save the draft and open this publication?'))return;if(!feedEditing&&feedForm.contentText.trim()&&!await feedDraft.saveNow())return;setFeedEditing(post);setFeedForm({...defaultFeedForm,title:post.title,contentText:post.content_text,contentJson:post.content_json??post.contentJson});setFeedEditorKey(k=>k+1);document.querySelector('.stanza-document-workspace')?.scrollIntoView({block:'start'});}}>{isRtl?'تحرير المحتوى':'Edit content'}</button>
                                 <select
+                                  aria-label={isRtl?'حالة المنشور':'Publication status'}
                                   value={post.status}
                                   onChange={(event) => updateFeedStatus(post.id, event.target.value as FeedPostStatus)}
                                   disabled={isOffline || feedUpdatingId !== null}

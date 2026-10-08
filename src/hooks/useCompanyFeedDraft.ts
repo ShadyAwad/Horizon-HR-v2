@@ -1,3 +1,4 @@
+import { createSerialSaveQueue } from '../lib/document-save-queue';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { collectFeedImageIds, FEED_EDITOR_FORMAT } from '../lib/feed-editor-contract';
 import { apiFetch, apiUrl } from '../lib/api';
@@ -14,7 +15,7 @@ export type { CompanyFeedDraftContent, CompanyFeedDraftRecord } from '../lib/com
 
 const DRAFT_KEY_PREFIX = 'stanza.company-feed.recovery.v1';
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const DRAFT_MAX_BYTES = 60_000;
+const DRAFT_MAX_BYTES = 220_000;
 const AUTOSAVE_DELAY_MS = 1_000;
 const MAX_RETRIES = 2;
 
@@ -104,6 +105,9 @@ export function useCompanyFeedDraft({
   const timerRef = useRef<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const sequenceRef = useRef(0);
+  const queueRef=useRef(createSerialSaveQueue());
+  const savedSignatureRef=useRef('');
+  const conflictRef=useRef(false);
   const loadedIdentityRef = useRef<string | null>(null);
 
   contentRef.current = content;
@@ -149,10 +153,12 @@ export function useCompanyFeedDraft({
   }, []);
 
   const restore = useCallback(async (force = false) => {
-    if (!enabled || !tenantId || !employeeId) return;
+    if ((!enabled && !force) || !tenantId || !employeeId) return;
     const identity = `${tenantId}:${employeeId}`;
     if (!force && loadedIdentityRef.current === identity) return;
     loadedIdentityRef.current = identity;
+    conflictRef.current=false;
+    savedSignatureRef.current='';
     setStatus('loading');
     setMessage('');
 
@@ -182,14 +188,17 @@ export function useCompanyFeedDraft({
     }
   }, [applyRecord, employeeId, enabled, onRestore, readLocal, tenantId]);
 
-  const saveNow = useCallback(async (allowRetry = true): Promise<CompanyFeedDraftRecord | null> => {
+  const saveNow = useCallback((allowRetry = true): Promise<CompanyFeedDraftRecord | null> => queueRef.current.run(async () => {
     if (!enabled || publishing || !tenantId || !employeeId) return recordRef.current;
+    if(conflictRef.current)return null;
     const snapshot = normaliseCompanyFeedDraftContent(contentRef.current);
     if (!snapshot || !hasMeaningfulContent(snapshot.title, snapshot.contentJson)) {
       setStatus('error');
       setMessage('invalid_draft');
       return null;
     }
+    const signature=JSON.stringify(snapshot);
+    if(signature===savedSignatureRef.current&&recordRef.current)return recordRef.current;
     const localSaved = writeLocal(snapshot);
     if (!navigator.onLine) {
       setStatus(localSaved ? 'offline' : 'error');
@@ -197,7 +206,6 @@ export function useCompanyFeedDraft({
       return null;
     }
 
-    requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
     const sequence = ++sequenceRef.current;
@@ -230,12 +238,15 @@ export function useCompanyFeedDraft({
         if (response.ok && body.success && savedRecord) {
           if (sequence !== sequenceRef.current) return savedRecord;
           applyRecord(savedRecord);
-          clearLocal();
-          setStatus('saved');
+          savedSignatureRef.current=signature;
+          const latest=JSON.stringify(normaliseCompanyFeedDraftContent(contentRef.current));
+          if(latest===signature)clearLocal();else writeLocal();
+          setStatus(latest===signature?'saved':'saved_local');
           setMessage('');
           return savedRecord;
         }
         if (response.status === 409) {
+          conflictRef.current=true;
           const currentRecord = normaliseCompanyFeedDraft(body.draft);
           if (currentRecord) applyRecord(currentRecord);
           setStatus('error');
@@ -259,12 +270,13 @@ export function useCompanyFeedDraft({
       }
     }
     return null;
-  }, [applyRecord, clearLocal, employeeId, enabled, publishing, tenantId, writeLocal]);
+  }), [applyRecord, clearLocal, employeeId, enabled, publishing, tenantId, writeLocal]);
 
   const discard = useCallback(async () => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = null;
-    requestRef.current?.abort();
+    await queueRef.current.run(async()=>undefined);
+    savedSignatureRef.current='';conflictRef.current=false;
     clearLocal();
     try {
       const response = await apiFetch(apiUrl('/api/me/company-feed/draft'), { method: 'DELETE' });
@@ -282,7 +294,6 @@ export function useCompanyFeedDraft({
 
   useEffect(() => {
     if (!enabled || publishing || !hasMeaningfulContent(content.title, content.contentJson)) return;
-    writeLocal(content);
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => { void saveNow(); }, AUTOSAVE_DELAY_MS);
     return () => {
@@ -297,6 +308,7 @@ export function useCompanyFeedDraft({
 
   useEffect(() => {
     const flush = () => {
+      if (!enabled || publishing) return;
       writeLocal();
       void saveNow(false);
     };
@@ -308,7 +320,7 @@ export function useCompanyFeedDraft({
       document.removeEventListener('visibilitychange', onVisibility);
       requestRef.current?.abort();
     };
-  }, [saveNow, writeLocal]);
+  }, [enabled, publishing, saveNow, writeLocal]);
 
   return {
     status,
@@ -321,6 +333,7 @@ export function useCompanyFeedDraft({
     restore: () => restore(true),
     clearLocal,
     markPublished: () => {
+      savedSignatureRef.current='';conflictRef.current=false;
       applyRecord(null);
       clearLocal();
       setStatus('idle');

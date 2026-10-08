@@ -192,6 +192,7 @@ const DEFINITIONS: Record<string, AuditDefinition> = {
   'roster.shift_swap.applied': { canonicalAction: 'roster.shift_swap.applied', module: 'roster', summary: 'Shift swap applied', metadataKeys: ['approvalSource', 'scopeType', 'status'] },
   'roster.shift_swap.rejected': { canonicalAction: 'roster.shift_swap.rejected', module: 'roster', summary: 'Shift swap rejected', metadataKeys: ['approvalSource', 'scopeType', 'status'] },
   'roster.shift_swap.approval_conflict': { canonicalAction: 'roster.shift_swap.approval_conflict', module: 'roster', summary: 'Shift swap approval conflict', severity: 'warning', metadataKeys: ['status'] },
+  company_feed_post_content_updated: { canonicalAction: 'feed.post.updated', module: 'feed', summary: 'Company Feed content updated', metadataKeys: [] },
   company_feed_post_created: { canonicalAction: 'feed.post.created', module: 'feed', summary: 'Company Feed post created', metadataKeys: ['postType', 'status'] },
   company_feed_post_status_updated: { canonicalAction: 'feed.post.status_changed', module: 'feed', summary: 'Company Feed post status changed', metadataKeys: ['previousStatus', 'newStatus'] },
 };

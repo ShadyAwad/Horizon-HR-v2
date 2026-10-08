@@ -57,7 +57,7 @@ test('stale versions return a conflict instead of overwriting the newer draft', 
 test('drafts preserve the lexical-v1 contract and reject unsafe documents', () => {
   assert.equal(validateFeedEditorDocument(root('Private draft'), 'Private draft').ok, true);
   assert.equal(validateFeedEditorDocument({ root: { type: 'root', children: [{ type: 'script', children: [] }] } }).ok, false);
-  assert.match(feedRoutes, /serializedContentJson\.length > 50000/);
+  assert.match(feedRoutes, /serializedContentJson\.length > 200000/);
   assert.match(feedRoutes, /validateFeedEditorDocument\(body\.contentJson, contentText\)/);
 });
 
@@ -86,11 +86,13 @@ test('attachments stay as internal UUID references and are checked against the a
   assert.doesNotMatch(hook, /data:image/);
 });
 
-test('autosave is debounced, aborts obsolete requests, and keeps a bounded local recovery buffer', () => {
+test('autosave is debounced, serializes writes, and keeps a bounded local recovery buffer', () => {
   assert.match(hook, /const AUTOSAVE_DELAY_MS = 1_000/);
-  assert.match(hook, /requestRef\.current\?\.abort\(\)/);
+  assert.match(hook, /queueRef\.current\.run/);
+  assert.match(hook, /savedSignatureRef/);
+  assert.match(hook, /latest===signature/);
   assert.match(hook, /const MAX_RETRIES = 2/);
-  assert.match(hook, /const DRAFT_MAX_BYTES = 60_000/);
+  assert.match(hook, /const DRAFT_MAX_BYTES = 220_000/);
   assert.match(hook, /stanza\.company-feed\.recovery\.v1/);
   assert.match(hook, /tenantId, employeeId/);
 });

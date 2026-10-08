@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { DocumentBlockNode } from './document/DocumentBlockNode';
+import { SketchNode } from './document/SketchNode';
+import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
+import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
+import { CheckListPlugin } from '@lexical/react/LexicalCheckListPlugin';
+import { wrapStanzaDocument, validateFeedEditorDocument } from '../lib/stanza-document';
+import { RichFeedContent as DocumentPreview } from './FeedDocumentRenderer';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { $createParagraphNode, $getRoot, $getSelection, $insertNodes, $isRangeSelection, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_LOW, DROP_COMMAND, FORMAT_TEXT_COMMAND, PASTE_COMMAND, REDO_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND, type EditorState } from 'lexical';
 import { $isLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { ListItemNode, ListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
@@ -14,12 +21,14 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { $getSelectionStyleValueForProperty, $patchStyleText, $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
-import { Bold, ImagePlus, Italic, Link, List, ListOrdered, Palette, Pilcrow, Redo2, RefreshCw, Smile, Strikethrough, Type, Underline, Undo2, Unlink } from 'lucide-react';
+import { SlidersHorizontal, ArrowLeft, Eye, FileText, Bold, ImagePlus, Italic, Link, List, ListOrdered, Palette, Pilcrow, Redo2, RefreshCw, Smile, Strikethrough, Type, Underline, Undo2, Unlink } from 'lucide-react';
 import { useLanguage, type TranslationKey } from '../lib/LanguageContext';
 import { FEED_FONT_SIZES, FEED_TEXT_COLORS, isSafeFeedLink } from '../lib/feed-editor-contract';
 import { apiUrl } from '../lib/api';
 import { cn } from '../lib/utils';
 import { $createFeedImageNode, FeedImageNode } from './lexical/FeedImageNode';
+
+const AdvancedTools = lazy(() => import('./document/AdvancedTools'));
 
 type RichTextPayload = {
   json: unknown;
@@ -34,6 +43,9 @@ type RichTextEditorProps = {
   readOnly?: boolean;
   allowImages?: boolean;
   className?: string;
+  documentActions?: ReactNode;
+  advancedAvailable?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 };
 
 const TEXT_COLORS: Array<{ label: string; value: string; swatch: string; translationKey: TranslationKey }> = [
@@ -71,7 +83,8 @@ function getInitialEditorState(valueJson: unknown | null | undefined) {
   if (typeof valueJson === 'string') return valueJson;
 
   try {
-    return JSON.stringify(valueJson);
+    const validation=validateFeedEditorDocument(valueJson);
+    return validation.ok ? JSON.stringify({root:{type:'root',version:1,format:'',indent:0,direction:null,...validation.document.root as Record<string,unknown>}}) : undefined;
   } catch {
     return undefined;
   }
@@ -90,11 +103,15 @@ function EditableStatePlugin({ readOnly }: { readOnly: boolean }) {
 function EditorDirectionPlugin({ direction }: { direction: 'ltr' | 'rtl' }) {
   const [editor] = useLexicalComposerContext();
 
-  useEffect(() => editor.registerRootListener((rootElement) => {
-    if (!rootElement) return;
-    rootElement.dir = direction;
-    rootElement.dataset.feedDirection = direction;
-  }), [direction, editor]);
+  useEffect(() => {
+    const dispose=editor.registerRootListener((rootElement) => {
+      if (!rootElement) return;
+      rootElement.dir = direction;
+      rootElement.dataset.feedDirection = direction;
+    });
+    editor.update(() => $getRoot().setDirection(direction));
+    return dispose;
+  }, [direction, editor]);
 
   return null;
 }
@@ -105,8 +122,8 @@ function ChangePlugin({ onChange }: { onChange: (payload: RichTextPayload) => vo
       onChange={(editorState: EditorState) => {
         editorState.read(() => {
           onChange({
-            json: editorState.toJSON(),
-            text: $getRoot().getTextContent().trim(),
+            json: wrapStanzaDocument(editorState.toJSON()),
+            text: (()=>{const v=validateFeedEditorDocument(wrapStanzaDocument(editorState.toJSON()));return v.ok?v.extractedText:$getRoot().getTextContent().trim();})(),
           });
         });
       }}
@@ -129,6 +146,7 @@ function ToolbarButton({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={label}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
@@ -348,6 +366,9 @@ function EditorToolbar({
   allowImages?: boolean;
   onImageUploadPendingChange?: (pending: boolean) => void;
 }) {
+  const [secondaryOpen,setSecondaryOpen]=useState(false);
+  const secondaryRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!secondaryOpen)return;const outside=(e:PointerEvent)=>{if(!secondaryRef.current?.contains(e.target as Node))setSecondaryOpen(false);};const escape=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setSecondaryOpen(false);setOpenPicker(null);secondaryRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}};document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape,true);return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape,true);};},[secondaryOpen]);
   const [editor] = useLexicalComposerContext();
   const { t, isRtl } = useLanguage();
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false, strike: false });
@@ -554,7 +575,7 @@ function EditorToolbar({
   };
 
   return (
-    <div dir="ltr" role="toolbar" aria-label={t('editor.formattingToolbar')} className="flex max-w-full flex-wrap items-center gap-1.5 overflow-x-clip border-b border-emerald-500/20 bg-neutral-50/90 p-2 dark:border-emerald-500/15 dark:bg-black/25 sm:gap-2">
+    <div dir={isRtl?"rtl":"ltr"} role="toolbar" aria-label={t('editor.formattingToolbar')} className="stanza-document-primary-toolbar">
       <label className="sr-only" htmlFor="stanza-editor-block-type">{t('editor.blockType')}</label>
       <select
         id="stanza-editor-block-type"
@@ -660,6 +681,7 @@ function EditorToolbar({
         )}
       </div>
       {allowImages && <ImageUploadControl onPendingChange={onImageUploadPendingChange} />}
+<div ref={secondaryRef} className="stanza-document-text-options" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setSecondaryOpen(false);setOpenPicker(null);secondaryRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}}}><button type="button" className="stanza-document-control" title={isRtl?'خيارات النص':'Text options'} aria-label={isRtl?'خيارات النص':'Text options'} aria-expanded={secondaryOpen} onMouseDown={e=>e.preventDefault()} onClick={()=>setSecondaryOpen(!secondaryOpen)}><SlidersHorizontal size={17} aria-hidden="true"/></button>{secondaryOpen&&<div className="stanza-document-text-options-panel" role="dialog" aria-label={isRtl?'خيارات النص':'Text options'}><div className="flex flex-wrap gap-2">
       <div className="relative">
         <button
           type="button"
@@ -799,6 +821,7 @@ function EditorToolbar({
         )}
       </div>
       <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-emerald-500/15 sm:block" />
+</div></div>}</div>
       <ToolbarButton label={t('editor.undo')} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
@@ -817,21 +840,27 @@ export function RichTextEditor({
   readOnly = false,
   allowImages = true,
   className,
+  advancedAvailable = false, onExpandedChange, documentActions,
 }: RichTextEditorProps) {
   const { t, isRtl } = useLanguage();
-  const resolvedPlaceholder = placeholder ?? t('editor.writeUpdate');
+  const [initialDocumentSupported]=useState(()=>!valueJson||validateFeedEditorDocument(valueJson).ok);
+  const [advanced,setAdvanced]=useState(false),[preview,setPreview]=useState(false);
+  const editorContainer=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!advanced)return;const workspace=editorContainer.current?.closest<HTMLElement>('.stanza-document-workspace');if(!workspace)return;const previous=document.activeElement as HTMLElement|null;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';workspace.showPopover();const inertSiblings: Array<{element:HTMLElement;inert:boolean}>=[];let branch:HTMLElement=workspace;while(branch.parentElement){for(const sibling of Array.from(branch.parentElement.children)){if(sibling!==branch && sibling instanceof HTMLElement){inertSiblings.push({element:sibling,inert:sibling.inert});sibling.inert=true;}}branch=branch.parentElement;if(branch===document.body)break;}const key=(event:KeyboardEvent)=>{if(event.key==='Escape' && !workspace.querySelector('[aria-expanded="true"]')){event.preventDefault();setAdvanced(false);setPreview(false);onExpandedChange?.(false);}if(event.key==='Tab'){const focusable=Array.from(workspace.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [contenteditable="true"], summary')).filter(n=>n.getClientRects().length);const first=focusable[0],last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}};workspace.addEventListener('keydown',key);return()=>{workspace.removeEventListener('keydown',key);document.body.style.overflow=overflow;if(workspace.matches(':popover-open'))workspace.hidePopover();for(const {element,inert} of inertSiblings)element.inert=inert;previous?.focus();};},[advanced,onExpandedChange]);
+  const resolvedPlaceholder = advanced ? (isRtl ? 'ابدأ الكتابة، أو اكتب / لإدراج كتلة' : 'Start writing, or type / to insert a block') : placeholder ?? t('editor.writeUpdate');
   const initialConfig = useMemo(() => ({
     namespace: readOnly ? 'StanzaFeedReader' : 'StanzaFeedComposer',
     editable: !readOnly,
     editorState: getInitialEditorState(valueJson),
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, FeedImageNode],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, FeedImageNode, DocumentBlockNode, SketchNode, TableNode, TableRowNode, TableCellNode],
     onError(error: Error) {
       throw error;
     },
     theme: {
+      table: 'stanza-document-table', tableCell: 'stanza-document-cell', tableCellHeader: 'stanza-document-cell-header', tableScrollableWrapper: 'stanza-document-table-scroll',
       paragraph: 'mb-2 last:mb-0',
       text: {
-        bold: 'font-bold text-emerald-50',
+        bold: 'font-bold',
         italic: 'italic',
         strikethrough: 'line-through',
         underline: 'underline decoration-emerald-300/70 underline-offset-2',
@@ -846,29 +875,34 @@ export function RichTextEditor({
       list: {
         ul: '[margin-inline-start:1.25rem] list-disc space-y-1',
         ol: '[margin-inline-start:1.25rem] list-decimal space-y-1',
-        listitem: '[padding-inline-start:0.25rem]',
+        listitem: '[padding-inline-start:0.25rem]', checklist:'stanza-document-checklist',listitemChecked:'stanza-checklist-checked',listitemUnchecked:'stanza-checklist-unchecked',
       },
       quote: '[border-inline-start-width:2px] [padding-inline-start:0.75rem] border-emerald-500/30 text-neutral-600 dark:text-emerald-100/70',
     },
   }), [readOnly, valueJson]);
 
+  if(!initialDocumentSupported)return <p role="alert" className="p-4">{isRtl?'هذا المستند غير مدعوم. استخدم إصدارًا متوافقًا قبل التحرير.':'This document is unsupported. Use a compatible version before editing.'}</p>;
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className={cn(
-        'max-w-full overflow-visible rounded border border-emerald-500/20 bg-white/90 text-sm text-neutral-800 shadow-inner shadow-neutral-200/40 focus-within:border-emerald-500/60 dark:border-emerald-500/15 dark:bg-black/40 dark:text-emerald-50 dark:shadow-black/20',
+      <div ref={editorContainer} className={cn(
+        'stanza-document-editor max-w-full text-sm', advanced&&'stanza-document-editor-advanced',
         className,
       )}>
+        {advancedAvailable&&<div className="stanza-document-modebar"><strong><FileText size={18} aria-hidden="true"/>{isRtl?(advanced?'محرر متقدم':'كتابة سريعة'):(advanced?'Advanced Editor':'Quick Composer')}</strong><div className="flex flex-wrap gap-2"><button type="button" className="stanza-document-mode-action" disabled={readOnly} aria-pressed={advanced} onClick={()=>{const next=!advanced;setAdvanced(next);setPreview(false);onExpandedChange?.(next);}}>{advanced&&<ArrowLeft size={16} aria-hidden="true"/>}{isRtl?(advanced?'عودة للكتابة السريعة':'فتح المحرر المتقدم'):(advanced?'Back to Quick Composer':'Open Advanced Editor')}</button><button type="button" className="stanza-document-mode-action" disabled={readOnly} aria-pressed={preview} onClick={()=>setPreview(!preview)}><Eye size={16} aria-hidden="true"/>{isRtl?(preview?'تحرير':'معاينة'):(preview?'Edit':'Preview')}</button></div><div className="stanza-document-publish-cluster">{documentActions}</div></div>}
+        <div className="stanza-document-edit-stage" hidden={preview}>
         {!readOnly && <EditorToolbar allowImages={allowImages} onImageUploadPendingChange={onImageUploadPendingChange} />}
+        {advancedAvailable&&advanced&&!readOnly&&<Suspense fallback={<p role="status">{isRtl?'تحميل الأدوات…':'Loading tools…'}</p>}><AdvancedTools advanced={advanced}/></Suspense>}
         <div className={cn('relative', readOnly ? 'min-h-0' : 'min-h-[150px]')}>
           <RichTextPlugin
             contentEditable={(
               <ContentEditable
                 dir={isRtl ? 'rtl' : 'ltr'}
                 className={cn(
-                  'stanza-feed-editor-surface min-h-[150px] max-w-full overflow-x-hidden break-words px-3 py-3 text-sm leading-6 text-neutral-800 outline-none [overflow-wrap:anywhere] [unicode-bidi:plaintext] dark:text-emerald-50',
+                  'stanza-document-content stanza-feed-editor-surface min-h-[150px] max-w-full overflow-x-hidden break-words px-3 py-3 text-sm leading-6 text-neutral-800 outline-none [overflow-wrap:anywhere] [unicode-bidi:plaintext] dark:text-emerald-50',
                   isRtl ? 'text-right' : 'text-left',
                   readOnly && 'min-h-0 px-0 py-0 text-neutral-700 dark:text-emerald-100/70',
                 )}
+                aria-label={isRtl?'محتوى المستند':'Document content'}
                 aria-placeholder={resolvedPlaceholder}
                 placeholder={!readOnly ? (
                   <div
@@ -883,6 +917,8 @@ export function RichTextEditor({
             ErrorBoundary={LexicalErrorBoundary}
           />
         </div>
+        </div>
+        {preview&&<DocumentPreview contentJson={valueJson} contentText=""/>}
         {!readOnly && (
           <>
             <HistoryPlugin />
@@ -890,6 +926,8 @@ export function RichTextEditor({
           </>
         )}
         <ListPlugin />
+        <CheckListPlugin />
+        <TablePlugin hasCellMerge={false} hasCellBackgroundColor={false} hasHorizontalScroll />
         <LinkPlugin
           validateUrl={isSafeFeedLink}
           attributes={{ target: '_blank', rel: 'noopener noreferrer' }}
@@ -901,31 +939,4 @@ export function RichTextEditor({
   );
 }
 
-export function RichFeedContent({
-  contentJson,
-  contentText,
-}: {
-  contentJson?: unknown | null;
-  contentText: string;
-}) {
-  const { isRtl } = useLanguage();
-  const hasLexicalRoot = Boolean(
-    contentJson &&
-    typeof contentJson === 'object' &&
-    'root' in contentJson,
-  );
-
-  if (!hasLexicalRoot) {
-    return <p className={cn("mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-emerald-100/70", isRtl ? "text-right" : "text-left")}>{contentText}</p>;
-  }
-
-  return (
-    <div className="mt-3">
-      <RichTextEditor
-        valueJson={contentJson}
-        onChange={() => undefined}
-        readOnly
-      />
-    </div>
-  );
-}
+export { RichFeedContent } from './FeedDocumentRenderer';

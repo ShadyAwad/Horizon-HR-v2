@@ -460,7 +460,7 @@ export function registerCompanyFeedRoutes(
       if (contentFormat !== FEED_EDITOR_FORMAT || !Number.isInteger(expectedVersion ?? 0) && expectedVersion !== null) {
         return res.status(400).json({ success: false, error: 'Draft version or editor format is not supported.' });
       }
-      if (title.length > 160 || contentText.length > 20000 || serializedContentJson.length > 50000) {
+      if (title.length > 160 || contentText.length > 20000 || serializedContentJson.length > 200000) {
         return res.status(400).json({ success: false, error: 'Draft content exceeds the allowed size.' });
       }
       const validation = validateFeedEditorDocument(body.contentJson, contentText);
@@ -665,7 +665,7 @@ export function registerCompanyFeedRoutes(
       }
   
       const serializedContentJson = contentJson == null ? null : JSON.stringify(contentJson);
-      if (serializedContentJson && serializedContentJson.length > 50000) {
+      if (serializedContentJson && serializedContentJson.length > 200000) {
         return res.status(400).json({
           success: false,
           error: 'contentJson is too large.',
@@ -1118,6 +1118,120 @@ export function registerCompanyFeedRoutes(
     },
   );
   
+  // Editing keeps the publication identity/audience and checks the version read by the author.
+  app.put(
+    "/api/company-feed/posts/:id/content",
+    demoAuth,
+    requirePermission("feed.publish"),
+    isSameOriginSessionMutation,
+    async (req, res) => {
+      const tenantId = req.authUser!.tenantId,
+        actor = req.authUser!.employeeId;
+      const body = req.body as {
+        title?: unknown;
+        contentText?: unknown;
+        contentJson?: unknown;
+        expectedUpdatedAt?: unknown;
+      };
+      const validation = validateFeedEditorDocument(
+        body.contentJson,
+        typeof body.contentText === "string" ? body.contentText : undefined,
+      );
+      if (
+        !isUuid(req.params.id) ||
+        typeof body.title !== "string" ||
+        !body.title.trim() ||
+        body.title.length > 160 ||
+        !validation.ok ||
+        !validation.extractedText.trim() ||
+        validation.extractedText.length > 20000 ||
+        typeof body.expectedUpdatedAt !== "string" ||
+        !Number.isFinite(Date.parse(body.expectedUpdatedAt))
+      )
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              validation.ok === false
+                ? validation.error
+                : "Invalid publication update.",
+          });
+      try {
+        const post = await withTenant(tenantId, async (client) => {
+          const current = (
+            await client.query(
+              "SELECT updated_at FROM company_feed_posts WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+              [tenantId, req.params.id],
+            )
+          ).rows[0];
+          if (!current)
+            throw Object.assign(new Error("Publication not found."), {
+              statusCode: 404,
+            });
+          if (
+            new Date(current.updated_at).getTime() !==
+            Date.parse(body.expectedUpdatedAt as string)
+          )
+            throw Object.assign(
+              new Error("Publication changed. Reload before editing."),
+              { statusCode: 409 },
+            );
+          const ids = collectFeedImageIds(body.contentJson);
+          if (ids.length) {
+            const owned = await client.query(
+              `SELECT id FROM company_feed_images WHERE tenant_id=$1 AND id=ANY($3::uuid[]) AND ((post_id=$4 AND status='attached') OR (uploaded_by=$2 AND status='pending' AND post_id IS NULL)) FOR UPDATE`,
+              [tenantId, actor, ids, req.params.id],
+            );
+            if (owned.rowCount !== ids.length)
+              throw Object.assign(
+                new Error("One or more images are unavailable."),
+                { statusCode: 400 },
+              );
+            await client.query(
+              `UPDATE company_feed_images SET status='attached',post_id=$4,attached_at=COALESCE(attached_at,NOW()) WHERE tenant_id=$1 AND uploaded_by=$2 AND id=ANY($3::uuid[]) AND status='pending' AND post_id IS NULL`,
+              [tenantId, actor, ids, req.params.id],
+            );
+          }
+          const updated = (
+            await client.query(
+              `UPDATE company_feed_posts SET title=$3,content_json=$4::jsonb,content_text=$5,editor_format=$6,editor_schema_version=$7,updated_at=GREATEST(NOW(),updated_at + INTERVAL '1 millisecond') WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+              [
+                tenantId,
+                req.params.id,
+                (body.title as string).trim(),
+                JSON.stringify(validation.document),
+                validation.extractedText,
+                FEED_EDITOR_FORMAT,
+                FEED_EDITOR_SCHEMA_VERSION,
+              ],
+            )
+          ).rows[0];
+          await client.query(
+            `INSERT INTO audit_logs(tenant_id,actor_employee_id,action,entity_type,entity_id,metadata) VALUES($1,$2,'company_feed_post_content_updated','company_feed_post',$3,$4::jsonb)`,
+            [
+              tenantId,
+              actor,
+              req.params.id,
+              JSON.stringify({ title: updated.title }),
+            ],
+          );
+          return updated;
+        });
+        res.json({ success: true, post });
+      } catch (error) {
+        const status = (error as { statusCode?: number }).statusCode;
+        if (status)
+          return res
+            .status(status)
+            .json({ success: false, error: (error as Error).message });
+        logServerError("[Company Feed] Content update failed:", error);
+        res
+          .status(500)
+          .json({ success: false, error: "Unable to update publication." });
+      }
+    },
+  );
   app.patch(
     '/api/company-feed/posts/:id/status',
     demoAuth,
