@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {createThemeColorPreview} from '../src/lib/theme-color-preview';
+import {normaliseCustomTheme} from '../src/lib/custom-theme';
+const frames=new Map<number,()=>void>(),timers=new Map<number,()=>void>();
+let id=0,previewCount=0,commits=0,adjusting=false;
+let stored=normaliseCustomTheme({accent:'#123456',pointerSize:25});
+const session=createThemeColorPreview({read:()=>stored,preview:()=>{previewCount++;},commit:value=>{stored=value;commits++;},adjusting:value=>{adjusting=value;},frame:fn=>{frames.set(++id,fn);return id;},cancelFrame:id=>{frames.delete(id);},timeout:fn=>{timers.set(++id,fn);return id;},cancelTimeout:id=>{timers.delete(id);}});
+for(let n=0;n<200;n++)session.queue(value=>({...value,accent:'#'+n.toString(16).padStart(6,'0')}));
+assert.equal(frames.size,1);assert.equal(timers.size,1);assert.equal(commits,0);assert(adjusting);
+const fireFrame=()=>{const [key,fn]=[...frames][0];frames.delete(key);fn();};
+fireFrame();assert.equal(previewCount,1);assert.equal(frames.size,0);
+session.flush();assert.equal(stored.accent,'#0000c7');assert.equal(stored.pointerSize,25);assert.equal(commits,1);assert(!adjusting);assert.equal(timers.size,0);
+session.queue(value=>({...value,textColor:'#FAFAFA'}));session.flush();assert.equal(stored.textColor,'#FAFAFA');assert.equal(frames.size,0);
+session.queue(value=>({...value,accent:'#AAAAAA'}));session.cancel();assert.equal(stored.accent,'#0000c7');assert.equal(timers.size,0);assert.equal(frames.size,0);
+session.flush();assert.equal(commits,2,'no stale commit after cancellation');
+console.log('PASS latest-value color preview, single bounded RAF/timer, final/unmount flush, cancellation and unrelated preference preservation');

@@ -75,3 +75,5 @@ for(const profile of FONT_PROFILES.filter(p=>p.id!=='system')) for(const family 
 for(const file of [...fonts.matchAll(/url\(\/fonts\/([^)]*)\)/g)].map(m=>m[1])) assert.equal(fs.readFileSync('public/fonts/'+file).subarray(0,4).toString(),'wOF2');
 assert(!fonts.includes('https://'));assert(fonts.includes('unicode-range'));
 console.log('PASS curated family migration, round-trip persistence, theme/scale independence, bootstrap parity, explicit Arabic pairings and local WOFF2 assets');
+
+await import('./theme-color-preview-test');

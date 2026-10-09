@@ -4,7 +4,7 @@ import { applyPointerPreset, CURSOR_APPEARANCES, CURSOR_EFFECTS, hasCustomCursor
 import CustomCursorEffect from './CustomCursorEffect';
 
 type NumericSetting = { [K in keyof CustomThemeConfig]: CustomThemeConfig[K] extends number ? K : never }[keyof CustomThemeConfig];
-export default function PointerStudio({ draft, onChange }: { draft: CustomThemeConfig; onChange: (config: CustomThemeConfig) => void }) {
+export default function PointerStudio({ draft, onChange, onColorInput, flushColors }: { draft: CustomThemeConfig; onChange: (config: CustomThemeConfig) => void; onColorInput?: (field: 'pointerColor' | 'cursorColor', value: string) => void; flushColors?: () => void }) {
   const { t } = useLanguage();
   const id = useId();
   const preview = useRef<HTMLDivElement>(null);
@@ -17,8 +17,8 @@ export default function PointerStudio({ draft, onChange }: { draft: CustomThemeC
     const valid = draft[field] === null || Boolean(normaliseCustomAccent(draft[field]));
     return <div className="stanza-studio-color">
       <label htmlFor={`${id}-${field}`}>{t(`pointer.${label}`)}<small>{t(draft[field] === null ? 'studio.derived' : 'studio.custom')}</small></label>
-      <input type="color" aria-label={t(`pointer.${label}`)} value={normaliseCustomAccent(draft[field]) ?? config.accent} onChange={(event) => update(field, event.target.value)} />
-      <input id={`${id}-${field}`} type="text" dir="ltr" maxLength={7} spellCheck={false} value={draft[field] ?? ''} placeholder={config.accent} aria-invalid={!valid} aria-describedby={!valid ? `${id}-color-error` : undefined} onChange={(event) => update(field, event.target.value || null)} />
+      <input type="color" aria-label={t(`pointer.${label}`)} value={normaliseCustomAccent(draft[field]) ?? config.accent} onInput={event=>onColorInput ? onColorInput(field,event.currentTarget.value) : update(field,event.currentTarget.value)} onChange={event=>{if(event.nativeEvent.type==='change')flushColors?.();}} onBlur={flushColors} onKeyUp={flushColors} />
+      <input id={`${id}-${field}`} type="text" dir="ltr" maxLength={7} spellCheck={false} value={draft[field] ?? ''} placeholder={config.accent} aria-invalid={!valid} aria-describedby={!valid ? `${id}-color-error` : undefined} onChange={(event) => update(field, event.target.value || null)} onBlur={event=>{const color=normaliseCustomAccent(event.currentTarget.value);if(color && onColorInput){onColorInput(field,color);flushColors?.();}}} />
       <button type="button" className="stanza-studio-derived" disabled={draft[field] === null} aria-label={`${t('studio.useAccent')}: ${t(`pointer.${label}`)}`} onClick={() => update(field, null)}>{t('studio.auto')}</button>
     </div>;
   };

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -199,6 +200,7 @@ const StanzaPreferencesContext = createContext<StanzaPreferencesContextValue | n
 
 export function StanzaPreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<StanzaPreferences>(readStanzaPreferences);
+  const preferencesRef=useRef(preferences);preferencesRef.current=preferences;
 
   useEffect(() => {
     applyInterfaceScale(preferences.interfaceScale);
@@ -207,10 +209,11 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   useEffect(() => applyFontProfile(preferences.fontProfile), [preferences.fontProfile]);
   useEffect(() => applyLightIntensity(preferences.lightIntensity), [preferences.lightIntensity]);
   useEffect(() => applyBackgroundPreset(preferences.backgroundPreset), [preferences.backgroundPreset]);
-  useEffect(() => applyCustomAccent(preferences.customTheme), [preferences.customTheme]);
+  useEffect(() => { applyCustomAccent(preferences.customTheme); }, [preferences.customTheme]);
   useEffect(() => {
     try {
-      window.localStorage.setItem(STANZA_PREFERENCES_KEY, JSON.stringify(preferences));
+      const serialized=JSON.stringify(preferences);
+      if(window.localStorage.getItem(STANZA_PREFERENCES_KEY)!==serialized) window.localStorage.setItem(STANZA_PREFERENCES_KEY, serialized);
     } catch {
       // Preferences remain usable for this session when storage is unavailable.
     }
@@ -311,6 +314,11 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   }, []);
   const setCustomTheme = useCallback((value: CustomThemeConfig) => {
     const customTheme = normaliseCustomTheme(value);
+    // Also flush synchronously for pagehide/editor teardown, before React effects.
+    try {
+      const stored=preferencesRef.current;
+      window.localStorage.setItem(STANZA_PREFERENCES_KEY,JSON.stringify({...stored,customTheme,customAccent:customTheme.accent}));
+    } catch { /* Preview remains usable if storage is unavailable. */ }
     setPreferences((current) => ({ ...current, customTheme, customAccent: customTheme.accent }));
   }, []);
   const updateTutorialProgress = useCallback((next: Partial<TutorialProgress>) => {

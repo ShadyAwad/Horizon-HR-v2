@@ -981,7 +981,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 .stanza-destructive-action,
 .stanza-theme-primary,
 .stanza-theme-outline {
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 110ms ease, opacity 140ms ease;
+  transition: background-color var(--stanza-interaction-normal) ease, border-color var(--stanza-interaction-normal) ease, color var(--stanza-interaction-normal) ease, box-shadow var(--stanza-interaction-normal) ease, transform var(--stanza-interaction-fast) ease, opacity var(--stanza-interaction-normal) ease;
 }
 
 .stanza-interactive-control:focus-visible,
@@ -1570,7 +1570,7 @@ body{font-size:var(--text-base)}
 /* Shared module framing opts into the existing composer surface preference. */
 .stanza-module-frame {padding:clamp(12px,2vw,20px);width:100%;min-width:0}
 .stanza-module-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
-.stanza-module-toolbar .module-add {margin-inline-start:auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.stanza-module-toolbar .module-add {display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .stanza-module-toolbar button,.stanza-module-toolbar select {min-height:36px}
 
 /* One shell control family, driven by the existing appearance tokens. */
@@ -1578,7 +1578,7 @@ body{font-size:var(--text-base)}
 .stanza-logout {color:var(--stanza-text-primary);border-color:color-mix(in srgb,#dc2626 55%,var(--stanza-border-default));background:color-mix(in srgb,#dc2626 9%,var(--stanza-surface));}
 .stanza-logout svg {color:#dc2626}.stanza-logout:hover {border-color:#dc2626}.stanza-history-controls {display:flex;gap:.3rem}
 .stanza-history-controls button {background:var(--stanza-surface-muted);border-color:transparent;transition:transform 120ms ease,background-color 120ms ease}
-.stanza-history-controls button:hover:not(:disabled){background:var(--stanza-hover-surface)}.stanza-history-controls button:active:not(:disabled){transform:scale(.96)}
+.stanza-history-controls button:hover:not(:disabled){background:var(--stanza-hover-surface)}.stanza-history-controls button:active:not(:disabled){transform:scale(var(--stanza-control-press))}
 .stanza-history-controls button:disabled{opacity:.38;cursor:not-allowed;border-style:dashed;border-color:var(--stanza-border-default)}
 .stanza-surface-selector {display:flex;flex-wrap:wrap;gap:3px;padding:3px;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-muted)}
 .stanza-surface-selector button {display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:.4rem .55rem;border-radius:8px;font-size:var(--text-xs);min-height:36px;border:1px solid transparent;background:transparent;color:var(--stanza-text-secondary)}
@@ -1841,3 +1841,86 @@ body:lang(ar) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); 
 .stanza-identity-launcher:not(:disabled):active {transform:scale(.97)}
 @media(hover:hover){.stanza-identity-launcher:hover{background:var(--stanza-accent-hover);transform:translateY(-1px) scale(1.015);box-shadow:0 0 22px color-mix(in srgb,var(--stanza-accent) 30%,transparent)}}
 @media(prefers-reduced-motion:reduce){.stanza-identity-launcher{transition:none}.stanza-identity-launcher:hover,.stanza-identity-launcher:active{transform:none}}
+
+/* Contextual page actions: one anchored utility row, never a far-corner floater. */
+.stanza-page-header-actions{margin-block:10px 0;gap:8px 12px;min-width:0}
+.stanza-page-header-utilities{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;max-width:100%}
+.stanza-page-header-actions .module-add{min-width:0;max-width:100%}
+.stanza-page-header-actions .composer-launch{white-space:normal;overflow-wrap:anywhere;text-align:start;max-width:100%}
+/* The identity anchor and Settings remain outside the bounded item scroller. */
+@media(min-width:768px){
+ .stanza-desktop-rail{max-height:calc(100dvh - 1.5rem);min-height:0}
+ .stanza-rail-scroll{overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:var(--stanza-border-accent) transparent;padding-block:4px;scroll-padding-block:4px}
+ .stanza-rail-scroll .stanza-navigation-item{flex:none}
+ .stanza-rail-scroll .stanza-navigation-item:focus-visible{outline-offset:-2px}
+}
+/* Theme-colored source; a lifted accent highlight leads progressively wider spill.
+   Em radii preserve the reference's 1:3:7:15 hierarchy at header scale. */
+.stanza-brand-neon {
+  --neon-core: var(--stanza-accent-hover);
+  --neon-tight:color-mix(in srgb, var(--stanza-accent-hover) 94%, white);
+  --neon-radius: .04em;
+  --neon-strong: color-mix(in srgb, var(--stanza-accent) 60%, transparent);
+  --neon-medium: color-mix(in srgb, var(--stanza-accent) 18%, transparent);
+  --neon-outer: color-mix(in srgb, var(--stanza-accent) 5%, transparent);
+  display:inline-block;
+  color:var(--neon-core);
+  -webkit-text-stroke:.015em color-mix(in srgb, var(--stanza-accent) 65%, black);
+  text-shadow:
+    0 0 var(--neon-radius) var(--neon-tight),
+    0 0 calc(var(--neon-radius) * 3) var(--neon-strong),
+    0 0 calc(var(--neon-radius) * 7) var(--neon-medium),
+    0 0 calc(var(--neon-radius) * 15) var(--neon-outer);
+  transition:none;
+}
+.dark .stanza-brand-neon {
+  --neon-radius:.07em;
+  --neon-strong:var(--stanza-accent);
+  --neon-medium:color-mix(in srgb, var(--stanza-accent) 48%, transparent);
+  --neon-outer:color-mix(in srgb, var(--stanza-accent) 12%, transparent);
+  -webkit-text-stroke:0;
+}
+.stanza-brand-neon[data-neon-power=dip] { opacity:.45; }
+@media(prefers-reduced-motion:reduce), (prefers-reduced-transparency:reduce), (prefers-contrast:more) {
+  .stanza-brand-neon[data-neon-power] { opacity:1; }
+}
+@media(prefers-contrast:more) {
+  .stanza-brand-neon { -webkit-text-stroke:.025em var(--stanza-accent); }
+}
+@media(min-width:768px){.dashboard-top-header[data-navigation-mode=rail]:dir(rtl){padding-inline-start:3.75rem}}
+
+/* One theme authority for Login and shell initials; Login keeps its existing static glow. */
+.stanza-brand-source {color:var(--stanza-accent-hover);filter:drop-shadow(0 0 .32em color-mix(in srgb,var(--stanza-accent) 40%,transparent));}
+/* While color input is active, avoid repeatedly restarting color interpolation.
+   Transform/opacity feedback and focus/selected paints remain available. */
+:root[data-theme-adjusting=true] :is(.stanza-dashboard,.stanza-custom-editor) :is(button,input,select,textarea,[role=tab],[role=option],.stanza-interactive-row) {
+  transition-property:transform,opacity !important;
+}
+:root {--stanza-interaction-fast:110ms;--stanza-interaction-normal:160ms;--stanza-control-press:.98;}
+/* Directional semantics only. Close, delete, Settings and formatting icons stay still. */
+.stanza-history-controls button > svg {transition:transform var(--stanza-interaction-fast) ease;}
+@media(hover:hover) {
+ .stanza-history-controls button[data-direction=back]:not(:disabled):hover > svg {transform:translateX(-2px);}
+ .stanza-history-controls button[data-direction=forward]:not(:disabled):hover > svg {transform:translateX(2px);}
+ .stanza-history-controls:dir(rtl) button[data-direction=back]:not(:disabled):hover > svg {transform:translateX(2px);}
+ .stanza-history-controls:dir(rtl) button[data-direction=forward]:not(:disabled):hover > svg {transform:translateX(-2px);}
+ .stanza-interactive-row:not([aria-disabled=true]):hover {background-color:var(--stanza-hover-surface);border-color:var(--stanza-border-accent);}
+}
+.stanza-interactive-row {transition:background-color var(--stanza-interaction-normal) ease,border-color var(--stanza-interaction-normal) ease;}
+.stanza-interactive-row:focus-visible {outline:2px solid var(--stanza-focus-ring);outline-offset:2px;}
+/* Drag/resize and identity controls keep their specialized transform ownership. */
+@media(prefers-reduced-motion:reduce) {
+ .stanza-history-controls button > svg {transition:none;transform:none!important;}
+ :where(.stanza-dashboard) button:not(:disabled):active {transform:none;}
+}
+
+@media(hover:hover) {
+ .composer-library button:not(:disabled):hover {background:var(--stanza-hover-surface);border-color:var(--stanza-border-accent);}
+ .composer-launch:not(:disabled):hover > svg {transform:translateX(2px);}
+ .composer-launch:dir(rtl):not(:disabled):hover > svg {transform:translateX(-2px);}
+}
+.composer-launch > svg {transition:transform var(--stanza-interaction-fast) ease;}
+.composer :is(button.composer-drag,button.composer-resize):active {transform:none;}
+@media(prefers-reduced-motion:reduce){.composer-launch > svg {transition:none;transform:none!important;}}
+
+:where(.stanza-dashboard,.composer,.composer-dialog) button[aria-disabled=true]:active {transform:none;}

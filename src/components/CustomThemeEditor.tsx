@@ -1,11 +1,19 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useStanzaPreferences } from '../lib/StanzaPreferencesContext';
 import { useTheme } from '../lib/ThemeContext';
 import { useLanguage } from '../lib/LanguageContext';
 import { DEFAULT_CUSTOM_THEME, deriveCustomTheme, normaliseCustomAccent, normaliseCustomTheme, type CustomThemeConfig } from '../lib/custom-theme';
+import {createThemeColorPreview} from '../lib/theme-color-preview';
 import PointerStudio from './PointerStudio';
 
 const COLOR_FIELDS = ['accent', 'primaryAction', 'secondaryAction', 'surfaceTint', 'backgroundTint', 'textColor', 'hoverHighlight'] as const;
+
+function paintEditorPreview(preview: HTMLElement | null, value: CustomThemeConfig, mode: 'light' | 'dark') {
+  if(!preview) return;
+  const palette=deriveCustomTheme(value,mode);
+  for(const [name,color] of Object.entries(palette.tokens)) preview.style.setProperty(`--stanza-${name}`,color);
+  preview.style.setProperty('--stanza-surface-hover',palette.tokens['hover-surface']);
+}
 
 export default function CustomThemeEditor() {
   const { customTheme, setCustomTheme, setLanyardPreview } = useStanzaPreferences();
@@ -13,11 +21,39 @@ export default function CustomThemeEditor() {
   const { t, isRtl } = useLanguage();
   const id = useId();
   const [draft, setDraft] = useState(customTheme);
-  useEffect(() => setDraft(customTheme), [customTheme]);
+  const editor=useRef<HTMLElement>(null);
+  const draftRef=useRef(draft);draftRef.current=draft;
+  const current=useRef({customTheme,theme,setCustomTheme});
+  current.current={customTheme,theme,setCustomTheme};
+  const session=useMemo(()=>createThemeColorPreview({
+    read:()=>draftRef.current,
+    preview:value=>{
+      // Preserve the existing live preview boundary. Updating the whole page's
+      // inherited tokens on every frame was measured to dominate style work.
+      paintEditorPreview(editor.current?.querySelector<HTMLElement>('.stanza-custom-preview') ?? null,value,current.current.theme);
+      if(value.pointerColor!==draftRef.current.pointerColor || value.cursorColor!==draftRef.current.cursorColor || JSON.stringify(value.lanyardStyle)!==JSON.stringify(draftRef.current.lanyardStyle))setDraft(value);
+
+    },
+    commit:value=>{
+      draftRef.current=value;setDraft(value);
+      if([...COLOR_FIELDS,'cursorColor','pointerColor'].every(field=>value[field]===null || normaliseCustomAccent(value[field])!==null) && (['cardColor','accentColor','strapColor'] as const).every(field=>value.lanyardStyle[field]===null || normaliseCustomAccent(value.lanyardStyle[field])!==null)) current.current.setCustomTheme(value);
+    },
+    adjusting:active=>{if(active)document.documentElement.dataset.themeAdjusting='true';else delete document.documentElement.dataset.themeAdjusting;},
+    frame:fn=>requestAnimationFrame(fn),cancelFrame:id=>cancelAnimationFrame(id),
+    timeout:(fn,delay)=>window.setTimeout(fn,delay),cancelTimeout:id=>window.clearTimeout(id),
+  }),[]);
+  useEffect(()=>{session.cancel();setDraft(customTheme);paintEditorPreview(editor.current?.querySelector<HTMLElement>('.stanza-custom-preview') ?? null,customTheme,current.current.theme);},[customTheme,session]);
+  useEffect(()=>{
+    const flush=()=>session.flush();window.addEventListener('pagehide',flush);
+    return()=>{window.removeEventListener('pagehide',flush);session.flush();};
+  },[session]);
+  const colorInput=<K extends keyof CustomThemeConfig>(field:K,value:CustomThemeConfig[K])=>session.queue(config=>({...config,[field]:value}));
   const valid = [...COLOR_FIELDS, 'cursorColor', 'pointerColor'].every((field) => draft[field] === null || normaliseCustomAccent(draft[field]) !== null)
     && (['cardColor','accentColor','strapColor'] as const).every(field => draft.lanyardStyle[field] === null || normaliseCustomAccent(draft.lanyardStyle[field]) !== null);
   const normalized = useMemo(() => normaliseCustomTheme(draft, customTheme.accent), [draft, customTheme.accent]);
-  useEffect(() => { setLanyardPreview(normalized.lanyardStyle); return () => setLanyardPreview(null); }, [normalized.lanyardStyle, setLanyardPreview]);
+  const lanyard=normalized.lanyardStyle;
+  const lanyardPreview=useMemo(()=>({...lanyard}),[lanyard.appearanceMode,lanyard.cardColor,lanyard.accentColor,lanyard.strapColor]);
+  useEffect(() => { setLanyardPreview(lanyardPreview); return () => setLanyardPreview(null); }, [lanyardPreview, setLanyardPreview]);
   const palette = useMemo(() => deriveCustomTheme(normalized, theme), [normalized, theme]);
   const previewStyle = useMemo(() => ({ ...Object.fromEntries(Object.entries(palette.tokens).map(([key, value]) => [`--stanza-${key}`, value])), '--stanza-surface-hover': palette.tokens['hover-surface'] }) as CSSProperties, [palette]);
   const changed = JSON.stringify(normalized) !== JSON.stringify(customTheme);
@@ -30,16 +66,17 @@ export default function CustomThemeEditor() {
     const invalid = value !== null && normaliseCustomAccent(value) === null;
     return <div className="stanza-studio-color" key={field}>
       <label htmlFor={`${id}-${field}`}>{t(`studio.${field}`)}<small>{value === null ? t(field === 'textColor' ? 'studio.auto' : 'studio.derived') : t('studio.custom')}</small></label>
-      <input type="color" aria-label={`${t(`studio.${field}`)} — ${t('background.colorPicker')}`} value={swatch} onChange={(event) => update(field, event.target.value)} />
+      <input type="color" aria-label={`${t(`studio.${field}`)} — ${t('background.colorPicker')}`} value={swatch} onInput={(event) => colorInput(field, event.currentTarget.value)}
+        onChange={event=>{if(event.nativeEvent.type==='change')session.flush();}} onBlur={()=>session.flush()} onKeyUp={()=>session.flush()} />
       <input id={`${id}-${field}`} type="text" dir="ltr" value={value ?? ''} placeholder={derived} spellCheck={false} maxLength={7}
         aria-invalid={invalid} aria-describedby={invalid ? `${id}-error` : undefined}
         onChange={(event) => update(field, event.target.value === '' && field !== 'accent' ? null : event.target.value)}
-        onBlur={() => { const color = normaliseCustomAccent(value); if (color) update(field, color); }} />
+        onBlur={() => { const color = normaliseCustomAccent(value); if (color) {colorInput(field,color);session.flush();} }} />
       {field !== 'accent' && <button type="button" className="stanza-studio-derived" disabled={value === null} aria-label={`${t('studio.auto')}: ${t(`studio.${field}`)}`} onClick={() => update(field, null)}>{t('studio.auto')}</button>}
     </div>;
   };
 
-  return <section className="stanza-custom-editor" dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby={`${id}-title`}>
+  return <section ref={editor} className="stanza-custom-editor" dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby={`${id}-title`}>
     <h3 id={`${id}-title`}>{t('studio.title')}</h3>
     <p>{t('studio.help')}</p>
     <details className="stanza-studio-section" open>
@@ -54,15 +91,15 @@ export default function CustomThemeEditor() {
       <div className="stanza-studio-fields">{(['cardColor', 'accentColor', 'strapColor'] as const).map((field) => <div className="stanza-studio-color" key={field}>
         <label htmlFor={`${id}-lanyard-hex-${field}`}>{t(`studio.${field}`)}</label>
         <input id={`${id}-lanyard-${field}`} type="color" aria-label={`${t(`studio.${field}`)} — ${t('background.colorPicker')}`} value={normaliseCustomAccent(draft.lanyardStyle[field]) ?? (draft.lanyardStyle.appearanceMode === 'theme' ? (field === 'cardColor' ? palette.tokens.surface : palette.tokens.accent) : (field === 'cardColor' ? '#061b13' : field === 'strapColor' ? '#d7f5e9' : '#18c98b'))}
-          onChange={(event) => update('lanyardStyle', { ...draft.lanyardStyle, appearanceMode: 'custom', [field]: event.target.value })} />
+          onInput={event=>{const value=event.currentTarget.value;session.queue(config=>({...config,lanyardStyle:{...config.lanyardStyle,appearanceMode:'custom',[field]:value}}));}} onChange={event=>{if(event.nativeEvent.type==='change')session.flush();}} onBlur={()=>session.flush()} onKeyUp={()=>session.flush()} />
         <input id={`${id}-lanyard-hex-${field}`} type="text" dir="ltr" maxLength={7} spellCheck={false} value={draft.lanyardStyle[field] ?? ''} placeholder={t('studio.auto')}
           aria-invalid={draft.lanyardStyle[field] !== null && !normaliseCustomAccent(draft.lanyardStyle[field])}
-          onChange={(event) => update('lanyardStyle', { ...draft.lanyardStyle, appearanceMode: 'custom', [field]: event.target.value || null })} />
+          onChange={(event) => update('lanyardStyle', { ...draft.lanyardStyle, appearanceMode: 'custom', [field]: event.target.value || null })} onBlur={event=>{const color=normaliseCustomAccent(event.currentTarget.value);if(color){session.queue(config=>({...config,lanyardStyle:{...config.lanyardStyle,appearanceMode:'custom',[field]:color}}));session.flush();}}} />
         <button type="button" className="stanza-studio-derived" disabled={draft.lanyardStyle[field] === null}
           aria-label={`${t('studio.auto')}: ${t(`studio.${field}`)}`} onClick={() => update('lanyardStyle', { ...draft.lanyardStyle, appearanceMode: 'custom', [field]: null })}>{t('studio.auto')}</button>
       </div>)}</div>
     </details>
-    <PointerStudio draft={draft} onChange={setDraft} />
+    <PointerStudio draft={draft} onChange={setDraft} onColorInput={colorInput} flushColors={()=>session.flush()} />
     {!valid && <p id={`${id}-error`} role="alert">{t('background.invalidColor')}</p>}
     {valid && palette.hoverAdjusted && <p role="status">{isRtl ? 'عُدّل تظليل المرور لضمان ظهوره ووضوح النص. يُحفظ اللون الأصلي.' : 'Hover highlight adjusted for visibility and readable text. Your original color is saved.'}</p>}
     {valid && palette.adjusted && <p role="status">{t('background.contrastAdjusted')}</p>}

@@ -176,7 +176,7 @@ check('signed-in pulse animations remain confined to explicit loading and attend
 check('spinner animations remain confined to request, extraction, refresh, and attendance progress components',
   spinnerSourceFiles.every((path) => permittedSpinnerFiles.has(path)));
 check('signed-in frontend has no bounce animation', !frontendAnimationSources.some(({ source }) => source.includes('animate-bounce')));
-check('shared Dashboard interactions use lightweight property transitions', styles.includes('transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 110ms ease, opacity 140ms ease'));
+check('shared Dashboard interactions use lightweight property transitions', styles.includes('transition: background-color var(--stanza-interaction-normal) ease, border-color var(--stanza-interaction-normal) ease, color var(--stanza-interaction-normal) ease, box-shadow var(--stanza-interaction-normal) ease, transform var(--stanza-interaction-fast) ease, opacity var(--stanza-interaction-normal) ease'));
 check('shared hover styling preserves selected and active controls',
   interactionStyles.includes('@media (hover: hover) and (pointer: fine)') &&
   interactionStyles.includes(':not([data-selected="true"]):not([aria-current="page"]):not([aria-selected="true"]):not([aria-pressed="true"]):not([aria-checked="true"])') &&

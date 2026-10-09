@@ -173,7 +173,10 @@ export function applyCustomAccent(accent: string | CustomThemeConfig) {
   const config = normaliseCustomTheme(typeof accent === 'string' ? { accent } : accent);
   document.documentElement.dataset.customPrimary = String(config.primaryAction !== null);
   document.documentElement.dataset.customSecondary = String(config.secondaryAction !== null);
-  for (const [name, value] of Object.entries(customThemeVariables(accent))) document.documentElement.style.setProperty(name, value);
+  const variables=customThemeVariables(accent);
+  for (const [name, value] of Object.entries(variables)) {
+    if(document.documentElement.style.getPropertyValue?.(name)!==value) document.documentElement.style.setProperty(name, value);
+  }
 }
 
 export const POINTER_PRESETS = ['system', 'minimal', 'neon', 'portfolio', 'precision', 'soft-glow', 'cyber'] as const;

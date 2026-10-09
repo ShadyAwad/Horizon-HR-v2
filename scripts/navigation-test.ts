@@ -174,7 +174,7 @@ const checks: Array<[string, boolean]> = [
   ['shortcut sheet and selected ordering area are content-sized before deliberate scrolling caps apply', /data-mobile-shortcut-sheet/.test(shortcutEditor) && /h-auto/.test(shortcutEditor) && !/flex max-h-full/.test(shortcutEditor) && /order-1 mt-3/.test(shortcuts) && /order-2 mt-4/.test(shortcuts) && /max-h-\[min\(30dvh,15rem\)\]/.test(shortcuts) && !/max-h-56/.test(shortcuts)],
   ['touch reorder begins only from a labelled handle and keeps a visible offset preview with bounded list scrolling', /Reorder \$\{item\.label\}/.test(shortcuts) && /data-mobile-shortcut-drag-preview/.test(shortcuts) && /previewPoint\.y - \(drag\.previewPoint\.touch \? 48 : 18\)/.test(shortcuts) && /scrollContainerRef/.test(shortcutOrder) && /const edge = 36/.test(shortcutOrder) && /scrollTop \+= step/.test(shortcutOrder)],
   ['launcher uses shared token paint and restrained CSS interaction with reduced-motion fallback', /stanza-identity-launcher/.test(nav) && /\.stanza-identity-launcher:hover/.test(css) && /scale\(1\.015\)/.test(css) && /scale\(\.97\)/.test(css) && /prefers-reduced-motion:reduce/.test(css)],
-  ['panel wordmark uses a structural accented initial without unsafe HTML', /lang === 'ar' \? <span>Stanza<\/span> : <>\s*<span className="text-emerald-600 dark:text-emerald-400">S<\/span><span>tanza<\/span>/.test(nav) && !/dangerouslySetInnerHTML/.test(nav)],
+  ['panel wordmark uses a structural accented initial without unsafe HTML', nav.includes('<BrandWordmark neon />') && readFileSync('src/components/BrandWordmark.tsx','utf8').includes('aria-label="Stanza"') && !/dangerouslySetInnerHTML/.test(nav)],
   ['selected navigation typography remains readable and stable', /item\.active \? 'font-extrabold tracking-normal'/.test(nav)],
   ['launcher, rail, mobile shortcuts, and workspace rows share semantic selected state',
     /data-selected=\{open\}[^>]*id="stanza-control-center-trigger"/.test(nav) &&
@@ -213,3 +213,31 @@ const checks: Array<[string, boolean]> = [
 let failed = false;
 for (const [label, passed] of checks) { console.log(`${passed ? 'PASS' : 'FAIL'} ${label}`); failed ||= !passed; }
 if (failed) process.exitCode = 1;
+
+const {startBrandFlicker}=await import('../src/components/navigation/brand-neon');
+class Signal extends EventTarget{matches=false;hidden=false;}
+const visibility=new Signal(),motion=new Signal(),transparency=new Signal(),contrast=new Signal();
+const timers=new Map<number,{fn:()=>void;ms:number}>();let sequence=0,pulsing=false;
+const stopNeon=startBrandFlicker({setAttribute:()=>{pulsing=true;},removeAttribute:()=>{pulsing=false;}},{document:visibility as any,queries:[motion,transparency,contrast] as any,setTimeout:(fn,ms)=>{timers.set(++sequence,{fn,ms});return sequence;},clearTimeout:id=>{timers.delete(id);},random:()=>.5});
+assert.equal(timers.size,1);assert.equal([...timers.values()][0].ms,127_500);
+const fire=()=>{const [id,job]=[...timers][0];timers.delete(id);job.fn();};
+fire();assert(pulsing);assert.equal([...timers.values()][0].ms,82.5);fire();assert(!pulsing);assert.equal(timers.size,1);
+for(const [signal,event,property] of [[visibility,'visibilitychange','hidden'],[motion,'change','matches'],[transparency,'change','matches'],[contrast,'change','matches']] as const){signal[property]=true;signal.dispatchEvent(new Event(event));assert.equal(timers.size,0);assert(!pulsing);signal[property]=false;signal.dispatchEvent(new Event(event));assert.equal(timers.size,1);}
+fire();stopNeon();assert(!pulsing);assert.equal(timers.size,0);motion.dispatchEvent(new Event('change'));assert.equal(timers.size,0,'cleanup removes scheduling listeners');
+// One dip only; hidden mid-event restores stable light and cancels recovery.
+let power='';
+const stopDip=startBrandFlicker({setAttribute:(_name,value)=>{power=value;},removeAttribute:()=>{power='';}},{document:visibility as any,queries:[motion] as any,setTimeout:(fn,ms)=>{timers.set(++sequence,{fn,ms});return sequence;},clearTimeout:id=>{timers.delete(id);},random:()=>0});
+assert.equal([...timers.values()][0].ms,75_000);
+fire();assert.equal(power,'dip');assert.equal([...timers.values()][0].ms,65);
+fire();assert.equal(power,'');assert.equal(timers.size,1);
+fire();visibility.hidden=true;visibility.dispatchEvent(new Event('visibilitychange'));assert.equal(power,'');assert.equal(timers.size,0);
+visibility.hidden=false;visibility.dispatchEvent(new Event('visibilitychange'));assert.equal(timers.size,1);stopDip();assert.equal(timers.size,0);
+const {createElement}=await import('react'),{renderToStaticMarkup}=await import('react-dom/server');
+const {BrandWordmark}=await import('../src/components/BrandWordmark');
+const {PageHeaderActions}=await import('../src/components/navigation/PageHeaderActions');
+assert.match(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})),/aria-label="Stanza"/);assert.match(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})),/stanza-brand-neon/);
+assert.doesNotMatch(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})), /<svg|<path|stanza-brand-neon-metric/);
+const actions=renderToStaticMarkup(createElement(PageHeaderActions,{navigation:'Back',navigationLabel:'History',label:'Page actions',children:'Add to Workspace'}));
+assert.match(actions,/role="group" aria-label="Page actions"/);assert.match(actions,/<nav aria-label="History">Back/);
+assert(nav.includes('stanza-rail-scroll')&&nav.includes('railScrollRef'));assert(css.includes('max-height:calc(100dvh - 1.5rem)'));assert(!css.includes('.stanza-module-toolbar .module-add {margin-inline-start:auto'));
+console.log('PASS rare bounded neon scheduling, hidden/reduced-effects cancellation and cleanup; accessible shell branding, anchored actions and bounded rail contracts');

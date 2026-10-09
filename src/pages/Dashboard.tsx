@@ -37,6 +37,7 @@ import {
 } from '../lib/feed-submission';
 
 const fetch = apiFetch;
+import {PageHeaderActions} from '../components/navigation/PageHeaderActions';
 import { BrandWordmark } from '../components/BrandWordmark';
 import { PrivacyPolicyModal } from '../components/PrivacyPolicyModal';
 import { PwaInstallPrompt } from '../components/PwaInstallPrompt';
@@ -5340,7 +5341,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           )}
           <div data-dashboard-context-content className="min-w-0 md:pt-1">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white md:flex-nowrap">
-              <BrandWordmark />
+              <BrandWordmark neon />
               <span
                 title={activeNavigationLabel}
                 className={cn("hidden min-w-0 shrink truncate whitespace-nowrap text-sm font-semibold text-slate-600 dark:text-emerald-100/75 md:inline", isRtl && "font-arabic")}
@@ -5349,13 +5350,12 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               </span>
               <span className="hidden shrink-0 whitespace-nowrap rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block">{t('dash.elitePortal')}</span>
             </h1>
+            <PageHeaderActions navigation={<HistoryControls {...navigationHistory} />} navigationLabel={isRtl?'سجل التنقل':'Navigation history'} label={isRtl?'إجراءات الصفحة':'Page actions'}>
+              {framedModule && <SurfaceSelector value={composerPreferences.state.surface} onChange={value=>composerPreferences.dispatch({type:'surface',value})} />}
+              {moduleWidgets.length > 0 && <div className="module-add"><AddToWorkspace key={destination} widgetId={moduleWidgets[0].id} widgetIds={moduleWidgets.map(widget=>widget.id)} user={user} /></div>}
+            </PageHeaderActions>
           </div>
         </header>
-        <nav aria-label={isRtl ? 'سجل التنقل' : 'Navigation history'} className="stanza-module-toolbar">
-          <HistoryControls {...navigationHistory} />
-          {framedModule && <SurfaceSelector value={composerPreferences.state.surface} onChange={value=>composerPreferences.dispatch({type:'surface',value})} />}
-          {moduleWidgets.length > 0 && <div className="module-add"><AddToWorkspace key={destination} widgetId={moduleWidgets[0].id} widgetIds={moduleWidgets.map(widget=>widget.id)} user={user} /></div>}
-        </nav>
         {/* Dashboard Grid Container */}
         <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full max-w-full min-w-0 items-start">
             
