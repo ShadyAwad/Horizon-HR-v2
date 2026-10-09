@@ -100,3 +100,27 @@ let opens=0,ack=0;const last={current:0};const run=(signal:number)=>signalEffect
 run(1);assert.equal(opens,1);assert.equal(ack,1);run(1);assert.equal(opens,1);run(0);run(1);assert.equal(opens,2);run(0);assert.equal(opens,2);
 assert(source.includes('const lastOpenSignal = useRef(0)'));assert(readFileSync('src/pages/Dashboard.tsx','utf8').includes('current === signal ? 0 : current'));
 console.log('PASS continuation: real JWT signature/issuer/audience/nonce validation; deterministic OAuth callback, PKCE, tenant/session isolation, refresh rotation, disconnect, revoked sessions and granted scopes; mocked SSE contract; telemetry retry; Leave acknowledgement. No real provider inference claimed.');
+
+// Optional store outages are safely classified and recover on a subsequent request.
+const {ReasoningStatusDiagnostics}=await import('../src/server/intelligent-router/reasoning-status-diagnostics');
+const diagnostics:string[]=[];let clock=0;
+const statusDiagnostics=new ReasoningStatusDiagnostics(line=>diagnostics.push(line),()=>clock);
+statusDiagnostics.unavailable('OPENAI_STORE_BUSY');statusDiagnostics.unavailable('OPENAI_STORE_BUSY');
+statusDiagnostics.unavailable('secret fixture query');assert.equal(diagnostics.length,1);
+assert.equal(JSON.parse(diagnostics[0]).level,'warn');assert.equal(JSON.parse(diagnostics[0]).code,'OPENAI_STORE_BUSY');
+clock=60_000;statusDiagnostics.unavailable('OPENAI_STORE_BUSY');assert.equal(diagnostics.length,2);
+statusDiagnostics.recovered();statusDiagnostics.unavailable('OPENAI_STORE_BUSY');assert.equal(diagnostics.length,3);
+let reads=0;
+const retryAuth=new LocalOpenAIAuth(env.STANZA_ROUTER_OPENAI_HOST_ID,'gpt-6.1-sol',async()=>true,transport as typeof fetch,{read:async()=>{reads++;if(reads===1)throw Error('OPENAI_STORE_BUSY');return null;},write:async()=>{},close:async()=>{}});
+await assert.rejects(()=>retryAuth.status(actor),/OPENAI_STORE_BUSY/);
+assert.equal((await retryAuth.status(actor)).connected,false);assert.equal(reads,2);
+console.log('PASS optional authorization classification, bounded redacted warnings, explicit hydration retry');
+
+let unavailableAuthReads=0;
+const unavailableDependencies={actor,embedding:{model:'status-fixture',dimensions:2,version:'1',embed:async()=>[1,0]},allowed:async()=>true,available:async()=>[...INTENTS],search:{search:async()=>[{intentKey:'request_leave',score:.99}]},authorization:{resolve:async()=>{unavailableAuthReads++;throw Error('OPENAI_STORE_BUSY');}},minimumScore:.84,minimumMargin:.10};
+assert.equal((await resolveQuery('request leave',unavailableDependencies)).method,'exact');
+assert.equal((await resolveQuery('a break from work',unavailableDependencies)).method,'semantic');
+assert.equal(unavailableAuthReads,0,'local matches never read the optional busy credential store');
+const unavailableResult=await resolveQuery('unsupported fixture phrase',{...unavailableDependencies,search:{search:async()=>[]}});
+assert.equal(unavailableResult.outcome,'no_match');assert.equal(unavailableResult.reasoningUnavailable,true);assert.equal(unavailableResult.actionKey,undefined);
+console.log('PASS exact/semantic routing bypasses unavailable authorization; unsupported requests abstain without actions');

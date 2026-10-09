@@ -13,7 +13,7 @@ export type StanzaBadgeUser = {
 };
 
 export type StanzaBadgeLanguage = 'en' | 'ar';
-type StanzaBadgeArtworkOptions = { language?: StanzaBadgeLanguage; direction?: 'ltr' | 'rtl'; style?: LanyardStyle };
+type StanzaBadgeArtworkOptions = { language?: StanzaBadgeLanguage; direction?: 'ltr' | 'rtl'; style?: LanyardStyle; fontCss?: string; fontFamily?: string };
 
 const escapeXml = (value: string) => value
   .replaceAll('&', '&amp;')
@@ -55,7 +55,7 @@ const barcodeBars = (seed: string) => {
     const code = source.charCodeAt(index % source.length);
     const width = 3 + ((code + index) % 4) * 2;
     const gap = 4 + ((code >> 2) % 3);
-    const bar = `<rect x="${x}" y="858" width="${width}" height="54" rx="1" fill="#b7f7d8" opacity="${0.5 + ((code % 5) * 0.1)}"/>`;
+    const bar = `<rect x="${x}" y="826" width="${width}" height="54" rx="1" fill="#b7f7d8" opacity="${0.5 + ((code % 5) * 0.1)}"/>`;
     x += width + gap;
     return bar;
   }).join('');
@@ -76,7 +76,7 @@ export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}
   const isRtl = (options.direction || (language === 'ar' ? 'rtl' : 'ltr')) === 'rtl';
   const secureWorkforce = isRtl ? 'منصة القوى العاملة' : 'SECURE WORKFORCE';
   const verifiedAccess = isRtl ? 'وصول موثق' : 'VERIFIED ACCESS';
-  return styleBadge(`
+  return styleBadge(applyTypography(`
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" preserveAspectRatio="none" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -95,18 +95,18 @@ export function buildStanzaFrontBadgeSvg(options: StanzaBadgeArtworkOptions = {}
       <rect width="660" height="1000" fill="url(#glow)"/>
       <path d="M0 170 C155 105 248 222 405 151 C515 101 590 107 660 73" fill="none" stroke="#18C98B" stroke-opacity="0.07" stroke-width="2"/>
       <path d="M0 204 C169 137 269 249 421 181 C533 131 599 137 660 106" fill="none" stroke="#42E8AD" stroke-opacity="0.045" stroke-width="2"/>
-      <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#2B7A5D" stroke-opacity="0.38" stroke-width="2"/>
+      <rect x="0.5" y="0.5" width="659" height="999" rx="25.9" ry="28.157" fill="none" stroke="#2B7A5D" stroke-opacity="0.38" stroke-width="1"/>
       <circle cx="330" cy="330" r="172" fill="none" stroke="#18C98B" stroke-opacity="0.1" stroke-width="1"/>
       <circle cx="330" cy="330" r="142" fill="none" stroke="#42E8AD" stroke-opacity="0.08" stroke-width="1" stroke-dasharray="2 10"/>
       <g opacity="0.12">${fingerprintMark(190, 190, 11.666667, '#42E8AD')}</g>
       ${fingerprintMark(190, 190, 11.666667)}
       <text x="330" y="640" text-anchor="middle" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="76" font-weight="750" letter-spacing="1"><tspan fill="#18C98B">S</tspan><tspan fill="#E8F7F1">tanza</tspan></text>
       <text x="330" y="696" text-anchor="middle" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="20" font-weight="650" letter-spacing="${isRtl ? '1' : '4'}">${secureWorkforce}</text>
-      <line x1="210" y1="756" x2="450" y2="756" stroke="#18C98B" stroke-opacity="0.3"/>
-      <circle cx="300" cy="819" r="5" fill="#42E8AD"/>
-      <text x="322" y="827" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="${isRtl ? '1' : '3'}">${verifiedAccess}</text>
+      <line x1="74" y1="822" x2="586" y2="822" stroke="#18C98B" stroke-opacity="0.3"/>
+      <circle cx="${isRtl ? 580 : 80}" cy="884" r="5" fill="#42E8AD"/>
+      <text x="${isRtl ? 556 : 102}" y="891" text-anchor="start" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="18" letter-spacing="${isRtl ? '1' : '3'}">${verifiedAccess}</text>
     </svg>
-  `, options.style);
+  `, options), options.style);
 }
 
 export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBadgeArtworkOptions = {}) {
@@ -145,7 +145,7 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
     ? `<defs><clipPath id="portraitClip"><circle cx="${portraitCenterX}" cy="288" r="58"/></clipPath></defs><circle cx="${portraitCenterX}" cy="288" r="62" fill="#04110d" stroke="#34d399" stroke-opacity="0.65" stroke-width="4"/><image href="${escapeXml(user.profileImageDataUrl)}" x="${portraitCenterX - 58}" y="230" width="116" height="116" preserveAspectRatio="xMidYMid slice" clip-path="url(#portraitClip)"/>`
     : '';
 
-  return styleBadge(`
+  return styleBadge(applyTypography(`
     <svg xmlns="http://www.w3.org/2000/svg" width="660" height="1000" viewBox="0 0 660 1000" preserveAspectRatio="none" direction="${isRtl ? 'rtl' : 'ltr'}">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -160,9 +160,9 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
       </defs>
       <rect x="0" y="0" width="100%" height="100%" fill="#041C15"/>
       <rect width="660" height="1000" fill="url(#bg)"/>
-      <rect x="42" y="42" width="576" height="916" rx="34" fill="none" stroke="#6ee7b7" stroke-opacity="0.17" stroke-width="2"/>
-      <rect x="42" y="42" width="576" height="152" rx="34" fill="url(#header)"/>
-      <rect x="42" y="160" width="576" height="34" fill="#071a13"/>
+      <rect x="0.5" y="0.5" width="659" height="999" rx="25.9" ry="28.157" fill="none" stroke="#6ee7b7" stroke-opacity="0.17" stroke-width="1"/>
+      <rect x="0" y="0" width="660" height="194" fill="url(#header)"/>
+
       ${fingerprintMark(isRtl ? 498 : 72, 68, 3.75)}
       <text x="${isRtl ? 486 : 174}" y="113" fill="#E8F7F1" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="38" font-weight="750">${labels.access}</text>
       <text x="${isRtl ? 486 : 174}" y="151" fill="#78D7B4" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif" font-size="16" font-weight="650" letter-spacing="3">${labels.identity}</text>
@@ -184,11 +184,15 @@ export function buildStanzaBackBadgeSvg(user: StanzaBadgeUser, options: StanzaBa
 
       <rect x="74" y="790" width="512" height="1" fill="#34d399" opacity="0.2"/>
       ${barcodeBars(user.id || tenant.identifier)}
-      <text x="${textX}" y="944" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">${labels.propertyOf} ${companyUpper}</text>
+      <text x="${textX}" y="934" text-anchor="${textAnchor}" fill="#6ee7b7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="650" letter-spacing="2">${labels.propertyOf} ${companyUpper}</text>
     </svg>
-  `, options.style);
+  `, options), options.style);
 }
 
+function applyTypography(svg: string, options: StanzaBadgeArtworkOptions) {
+ const family=escapeXml(options.fontFamily || 'system-ui,Segoe UI,Tahoma,Arial,sans-serif');
+ return svg.replace(/font-family="([^"]+)"/g, (attribute, current) => current.includes('monospace') ? attribute : `font-family="${family}"`).replace('<defs>', `<defs>${options.fontCss ? `<style>${options.fontCss}</style>` : ''}`);
+}
 function styleBadge(svg: string, style?: LanyardStyle) {
   if (!style || (!style.cardColor && !style.accentColor)) return svg;
   const colors = resolveLanyardColors(style);
@@ -199,5 +203,5 @@ function styleBadge(svg: string, style?: LanyardStyle) {
     // a bright accent header from undermining the calculated text contrast.
     const next = kind === 'stop-color' ? colors.card : backgrounds.has(color.toLowerCase()) ? (style.cardColor ? colors.card : color) : colors.accent;
     return `${kind}="${next}"`;
-  }).replace(/(<text[^>]*?)fill="#[0-9a-f]{6}"/gi, `$1fill="${colors.text}"`);
+  }).replace(/(<text[^>]*?)fill="#[0-9a-f]{6}"/gi, `$1fill="${colors.text}"`).replace(/(<text[^>]*font-size="(?:14|15|16|18|20)"[^>]*)(>)/g, '$1 opacity="0.76"$2');
 }

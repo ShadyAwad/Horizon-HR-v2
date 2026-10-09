@@ -13,6 +13,7 @@ import { registerCommunicationsRoutes } from './src/server/communications/commun
 import { registerFlexibleAttendanceRoutes } from './src/server/attendance/flexible-attendance-routes';
 import { config as loadDotenv } from 'dotenv';
 import express from 'express';
+import {createServer as createHttpServer} from 'node:http';
 import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -101,9 +102,9 @@ import {
   shouldTrustTryCloudflareDevProxy,
 } from './src/server/trycloudflare-dev';
 
-loadDotenv();
+loadDotenv({quiet:true});
 if (process.env.NODE_ENV !== 'production' && !isLocalPreview()) {
-  loadDotenv({ path: '.env.development.local', override: true });
+  loadDotenv({ path: '.env.development.local', override: true, quiet: true });
 }
 
 type WelcomeEmailOptions = {
@@ -3080,13 +3081,15 @@ registerCompanyFeedRoutes(app, {
     res.status(404).json({ success: false, code: 'API_ROUTE_NOT_FOUND', error: 'API route not found' });
   });
 
+  const httpServer=createHttpServer(app);
   // === VITE DEV/PRODUCTION MIDDLEWARE ===
   if (process.env.NODE_ENV !== 'production' && !isLocalPreview()) {
     const {createServer:createViteServer}=await import('vite');
     const vite = await createViteServer({
       // Avoid temporary bundled config modules triggering the TypeScript watcher.
       configLoader: 'runner',
-      server: { middlewareMode: true },
+      clearScreen:false,
+      server: { middlewareMode: true, hmr: process.env.DISABLE_HMR==='true'?false:{server:httpServer} },
       appType: 'spa',
     });
     closeVite = () => vite.close();
@@ -3124,11 +3127,12 @@ registerCompanyFeedRoutes(app, {
     });
   }
 
-  const httpServer = app.listen(PORT, isLocalPreview() ? 'localhost' : '0.0.0.0', () => {
+  httpServer.listen(PORT, isLocalPreview() ? 'localhost' : '0.0.0.0', () => {
     console.info(JSON.stringify({level:'info',operation:'http_listening',port:PORT}));
   });
+  httpServer.on('error',(error:NodeJS.ErrnoException)=>{if(error.code==='EADDRINUSE')console.error(`[Stanza] Port ${PORT} is already in use. Stop the existing server or choose another PORT. No automatic port fallback is used.`);throw error;});
   isStopping = installShutdown(async()=>{
-    await new Promise<void>((resolve,reject)=>{httpServer.close(error=>error?reject(error):resolve());httpServer.closeIdleConnections();});
+    if(httpServer.listening)await new Promise<void>((resolve,reject)=>{httpServer.close(error=>error?reject(error):resolve());httpServer.closeIdleConnections();});
     await closeLocalOpenAIAuth();await closeVite?.();await closeCommunicationsQueue();await closeHrResources();
   });
 }

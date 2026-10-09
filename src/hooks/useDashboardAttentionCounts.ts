@@ -45,11 +45,13 @@ function areCountsEqual(left: DashboardAttentionCounts, right: DashboardAttentio
 export function useDashboardAttentionCounts(user: AttentionUser, enabled = true) {
   const [counts, setCounts] = useState<DashboardAttentionCounts>(EMPTY_COUNTS);
   const [error, setError] = useState<string | null>(null);
+  const lastAttempt=useRef(0);
   const requestRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
     if (!enabled || !user.id || !user.tenantId || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
 
+    lastAttempt.current=Date.now();
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
@@ -107,7 +109,7 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     if (!enabled) return;
 
     const refreshWhenAvailable = () => {
-      if (document.visibilityState === 'visible' && navigator.onLine) void refresh();
+      if (document.visibilityState === 'visible' && navigator.onLine && !requestRef.current && Date.now()-lastAttempt.current>=30_000) void refresh();
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') refreshWhenAvailable();
@@ -116,13 +118,13 @@ export function useDashboardAttentionCounts(user: AttentionUser, enabled = true)
     window.addEventListener('focus', refreshWhenAvailable);
     window.addEventListener('online', refreshWhenAvailable);
     document.addEventListener('visibilitychange', onVisibilityChange);
-    const intervalId = window.setInterval(refreshWhenAvailable, 45_000);
+
 
     return () => {
       window.removeEventListener('focus', refreshWhenAvailable);
       window.removeEventListener('online', refreshWhenAvailable);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.clearInterval(intervalId);
+
     };
   }, [enabled, refresh]);
 

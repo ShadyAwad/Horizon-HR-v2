@@ -17,10 +17,12 @@ export const requestIds: RequestHandler = (req, res, next) => {
         const successfulFrontend = !isApi && ['GET', 'HEAD'].includes(req.method)
             && (route === 'unmatched' || route === '*')
             && (res.statusCode >= 200 && res.statusCode < 300 || res.statusCode === 304);
+        const durationMs=Math.round(performance.now()-started);
+        const routineApiRead=isApi&&route!=='unmatched'&&['GET','HEAD'].includes(req.method)&&res.statusCode>=200&&res.statusCode<300&&durationMs<1000;
         // Vite/static/SPA successes are noise locally; production retains them.
-        if (process.env.NODE_ENV === 'development' && successfulFrontend) return;
+        if (process.env.NODE_ENV === 'development' && process.env.LOG_LEVEL!=='debug' && (successfulFrontend||routineApiRead)) return;
         const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
-        console[level](JSON.stringify({ level, operation: 'http_request', requestId, method: req.method, route, status: res.statusCode, durationMs: Math.round(performance.now() - started) }));
+        console[level](JSON.stringify({ level, operation: 'http_request', requestId, method: req.method, route, status: res.statusCode, durationMs }));
     });
     requestContext.run({ requestId }, next);
 };

@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import {useAttendanceBoundary} from '../../hooks/useAttendanceBoundary';
 import {ComposerDialog} from '../workspace-composer/ComposerDialog';
 import {Input,Textarea} from '../ui/FormControls';
 import {useLanguage} from '../../lib/LanguageContext';
@@ -23,7 +24,7 @@ export function AttendanceActions({attendance,hasShift,canClock,offline,onChange
  const {isRtl}=useLanguage(),text=(en:string,ar:string)=>isRtl?ar:en;const [dialog,setDialog]=useState<'no_location'|'request'|null>(null),[note,setNote]=useState(''),[departure,setDeparture]=useState(''),[preview,setPreview]=useState<any>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const time=(v:string)=>new Date(v).toLocaleString(isRtl?'ar':'en',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
  // One timeout at the next authoritative boundary, suspended while the document is hidden.
- useEffect(()=>{let timer:ReturnType<typeof setTimeout>|undefined;const sync=()=>{if(timer)clearTimeout(timer);if(!document.hidden&&attendance?.nextChangeAt)timer=setTimeout(onChanged,Math.max(100,new Date(attendance.nextChangeAt).getTime()-new Date(attendance.serverNow).getTime()+50));};const visible=()=>{if(document.hidden){if(timer)clearTimeout(timer);}else onChanged();};sync();document.addEventListener('visibilitychange',visible);return()=>{if(timer)clearTimeout(timer);document.removeEventListener('visibilitychange',visible);};},[attendance?.serverNow,attendance?.nextChangeAt,onChanged]);
+ useAttendanceBoundary(attendance?.serverNow,attendance?.nextChangeAt,onChanged,attendance?.timeLogId||'',attendance?.receivedAt);
  useEffect(()=>{setPreview(null);if(dialog!=='request'||!departure)return;let cancelled=false;const timer=setTimeout(()=>{void request('/api/attendance/early-leave/preview',{timeLogId:attendance.timeLogId,departureTime:new Date(departure).toISOString()}).then(p=>{if(!cancelled){setPreview(p);setError('');}}).catch(e=>{if(!cancelled)setError(e.message);});},300);return()=>{cancelled=true;clearTimeout(timer);};},[departure,dialog,attendance?.timeLogId]);
  const open=(next:'no_location'|'request')=>{setNote('');setError('');setPreview(null);setDeparture('');setDialog(next);};
  const submit=async()=>{setBusy(true);setError('');try{await request(dialog==='no_location'?'/api/attendance/clock-in-without-location':'/api/attendance/early-leave',dialog==='no_location'?{confirm:true,note}:{timeLogId:attendance.timeLogId,departureTime:new Date(departure).toISOString(),reason:note});setDialog(null);onChanged();}catch(e){setError((e as Error).message);}finally{setBusy(false);}};

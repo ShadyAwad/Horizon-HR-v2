@@ -1470,6 +1470,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     user,
     hasAuthenticatedDashboardUser && performanceIsolation.attentionPolling,
   );
+  useEffect(()=>{if(attendanceRevision>0)void refreshAttentionCounts();},[attendanceRevision,refreshAttentionCounts]);
   const payrollAttentionCount = attentionCounts.payroll + attentionCounts.loans;
   if (import.meta.env.DEV) {
     recordDevRender('Dashboard', {
@@ -2959,7 +2960,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
         setActiveTimeLogId(data.timeLogId || null);
         setAttendanceLocationStatus(data.locationStatus || '');
-        setAttendanceState(data.attendance || null);
+        setAttendanceState(data.attendance?{...data.attendance,receivedAt:Date.now()}:null);
         if (data.clockedIn) {
           setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
         } else if (!preserveLastEvent) {
@@ -2979,6 +2980,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     loadClockStatus();
   }, [hasAuthenticatedDashboardUser, user.id, user.tenantId, attendanceRevision]);
 
+
+  const previousClockTab=useRef(activeTab);
+  useEffect(()=>{if(previousClockTab.current!==activeTab&&activeTab==='geofence')void loadClockStatus();previousClockTab.current=activeTab;},[activeTab]);
 
   const loadBreakRequests = async (clearMessage = true) => {
     if (!hasAuthenticatedDashboardUser) return;

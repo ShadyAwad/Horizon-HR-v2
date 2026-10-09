@@ -97,4 +97,4 @@ try{
   }finally{await roleClient.query('ROLLBACK');roleClient.release();}
   const metrics=await api('admin','/metrics');assert.equal(metrics.status,200);assert(metrics.metrics.some((m:{promotions:string})=>Number(m.promotions)===1));
   console.log('PASS router API authorization, candidate lifecycle, duplicate handling, promotion avoids LLM, cross-tenant filtering and non-bypass RLS');
-}finally{server.close();for(const t of tenants)await pool.query('DELETE FROM tenants WHERE id=$1',[t]);await pool.end();await closeHrResources();}
+}finally{server.close();for(const t of tenants){await pool.query('DELETE FROM router_operational_metrics WHERE tenant_id=$1',[t]);await pool.query('DELETE FROM tenants WHERE id=$1',[t]);}await pool.end();await closeHrResources();}

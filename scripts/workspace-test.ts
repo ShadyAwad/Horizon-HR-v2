@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { WIDGETS, canUseWidget, widgetPath } from '../src/components/workspace-composer/widget-catalog';
-import { defaultPreferences, normalizePreferences, readPreferences, reduceComposer, createWidget, overlap, settle, boundGeometry, stackedOrder, storageKey } from '../src/components/workspace-composer/workspace-model';
+import { defaultPreferences, normalizePreferences, readPreferences, reduceComposer, createWidget, overlap, settle, boundGeometry, stackedOrder, storageKey, nextWorkspaceName } from '../src/components/workspace-composer/workspace-model';
 import type { AuthUser } from '../src/auth/auth-contract';
 const user:AuthUser={id:'u',tenantId:'t',email:'test@example.invalid',name:'Test',role:'employee',permissions:['attendance.clock','roster.goals.view_self']};
 assert.equal(new Set(WIDGETS.map(w=>w.id)).size,WIDGETS.length);
@@ -20,7 +20,7 @@ const resized=boundGeometry({...a,x:99,y:-1,width:1,height:100});assert.equal(re
 state=reduceComposer(state,{type:'surface',value:'glass'});state=reduceComposer(state,{type:'update',id:'morning',instanceId:'a',patch:{surfaceOverride:'solid',config:{compact:true,limit:10}}});
 assert.deepEqual(readPreferences(JSON.stringify(state)),state,'persistence/readback preserves positions, options and surfaces');
 state=reduceComposer(state,{type:'duplicate',id:'morning',newId:'copy'});assert.equal(state.workspaces.length,3);assert.notEqual(state.workspaces[1].widgets[0].instanceId,state.workspaces[2].widgets[0].instanceId);
-state=reduceComposer(state,{type:'remove',id:'copy',instanceId:'copy-0'});assert.equal(state.workspaces[2].widgets.length,1);
+state=reduceComposer(state,{type:'remove',id:'copy',instanceId:state.workspaces.find(w=>w.id==='copy')!.widgets[0].instanceId});assert.equal(state.workspaces[2].widgets.length,1);
 state=reduceComposer(state,{type:'reset',id:'copy'});assert.equal(state.workspaces[2].widgets.length,0);
 state=reduceComposer(state,{type:'delete',id:'copy'});assert.equal(state.activeId,'my-workspace');
 state=reduceComposer(state,{type:'select',id:'morning'});assert.equal(state.activeId,'morning');
@@ -54,3 +54,58 @@ assert(composer.includes('authorized&&<Component'),'restricted content never mou
 console.log('PASS oversized input, duplicate layout IDs, missing/deleted active layout, first-fit placement and pre-fetch/render authorization boundary');
 
 let enhanced=reduceComposer(defaultPreferences(),{type:'add',id:'my-workspace',widget:a});enhanced=reduceComposer(enhanced,{type:'update',id:'my-workspace',instanceId:'a',patch:{collapsed:true,accent:'purple'}});const replay=readPreferences(JSON.stringify(enhanced)).workspaces[0].widgets[0];assert.equal(replay.collapsed,true);assert.equal(replay.accent,'purple');assert.equal(replay.height,a.height,'minimizing preserves expanded dimensions');const restored=reduceComposer(enhanced,{type:'update',id:'my-workspace',instanceId:'a',patch:{collapsed:false}});assert.equal(restored.workspaces[0].widgets[0].height,a.height);assert.equal(normalizePreferences({...enhanced,workspaces:[{...enhanced.workspaces[0],widgets:[{...replay,accent:'untrusted',collapsed:'true'}]}]}).workspaces[0].widgets[0].accent,'default');assert(frame.includes('hidden={!!widget.collapsed}'),'minimize hides rather than destroys widget children');console.log('PASS collapse/restore/color migration and persistence, retained content, finite coalesced drag preview and stable layout.');
+
+// Empty workspaces are independent saved identities; array order is persisted tab order.
+let managed=reduceComposer(defaultPreferences(),{type:'create',id:'empty-ar',name:'  مساحة الفريق  '});
+assert.equal(managed.activeId,'empty-ar');assert.equal(managed.workspaces[1].widgets.length,0);
+assert.deepEqual(readPreferences(JSON.stringify(managed)),managed,'empty creation and active tab survive reload');
+managed=reduceComposer(managed,{type:'rename',id:'empty-ar',name:'  العمليات اليومية  '});
+assert.equal(managed.workspaces[1].name,'العمليات اليومية');
+assert.deepEqual(reduceComposer(managed,{type:'rename',id:'empty-ar',name:'   '}),managed,'blank rename must preserve the existing name');
+assert.deepEqual(reduceComposer(managed,{type:'create',id:'empty-ar',name:'Duplicate ID'}),managed,'creation never overwrites an existing identity');
+assert.equal(nextWorkspaceName(managed.workspaces),'Workspace 2');
+assert.equal(nextWorkspaceName([{id:'n',name:'Workspace 2',widgets:[]}]),'Workspace 3');
+managed=reduceComposer(managed,{type:'add',id:'empty-ar',widget:a});
+managed=reduceComposer(managed,{type:'add',id:'my-workspace',widget:b});
+managed=reduceComposer(managed,{type:'update',id:'empty-ar',instanceId:'a',patch:{x:2,y:3,height:7,collapsed:true,surfaceOverride:'transparent',accent:'amber',config:{compact:true,limit:10}}});
+const legacy=JSON.stringify(managed),beforeOrder=structuredClone(managed.workspaces);
+managed=reduceComposer(managed,{type:'reorder',id:'empty-ar',direction:-1});
+assert.deepEqual(managed.workspaces.map(w=>w.id),['empty-ar','my-workspace']);assert.equal(managed.activeId,'empty-ar');
+assert.deepEqual(managed.workspaces[0],beforeOrder[1],'reordering preserves geometry, collapse, accent, surface and configuration');
+assert.deepEqual(readPreferences(JSON.stringify(managed)),managed,'order survives reload');
+assert.deepEqual(reduceComposer(managed,{type:'reorder',id:'empty-ar',direction:-1}),managed,'boundary reorder is safe');
+assert.deepEqual(reduceComposer(managed,{type:'reorder',id:'missing',direction:1}),managed);
+const loadedLegacy=readPreferences(legacy);assert.deepEqual(loadedLegacy.workspaces,beforeOrder,'unchanged v1 input preserves all layouts');
+managed=reduceComposer(managed,{type:'duplicate',id:'empty-ar',newId:'independent-copy'});
+assert.notEqual(managed.workspaces[2].widgets[0].config,managed.workspaces[0].widgets[0].config);
+managed=reduceComposer(managed,{type:'update',id:'independent-copy',instanceId:managed.workspaces.find(w=>w.id==='independent-copy')!.widgets[0].instanceId,patch:{config:{limit:2},accent:'blue'}});
+assert.equal(managed.workspaces[0].widgets[0].config.limit,10);assert.equal(managed.workspaces[0].widgets[0].accent,'amber');
+managed=reduceComposer(managed,{type:'remove',id:'empty-ar',instanceId:'a'});
+assert.equal(managed.workspaces.find(w=>w.id==='empty-ar')!.widgets.length,0,'removing final widget retains workspace');
+assert.equal(managed.workspaces.find(w=>w.id==='my-workspace')!.widgets[0].widgetId,'feed','widgets remain isolated');
+managed=reduceComposer(managed,{type:'select',id:'empty-ar'});assert.equal(readPreferences(JSON.stringify(managed)).activeId,'empty-ar');
+const survivor=structuredClone(managed.workspaces.find(w=>w.id==='my-workspace'));
+managed=reduceComposer(managed,{type:'delete',id:'empty-ar'});
+assert.deepEqual(managed.workspaces.find(w=>w.id==='my-workspace'),survivor,'deletion removes only its own layout');
+managed=reduceComposer(managed,{type:'delete',id:'independent-copy'});managed=reduceComposer(managed,{type:'delete',id:'my-workspace'});
+assert.deepEqual(managed,defaultPreferences(),'last deletion leaves a usable empty default');
+console.log('PASS independent empty workspaces, Unicode/blank rename, immediate creation, persisted reorder/active tab, legacy v1 data, clone configuration isolation, final-widget removal and last-workspace fallback');
+
+// Malformed identity actions cannot discard or accidentally select existing layouts.
+const identities=reduceComposer(defaultPreferences(),{type:'create',id:'empty',name:'Empty'});
+for(const id of ['', '   ', 'x'.repeat(81), 'my-workspace'])assert.deepEqual(reduceComposer(identities,{type:'duplicate',id:'empty',newId:id}),identities);
+assert.deepEqual(reduceComposer(identities,{type:'select',id:'missing'}),identities);
+const unicode=reduceComposer(identities,{type:'rename',id:'empty',name:'🙂'.repeat(61)});
+assert.equal(Array.from(unicode.workspaces[1].name).length,60);assert.equal(unicode.workspaces[1].name,'🙂'.repeat(60));
+assert.deepEqual(readPreferences(JSON.stringify(unicode)),unicode);
+const copies=reduceComposer(reduceComposer(identities,{type:'duplicate',id:'empty',newId:'copy-a'}),{type:'duplicate',id:'empty',newId:'copy-b'});
+assert.deepEqual(copies.workspaces.slice(2).map(w=>w.name),['Empty copy','Empty copy 2']);
+const invalidIds=normalizePreferences({version:1,workspaces:[{id:' ',name:'Invalid',widgets:[]},{id:'valid',name:'Valid',widgets:[{...a,instanceId:' '}]}]});
+assert.equal(invalidIds.workspaces.length,1);assert.equal(invalidIds.workspaces[0].widgets.length,0);
+console.log('PASS invalid ID/selection/duplicate isolation, bounded Unicode-safe names and unique copy names');
+
+const longCopy=reduceComposer(firstFit,{type:'duplicate',id:'my-workspace',newId:'x'.repeat(80)});
+assert.equal(longCopy.workspaces[1].widgets.length,2,'long valid workspace IDs never discard copied widgets');
+const originalIds=new Set(longCopy.workspaces[0].widgets.map(w=>w.instanceId));
+assert(longCopy.workspaces[1].widgets.every(w=>!originalIds.has(w.instanceId)&&w.instanceId.length<=80));
+console.log('PASS duplicated widgets have independent bounded IDs even with a maximum-length workspace ID');

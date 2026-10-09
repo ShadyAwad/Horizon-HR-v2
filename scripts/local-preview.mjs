@@ -12,7 +12,8 @@ Object.assign(process.env, {
   WEBAUTHN_RP_ID: 'localhost', TRUST_PROXY_HOPS: '0',
   DEV_AUTH_HEADERS: 'false', ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'false',
 });
-const children = ['dist/server.cjs', 'dist/worker.cjs'].map(bundle =>
+const bundles=['dist/server.cjs','dist/worker.cjs'];
+const children = bundles.map(bundle =>
   spawn(process.execPath, [bundle], { stdio: 'inherit', env: process.env, windowsHide: true }));
 let stopping = false;
 function stop(signal = 'SIGTERM') {
@@ -23,5 +24,5 @@ function stop(signal = 'SIGTERM') {
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => stop(signal));
 for (const child of children) {
   child.once('error', error => { console.error(error.message); process.exitCode = 1; stop(); });
-  child.once('exit', code => { if (!stopping) { process.exitCode = code || 1; stop(); } });
+  child.once('exit', (code,signal) => { if (!stopping) { console.error(`[Stanza preview] Child ${bundles[children.indexOf(child)]} exited unexpectedly (${signal||code}). Stopping the local stack.`);process.exitCode = code || 1; stop(); } });
 }

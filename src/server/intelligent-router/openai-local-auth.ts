@@ -64,7 +64,7 @@ export class LocalOpenAIAuth implements ReasoningAuthorization {
         if(c.clientId!==r.clientId || c.subject!==r.subject || typeof c.access!=='string' || !c.access || typeof c.refresh!=='string' || !c.refresh || !Number.isFinite(c.expires) || !Array.isArray(c.scopes) || !c.scopes.every(x=>typeof x==='string') || c.actor.tenantId!==actor.tenantId || c.actor.employeeId!==actor.employeeId)throw Error('OPENAI_STORE_UNAVAILABLE');
         this.connections.set(owner,{...c,actor});
       }
-    })());
+    })().catch(error=>{this.loaded.delete(owner);throw error;}));
     await this.loaded.get(owner);
   }
   private async persist(actor: RouterActor, credentials=this.connections.get(key(actor))) {

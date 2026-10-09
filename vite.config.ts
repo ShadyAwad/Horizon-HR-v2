@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins,
+    clearScreen: false,
     define: {
       'import.meta.env.LOGIN_CONTROL_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_CONTROL_DIAGNOSTIC === 'true'),
       'import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC': JSON.stringify(mode === 'production' && process.env.STANZA_LOGIN_IDLE_CANVAS_DIAGNOSTIC === 'true'),
@@ -71,7 +72,7 @@ export default defineConfig(({ mode }) => {
       hmr: process.env.DISABLE_HMR !== 'true',
 
       // Match file watching to HMR to avoid unnecessary development CPU work.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      watch: process.env.DISABLE_HMR === 'true' ? null : {ignored:['**/dist/**','**/.cache/**','**/scripts/**','**/uploads/**','**/src/server/**','**/src/workers/**','**/src/db/**']},
     },
   };
 });

@@ -39,13 +39,23 @@ export class LocalOpenAIProfileStore implements OpenAIProfileStore {
     for(const p of [path.dirname(this.root),this.root])if((await lstat(p)).isSymbolicLink())throw Error('OPENAI_STORE_UNAVAILABLE');
     await windows("$p=([Console]::In.ReadToEnd()|ConvertFrom-Json).path; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; & icacls.exe $p /inheritance:r /grant:r ('*'+$sid+':(OI)(CI)F') | Out-Null; if($LASTEXITCODE -ne 0){throw 'ACL unavailable'}",{path:this.root});
     const leasePath=path.join(this.root,'runtime.lock');
-    try {await writeFile(leasePath,JSON.stringify({pid:process.pid,id:this.lease}),{flag:'wx',mode:0o600});}
+    // PID reuse must not turn an unrelated process into a permanent vault owner.
+    // Uninspectable owners still fail closed; no credential reads bypass the lease.
+    const identity=async(pid:number):Promise<{executable?:string;startedAt?:string}>=>JSON.parse(await windows("$x=[Console]::In.ReadToEnd()|ConvertFrom-Json; $p=Get-Process -Id $x.pid -ErrorAction Stop; @{executable=$p.Path; startedAt=$p.StartTime.ToUniversalTime().ToString('o')} | ConvertTo-Json -Compress",{pid}));
+    const own=await identity(process.pid);
+    const leaseRecord=JSON.stringify({pid:process.pid,id:this.lease,startedAt:own.startedAt});
+    try {await writeFile(leasePath,leaseRecord,{flag:'wx',mode:0o600});}
     catch(e) {
       if((e as NodeJS.ErrnoException).code!=='EEXIST')throw Error('OPENAI_STORE_UNAVAILABLE');
       const old=JSON.parse(await readFile(leasePath,'utf8'));let alive=true;
       try{process.kill(old.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')alive=false;}
+      if(alive){
+        try{const current=await identity(old.pid);
+          if(current.executable && own.executable && path.basename(current.executable).toLowerCase()!==path.basename(own.executable).toLowerCase() || old.startedAt && current.startedAt && old.startedAt!==current.startedAt)alive=false;
+        }catch{/* An inaccessible live owner retains its lease. */}
+      }
       if(alive)throw Error('OPENAI_STORE_BUSY');
-      await unlink(leasePath);await writeFile(leasePath,JSON.stringify({pid:process.pid,id:this.lease}),{flag:'wx',mode:0o600});
+      await unlink(leasePath);await writeFile(leasePath,leaseRecord,{flag:'wx',mode:0o600});
     }
     this.owned=true;
     try {
@@ -61,7 +71,9 @@ export class LocalOpenAIProfileStore implements OpenAIProfileStore {
       this.encryptionKey=Buffer.from(key,'base64');if(this.encryptionKey.length!==32)throw Error('OPENAI_STORE_UNAVAILABLE');
     }catch{await this.release();throw Error('OPENAI_STORE_UNAVAILABLE');}
   }
-  private init() {return this.ready ??= this.initialize();}
+  private init() {
+    return this.ready ??= this.initialize().catch(error=>{this.ready=undefined;throw error;});
+  }
   async read(actor: RouterActor) {
     await this.init();await this.writes;
     let blob:string;try{blob=await readFile(this.file(actor),'utf8');}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return null;throw Error('OPENAI_STORE_UNAVAILABLE');}

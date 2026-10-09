@@ -17,6 +17,7 @@ import { createAuthorization, createEmbedding, routerConfig } from './config';
 import { EmbeddingCache, type EmbeddingProvider, type ReasoningAuthorization } from './providers';
 import { resolveQuery } from './router';
 import { RouterTelemetry } from './telemetry';
+import { ReasoningStatusDiagnostics } from './reasoning-status-diagnostics';
 import { LocalOpenAIProfileStore } from './openai-profile-store';
 import { LocalOpenAIAuth, localOpenAIEnabled, retainLocalAuthorization } from './openai-local-auth';
 import { createCandidate, PgSemanticSearch, promoteCandidate, recordMetric } from './store';
@@ -29,6 +30,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
   if(userAuthorization)retainLocalAuthorization(userAuthorization);
   const authorization = runtime.authorization ?? createAuthorization(config,process.env,{user:userAuthorization});
   const telemetry = new RouterTelemetry(error => { const code=(error as {code?:unknown})?.code; logServerError('[Router telemetry; retry in 60s]',typeof code==='string' && /^[0-9A-Z]{5}$/.test(code) ? {code:'SQLSTATE_'+code} : error); });
+  const reasoningDiagnostics = new ReasoningStatusDiagnostics();
   const actor = (req: express.Request) => ({ tenantId: req.authUser!.tenantId, employeeId: req.authUser!.employeeId, sessionId: req.authSessionId });
   const permission = async (c: PoolClient, u: ReturnType<typeof actor>, key: string, company = false) => (await resolveScopedPermission(c, { tenantId: u.tenantId, actorEmployeeId: u.employeeId, permissionKey: key, ...(company ? {} : { targetEmployeeId: u.employeeId }) })).allowed;
   const active = async (c: PoolClient, u: ReturnType<typeof actor>) => Boolean((await c.query("SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active AND employment_status='active'", [u.tenantId,u.employeeId])).rowCount);
@@ -98,12 +100,13 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     try {
       state=await authorization.resolve(u);
       if(userAuthorization)openaiConnection=await userAuthorization.status(u);
+      reasoningDiagnostics.recovered();
     }catch(error){
       // An unavailable credential store must not hide a healthy independent semantic provider.
       const code=error instanceof Error?error.message:'';
       if(!['OPENAI_STORE_UNAVAILABLE','OPENAI_STORE_BUSY','OPENAI_AUTH_UNAVAILABLE','OPENAI_SESSION_REQUIRED'].includes(code))throw error;
       state={state:'authorization_unavailable'};reasoningStatusError=code;
-      logServerError('[Router reasoning status]',error);
+      reasoningDiagnostics.unavailable(code);
     }
     const canReview = await withTenant(u.tenantId,c => review(c,u));
     const semanticState = await withTenant(u.tenantId, async c => {

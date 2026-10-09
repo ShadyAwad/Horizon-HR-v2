@@ -15,8 +15,11 @@ try {
   assert.equal(await store.read({...actor,tenantId:'another'}),null);
   const root=path.join(base,(await readdir(base))[0]),file=(await readdir(root)).find(f=>f.endsWith('.enc'))!;
   assert(!(await readFile(path.join(root,file),'utf8')).includes('fixture'));
-  const competing=new LocalOpenAIProfileStore(host,base);await assert.rejects(()=>competing.read(actor),/OPENAI_STORE_BUSY/);await competing.close();
-  await store.close();store=new LocalOpenAIProfileStore(host,base);
+  const competing=new LocalOpenAIProfileStore(host,base);await assert.rejects(()=>competing.read(actor),/OPENAI_STORE_BUSY/);await store.close();
+  assert.equal((await competing.read(actor))?.credentials?.refresh,credentials.refresh,'blocked instance recovers on explicit retry after lease release');
+  await competing.close();
+  await writeFile(path.join(root,'runtime.lock'),JSON.stringify({pid:process.pid,id:'stale-fixture',startedAt:'old-process-start'}));
+  store=new LocalOpenAIProfileStore(host,base);
   assert.equal((await store.read(actor))?.credentials?.refresh,credentials.refresh,'real encrypted state survives store restart');
   await store.write(actor,{registration:{clientId:credentials.clientId,subject:credentials.subject}});assert.equal((await store.read(actor))?.credentials,undefined,'disconnect removes token material while retaining client registration');
   await writeFile(path.join(root,file),'v1.tampered.invalid.data');await assert.rejects(()=>store.read(actor),/OPENAI_STORE_UNAVAILABLE/);

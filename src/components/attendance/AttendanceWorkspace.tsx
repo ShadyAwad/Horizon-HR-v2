@@ -45,7 +45,7 @@ export function AttendanceWorkspace({ employeeId, hasShift, canRequest, canTeam,
     const sync=()=>{if(timer)clearInterval(timer);if(!document.hidden){setNow(Date.now());timer=setInterval(()=>setNow(Date.now()),30000);}};
     document.addEventListener('visibilitychange',sync);sync();return()=>{if(timer)clearInterval(timer);document.removeEventListener('visibilitychange',sync);};
   },[active?.id]);
-  const run=async(task:()=>Promise<unknown>, invalidateHistory=true)=>{setBusy(true);setError('');setNotice('');try{await task();await load();onChange();if(invalidateHistory)setHistory(null);}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+  const run=async(task:()=>Promise<unknown>, invalidateHistory=true)=>{setBusy(true);setError('');setNotice('');try{await task();if(invalidateHistory){onChange();setHistory(null);}}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
   const elapsed=(b:any)=>Math.max(0,Math.floor(((b.ended_at?new Date(b.ended_at).getTime():now)-new Date(b.started_at).getTime())/60000));
   const selected=policy?.breakPolicies.find(p=>p.id===selection);
   const updateEntry=(index:number,change:Partial<BreakPolicy>)=>setDraft(d=>d?{...d,breakPolicies:d.breakPolicies.map((p,i)=>i===index?{...p,...change}:p)}:d);

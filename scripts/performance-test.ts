@@ -158,7 +158,7 @@ check('Dashboard conditionally mounts major feature panels instead of CSS-hiding
   "{activeTab === 'roster' && (",
 ].every((pattern) => dashboard.includes(pattern)));
 check('attention-count polling does not rerender Dashboard for identical results', attentionCounts.includes('function areCountsEqual') && attentionCounts.includes('areCountsEqual(current, nextCounts) ? current : nextCounts'));
-check('attention-count polling pauses while the document is hidden', attentionCounts.includes("document.visibilityState === 'visible'") && attentionCounts.includes("window.clearInterval(intervalId)"));
+check('attention refresh is visibility-gated, removes listeners and has no polling interval', attentionCounts.includes("document.visibilityState === 'visible'") && attentionCounts.includes("removeEventListener('visibilitychange'") && !attentionCounts.includes('setInterval('));
 check('idle attendance readiness indicator is static rather than an infinite compositor animation',
   dashboard.includes('bg-emerald-500/60 ring-2 ring-emerald-500/15') &&
   !dashboard.includes('bg-emerald-500/60 animate-pulse'));
