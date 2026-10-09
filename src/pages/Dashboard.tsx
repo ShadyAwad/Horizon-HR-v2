@@ -1,3 +1,4 @@
+import { AttendanceStatus } from '../components/attendance/AttendanceStatus';
 import { AttendanceActions, EarlyClockOutDialog } from '../components/attendance/AttendanceActions';
 import {apiFetchShared} from '../lib/api';
 import {DigitalCardPreviewButton} from '../components/lanyard/DigitalCardPreviewButton';
@@ -2961,7 +2962,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
         setActiveTimeLogId(data.timeLogId || null);
         setAttendanceLocationStatus(data.locationStatus || '');
-        setAttendanceState(data.attendance?{...data.attendance,receivedAt:Date.now()}:null);
+        setAttendanceState(data.attendance?{...data.attendance,clockedIn:data.clockedIn,receivedAt:Date.now()}:null);
         if (data.clockedIn) {
           setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
         } else if (!preserveLastEvent) {
@@ -5634,10 +5635,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        </div>
                        
 
-                       <div data-tutorial-target="geo-clock" className="relative z-10 flex min-h-0 w-full max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/10 bg-white/70 px-4 py-6 dark:border-emerald-500/10 dark:bg-black/30 md:min-h-[220px] md:px-6 md:py-8">
-                           <p className="mb-3 text-sm font-bold" role="status">{attendanceOnBreak ? (isRtl ? 'في استراحة' : 'On break') : hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</p>
-                           {hasActiveShift && attendanceLocationStatus && <p className="mb-2 text-xs">{attendanceLocationStatus === 'verified' ? (isRtl ? 'الموقع معتمد' : 'Location verified') : attendanceLocationStatus === 'outside' ? (isRtl ? 'خارج الموقع — مسموح اختيارياً' : 'Outside geofence — optional policy') : attendanceLocationStatus === 'disabled' ? (isRtl ? 'الموقع معطل' : 'Location disabled') : (isRtl ? 'تم الحضور دون موقع' : 'Clocked in without location')}</p>}
-                           <div className="relative mb-5 flex h-32 min-h-32 w-32 min-w-32 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-32 md:min-h-32 md:w-32 md:min-w-32">
+                       <div data-tutorial-target="geo-clock" className="attendance-primary relative z-10 w-full max-w-full text-start">
+                           <AttendanceStatus attendance={attendanceState} hasShift={hasActiveShift} onBreak={attendanceOnBreak} locationStatus={attendanceLocationStatus} />
+                           <div className="attendance-radial relative flex h-32 min-h-32 w-32 min-w-32 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-32 md:min-h-32 md:w-32 md:min-w-32">
                              {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
                              <button 
                                type="button"
@@ -5688,67 +5688,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              </button>
                            </div>
 
-                           {/* Dynamic Status Display */}
-                           <div className="relative mt-3 h-16 w-full max-w-[320px] overflow-hidden px-1">
-                                {clockMessage ? (
-                                    <div
-                                        key="msg"
-                                        className="stanza-status-enter absolute inset-0 flex items-center justify-center gap-2 text-center"
-                                    >
-                                        <span className={cn(
-                                          "flex h-2 w-2 shrink-0 rounded-full",
-                                          clockInState === 'success' || clockInState === 'clocked_out'
-                                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]"
-                                            : clockInState === 'open_shift_conflict'
-                                              ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]"
-                                              : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]"
-                                        )}></span>
-                                        <span className={cn(
-                                          "max-h-12 overflow-hidden text-[10px] uppercase font-bold tracking-widest leading-4",
-                                          clockInState === 'success' || clockInState === 'clocked_out'
-                                            ? "text-emerald-400"
-                                            : clockInState === 'open_shift_conflict'
-                                              ? "text-amber-400"
-                                              : "text-red-400"
-                                        )}>
-                                            {t('dash.sysMsg')} {clockMessage}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <div
-                                        key="idle"
-                                        className="stanza-status-enter absolute inset-0 flex items-center justify-center gap-2 text-center text-neutral-500 dark:text-emerald-100/45"
-                                    >
-                                        <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500/60 ring-2 ring-emerald-500/15"></span>
-                                        <span className="max-h-12 overflow-hidden text-[10px] uppercase tracking-widest leading-4">{hasActiveShift ? t('dash.activeShift') : t('dash.awaitingInput')}</span>
-                                    </div>
-                                )}
-                           </div>
-
-                           <div className="mt-2 flex h-16 w-full max-w-[360px] flex-col items-center justify-start gap-1 overflow-hidden px-1">
-                             <p className="h-4 max-w-full overflow-hidden text-[10px] font-mono uppercase tracking-widest text-neutral-500 dark:text-emerald-100/45">
-                               {lastClockEvent}
-                             </p>
-                             {clockWarning ? (
-                               <p
-                                 className={cn(
-                                   "max-h-10 max-w-full overflow-hidden rounded-lg border px-2 py-1 text-center text-[10px] font-bold leading-4",
-                                   lastClockAccuracy !== null && getClockAccuracyLevel(lastClockAccuracy) === 'low'
-                                     ? "border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                                     : "border-emerald-500/15 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
-                                 )}
-                               >
-                                 {clockWarning}
-                               </p>
-                             ) : (
-                               <span className="h-8" aria-hidden="true" />
-                             )}
-                           </div>
+                           {clockMessage && <p className="attendance-feedback" role="status">{clockMessage}</p>}
+                           {clockWarning && <p className="attendance-feedback" role="status">{clockWarning}</p>}
+                           {!hasActiveShift && <p className="attendance-feedback attendance-muted">{displayLastClockEvent}</p>}
+                           <AttendanceActions attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
                        </div>
-
                        {earlyClockOut&&<EarlyClockOutDialog attendance={earlyClockOut} busy={clockInState==='verifying'} onClose={()=>setEarlyClockOut(null)} onConfirm={note=>void verifyClockOut(true,note)}/>}
-                       <AttendanceActions attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
-                       <AttendanceWorkspace refreshKey={attendanceRevision} onChange={attendanceChanged} employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />
+                       <AttendanceWorkspace attendance={attendanceState} refreshKey={attendanceRevision} onChange={attendanceChanged} employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />
 
                        <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

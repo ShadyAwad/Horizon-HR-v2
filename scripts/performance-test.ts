@@ -160,8 +160,9 @@ check('Dashboard conditionally mounts major feature panels instead of CSS-hiding
 check('attention-count polling does not rerender Dashboard for identical results', attentionCounts.includes('function areCountsEqual') && attentionCounts.includes('areCountsEqual(current, nextCounts) ? current : nextCounts'));
 check('attention refresh is visibility-gated, removes listeners and has no polling interval', attentionCounts.includes("document.visibilityState === 'visible'") && attentionCounts.includes("removeEventListener('visibilitychange'") && !attentionCounts.includes('setInterval('));
 check('idle attendance readiness indicator is static rather than an infinite compositor animation',
-  dashboard.includes('bg-emerald-500/60 ring-2 ring-emerald-500/15') &&
-  !dashboard.includes('bg-emerald-500/60 animate-pulse'));
+  dashboard.includes('<AttendanceStatus ') &&
+  !/animate-|setInterval|setTimeout|requestAnimationFrame/.test(read('src/components/attendance/AttendanceStatus.tsx')) &&
+  !/animation\s*:/.test(styles.slice(styles.indexOf('/* Attendance composition only;'))));
 check('CSS infinite animation is restricted to the authentication loading fingerprint',
   (styles.match(/animation\s*:[^;{}]*\binfinite\b/g) || []).length === 2 &&
   styles.includes('.stanza-fingerprint-loader-loading') &&

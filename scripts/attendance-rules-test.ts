@@ -42,3 +42,14 @@ import {getPermissionDefinition} from '../src/server/organisation/permission-reg
 import {managerPermissions} from './demo/organisation';
 assert(getPermissionDefinition('attendance.early_leave.review')?.allowedScopeTypes.includes('direct_reports'));
 assert(managerPermissions.includes('attendance.early_leave.review'));
+
+import {attendanceDisplayState} from '../src/lib/attendance-presentation';
+assert.equal(attendanceDisplayState(null,false,false),'ready');
+assert.equal(attendanceDisplayState(null,true,false),'working');
+const due={plannedBreaks:[{state:'completed'},{state:'due'}]};
+assert.equal(attendanceDisplayState(due,true,false),'due');
+assert.equal(attendanceDisplayState(due,true,true),'on_break');
+assert.equal(attendanceDisplayState({...due,activeBreak:{id:'active'}},true,false),'on_break');
+assert.equal(attendanceDisplayState(due,false,true),'ready');
+assert.equal(attendanceDisplayState({plannedBreaks:[{state:'upcoming'},{state:'completed'}],approvedDeparture:'2026-10-09T15:00:00Z'},true,false),'working');
+console.log('PASS display-only attendance precedence: clocked out, working, due, active and completed breaks; approval does not fabricate a clock-out');
