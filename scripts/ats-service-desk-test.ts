@@ -80,6 +80,23 @@ try {
     assert.equal(publicPage.status, 200);
     assert(!('tenant_id' in publicPage.job));
     assert(!('id' in publicPage.job));
+    const windowCases=[
+        {sql:"status='open', opens_on=NULL, closes_on=NULL",state:'accepting_applications',available:true},
+        {sql:"status='open', opens_on=current_date, closes_on=current_date",state:'accepting_applications',available:true},
+        {sql:"status='open', opens_on=current_date+1, closes_on=NULL",state:'opens_later',available:false},
+        {sql:"status='open', opens_on=NULL, closes_on=current_date-1",state:'window_closed',available:false},
+        {sql:"status='closed', opens_on=NULL, closes_on=NULL",state:'unavailable',available:false},
+    ];
+    for(const fixture of windowCases){
+        await db.query(`UPDATE hiring_jobs SET ${fixture.sql} WHERE tenant_id=$1 AND id=$2`,[a,job.id]);
+        const listed=(await request('recruiter','/api/hiring/jobs')).jobs.find((j:any)=>j.id===job.id);
+        assert.equal(listed.public_application_available,fixture.available);
+        assert.equal(listed.public_application_state,fixture.state);
+        assert.equal(listed.status,fixture.state==='unavailable'?'closed':'open');
+        assert.equal((await request('','/api/public/jobs/'+job.public_token)).status,fixture.available?200:404);
+    }
+    await db.query("UPDATE hiring_jobs SET status='open',opens_on=NULL,closes_on=NULL WHERE tenant_id=$1 AND id=$2",[a,job.id]);
+    console.log('PASS server job availability and public GET agree for unrestricted, inclusive today, future, expired and closed windows.');
     assert(!('owner_id' in publicPage.job));assert(!('screening' in publicPage.job.questions[0]));
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -87,6 +104,13 @@ try {
     const email = 'candidate-' + tag + '@example.invalid';
     async function apply(extra?: string) { const f = new FormData(); f.set('fullName', 'Sarah Application'); f.set('email', email); f.set('consent', 'true');f.set('answers',JSON.stringify({authorization:false,availability:10,tools:['SQL']})); f.set('coverNote', 'Fictional verification application'); f.set('resume', new Blob([bytes as BlobPart], { type: 'application/pdf' }), 'resume.pdf'); if (extra)
         f.set('tenantId', extra); const r = await fetch(base + '/api/public/jobs/' + job.public_token + '/apply', { method: 'POST', body: f }); return { status: r.status, ...await r.json() }; }
+    for(const fixture of windowCases.filter(f=>!f.available)){
+        await db.query(`UPDATE hiring_jobs SET ${fixture.sql} WHERE tenant_id=$1 AND id=$2`,[a,job.id]);
+        assert.equal((await apply()).status,404);
+        assert.equal(Number((await db.query('SELECT count(*) FROM hiring_applicants WHERE tenant_id=$1 AND job_id=$2',[a,job.id])).rows[0].count),0);
+    }
+    await db.query("UPDATE hiring_jobs SET status='open',opens_on=NULL,closes_on=NULL WHERE tenant_id=$1 AND id=$2",[a,job.id]);
+    console.log('PASS unavailable public submissions reject safely without creating applicants.');
     assert.equal((await apply(b)).status, 400);
     assert.equal((await apply()).status, 201);
     assert.equal((await apply()).status, 201);
@@ -121,6 +145,7 @@ try {
     assert.equal((await request('reader', '/api/hiring/applicants/' + candidate.id + '/offers', { salary: '5000', currency: 'EGP', ...dates })).status, 403);
     const offer = await request('recruiter', '/api/hiring/applicants/' + candidate.id + '/offers', { salary: '5000.00', currency: 'EGP', ...dates });
     assert.equal(offer.status, 200, JSON.stringify(offer));
+    const termsWorkflow=await request('recruiter','/api/hiring/applicants/'+candidate.id+'/workflow');assert.equal(termsWorkflow.offers[0].start_date,dates.startDate);assert.equal(termsWorkflow.offers[0].expires_on,dates.expiresOn);
     assert.equal((await request('recruiter', '/api/hiring/offers/' + offer.offer.id + '/status', { status: 'sent', messageId: draft.message.id })).status, 409);
     // Delivery state is an explicit database fixture, not a claimed provider send.
     await db.query("UPDATE communication_messages SET status='sent',sent_at=now() WHERE id=$1", [draft.message.id]);
@@ -130,7 +155,7 @@ try {
     assert.equal((await request('','/api/public'+oldLink.path)).status,404,'superseded public token invalid');assert.equal((await request('recruiter','/api/hiring/offers/'+offer.offer.id+'/status',{status:'accepted',confirmed:true,responseNote:'old'})).status,409);
     assert.equal((await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/status',{status:'sent',messageId:draft.message.id})).status,409,'older delivery is not revised-offer evidence');
     const revisedMessage=await request('recruiter','/api/hiring/applicants/'+candidate.id+'/message',{subject:'Revised offer fixture',body:'Version 2 fixture, not an external email'});await db.query("UPDATE communication_messages SET status='sent',sent_at=now() WHERE id=$1",[revisedMessage.message.id]);assert.equal((await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/status',{status:'sent',messageId:revisedMessage.message.id})).status,200);
-    const link=await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/candidate-link',{confirmed:true});const publicOffer=await request('','/api/public'+link.path);assert.equal(publicOffer.status,200);assert.equal(publicOffer.offer.version,2);assert(!('tenant_id' in publicOffer.offer));assert(!('notes' in publicOffer.offer));assert.equal((await fetch(base+'/api/public'+link.path+'/document')).status,200);
+    const link=await request('recruiter','/api/hiring/offers/'+revision.offer.id+'/candidate-link',{confirmed:true});const publicOffer=await request('','/api/public'+link.path);assert.equal(publicOffer.status,200);assert.equal(publicOffer.offer.version,2);assert.equal(publicOffer.offer.startDate,dates.startDate);assert.equal(publicOffer.offer.expiresOn,dates.expiresOn);assert(!('tenant_id' in publicOffer.offer));assert(!('notes' in publicOffer.offer));assert.equal((await fetch(base+'/api/public'+link.path+'/document')).status,200);
     assert.equal((await request('','/api/public'+link.path+'/respond',{version:1,response:'accepted',acknowledged:true})).status,409);assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:false})).status,400);assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:true})).status,200);
     const awaitingHire=await withTenant(a,c=>operationalExecutor('operational_composition')(c,{tenantId:a,employeeId:recruiter},'show candidates who accepted offers but have incomplete onboarding'));assert.equal(awaitingHire.status,'resolved');assert(awaitingHire.items?.some(row=>row.id===candidate.id&&row.detail?.includes('Awaiting explicit hire conversion')));
 assert.equal((await request('','/api/public'+link.path+'/respond',{version:2,response:'accepted',acknowledged:true})).status,200);

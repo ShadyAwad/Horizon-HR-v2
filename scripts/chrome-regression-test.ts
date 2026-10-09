@@ -7,19 +7,15 @@ import { build } from 'esbuild';
 const css = readFileSync('src/index.css', 'utf8');
 const attendance = readFileSync('src/components/attendance/AttendanceWorkspace.tsx', 'utf8');
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');
-const clockRule = css.match(/button\.stanza-theme-primary\.stanza-geo-clock-primary,\s*button\.stanza-theme-primary\.stanza-geo-clock-primary:not\(:disabled\):hover\s*\{([^}]+)\}/)![1];
-assert.match(clockRule, /background: linear-gradient\(.+\) var\(--stanza-accent\) !important/);
+await import('./control-presentation-test');
 for (const [state, token] of [['', 'accent'], [':not(:disabled):hover', 'accent-hover']]) {
   const selector = `button.stanza-theme-primary.stanza-geo-break-primary${state}`;
   const block = css.slice(css.indexOf(selector + ' {')).split('}')[0];
   assert.ok(block.includes(`background: var(--stanza-${token}) !important;`));
   assert.ok(!block.includes('gradient'));
 }
-assert.match(dashboard, /clockInState === 'idle' \? "stanza-theme-primary stanza-geo-clock-primary"/);
+assert.ok(dashboard.includes('<AttendanceTerminal'), 'Clock action uses the replacement terminal');
 assert.ok(attendance.includes('stanza-theme-primary stanza-geo-break-primary'), 'Break action uses shared themed fill');
-const clockClasses = dashboard.slice(dashboard.indexOf('data-geo-interaction="clock"'), dashboard.indexOf('data-geo-interaction="clock"') + 1300);
-assert.doesNotMatch(clockClasses, /hover:scale|active:scale|transition-transform/);
-assert.match(css, /button\.stanza-geo-clock:not\(:disabled\):is\(:hover, :active\),\s*button\.stanza-geo-break-primary:not\(:disabled\):is\(:hover, :active\)\s*\{\s*transform: none;\s*scale: none;/);
 
 async function mount(source: string, reduced = false, trace = false, staticMode = false, production = false, idleMode: string | undefined = undefined) {
   const output = await build({ stdin: { contents: source, resolveDir: process.cwd() + '/src/components', loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], define: { 'import.meta.env.DEV': String(!production), 'import.meta.env.LOGIN_IDLE_CANVAS_DIAGNOSTIC': String(idleMode !== undefined) } });

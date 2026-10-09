@@ -1,3 +1,5 @@
+import { AttendanceTerminal } from '../components/attendance/AttendanceTerminal';
+import { PasskeyAction } from '../components/ui/PasskeyAction';
 import { AttendanceStatus } from '../components/attendance/AttendanceStatus';
 import { AttendanceActions, EarlyClockOutDialog } from '../components/attendance/AttendanceActions';
 import {apiFetchShared} from '../lib/api';
@@ -4427,14 +4429,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={addPasskey}
-          disabled={isOffline || passkeySaving}
-          className="stanza-primary-action stanza-theme-primary rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest"
-        >
-          {passkeySaving ? t('dash.opening') : t('dash.addPasskey')}
-        </button>
+        <PasskeyAction onClick={addPasskey} disabled={isOffline || passkeySaving}
+          busy={passkeySaving} label={t('dash.addPasskey')} busyLabel={t('dash.opening')} />
       </div>
 
       <p className="mt-3 flex gap-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
@@ -5636,61 +5632,29 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        
 
                        <div data-tutorial-target="geo-clock" className="attendance-primary relative z-10 w-full max-w-full text-start">
-                           <AttendanceStatus attendance={attendanceState} hasShift={hasActiveShift} onBreak={attendanceOnBreak} locationStatus={attendanceLocationStatus} />
-                           <div className="attendance-radial relative flex h-32 min-h-32 w-32 min-w-32 shrink-0 items-center justify-center rounded-full border-4 border-dashed border-emerald-900 md:h-32 md:min-h-32 md:w-32 md:min-w-32">
-                             {clockInState === 'success' && <div className="absolute inset-0 rounded-full shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-pulse"></div>}
-                             <button 
-                               type="button"
-                               data-geo-interaction="clock"
-                               onClick={(event) => recordDevInteraction('attendance:clock-action', () => {
-                                 void handleClockAction(event);
-                               })}
-                               disabled={!hasPermission(user, 'attendance.clock') || isOffline || clockInState === 'locating' || clockInState === 'verifying'}
-                               className={cn(
-                                   "relative z-10 flex h-28 min-h-28 w-28 min-w-28 shrink-0 items-center justify-center overflow-hidden rounded-full font-black tracking-tighter stanza-geo-clock",
-                                   clockInState === 'idle' && hasActiveShift ? "bg-gradient-to-tr from-amber-500 to-orange-400 text-slate-950 shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" :
-                                   clockInState === 'idle' ? "stanza-theme-primary stanza-geo-clock-primary" :
-                                   clockInState === 'locating' || clockInState === 'verifying' ? "bg-black/70 text-emerald-100/55 animate-pulse border border-emerald-500/20 shadow-none" :
-                                   clockInState === 'success' || clockInState === 'clocked_out' ? "bg-emerald-500 text-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.6)]" :
-                                   clockInState === 'open_shift_conflict' ? "bg-amber-500 text-slate-950 shadow-[0_0_40px_rgba(245,158,11,0.42)]" :
-                                   "bg-red-500 text-white shadow-[0_0_40px_rgba(239,68,68,0.6)]"
-                               )}
-                             >
-                                 {clockInState === 'idle' && (
-                                     <div key="idle" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <span className="max-w-full px-2 text-[10px] sm:text-xs tracking-widest">{hasActiveShift && attendanceState?.activeBreak ? (isRtl?'إنهاء الاستراحة':'End break') : hasActiveShift && attendanceState?.plannedBreaks?.some((b:any)=>b.state==='due') ? (isRtl?'بدء الاستراحة':'Start break') : hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')}</span>
-                                     </div>
-                                 )}
-                                 {(clockInState === 'locating' || clockInState === 'verifying') && (
-                                     <div key="loading" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <Navigation className="w-8 h-8 mb-2 animate-spin-slow" />
-                                         <span className="whitespace-nowrap font-bold text-[10px] uppercase tracking-widest">{clockInState === 'locating' ? t('dash.locating') : t('dash.verifying')}</span>
-                                     </div>
-                                 )}
-                                 {(clockInState === 'success' || clockInState === 'clocked_out') && (
-                                     <div key="success" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <CheckCircle2 className="w-10 h-10 mb-1 opacity-90" />
-                                         <span className="font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.verified')}</span>
-                                     </div>
-                                 )}
-                                 {clockInState === 'open_shift_conflict' && (
-                                     <div key="conflict" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <AlertTriangle className="w-10 h-10 mb-1" />
-                                         <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{t('dash.openShiftConflictLabel')}</span>
-                                     </div>
-                                 )}
-                                 {(clockInState === 'failed' || clockInState === 'outside_geofence') && (
-                                     <div key="failed" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <AlertTriangle className="w-10 h-10 mb-1" />
-                                         <span className="px-3 text-center font-bold text-[10px] uppercase tracking-widest leading-none">{clockInState === 'outside_geofence' ? t('dash.outsideGeofenceLabel') : t('dash.attendanceErrorLabel')}</span>
-                                     </div>
-                                 )}
-                             </button>
+                           <div className="attendance-status-context">
+                             <AttendanceStatus attendance={attendanceState} hasShift={hasActiveShift} onBreak={attendanceOnBreak} locationStatus={attendanceLocationStatus} />
+                             {!hasActiveShift && <p className="attendance-muted">{displayLastClockEvent}</p>}
                            </div>
+                           <AttendanceTerminal
+                             state={clockInState}
+                             disabled={!hasPermission(user, 'attendance.clock') || isOffline || clockInState === 'locating' || clockInState === 'verifying'}
+                             onClick={(event) => recordDevInteraction('attendance:clock-action', () => {
+                               void handleClockAction(event);
+                             })}
+                             label={clockInState === 'idle'
+                               ? hasActiveShift && attendanceState?.activeBreak ? (isRtl ? 'إنهاء الاستراحة' : 'End break')
+                                 : hasActiveShift && attendanceState?.plannedBreaks?.some((b:any) => b.state === 'due') ? (isRtl ? 'بدء الاستراحة' : 'Start break')
+                                 : hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')
+                               : clockInState === 'locating' ? t('dash.locating')
+                               : clockInState === 'verifying' ? t('dash.verifying')
+                               : clockInState === 'success' || clockInState === 'clocked_out' ? t('dash.verified')
+                               : clockInState === 'open_shift_conflict' ? t('dash.openShiftConflictLabel')
+                               : clockInState === 'outside_geofence' ? t('dash.outsideGeofenceLabel') : t('dash.attendanceErrorLabel')}
+                           />
 
                            {clockMessage && <p className="attendance-feedback" role="status">{clockMessage}</p>}
                            {clockWarning && <p className="attendance-feedback" role="status">{clockWarning}</p>}
-                           {!hasActiveShift && <p className="attendance-feedback attendance-muted">{displayLastClockEvent}</p>}
                            <AttendanceActions attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
                        </div>
                        {earlyClockOut&&<EarlyClockOutDialog attendance={earlyClockOut} busy={clockInState==='verifying'} onClose={()=>setEarlyClockOut(null)} onConfirm={note=>void verifyClockOut(true,note)}/>}

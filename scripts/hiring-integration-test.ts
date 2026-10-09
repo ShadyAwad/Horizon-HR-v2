@@ -144,7 +144,8 @@ async function main() {
   assert(admin.tenantId === manager.tenantId && manager.tenantId === employee.tenantId, 'Demo users must share a tenant.');
   pass('Demo sessions authenticated');
   const pool = getDbPool();
-
+  const ownedApplicantIds:string[]=[];
+  try {
   const eligibleReviewers = await expectStatus('Authorized user can load eligible Hiring reviewers', 200, api('/api/hiring/reviewers', admin));
   assert(eligibleReviewers.reviewers.some((reviewer: JsonObject) => reviewer.id === manager.id), 'Eligible manager is missing from the reviewer list.');
   assert(!eligibleReviewers.reviewers.some((reviewer: JsonObject) => reviewer.id === employee.id), 'Employee without Hiring permission was exposed as a reviewer.');
@@ -177,6 +178,7 @@ async function main() {
     }),
   }));
   const applicantId = created.applicant?.id as string;
+  if(applicantId)ownedApplicantIds.push(applicantId);
   assert(applicantId && created.applicant.email === applicantEmail, 'Applicant email was not normalized.');
 
   const duplicate = await expectStatus('Normalized duplicate email returns a warning', 201, api('/api/hiring/applicants', admin, {
@@ -185,6 +187,7 @@ async function main() {
   }));
   assert(duplicate.warnings?.[0]?.code === 'POSSIBLE_DUPLICATE_APPLICANT', 'Duplicate warning was not returned.');
   const duplicateId = duplicate.applicant.id as string;
+  ownedApplicantIds.push(duplicateId);
   await expectStatus('Duplicate test applicant is archived', 200, api(`/api/hiring/applicants/${duplicateId}/archive`, admin, { method: 'POST' }));
 
   const list = await expectStatus('Applicant pagination and filters work', 200, api(`/api/hiring/applicants?page=1&pageSize=1&search=${encodeURIComponent(runId)}&stage=new`, admin));
@@ -316,7 +319,15 @@ async function main() {
   pass('Hiring attention count clears actionable archived work');
 
   console.log(`\nCompleted ${passed.length} Hiring integration checks.`);
-  await pool.end();
+  } finally {
+    // Remove only IDs returned by this run; no demo or user candidate is matched by a broad name filter.
+    const related=(await pool.query('SELECT id FROM hiring_applicant_notes WHERE tenant_id=$1 AND applicant_id=ANY($2::uuid[]) UNION ALL SELECT id FROM hiring_handoffs WHERE tenant_id=$1 AND applicant_id=ANY($2::uuid[])',[admin.tenantId,ownedApplicantIds])).rows.map(r=>r.id);
+    await pool.query("DELETE FROM audit_logs WHERE tenant_id=$1 AND (entity_id=ANY($2::uuid[]) OR metadata->>'applicantId'=ANY($3::text[]))",[admin.tenantId,[...ownedApplicantIds,...related],ownedApplicantIds]);
+    await pool.query("DELETE FROM outbox_events WHERE tenant_id=$1 AND payload->>'applicantId'=ANY($2::text[])",[admin.tenantId,ownedApplicantIds]);
+    await pool.query('DELETE FROM hiring_applicants WHERE tenant_id=$1 AND id=ANY($2::uuid[])',[admin.tenantId,ownedApplicantIds]);
+    console.log('Owned Hiring integration candidate fixtures removed.');
+    await pool.end();
+  }
 }
 
 main().catch(async (error) => {

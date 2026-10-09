@@ -1,3 +1,5 @@
+import {offerCalendarDate} from '../src/lib/hiring-offer-presentation';
+import {hiringLabel,hiringAnswer,hiringAge,hiringDate,prerequisiteTitle} from '../src/lib/hiring-presentation';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
@@ -118,3 +120,29 @@ for (const key of [
   assert.equal((languageSource.match(new RegExp(`'${key.replaceAll('.', '\\.')}'`, 'g')) || []).length, 2);
 }
 console.log('PASS  Existing applicant form owns private, permission-aware, accessible candidate extraction UI');
+
+assert.equal(hiringAnswer(false),'No');
+assert.equal(hiringAnswer(true,true),'نعم');
+assert.equal(hiringAnswer(['API','PostgreSQL']),'API · PostgreSQL');
+assert.equal(hiringAnswer(null),'—');
+assert.equal(hiringAnswer({privateKey:'never serialize'}),'—');
+assert.equal(hiringLabel('superseded'),'Superseded');
+assert.equal(hiringLabel('needs_attention',true),'يحتاج متابعة');
+assert.equal(hiringAge('invalid'),'—');
+assert.equal(hiringAge('2026-10-10T00:00:00Z',false,Date.parse('2026-10-09T00:00:00Z')),'0m');
+assert.equal(hiringDate('invalid'),'—');
+assert.equal(prerequisiteTitle({dependencyId:'a'},[{id:'a',title:'Arrange equipment'}]),'Arrange equipment');
+assert.equal(prerequisiteTitle({dependencyId:'foreign'},[{id:'a',title:'Arrange equipment'}]),undefined);
+console.log('PASS localized Hiring states, typed answers, bounded age/date and prerequisite titles without raw private JSON.');
+
+assert.equal(offerCalendarDate(new Date(2026,9,10)), '2026-10-10');
+assert.equal(offerCalendarDate('2026-10-10'), '2026-10-10');
+assert.equal(offerCalendarDate('2026-10-10T00:00:00.000Z'), '2026-10-10');
+assert.equal(offerCalendarDate(new Date('invalid')), '—');
+console.log('PASS offer calendar dates preserve full year and the stored local day.');
+
+assert.equal(hiringLabel(undefined), '—');
+
+assert.equal(hiringLabel('opens_later'),'Opens later');
+assert.equal(hiringLabel('window_closed',true),'انتهت فترة التقديم');
+assert.equal(hiringLabel('accepting_applications'),'Accepting applications');

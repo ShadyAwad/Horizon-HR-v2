@@ -197,7 +197,7 @@ check('physical toggle tracks retain token-owned on/off colors without fighting 
   interactionStyles.includes(':not(.stanza-toggle-track):hover'));
 check('interaction transitions never use transition all', !/transition\s*:\s*all/i.test(interactionStyles));
 check('Settings lazy mounting retains a short compositor-safe entry transition', dashboard.includes('stanza-accordion-content') && styles.includes('@keyframes stanza-accordion-enter'));
-check('Dashboard local entry transitions do not eagerly load Motion', !dashboard.includes("from 'motion/react'") && dashboard.includes('stanza-workspace-enter') && dashboard.includes('stanza-state-enter'));
+check('Dashboard local entry transitions do not eagerly load Motion', !dashboard.includes("from 'motion/react'") && dashboard.includes('stanza-workspace-enter') && !readFileSync('src/components/attendance/AttendanceTerminal.tsx', 'utf8').includes('motion/react'));
 check('interaction polish respects reduced motion', styles.includes('.stanza-accordion-content { animation: none; }') && styles.includes('.stanza-workspace-enter,') && styles.includes('transition-duration: 1ms'));
 check('MapLibre manual chunk does not capture entry dependencies', viteConfig.includes('onlyExplicitManualChunks: true'));
 check('lanyard uses one explicitly advanced Canvas', (lanyard.match(/<Canvas/g) || []).length === 1 && lanyard.includes('frameloop="never"'));

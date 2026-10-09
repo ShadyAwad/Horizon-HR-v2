@@ -41,3 +41,24 @@ for(const isRtl of [false,true]) {
  assert.match(markup,new RegExp('dir="'+(isRtl?'rtl':'ltr')+'"'));
 }
 console.log('PASS bounded navigation history, no-op/branching/permissions/direct-load behavior, hover contrast/persistence, surface persistence, planned-break ordering/bounds/overlap/limits and accessible RTL editor');
+
+import {supportAge,supportAgeCompact,supportStatusOptions} from '../src/lib/support-presentation';
+const now=Date.parse('2026-10-09T12:00:00Z');
+assert.equal(supportAge(new Date(now-18*60000).toISOString(),'en',now),'18 minutes ago');
+assert.equal(supportAge(new Date(now-6*3600000).toISOString(),'en',now),'6 hours ago');
+assert.equal(supportAge(new Date(now-8*86400000).toISOString(),'en',now),'8 days ago');
+assert.equal(supportAge('invalid','en',now),'');
+assert.equal(supportAge(new Date(now+60000).toISOString(),'en',now),'0 minutes ago');
+assert.match(supportAge(new Date(now-3*86400000).toISOString(),'ar',now),/أيام/);
+assert.deepEqual(supportStatusOptions('open'),['open','in_progress','waiting_requester','resolved']);
+assert.deepEqual(supportStatusOptions('resolved'),['resolved','closed','in_progress']);
+assert.deepEqual(supportStatusOptions('closed'),['closed']);
+assert(!supportStatusOptions('in_progress').includes('open'));
+console.log('PASS localized finite ticket age, invalid/future dates, permitted status options and explicit reopen/closed behavior');
+
+assert.equal(supportAgeCompact(new Date(now-18*60000).toISOString(),'en',now),'18m');
+assert.equal(supportAgeCompact(new Date(now-6*3600000).toISOString(),'en',now),'6h');
+assert.equal(supportAgeCompact(new Date(now-3*86400000).toISOString(),'en',now),'3d');
+assert.equal(supportAgeCompact('invalid','en',now),'');
+assert.equal(supportAgeCompact(new Date(now+60000).toISOString(),'en',now),'0m');
+assert.match(supportAgeCompact(new Date(now-3*86400000).toISOString(),'ar',now),/[3٣].*ي/);

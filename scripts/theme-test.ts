@@ -299,13 +299,16 @@ assert.match(closeRules, /scale\(\.97\)/);
 assert.match(closeRules, /outline: 2px solid var\(--stanza-focus-ring\)/);
 assert.match(closeRules, /prefers-reduced-motion/);
 assert.doesNotMatch(closeRules, /transition:\s*all|emerald/);
-const passkeyButton = dashboard.slice(dashboard.indexOf('onClick={addPasskey}'), dashboard.indexOf("{passkeySaving ? t('dash.opening')"));
-assert.match(passkeyButton, /stanza-primary-action stanza-theme-primary/);
-assert.doesNotMatch(passkeyButton, /bg-emerald|text-black/);
+assert.ok(dashboard.includes('<PasskeyAction onClick={addPasskey}'), 'Passkey retains its WebAuthn handler');
+const passkeyAction = await readFile('src/components/ui/PasskeyAction.tsx', 'utf8');
+assert.ok(passkeyAction.includes('className="passkey-action"'), 'Passkey uses a restrained security primitive');
+assert.match(css, /button\.passkey-action\s*\{[^}]*background:var\(--stanza-surface\);[^}]*color:var\(--stanza-text-primary\)/);
+assert.ok(css.includes('color:var(--stanza-accent); flex-shrink:0;'), 'Security icon retains the current theme accent');
+assert.doesNotMatch(passkeyAction, /bg-emerald|text-black/);
 for (const path of ['src/components/navigation/DashboardNavigation.tsx', 'src/components/navigation/MobileShortcutEditor.tsx', 'src/components/tutorials/TutorialOverlay.tsx', 'src/components/command-palette/CommandPalette.tsx', 'src/components/PrivacyPolicyModal.tsx', 'src/components/DemoNoticeModal.tsx']) {
   assert.match(await readFile(path, 'utf8'), /stanza-close-action/, path);
 }
-console.log('Semantic primary Passkey and transparent close glyph interaction contracts passed');
+console.log('Themed security Passkey and transparent close glyph interaction contracts passed');
 
 // Snapshot includes the committed 24% transparent-surface contrast guard.
 // Exhaustive contrast assertions above remain the safety authority.

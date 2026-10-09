@@ -28,7 +28,7 @@ for (const cardColor of ['#FFFFFF', '#000000', '#777777', '#FF00FF']) {
 const dialog = readFileSync('src/components/lanyard/LanyardDetails.tsx', 'utf8');
 assert.match(dialog, /showModal\(\)/); assert.match(dialog, /onCancel=/); assert.match(dialog, /(?:event|e)\.target\s*===\s*(?:event|e)\.currentTarget/); assert.match(dialog, /returnFocus(?:\?\.)?\.?focus/);
 const css = readFileSync('src/index.css', 'utf8');
-assert.ok(css.includes('button.stanza-theme-primary.stanza-geo-clock-primary:not(:disabled):hover'));
+assert.ok(css.includes('button.attendance-terminal:not(:disabled):is(:hover,:active) { transform:none; scale:none; }'), 'Clock terminal keeps a stable outer hitbox');
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');
 assert.ok(dashboard.includes('void handleClockAction(event)'));
 const attendance = readFileSync('src/components/attendance/AttendanceWorkspace.tsx', 'utf8');
