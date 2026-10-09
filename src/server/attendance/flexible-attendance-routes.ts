@@ -1,3 +1,4 @@
+import { attendanceState, bindAttendanceSchedule, assertAttendanceIdentity, attendanceNote, validateDeparture } from './attendance-state';
 import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import type { PoolClient } from 'pg';
@@ -22,10 +23,62 @@ async function visibleRows(c: PoolClient,u: Identity,rows: any[],permission: str
 export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {standardAuth: express.RequestHandler; mutationGuard: express.RequestHandler; rateLimiter: express.RequestHandler}) {
   const {standardAuth,mutationGuard,rateLimiter} = deps;
   const route = (handler: (req: express.Request,c: PoolClient,u: Identity)=>Promise<unknown>): express.RequestHandler => async(req,res)=>{
-    try { const data = await withTenant(req.authUser!.tenantId,c=>handler(req,c,req.authUser!)); if (req.path.endsWith('/resume') && (data as any).rollup) { try { await enqueueAttendanceRollup((data as any).rollup); } catch (error) { logServerError('[Attendance rollup enqueue]', error); } }
+    try { if(req.method!=='GET')assertAttendanceIdentity(req.body,req.authUser!); const data = await withTenant(req.authUser!.tenantId,c=>handler(req,c,req.authUser!)); if ((data as any).rollup) { try { await enqueueAttendanceRollup((data as any).rollup); } catch (error) { logServerError('[Attendance rollup enqueue]', error); } }
       const {rollup, ...response} = data as any; res.json({success:true,...response}); }
     catch(error) { const e=error as {statusCode?:number;code?:string;message?:string}; const status=e.statusCode || (e.code==='23505'?409:500); if(status===500) logServerError('[Attendance]', error); res.status(status).json({success:false,error:status===500?'Attendance service is unavailable.':status===409?'This attendance action has already been recorded.':e.message}); }
   };
+
+  app.post('/api/attendance/clock-in-without-location',rateLimiter,standardAuth,mutationGuard,route(async(req,c,u)=>{
+    await requireAuthority(c,u,'attendance.clock',u.employeeId);
+    if(req.body.confirm!==true)throw fail(400,'Explicit confirmation is required for a no-location clock-in.');
+    if(req.body.latitude!==undefined||req.body.longitude!==undefined)throw fail(400,'This attendance method does not accept coordinates.');
+    await lockAttendancePolicy(c,u.tenantId);
+    const config=await attendancePolicy(c,u.tenantId);
+    const row=(await c.query(`INSERT INTO time_logs(tenant_id,employee_id,clock_in_time,is_valid_geofence,attendance_location_mode,location_status,attendance_method,clock_in_note) VALUES($1,$2,clock_timestamp(),false,$3,'unavailable','no_location',$4) RETURNING *`,[u.tenantId,u.employeeId,config.attendanceLocationMode,attendanceNote(req.body.note)])).rows[0];
+    await bindAttendanceSchedule(c,u.tenantId,u.employeeId,row);
+    await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.clock_in.no_location',row.id,{method:'no_location',locationVerified:false,noteProvided:Boolean(row.clock_in_note)});
+    return {timeLogId:row.id,clockedIn:row.clock_in_time,attendanceMethod:row.attendance_method,locationStatus:row.location_status,rollup:{tenantId:u.tenantId,employeeId:u.employeeId,workDate:new Date(row.clock_in_time).toISOString().slice(0,10)}};
+  }));
+  const departurePreview=async(req:express.Request,c:PoolClient,u:Identity)=>{
+    await requireAuthority(c,u,'attendance.clock',u.employeeId);
+    const log=(await c.query('SELECT * FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[u.tenantId,u.employeeId])).rows[0];
+    if(!log||req.body.timeLogId!==log.id)throw fail(409,'The active shift changed. Refresh before requesting early leave.');
+    const state=await attendanceState(c,u.tenantId,u.employeeId,log);
+    if(state.earlyLeaveRequest && ['pending','approved'].includes(state.earlyLeaveRequest.status))throw fail(409,'This shift already has a pending or approved departure request.');
+    const departure=validateDeparture(req.body.departureTime,state,new Date(log.clock_in_time));
+    return {log,state,...departure};
+  };
+  app.post('/api/attendance/early-leave/preview',rateLimiter,standardAuth,mutationGuard,route(async(req,c,u)=>{
+    const preview=await departurePreview(req,c,u);return {scheduledEnd:preview.state.scheduledEnd,departureTime:preview.departure,earlySeconds:preview.earlySeconds};
+  }));
+  app.post('/api/attendance/early-leave',rateLimiter,standardAuth,mutationGuard,route(async(req,c,u)=>{
+    const {log,state,departure,earlySeconds}=await departurePreview(req,c,u);
+    const request=(await c.query(`INSERT INTO attendance_early_leave_requests(tenant_id,employee_id,time_log_id,scheduled_end_time,requested_departure_time,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[u.tenantId,u.employeeId,log.id,state.scheduledEnd,departure,attendanceNote(req.body.reason)])).rows[0];
+    await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.early_leave.requested',request.id,{timeLogId:log.id,requestedDeparture:departure,scheduledEnd:state.scheduledEnd,earlySeconds});
+    return {request};
+  }));
+  app.get('/api/attendance/early-leave',standardAuth,route(async(req,c,u)=>{
+    const rows=(await c.query(`SELECT r.*,e.full_name AS employee_name, l.clock_out_time FROM attendance_early_leave_requests r JOIN employees e ON e.tenant_id=r.tenant_id AND e.id=r.employee_id JOIN time_logs l ON l.tenant_id=r.tenant_id AND l.id=r.time_log_id WHERE r.tenant_id=$1 AND (r.created_at>NOW()-INTERVAL '30 days' OR r.status='pending') ORDER BY r.created_at DESC LIMIT 1000`,[u.tenantId])).rows;
+    const result=[];
+    for(const r of rows){const canReview=r.employee_id!==u.employeeId&&await allowed(c,u,'attendance.early_leave.review',r.employee_id);if(r.employee_id===u.employeeId||canReview||await allowed(c,u,'attendance.view',r.employee_id))result.push({...r,canReview:canReview&&!r.clock_out_time,earlySeconds:Math.ceil((new Date(r.scheduled_end_time).getTime()-new Date(r.requested_departure_time).getTime())/1000)});}
+    return {requests:result};
+  }));
+  app.patch('/api/attendance/early-leave/:id/review',rateLimiter,standardAuth,mutationGuard,route(async(req,c,u)=>{
+    if(!uuid(req.params.id)||!['approved','rejected'].includes(req.body.status))throw fail(400,'Choose approve or reject.');
+    // Lock the shift first, matching clock-out and submission ordering.
+    const candidate=(await c.query('SELECT * FROM attendance_early_leave_requests WHERE tenant_id=$1 AND id=$2',[u.tenantId,req.params.id])).rows[0];
+    if(!candidate)throw fail(404,'Departure request not found.');
+    if(candidate.employee_id===u.employeeId)throw fail(403,'You cannot review your own departure request.');
+    await requireAuthority(c,u,'attendance.early_leave.review',candidate.employee_id);
+    const log=(await c.query('SELECT * FROM time_logs WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[u.tenantId,candidate.time_log_id])).rows[0];
+    const request=(await c.query('SELECT * FROM attendance_early_leave_requests WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[u.tenantId,candidate.id])).rows[0];
+    if(!log||log.clock_out_time||request.status!=='pending')throw fail(409,'This request is no longer awaiting review in an active shift.');
+    const now:Date=(await c.query('SELECT clock_timestamp() AS now')).rows[0].now;
+    if(now>=new Date(request.scheduled_end_time))throw fail(409,'The scheduled shift has ended.');
+    const row=(await c.query('UPDATE attendance_early_leave_requests SET status=$3,reviewer_id=$4,reviewed_at=clock_timestamp(),review_note=$5 WHERE tenant_id=$1 AND id=$2 RETURNING *',[u.tenantId,request.id,req.body.status,u.employeeId,attendanceNote(req.body.reviewNote)])).rows[0];
+    await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.early_leave.'+req.body.status,row.id,{employeeId:row.employee_id,timeLogId:log.id,requestedDeparture:row.requested_departure_time});return {request:row};
+  }));
+
   app.get('/api/attendance/policy',standardAuth,route(async(_req,c,u)=>({
     ...await attendancePolicy(c,u.tenantId), canManage:await allowed(c,u,'attendance.policy.manage'),
     breakPolicies:(await c.query('SELECT * FROM attendance_break_policies WHERE tenant_id=$1 ORDER BY created_at,id',[u.tenantId])).rows,
@@ -68,9 +121,18 @@ export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {st
     await requireAuthority(c,u,'attendance.clock',u.employeeId);
     await lockAttendancePolicy(c,u.tenantId);
     const config=await attendancePolicy(c,u.tenantId);
-    const shift=(await c.query('SELECT id,clock_in_time FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[u.tenantId,u.employeeId])).rows[0];
+    const shift=(await c.query('SELECT * FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[u.tenantId,u.employeeId])).rows[0];
     if(!shift) throw fail(409,'Clock in before starting a break.');
     if((await c.query('SELECT 1 FROM attendance_breaks WHERE tenant_id=$1 AND time_log_id=$2 AND ended_at IS NULL',[u.tenantId,shift.id])).rowCount) throw fail(409,'You are already on a break.');
+    const state=await attendanceState(c,u.tenantId,u.employeeId,shift);
+    if(state.effectiveEnd && state.remainingSeconds===0)throw fail(409,'The authorized shift end has been reached.');
+    if(req.body.plannedStartTime) {
+      const planned=state.plannedBreaks.find(b=>b.startTime===req.body.plannedStartTime&&b.state==='due');
+      if(!planned)throw fail(409,'This planned break is not currently due.');
+      const end=new Date(Math.min(Date.parse(planned.endTime),new Date(state.effectiveEnd).getTime()));
+      const row=(await c.query(`INSERT INTO attendance_breaks(tenant_id,employee_id,time_log_id,source,policy_name,planned_minutes,planned_start_time,planned_end_time) VALUES($1,$2,$3,'policy','Scheduled break',$4,$5,$6) RETURNING *`,[u.tenantId,u.employeeId,shift.id,Math.ceil((end.getTime()-state.serverNow.getTime())/60000),planned.startTime,end])).rows[0];
+      await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.break.started',row.id,{source:'policy',plannedStart:planned.startTime,plannedEnd:end,timeLogId:shift.id});return {break:row};
+    }
     let request:any=null;
     if(req.body.requestedBreakId) {
       if(!uuid(req.body.requestedBreakId)) throw fail(400,'Invalid break request.');
@@ -107,7 +169,7 @@ export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {st
   }));
   app.post('/api/attendance/breaks/:id/resolve',rateLimiter,standardAuth,mutationGuard,route(async(req,c,u)=>{
     await requireAuthority(c,u,'attendance.clock',u.employeeId);
-    if(!uuid(req.params.id) || typeof req.body.reason!=='string' || !req.body.reason.trim() || req.body.reason.length>500) throw fail(400,'Add a reason of 1–500 characters.');
+    if(!uuid(req.params.id) || typeof req.body.reason!=='string' || !req.body.reason.trim() || req.body.reason.length>500) throw fail(400,'Add a reason of 1â€“500 characters.');
     const row=(await c.query(`UPDATE attendance_breaks SET reason=$4,exception_status='resolved',resolved_at=NOW() WHERE tenant_id=$1 AND employee_id=$2 AND id=$3 AND ended_at IS NOT NULL AND exception_status='unresolved' RETURNING id`,[u.tenantId,u.employeeId,req.params.id,req.body.reason.trim()])).rows[0];
     if(!row) throw fail(404,'Unresolved completed break not found.');
     await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.break.exception_resolved',row.id);
@@ -145,6 +207,9 @@ export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {st
         MIN(clock_in_time) AS clock_in_time,MAX(clock_out_time) AS clock_out_time,
         SUM(worked_seconds)::float8 AS worked_seconds,SUM(break_seconds)::float8 AS break_seconds,
         string_agg(DISTINCT location_status,', ') AS location_status,
+        string_agg(DISTINCT attendance_method,', ') AS attendance_method,MAX(early_departure_seconds) AS early_departure_seconds,
+        MAX(scheduled_end_time) AS scheduled_end_time,MAX(effective_end_time) AS effective_end_time,
+        string_agg(clock_in_note,'; ') AS clock_in_note,string_agg(early_departure_note,'; ') AS early_departure_note,
         bool_or(exception) AS exception,string_agg(reason,'; ') AS reason,
         CASE WHEN bool_or(on_break) THEN 'on_break' WHEN bool_or(clock_out_time IS NULL) THEN 'working' ELSE 'completed' END AS state
       FROM shifts GROUP BY employee_id,employee_name,to_char(clock_in_time AT TIME ZONE 'UTC','YYYY-MM-DD')

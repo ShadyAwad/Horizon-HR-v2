@@ -92,3 +92,10 @@ await test('deterministic payday absence and personal tomorrow meetings with bou
  assert.equal(answerFeedback({kind:'meetings',timeZone:'Africa/Cairo',total:0,items:[]},true),'لا توجد اجتماعات مقررة لك غدًا.');
 });
 console.log(`${checks} router test groups passed`);
+
+await test('attendance alternatives remain deterministic permission-gated navigation without mutation',async()=>{
+ for(const phrase of ['clock in without location','start my break','end my break','request to leave early','تسجيل الحضور دون موقع','طلب انصراف مبكر']) {
+  const d=base();embeds=reasons=0;const result=await resolveQuery(phrase,d);assert.equal(result.method,'exact');assert.equal(result.intentKey,'clock_in_help');assert.equal(getIntent(result.intentKey).commandId,'attendance:open-clock');assert.equal(embeds,0);assert.equal(reasons,0);
+  d.allowed=async()=>false;assert.notEqual((await resolveQuery(phrase,d)).outcome,'matched');
+ }
+});

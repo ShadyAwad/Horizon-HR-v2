@@ -292,7 +292,9 @@ check('hashed production assets are immutable', server.includes("immutable: true
 check('SPA fallback excludes file requests', server.includes('path.extname(req.path)'));
 check('CSP-compatible external bootstrap is used', indexHtml.includes('<script src="/stanza-bootstrap.js"></script>') && !/<script>(?![\s\S]*type=["']application\/ld\+json)/.test(indexHtml));
 check('service worker refreshes navigation HTML', serviceWorker.includes("fetch(request, { cache: 'no-store' })"));
-check('service worker cache version was advanced', serviceWorker.includes('stanza-static-v9') && serviceWorker.includes('stanza-runtime-v9'));
+const staticCacheVersion = Number(serviceWorker.match(/stanza-static-v(\d+)/)?.[1]);
+const runtimeCacheVersion = Number(serviceWorker.match(/stanza-runtime-v(\d+)/)?.[1]);
+check('service worker cache version was advanced', staticCacheVersion >= 9 && runtimeCacheVersion === staticCacheVersion);
 check('manifest icon files exist', manifest.icons.every((icon) => icon.src.startsWith('/icons/') && existsSync(resolve(root, 'public', icon.src.slice(1)))));
 check('development unregisters only the Stanza service worker', main.includes("if (!import.meta.env.PROD)") && main.includes('navigator.serviceWorker.getRegistrations()') && main.includes("'/service-worker.js'"));
 check('production service worker registration remains production-only', main.includes('import.meta.env.PROD') && main.includes("navigator.serviceWorker.register('/service-worker.js')"));

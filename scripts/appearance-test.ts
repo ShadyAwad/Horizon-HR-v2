@@ -47,3 +47,31 @@ for(const mode of ['light','dark'])for(const preset of ['emerald','slate','midni
 console.log('PASS all seven preset text hierarchies on light and dark surfaces');
 
 
+
+// Curated family preferences migrate independently from theme and either scale.
+import {FONT_PROFILES,normaliseFontProfile,applyFontProfile} from '../src/lib/typography';
+import vm from 'node:vm';
+assert.equal(readStanzaPreferences('{}').fontProfile,'modern');
+for(const invalid of [null,undefined,42,'future-font',{},'MODERN']) assert.equal(normaliseFontProfile(invalid),'modern');
+for(const profile of FONT_PROFILES) {
+  assert(profile.latin && profile.arabic);
+  for(const backgroundPreset of ['emerald','amethyst','custom'] as const) {
+    const p=readStanzaPreferences(JSON.stringify({...old,fontProfile:profile.id,backgroundPreset,fontScale:1.2,interfaceScale:.85}));
+    assert.equal(p.fontProfile,profile.id);assert.equal(p.backgroundPreset,backgroundPreset);
+    assert.equal(p.fontScale,1.2);assert.equal(p.interfaceScale,.85);
+    assert.deepEqual(readStanzaPreferences(JSON.stringify(p)),p);
+  }
+  const root={dataset:{} as Record<string,string>,style:{setProperty:()=>{}},classList:{toggle:()=>{}}};
+  vm.runInNewContext(fs.readFileSync('public/stanza-bootstrap.js','utf8'),{document:{documentElement:root},localStorage:{getItem:(key:string)=>key==='stanza.preferences.v1'?JSON.stringify({fontProfile:profile.id}):null}});
+  assert.equal(root.dataset.fontProfile,profile.id);
+}
+const root={dataset:{} as Record<string,string>};
+Object.defineProperty(globalThis,'document',{configurable:true,value:{documentElement:root}});
+applyFontProfile('technical');assert.equal(root.dataset.fontProfile,'technical');
+applyFontProfile('unknown');assert.equal(root.dataset.fontProfile,'modern');
+Object.defineProperty(globalThis,'document',{configurable:true,value:original});
+const fonts=fs.readFileSync('public/fonts/fonts.css','utf8');
+for(const profile of FONT_PROFILES.filter(p=>p.id!=='system')) for(const family of [profile.latin,profile.arabic]) assert(fonts.includes("font-family: '"+family+"'"));
+for(const file of [...fonts.matchAll(/url\(\/fonts\/([^)]*)\)/g)].map(m=>m[1])) assert.equal(fs.readFileSync('public/fonts/'+file).subarray(0,4).toString(),'wOF2');
+assert(!fonts.includes('https://'));assert(fonts.includes('unicode-range'));
+console.log('PASS curated family migration, round-trip persistence, theme/scale independence, bootstrap parity, explicit Arabic pairings and local WOFF2 assets');

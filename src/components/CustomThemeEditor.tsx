@@ -1,4 +1,3 @@
-import { FontSizeControl } from './ui/FontSizeControl';
 import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
 import { useStanzaPreferences } from '../lib/StanzaPreferencesContext';
 import { useTheme } from '../lib/ThemeContext';
@@ -43,7 +42,6 @@ export default function CustomThemeEditor() {
   return <section className="stanza-custom-editor" dir={isRtl ? 'rtl' : 'ltr'} aria-labelledby={`${id}-title`}>
     <h3 id={`${id}-title`}>{t('studio.title')}</h3>
     <p>{t('studio.help')}</p>
-    <FontSizeControl />
     <details className="stanza-studio-section" open>
       <summary>{t('studio.colors')}</summary>
       <div className="stanza-studio-fields">{COLOR_FIELDS.map(colorControl)}</div>

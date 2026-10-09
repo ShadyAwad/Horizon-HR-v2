@@ -1,8 +1,9 @@
-const STATIC_CACHE = 'stanza-static-v9';
-const RUNTIME_CACHE = 'stanza-runtime-v9';
+const STATIC_CACHE = 'stanza-static-v10';
+const RUNTIME_CACHE = 'stanza-runtime-v10';
 const STATIC_ASSETS = [
   '/index.html',
   '/stanza-bootstrap.js',
+  '/fonts/fonts.css',
   '/manifest.webmanifest',
   '/offline.html',
   '/icons/stanza-favicon.svg',

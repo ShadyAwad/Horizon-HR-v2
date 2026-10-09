@@ -1,3 +1,4 @@
+import { AttendanceActions, EarlyClockOutDialog } from '../components/attendance/AttendanceActions';
 import {apiFetchShared} from '../lib/api';
 import {DigitalCardPreviewButton} from '../components/lanyard/DigitalCardPreviewButton';
 import {LogoutControl} from '../components/ui/LogoutControl';
@@ -901,6 +902,10 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const [organisationCommandSignal, setOrganisationCommandSignal] = useState(0);
   const [attendanceLocationStatus, setAttendanceLocationStatus] = useState<string>('');
   const [attendanceOnBreak, setAttendanceOnBreak] = useState(false);
+  const [attendanceState, setAttendanceState] = useState<any>(null);
+  const [earlyClockOut, setEarlyClockOut] = useState<any>(null);
+  const [attendanceRevision, setAttendanceRevision] = useState(0);
+  const attendanceChanged = useCallback(() => setAttendanceRevision(n => n + 1), []);
   const [attendanceLocationMode, setAttendanceLocationMode] = useState<'required' | 'optional' | 'disabled'>('required');
   const [clockInState, setClockInState] = useState<ClockActionState>('idle');
   const [clockMessage, setClockMessage] = useState('');
@@ -1952,15 +1957,15 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           group: 'quickActions',
           label: text('Open Clock In', 'فتح تسجيل الحضور'),
           description: text('Show the attendance control without activating it.', 'عرض زر الحضور دون تشغيله.'),
-          keywords: ['clock in', 'attendance', 'location', 'حضور', 'موقع'],
+          keywords: ['clock in', 'clock in without location', 'start my break', 'end my break', 'request to leave early', 'attendance', 'location', 'حضور', 'موقع', 'طلب انصراف مبكر'],
           icon: <Map className="h-5 w-5" />,
           execute: () => revealControl('geofence', 'stanza-attendance-control'),
-          allowed: true,
+          allowed: explicitCommandPermissions.has('attendance.clock'),
           pinnable: true,
           recommendedPriority: 3,
           contextId: 'geofence',
         },
-        { id:'router:clock-out',type:'safe_utility',group:'quickActions',label:text('Open Clock Out','فتح تسجيل الانصراف'),description:text('Show the clock control; confirm manually.','عرض أدوات الحضور؛ التأكيد يدوي.'),keywords:['clock out','انصراف'],icon:<Map className="h-5 w-5"/>,execute:()=>revealControl('geofence','stanza-attendance-control'),allowed:true },
+        { id:'router:clock-out',type:'safe_utility',group:'quickActions',label:text('Open Clock Out','فتح تسجيل الانصراف'),description:text('Show the clock control; confirm manually.','عرض أدوات الحضور؛ التأكيد يدوي.'),keywords:['clock out','انصراف'],icon:<Map className="h-5 w-5"/>,execute:()=>revealControl('geofence','stanza-attendance-control'),allowed:explicitCommandPermissions.has('attendance.clock') },
         { id:'router:submit-grievance',type:'open_existing_flow',group:'quickActions',label:text('New grievance','شكوى جديدة'),description:text('Open the grievance form; review before submitting.','فتح نموذج الشكوى للمراجعة قبل الإرسال.'),keywords:['new grievance','شكوى جديدة'],icon:<Plus className="h-5 w-5"/>,execute:()=>{selectNavigationItem('grievances');setGrievancesInitialView('new');},allowed:explicitCommandPermissions.has('grievances.create') },
         { id:'router:help',type:'safe_utility',group:'quickActions',label:text('Help Center','مركز المساعدة'),description:text('Read existing help articles.','قراءة مقالات المساعدة.'),keywords:['help center','مساعدة'],icon:<User className="h-5 w-5"/>,execute:()=>{setHelpOpenSignal(v=>v+1);setShowControlCenter(true);},allowed:true },
         {id:'settings:appearance',type:'settings',group:'settings',label:text('Open Appearance / Theme Studio','فتح المظهر واستوديو الثيم'),description:text('Review themes, pointer effects and light/dark controls.','عرض الثيمات وتأثيرات المؤشر وأدوات الوضع الفاتح والداكن.'),keywords:['appearance','theme','cursor'],icon:<Settings className="h-5 w-5"/>,execute:()=>{setShowControlCenter(true);setAppearanceOpenSignal(v=>v+1);},allowed:true,contextId:'settings'},
@@ -2489,6 +2494,14 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       return;
     }
 
+    if(hasActiveShift && (attendanceState?.activeBreak || attendanceState?.plannedBreaks?.some((b:any)=>b.state==='due'))) {
+      setClockInState('verifying');
+      try {const due=attendanceState.plannedBreaks.find((b:any)=>b.state==='due');
+        await readApiJson(await apiFetch(apiUrl(attendanceState.activeBreak?'/api/attendance/breaks/resume':'/api/attendance/breaks/start'),{method:'POST',headers:rosterHeaders(),body:JSON.stringify(attendanceState.activeBreak?{}:{plannedStartTime:due.startTime})}));
+        attendanceChanged();setClockInState('idle');
+      } catch(e){setClockInState('failed');setClockMessage((e as Error).message);resetClockStatusSoon();}
+      return;
+    }
     if (hasActiveShift) {
       await verifyClockOut();
       return;
@@ -2728,7 +2741,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     }, 4000);
   };
 
-  const verifyClockOut = async () => {
+  const verifyClockOut = async (confirmEarly = false, note = '') => {
     setClockInState('verifying');
     setClockMessage(t('dash.clockingOut'));
 
@@ -2739,12 +2752,14 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         body: JSON.stringify({
           tenantId: user.tenantId,
           employeeId: user.id,
-          timeLogId: activeTimeLogId,
+          timeLogId: activeTimeLogId, confirmEarly, note,
         }),
       });
       const data = await readApiJson(res, 'Attendance service', { allowErrorResponse: true });
 
+      if(data.code==='early_clock_out_confirmation'){setEarlyClockOut(data.attendance);setClockInState('idle');setClockMessage('');return;}
       if (res.ok && data.success) {
+        setEarlyClockOut(null);attendanceChanged();
         setClockInState('clocked_out');
         setIsClockedIn(false);
         setActiveTimeLogId(null);
@@ -2944,6 +2959,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         if (data.recognition) setRecognition(data.recognition as RecognitionCelebrationPayload);
         setActiveTimeLogId(data.timeLogId || null);
         setAttendanceLocationStatus(data.locationStatus || '');
+        setAttendanceState(data.attendance || null);
         if (data.clockedIn) {
           setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
         } else if (!preserveLastEvent) {
@@ -2961,7 +2977,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   useEffect(() => {
     loadClockStatus();
-  }, [hasAuthenticatedDashboardUser, user.id, user.tenantId]);
+  }, [hasAuthenticatedDashboardUser, user.id, user.tenantId, attendanceRevision]);
 
 
   const loadBreakRequests = async (clearMessage = true) => {
@@ -4566,7 +4582,6 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <DesktopRailOrderSettings items={navigationItems} order={desktopRailOrder} onChange={setDesktopRailOrder} />
           )}
 
-          <FontSizeControl />
 
           <QuickActionSettings
             commands={commandPaletteCommands}
@@ -4677,6 +4692,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </div>
           {backgroundPreset === 'custom' && <CustomThemeEditor />}
         </fieldset>
+        <div className="sm:col-span-2"><FontSizeControl /></div>
 
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
           <button
@@ -5638,7 +5654,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              >
                                  {clockInState === 'idle' && (
                                      <div key="idle" className="stanza-state-enter absolute inset-0 flex flex-col items-center justify-center">
-                                         <span className="whitespace-nowrap text-[10px] sm:text-xs tracking-widest">{hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')}</span>
+                                         <span className="max-w-full px-2 text-[10px] sm:text-xs tracking-widest">{hasActiveShift && attendanceState?.activeBreak ? (isRtl?'إنهاء الاستراحة':'End break') : hasActiveShift && attendanceState?.plannedBreaks?.some((b:any)=>b.state==='due') ? (isRtl?'بدء الاستراحة':'Start break') : hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')}</span>
                                      </div>
                                  )}
                                  {(clockInState === 'locating' || clockInState === 'verifying') && (
@@ -5726,7 +5742,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                        </div>
 
-                       <AttendanceWorkspace employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />
+                       {earlyClockOut&&<EarlyClockOutDialog attendance={earlyClockOut} busy={clockInState==='verifying'} onClose={()=>setEarlyClockOut(null)} onConfirm={note=>void verifyClockOut(true,note)}/>}
+                       <AttendanceActions attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
+                       <AttendanceWorkspace refreshKey={attendanceRevision} onChange={attendanceChanged} employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />
 
                        <div className={cn("geo-operations-full-section relative z-10 mt-4 w-full rounded-2xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30", isRtl ? "text-right" : "text-left")}>
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

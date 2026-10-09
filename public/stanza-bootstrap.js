@@ -8,6 +8,8 @@
       storedPreferences = {};
     }
 
+    const profiles = ['modern', 'technical', 'comfortable', 'system'];
+    document.documentElement.dataset.fontProfile = profiles.includes(storedPreferences.fontProfile) ? storedPreferences.fontProfile : 'modern';
     const fontScales = [0.95, 1, 1.1, 1.2];
     document.documentElement.style.setProperty('--stanza-font-scale', String(fontScales.includes(storedPreferences.fontScale) ? storedPreferences.fontScale : 1));
     const uiScale = storedPreferences.interfaceScale;

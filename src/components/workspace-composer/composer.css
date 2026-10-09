@@ -1,9 +1,9 @@
 .composer {color:var(--stanza-text-primary);width:100%;min-width:0;padding:clamp(12px,2vw,28px)}
-.composer h2 {font-size:calc(1.6rem * var(--stanza-font-scale, 1));font-weight:800}.composer h3 {font-weight:700}
-.composer-heading {margin-bottom:20px}.composer-caption {font-size:calc(.78rem * var(--stanza-font-scale, 1));color:var(--stanza-text-muted);margin:8px 0 16px}
+.composer h2 {font-size:var(--stanza-type-display);font-weight:700}.composer h3 {font-weight:700}
+.composer-heading {margin-bottom:20px}.composer-caption {font-size:var(--stanza-type-metadata);color:var(--stanza-text-muted);margin:8px 0 16px}
 .composer-toolbar,.composer-tools {display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .composer button,.composer select,.composer input,.composer-dialog button,.composer-dialog input,.composer-dialog select,.composer-launch {min-height:40px;border:1px solid var(--stanza-border-subtle);border-radius:8px;padding:7px 10px;color:var(--stanza-text-primary);background:var(--stanza-surface-elevated);font-size:calc(.82rem * var(--stanza-font-scale, 1))}
-.composer button:hover,.composer-dialog button:hover,.composer-launch:hover {border-color:var(--stanza-accent);background:var(--stanza-surface-hover)}
+.composer button:not(:disabled):hover,.composer-dialog button:not(:disabled):hover,.composer-launch:not(:disabled):hover {border-color:var(--stanza-accent);background:var(--stanza-surface-hover)}
 .composer button:disabled,.composer-dialog button:disabled {opacity:.5;cursor:not-allowed}
 .composer :focus-visible,.composer-dialog :focus-visible {outline:2px solid var(--stanza-accent);outline-offset:3px}
 .composer label,.composer-dialog label {display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:calc(.8rem * var(--stanza-font-scale, 1))}
@@ -15,7 +15,7 @@
 .composer-widget[data-dragging] .composer-drag {cursor:grabbing}.composer-tools {padding:6px 10px;margin:0}.composer-tools button,.composer-tools select {font-size:calc(.72rem * var(--stanza-font-scale, 1));min-height:36px}
 .composer-widget-body {flex:1;min-height:0;overflow:auto;padding:12px;font-size:calc(.85rem * var(--stanza-font-scale, 1));overflow-wrap:anywhere}
 .composer-widget footer {display:flex;justify-content:space-between;align-items:center;padding:6px 10px;gap:8px}.composer-resize {cursor:nwse-resize;touch-action:none;user-select:none}
-.composer-records li {padding:8px 0;border-bottom:1px solid var(--stanza-border-subtle)}.composer-records p {font-size:calc(.8rem * var(--stanza-font-scale, 1));color:var(--stanza-text-secondary);margin-top:4px}.composer-metric {font-size:calc(1.7rem * var(--stanza-font-scale, 1));font-weight:800;margin:8px 0 18px}
+.composer-records li {padding:8px 0;border-bottom:1px solid var(--stanza-border-subtle)}.composer-records p {font-size:calc(.8rem * var(--stanza-font-scale, 1));color:var(--stanza-text-secondary);margin-top:4px}.composer-metric {font-size:var(--stanza-type-metric);font-weight:700;font-variant-numeric:tabular-nums;margin:8px 0 18px}
 .composer-grid[data-maximized] {display:flex}.composer-widget[data-maximized] {width:100%;height:min(75dvh,850px)}
 .composer-empty {padding:60px 20px;text-align:center;border:1px dashed var(--stanza-border-subtle);border-radius:16px}.composer-empty p {margin:12px}
 .composer-dialog {position:fixed;inset:0;margin:auto;width:min(620px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--stanza-border-subtle);border-radius:16px;padding:20px;background:var(--stanza-surface);color:var(--stanza-text-primary)}

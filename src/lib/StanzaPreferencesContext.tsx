@@ -1,4 +1,4 @@
-import { applyFontScale, normaliseFontScale } from './typography';
+import { applyFontScale, normaliseFontScale, applyFontProfile, normaliseFontProfile, type FontProfileId } from './typography';
 import {
   createContext,
   useCallback,
@@ -34,6 +34,7 @@ export type StanzaPreferences = {
   lanyardEnabled: boolean;
   interfaceScale: number;
   fontScale: number;
+  fontProfile: FontProfileId;
   lightIntensity: LightIntensity;
   mobileShortcuts: string[];
   desktopRailOrder: string[];
@@ -56,6 +57,7 @@ const DEFAULT_PREFERENCES: StanzaPreferences = {
   lanyardEnabled: true,
   interfaceScale: 1,
   fontScale: 1,
+  fontProfile: 'modern',
   lightIntensity: DEFAULT_LIGHT_INTENSITY,
   mobileShortcuts: ['geofence', 'roster', 'feed', 'profile'],
   desktopRailOrder: [],
@@ -116,6 +118,7 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
         ? clampScale(parsed.interfaceScale)
         : DEFAULT_PREFERENCES.interfaceScale,
       fontScale: normaliseFontScale(parsed.fontScale),
+      fontProfile: normaliseFontProfile(parsed.fontProfile),
       lightIntensity: readLightIntensity(parsed.lightIntensity),
       mobileShortcuts: Array.isArray(parsed.mobileShortcuts)
         ? [...new Set(parsed.mobileShortcuts.filter((value): value is string => typeof value === 'string'))].slice(0, 20)
@@ -160,6 +163,7 @@ export function applyLightIntensity(lightIntensity: LightIntensity) {
 export function initializeStanzaPreferences() {
   const preferences = readStanzaPreferences();
   applyFontScale(preferences.fontScale);
+  applyFontProfile(preferences.fontProfile);
   applyInterfaceScale(preferences.interfaceScale);
   applyLightIntensity(preferences.lightIntensity);
   applyCustomAccent(preferences.customTheme);
@@ -171,6 +175,7 @@ type StanzaPreferencesContextValue = StanzaPreferences & {
   setLanyardEnabled: (enabled: boolean) => void;
   setInterfaceScale: (scale: number) => void;
   setFontScale: (scale: number) => void;
+  setFontProfile: (profile: FontProfileId) => void;
   resetInterfaceScale: () => void;
   setLightIntensity: (intensity: number) => void;
   setMobileShortcuts: (shortcuts: string[]) => void;
@@ -199,6 +204,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     applyInterfaceScale(preferences.interfaceScale);
   }, [preferences.interfaceScale]);
   useEffect(() => applyFontScale(preferences.fontScale), [preferences.fontScale]);
+  useEffect(() => applyFontProfile(preferences.fontProfile), [preferences.fontProfile]);
   useEffect(() => applyLightIntensity(preferences.lightIntensity), [preferences.lightIntensity]);
   useEffect(() => applyBackgroundPreset(preferences.backgroundPreset), [preferences.backgroundPreset]);
   useEffect(() => applyCustomAccent(preferences.customTheme), [preferences.customTheme]);
@@ -215,6 +221,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
       if (event.key !== STANZA_PREFERENCES_KEY) return;
       const nextPreferences = readStanzaPreferences(event.newValue);
       applyFontScale(nextPreferences.fontScale);
+      applyFontProfile(nextPreferences.fontProfile);
       applyInterfaceScale(nextPreferences.interfaceScale);
       applyLightIntensity(nextPreferences.lightIntensity);
       applyBackgroundPreset(nextPreferences.backgroundPreset);
@@ -236,6 +243,10 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
 
   const setFontScale = useCallback((scale: number) => {
     setPreferences(current => ({ ...current, fontScale: normaliseFontScale(scale) }));
+  }, []);
+
+  const setFontProfile = useCallback((profile: FontProfileId) => {
+    setPreferences(current => ({ ...current, fontProfile: normaliseFontProfile(profile) }));
   }, []);
 
   const resetInterfaceScale = useCallback(() => setInterfaceScale(1), [setInterfaceScale]);
@@ -315,6 +326,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     lanyardPreview, setLanyardPreview,
     setLanyardEnabled,
     setFontScale,
+    setFontProfile,
     setInterfaceScale,
     resetInterfaceScale,
     setLightIntensity,
@@ -331,7 +343,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setCustomAccent,
     setCustomTheme,
     updateTutorialProgress,
-  }), [preferences, setFontScale, lanyardPreview, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
+  }), [preferences, setFontProfile, setFontScale, lanyardPreview, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}
     {preferences.backgroundPreset === 'custom' && hasCustomCursor(preferences.customTheme)

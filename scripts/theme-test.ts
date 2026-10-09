@@ -289,7 +289,9 @@ assert.doesNotMatch(customEditor, /setBackgroundPreset|localStorage|querySelecto
 console.log(`Custom contrast: minimum button ${lowestButton.toFixed(2)}:1, text ${lowestText.toFixed(2)}:1 across ${samples.length * 2} palettes`);
 console.log('Original preset snapshots, Custom contrast/persistence, light intensity, accessibility, and cross-role contracts passed');
 // Icon close styling is a scoped semantic contract, independent of preset values.
-const closeRules = css.slice(css.indexOf('/* Close controls keep their hit target still;'));
+const closeStart = css.indexOf('/* Close controls keep their hit target still;');
+assert(closeStart >= 0, 'Close-control contract must exist');
+const closeRules = css.slice(closeStart, css.indexOf('/* Interaction polish:', closeStart));
 assert.match(closeRules, /background: transparent !important/);
 assert.match(closeRules, /:hover \{ color: var\(--stanza-accent\) !important/);
 assert.match(closeRules, /scale\(1\.08\)/);

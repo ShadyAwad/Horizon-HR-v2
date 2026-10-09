@@ -1,3 +1,4 @@
+import { attendanceState, assertAttendanceIdentity, attendanceNote, bindAttendanceSchedule } from './attendance-state';
 import { logServerError } from '../../lib/server-logging';
 import { hasPermissionClaim } from '../auth/permission-claims';
 import { attendancePolicy, lockAttendancePolicy, readCoordinates, attendanceAudit, type AttendanceLocationMode } from './attendance-policy';
@@ -111,6 +112,7 @@ export function registerAttendanceClockInRoute(
   app.post('/api/clock-in', demoAuthWhenDatabaseConfigured, mutationGuard, async (req, res) => {
       if (hasDatabaseConfig() && !hasPermissionClaim(req.authUser,'attendance.clock')) return res.status(403).json({success:false,error:'Attendance permission required.'});
       const body = req.body as ClockInBody;
+      if(req.authUser){try{assertAttendanceIdentity(body,req.authUser);}catch(e){return res.status(403).json({success:false,error:(e as Error).message});}}
       const tenantId = req.authUser?.tenantId || body.tenantId;
       const employeeId = req.authUser?.employeeId || body.employeeId;
       let latitude = Number(body.latitude);
@@ -206,20 +208,21 @@ export function registerAttendanceClockInRoute(
                   employee_id,
                   clock_in_time,
                   clock_in_location,
-                  is_valid_geofence, attendance_location_mode, location_status
+                  is_valid_geofence, attendance_location_mode, location_status, attendance_method
                 )
                 VALUES (
                   $1,
                   $2,
                   $3,
                   ST_SetSRID(ST_MakePoint($4, $5), 4326),
-                  $6, $7, $8
+                  $6, $7, $8, $9
                 )
-                RETURNING id, clock_in_time
+                RETURNING *
               `,
-              [tenantId, employeeId, clockedIn, coords?.longitude ?? null, coords?.latitude ?? null, isWithinGeofence, attendanceLocationMode, locationStatus],
+              [tenantId, employeeId, clockedIn, coords?.longitude ?? null, coords?.latitude ?? null, isWithinGeofence, attendanceLocationMode, locationStatus, attendanceLocationMode==='required'?'geofenced':attendanceLocationMode==='disabled'?'location_disabled':'location_optional'],
             );
   
+            await bindAttendanceSchedule(client,tenantId,employeeId,result.rows[0]);
             await attendanceAudit(client,tenantId,employeeId,'attendance.clock_in',result.rows[0].id,{attendanceLocationMode,locationStatus});
             return result.rows[0];
           });
@@ -364,10 +367,10 @@ export function registerAttendanceStatusRoutes(
         const result = await client.query<{
           id: string;
           clock_in_time: Date;
-          location_status: string;
+          location_status: string; attendance_method:string;
         }>(
           `
-            SELECT id, clock_in_time, location_status
+            SELECT *
             FROM time_logs
             WHERE tenant_id = $1
               AND employee_id = $2
@@ -378,7 +381,7 @@ export function registerAttendanceStatusRoutes(
           [tenantId, employeeId],
         );
   
-        return result.rows[0] || null;
+        return result.rows[0] ? {...result.rows[0],attendance:await attendanceState(client,tenantId,employeeId,result.rows[0])} : null;
       });
   
       res.json({
@@ -387,6 +390,8 @@ export function registerAttendanceStatusRoutes(
         timeLogId: openLog?.id || null,
         clockedIn: openLog?.clock_in_time || null,
         locationStatus: openLog?.location_status || null,
+        attendance: openLog?.attendance || null,
+        attendanceMethod: openLog?.attendance_method || null,
       });
     } catch (error) {
       logServerError('[Clock-Status] Failed to load active shift:', error);
@@ -396,7 +401,8 @@ export function registerAttendanceStatusRoutes(
   
   app.post('/api/clock-out', demoAuthWhenDatabaseConfigured, mutationGuard, async (req, res) => {
     if (hasDatabaseConfig() && !hasPermissionClaim(req.authUser,'attendance.clock')) return res.status(403).json({success:false,error:'Attendance permission required.'});
-    const body = req.body as { tenantId?: string; employeeId?: string };
+    const body = req.body as { tenantId?: string; employeeId?: string; timeLogId?:string; confirmEarly?:boolean; note?:unknown };
+    if(req.authUser){try{assertAttendanceIdentity(body,req.authUser);attendanceNote(body.note);}catch(e){return res.status((e as any).statusCode||400).json({success:false,error:(e as Error).message});}}
     const tenantId = req.authUser?.tenantId || body.tenantId;
     const employeeId = req.authUser?.employeeId || body.employeeId;
   
@@ -422,12 +428,17 @@ export function registerAttendanceStatusRoutes(
       }
   
       const updatedLog = await withTenant(tenantId, async (client) => {
-        const locked = (await client.query('SELECT id FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[tenantId,employeeId])).rows[0];
+        const locked = (await client.query('SELECT * FROM time_logs WHERE tenant_id=$1 AND employee_id=$2 AND clock_out_time IS NULL FOR UPDATE',[tenantId,employeeId])).rows[0];
         if (!locked) return null;
+        if(body.timeLogId && body.timeLogId!==locked.id)throw Object.assign(new Error('The active shift changed. Refresh before retrying.'),{statusCode:409});
+        const state=await attendanceState(client,tenantId,employeeId,locked);
+        if(state.remainingSeconds>0 && body.confirmEarly!==true)return {confirmationRequired:true,attendance:state};
+        if(body.confirmEarly===true && body.timeLogId!==locked.id)throw Object.assign(new Error('Confirm the current active shift.'),{statusCode:409});
         clockOutTime = (await client.query('SELECT clock_timestamp() AS now')).rows[0].now;
+        const scheduledEarlySeconds=state.scheduledEnd?Math.max(0,Math.ceil((new Date(state.scheduledEnd).getTime()-clockOutTime.getTime())/1000)):0;
         const ended = await client.query("UPDATE attendance_breaks SET ended_at=GREATEST(started_at+INTERVAL '1 microsecond',$3) WHERE tenant_id=$1 AND time_log_id=$2 AND ended_at IS NULL RETURNING id",[tenantId,locked.id,clockOutTime]);
         for (const row of ended.rows) await attendanceAudit(client,tenantId,employeeId,'attendance.break.ended_on_clock_out',row.id,{timeLogId:locked.id});
-        await attendanceAudit(client,tenantId,employeeId,'attendance.clock_out',locked.id,{clockOutTime});
+        await attendanceAudit(client,tenantId,employeeId,'attendance.clock_out',locked.id,{clockOutTime,scheduledEnd:state.scheduledEnd,effectiveEnd:state.effectiveEnd,remainingSeconds:state.remainingSeconds,noteProvided:Boolean(attendanceNote(body.note))});
         const result = await client.query<{
           id: string;
           clock_in_time: Date;
@@ -437,13 +448,14 @@ export function registerAttendanceStatusRoutes(
             UPDATE time_logs
             SET
               clock_out_time = $3,
+              scheduled_end_time = $4, effective_end_time = $5, early_departure_seconds = $6, early_departure_note = $7,
               updated_at = NOW()
             WHERE tenant_id = $1
               AND employee_id = $2
               AND clock_out_time IS NULL
             RETURNING id, clock_in_time, clock_out_time
           `,
-          [tenantId, employeeId, clockOutTime],
+          [tenantId, employeeId, clockOutTime, state.scheduledEnd, state.effectiveEnd, scheduledEarlySeconds, scheduledEarlySeconds>0?attendanceNote(body.note):null],
         );
   
         return result.rows[0];
@@ -456,6 +468,7 @@ export function registerAttendanceStatusRoutes(
         });
       }
   
+      if (!('id' in updatedLog)) return res.status(409).json({success:false,code:'early_clock_out_confirmation',...updatedLog});
       const workDate = toWorkDate(new Date(updatedLog.clock_in_time));
   
       await Promise.all([
@@ -487,6 +500,7 @@ export function registerAttendanceStatusRoutes(
         message: 'Clock-out recorded successfully.',
       });
     } catch (error) {
+      if((error as any).statusCode)return res.status((error as any).statusCode).json({success:false,error:(error as Error).message});
       logServerError('[Clock-Out] Failed to record clock-out:', error);
   
       res.status(503).json({

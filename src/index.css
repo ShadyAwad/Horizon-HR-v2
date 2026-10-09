@@ -22,7 +22,7 @@
   --text-7xl: calc(4.5rem * var(--stanza-font-scale, 1));
   --text-8xl: calc(6rem * var(--stanza-font-scale, 1));
   --text-9xl: calc(8rem * var(--stanza-font-scale, 1));
-  --font-sans: "Inter", "Geist", "SF Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--stanza-font-latin);
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
   /* Deep Emerald & Neutral Corporate Theme */
@@ -323,7 +323,7 @@
 
   /* RTL Support Enhancements */
   [dir="rtl"] {
-    font-family: "Inter", "Tajawal", "SF Pro", sans-serif;
+    font-family: var(--stanza-font-arabic), var(--stanza-font-latin);
   }
 
   [dir="rtl"] input,
@@ -904,7 +904,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
   button.stanza-geo-clock, button.stanza-geo-break-primary { transition: none; }
 }
 .stanza-theme-outline { border-color: var(--stanza-border-accent) !important; color: var(--stanza-accent-hover) !important; }
-.stanza-theme-outline:hover { background-color: var(--stanza-accent-soft) !important; border-color: var(--stanza-focus-ring) !important; }
+.stanza-theme-outline:not(:disabled):not([aria-disabled="true"]):hover { background-color: var(--stanza-accent-soft) !important; border-color: var(--stanza-focus-ring) !important; }
 
 /* Tailwind utility remnants used for generic cards, dividers, and controls.
    Keep the actual green success fills/text out of this mapping so status
@@ -964,7 +964,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 .stanza-generic-surface button:not([class*="text-red"]):not([class*="text-amber"]):not([class*="bg-red"]) {
   color: var(--stanza-accent-hover);
 }
-.stanza-generic-surface button:not([class*="text-red"]):not([class*="text-amber"]):not([class*="bg-red"]):hover {
+.stanza-generic-surface button:not(:disabled):not([aria-disabled="true"]):not([aria-pressed="true"]):not([aria-selected="true"]):not([class*="text-red"]):not([class*="text-amber"]):not([class*="bg-red"]):hover {
   background-color: var(--stanza-surface-hover);
   border-color: var(--stanza-border-accent);
 }
@@ -1345,7 +1345,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 [data-stanza-hide-pointer] :is(input, textarea, select, [contenteditable], [draggable="true"], [role="dialog"], [role="dialog"] *, [role="alertdialog"], [role="alertdialog"] *) { cursor: revert !important; }
 .stanza-pointer-presets { display: flex; flex-wrap: wrap; gap: .4rem; }
 .stanza-pointer-presets button, .stanza-pointer-preview button { border: 1px solid var(--stanza-border-accent); border-radius: .4rem; padding: .45rem .7rem; min-height: 2.5rem; }
-.stanza-pointer-presets button:hover, .stanza-pointer-preview button:hover { background: var(--stanza-hover-surface); }
+.stanza-pointer-presets button:not(:disabled):hover, .stanza-pointer-preview button:not(:disabled):hover { background: var(--stanza-hover-surface); }
 .stanza-pointer-ranges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem 1rem; }
 .stanza-pointer-tuning { border-top: 1px solid var(--stanza-border-subtle); }
 .stanza-pointer-preview { position: relative; isolation: isolate; overflow: hidden; min-height: 10rem; border: 1px dashed var(--stanza-border-accent); border-radius: .65rem; padding: 1rem; background: var(--stanza-page-bg); }
@@ -1629,7 +1629,7 @@ body{font-size:var(--text-base)}
 .stanza-document-editor, .stanza-document-expanded { color: var(--stanza-text-primary); background: var(--stanza-surface-elevated); }
 .stanza-document-modebar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; padding:1rem; border-bottom:1px solid var(--stanza-border-subtle); }
 .stanza-document-control { min-height:2.75rem; padding:.45rem .7rem; border:1px solid var(--stanza-border-default); border-radius:.5rem; background:var(--stanza-surface); color:var(--stanza-text-primary); font-size:var(--text-sm); white-space:normal; }
-.stanza-document-control:hover { background:var(--stanza-hover-surface); }
+.stanza-document-control:not(:disabled):hover { background:var(--stanza-hover-surface); }
 .stanza-document-control:disabled { opacity:.5; }
 .stanza-document-control:focus-visible, .stanza-document-editor summary:focus-visible, .stanza-document-table-scroll:focus-visible { outline:2px solid var(--stanza-accent); outline-offset:2px; }
 .stanza-document-control[aria-pressed=true], .stanza-document-control[aria-selected=true] { background:var(--stanza-selected-surface); }
@@ -1690,7 +1690,7 @@ figure.stanza-document-image { display:flex; flex-direction:column; }
 .stanza-document-primary-toolbar { display:flex; flex-wrap:wrap; align-items:center; position:relative; gap:.2rem; padding:.55rem; background:var(--stanza-surface-muted); border-radius:.65rem .65rem 0 0; }
 .stanza-document-primary-toolbar > button, .stanza-document-primary-toolbar > div > button { border:0; box-shadow:none; background:transparent; color:var(--stanza-text-secondary); }
 .stanza-document-primary-toolbar button[aria-pressed=true] { background:var(--stanza-selected-surface); color:var(--stanza-text-primary); }
-.stanza-document-primary-toolbar button:hover, .stanza-document-rail-button:hover, .stanza-document-mode-action:hover { background:var(--stanza-hover-surface); color:var(--stanza-text-primary); }
+.stanza-document-primary-toolbar button:not(:disabled):hover, .stanza-document-rail-button:not(:disabled):hover, .stanza-document-mode-action:not(:disabled):hover { background:var(--stanza-hover-surface); color:var(--stanza-text-primary); }
 .stanza-document-primary-toolbar select { border:0; background:transparent; font-size:var(--text-sm); color:var(--stanza-text-primary); }
 .stanza-document-text-options { position:static; }
 .stanza-document-text-options-panel { position:absolute; inset-inline-end:0; top:calc(100% + .35rem); z-index:80; width:min(23rem,calc(100vw - 2rem)); padding:.8rem; background:var(--stanza-surface-elevated); color:var(--stanza-text-primary); border:1px solid var(--stanza-border-default); border-radius:.75rem; box-shadow:0 10px 35px #0003; }
@@ -1758,3 +1758,78 @@ figure.stanza-document-image { display:flex; flex-direction:column; }
 .stanza-document-text-options-panel > div > div > button { order:0; justify-content:center; width:100%; }
 .stanza-document-text-options-panel [role=menu] { order:1; grid-column:1 / -1; box-shadow:none; border:0; }
 .stanza-document-text-options-panel [class*="text-emerald-100/"] { color:var(--stanza-text-secondary); }
+
+/* Typography profiles share the existing bounded text/interface scale tokens. */
+:root {
+  --stanza-font-latin: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --stanza-font-arabic: "Noto Sans Arabic", Tahoma, Arial, sans-serif;
+  --stanza-type-display: var(--text-2xl);
+  --stanza-type-page: var(--text-xl);
+  --stanza-type-section: var(--text-lg);
+  --stanza-type-card: var(--text-base);
+  --stanza-type-body: var(--text-base);
+  --stanza-type-label: var(--text-sm);
+  --stanza-type-metadata: var(--text-xs);
+  --stanza-type-metric: calc(1.7rem * var(--stanza-font-scale, 1));
+  --stanza-leading-body: 1.55;
+  --stanza-leading-title: 1.25;
+  --stanza-control-duration: 160ms;
+}
+:root[data-font-profile=technical] { --stanza-font-latin:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif; --stanza-font-arabic:"IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; }
+:root[data-font-profile=comfortable] { --stanza-font-latin:"Manrope",ui-sans-serif,system-ui,sans-serif; }
+:root[data-font-profile=system] { --stanza-font-latin:ui-sans-serif,system-ui,sans-serif; --stanza-font-arabic:Tahoma,Arial,sans-serif; }
+body { font-family:var(--stanza-font-latin); line-height:var(--stanza-leading-body); }
+:where([lang|=ar],[dir=rtl]) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); }
+:where([lang|=en]) { font-family:var(--stanza-font-latin); }
+:where(.stanza-module-frame,.stanza-control-center-panel) h2:not(.stanza-document-editor *) { font-weight:700; line-height:var(--stanza-leading-title); letter-spacing:-.015em; }
+:where([lang|=ar],[dir=rtl]) :is(h1,h2,h3,label,button) { letter-spacing:normal; }
+.stanza-typography-preview h4 { line-height:var(--stanza-leading-title); letter-spacing:-.015em; }
+.stanza-typography-preview p { line-height:var(--stanza-leading-body); }
+.stanza-type-metric { font-variant-numeric:tabular-nums; }
+.stanza-font-settings .stanza-type-metric { font-size:var(--stanza-type-label); }
+:where(.stanza-support-button,.stanza-document-control,.stanza-form-control,.composer button,.composer-dialog button) { font-family:inherit; font-weight:600; line-height:1.4; }
+:where(.stanza-form-control,.composer input,.composer select,.composer-dialog input,.composer-dialog select) { font-weight:400; }
+:where(.stanza-form-control,.stanza-dashboard input,.stanza-dashboard textarea)::placeholder { color:var(--stanza-text-muted); opacity:1; }
+
+/* Fill missing control states without changing action layout or primary fills. */
+:is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button,.stanza-form-control) {
+  transition:background-color var(--stanza-control-duration) ease,border-color var(--stanza-control-duration) ease,color var(--stanza-control-duration) ease,box-shadow var(--stanza-control-duration) ease;
+}
+@media (hover:hover) {
+  :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button):not(:disabled):not([aria-disabled=true]):not([aria-pressed=true]):not([aria-selected=true]):hover {
+    background:var(--stanza-hover-surface); border-color:var(--stanza-border-strong);
+  }
+}
+:is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button):not(:disabled):not([aria-disabled=true]):active {
+  box-shadow:inset 0 0 0 1px var(--stanza-border-strong);
+  border-color:var(--stanza-accent);
+}
+:is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button)[aria-pressed=true],
+.stanza-document-control[aria-selected=true] {
+  background:var(--stanza-selected-surface); border-color:var(--stanza-accent); box-shadow:inset 0 0 0 1px var(--stanza-border-accent);
+}
+:is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button):focus-visible {
+  outline:2px solid var(--stanza-focus-ring); outline-offset:2px;
+}
+:is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button,.stanza-history-controls button):disabled {
+  opacity:1; color:var(--stanza-text-disabled,var(--stanza-text-muted)); cursor:not-allowed;
+  border-color:var(--stanza-border-default); background:var(--stanza-surface-muted); box-shadow:none; transform:none;
+}
+.stanza-form-control:disabled { background:var(--stanza-surface-muted); opacity:1; }
+.stanza-surface-menu { animation:stanza-menu-enter 160ms ease-out; }
+@keyframes stanza-menu-enter { from { opacity:0; transform:translateY(-2px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion:reduce) {
+  :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button,.stanza-form-control) { transition:none; }
+  .stanza-surface-menu { animation:none; }
+}
+
+body:lang(ar) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); }
+:root:lang(ar) { --font-sans:var(--stanza-font-arabic),var(--stanza-font-latin); }
+
+/* Let compact custom-theme controls wrap instead of imposing a minimum panel width. */
+.stanza-custom-editor, .stanza-custom-editor > *, .stanza-studio-fields { min-width:0; }
+.stanza-studio-actions button { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:600px) {
+  .stanza-studio-color { grid-template-columns:2.5rem minmax(0,1fr) auto; }
+  .stanza-studio-color label { grid-column:1 / -1; min-width:0; overflow-wrap:anywhere; }
+}
