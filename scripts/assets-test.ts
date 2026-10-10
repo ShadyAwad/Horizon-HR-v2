@@ -77,7 +77,7 @@ const checks: Array<[string, boolean]> = [
   ['employee equipment is self scoped', /assignment\.employee_id=\$2/.test(routes) && /employee_id=\$3/.test(routes)],
   ['license values use only masked or vault references', !/license[_ ]?key/i.test(routes) && /license_reference_masked/.test(migration)],
   ['lazy dashboard Assets tab', /const AssetsPanel = lazy/.test(dashboard) && /activeTab === 'assets'/.test(dashboard)],
-  ['mobile-aware asset and equipment panels', /md:hidden/.test(assetsPanel) && equipmentPanel.includes('SupportRequestButton')],
+  ['mobile-aware asset and equipment panels', /assets-row/.test(assetsPanel) && /@media\(max-width:600px\)/.test(read('src/index.css')) && equipmentPanel.includes('SupportRequestButton')],
   ['employee damage report does not expose return action', equipmentPanel.includes('SupportRequestButton') && !equipmentPanel.includes('/return')],
   ['evidence upload uses authenticated tenant-scoped endpoint', /\/api\/assets\/:assetId\/evidence/.test(evidenceRoutes) && /tenant_id=\$1 AND asset_id=\$2 AND employee_id=\$3/.test(evidenceRoutes)],
   ['evidence validates decoded image data and re-encodes WebP', /sharp\(file\.buffer/.test(evidenceRoutes) && /\['jpeg', 'png', 'webp'\]/.test(evidenceRoutes) && /\.webp\(/.test(evidenceRoutes)],
@@ -99,13 +99,13 @@ const checks: Array<[string, boolean]> = [
   ['serial availability is tenant scoped and minimal', /\/api\/hr\/assets\/serial-availability/.test(routes) && /WHERE tenant_id=\$1[\s\S]*serial_number=\$2/.test(routes) && /conflictType/.test(routes)],
   ['serial availability excludes only the edited asset', /id<>\$3/.test(routes) && /assetId/.test(assetForm)],
   ['database uniqueness returns a safe serial conflict', /assets_tenant_serial_unique/.test(routes) && /ASSET_SERIAL_EXISTS/.test(routes) && /Serial number already exists/.test(routes)],
-  ['dialog is portal based responsive RTL and scroll safe', /createPortal/.test(assetForm) && /dir=\{isRtl/.test(assetForm) && /100dvh/.test(assetForm) && /overflow-x-hidden/.test(assetForm)],
+  ['dialog reuses native modal focus containment and responsive RTL', /ComposerDialog/.test(assetForm) && /dir=\{isRtl/.test(assetForm) && /showModal\(\)/.test(read('src/components/workspace-composer/ComposerDialog.tsx'))],
   ['asset QR labels use dedicated tenant-scoped routes', /\/api\/hr\/assets\/:assetId\/qr-label/.test(assetQrRoutes) && /requireUuid/.test(assetQrRoutes) && /issuanceRateLimiter/.test(assetQrRoutes)],
   ['asset QR authority is permission and scope based', /assets\.manage/.test(qrPermissions) && /qr\.asset_label\.manage/.test(qrPermissions) && !/hr_admin/.test(assetQrRoutes)],
   ['asset public disclosure defaults to label only and excludes private fields', /asset_label_disclosure_level/.test(assetDisclosureMigration) && /serial_number/.test(qrService) === false && /assignment history/i.test(qrService) === false],
   ['asset verification is purpose-bound and has generic invalid handling', /verify\/asset/.test(publicAssetPage) && /Asset label could not be verified/.test(read('src/lib/LanguageContext.tsx'))],
   ['asset QR rendering uses only server URL with a white quiet zone', /QRCodeSVG/.test(qrPanel) && /value=\{label\.verificationUrl\}/.test(qrPanel) && /bgColor="#ffffff"/.test(qrPanel) && !/APP_BASE_URL|window\.location/.test(qrPanel)],
-  ['asset QR panel supports issue rotate revoke print download and confirmation', /action\('issue'\)/.test(qrPanel) && /setConfirm\('rotate'\)/.test(qrPanel) && /setConfirm\('revoke'\)/.test(qrPanel) && /window\.print/.test(qrPanel) && /XMLSerializer/.test(qrPanel) && /role="dialog"/.test(qrPanel)],
+  ['asset QR panel supports issue rotate revoke print download and confirmation', /action\('issue'\)/.test(qrPanel) && /setConfirm\('rotate'\)/.test(qrPanel) && /setConfirm\('revoke'\)/.test(qrPanel) && /window\.print/.test(qrPanel) && /XMLSerializer/.test(qrPanel) && /ComposerDialog/.test(qrPanel)],
 ];
 
 let failed = false;
@@ -114,3 +114,18 @@ for (const [name, passed] of checks) {
   failed ||= !passed;
 }
 if (failed) process.exitCode = 1;
+
+const {assetActions,assetAttention,assetDate,assetLabel}=await import('../src/lib/asset-presentation');
+assert.equal(assetActions('available',['assets.assign']).assign,true);
+assert.equal(assetActions('assigned',['assets.assign']).assign,false);
+assert.equal(assetActions('assigned',[]).return,false);
+assert.equal(assetActions('assigned',['assets.return']).return,true);
+assert.equal(assetActions('assigned',['assets.manage']).final,false);
+assert.equal(assetActions('retired',['assets.manage']).condition,false);
+assert.equal(assetActions('maintenance',['assets.manage']).condition,true);
+assert.equal(assetAttention({status:'available',condition:'damaged'}),true);
+assert.equal(assetAttention({status:'assigned',condition:'good'}),false);
+assert.equal(assetLabel('maintenance',true),'صيانة');
+assert.equal(assetLabel('damaged'),'Damaged');
+assert.equal(assetDate('invalid'),'—');
+console.log('PASS state-specific asset controls, independent condition/status labels, attention and date presentation.');

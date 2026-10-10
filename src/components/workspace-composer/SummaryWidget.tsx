@@ -1,5 +1,6 @@
+import {assetLabel} from '../../lib/asset-presentation';
 import {hiringLabel,hiringDate} from '../../lib/hiring-presentation';
-import {useState} from 'react';
+import {useState,type ReactNode} from 'react';
 import {apiFetch} from '../../lib/api';
 import {SupportRequestButton} from '../support/SupportPanel';
 import {GRIEVANCE_COPY} from '../../lib/grievance-copy';
@@ -13,11 +14,11 @@ export default function SummaryWidget({widget,result,onRefresh}:{widget:WidgetIn
  if(result.error)return <p role="alert">{result.error}</p>;
  const data=result.data;
  if(widget.widgetId==='attendance')return <><p className="composer-metric">{data.isClockedIn?text('Clocked in','داخل الدوام'):text('Clocked out','خارج الدوام')}</p>{!widget.config.compact&&<p>{data.clockedIn?new Date(data.clockedIn).toLocaleString(isRtl?'ar':'en'):text('No active shift.','لا يوجد دوام نشط.')}<br/>{data.locationStatus||''}</p>}</>;
- if(widget.widgetId==='equipment')return <>{(data.assets??[]).length?<ul className="composer-records">{data.assets.slice(0,widget.config.limit||5).map((a:any)=><li key={a.id}><strong>{a.name}</strong><p>{a.assetTag} · {a.condition} · {a.status}</p>{a.status==='active'&&<SupportRequestButton asset={a} onCreated={onRefresh}/>}</li>)}</ul>:<p>{text('No equipment assigned.','لا توجد عهدة مسندة.')}</p>}</>;
+ if(widget.widgetId==='equipment')return <>{(data.assets??[]).length?<ul className="composer-records">{data.assets.slice(0,widget.config.limit||5).map((a:any)=><li key={a.id}><strong>{a.name}</strong><p><bdi dir="ltr">{a.assetTag}</bdi> · {assetLabel(a.condition,isRtl)} · {assetLabel(a.status,isRtl)}</p>{a.status==='active'&&<SupportRequestButton asset={a} onCreated={onRefresh}/>}</li>)}</ul>:<p>{text('No equipment assigned.','لا توجد عهدة مسندة.')}</p>}</>;
  if(widget.widgetId==='goals')return <>{error&&<p role="alert">{error}</p>}<ul className="composer-records">{[...(data.overdueGoals??[]),...(data.goals??[])].slice(0,widget.config.limit||5).map((g:any)=><li key={g.id}><strong>{g.title}</strong><p>{g.status} · {g.dueDate??g.weekStart}</p>{data.capabilities?.canComplete&&['pending','in_progress'].includes(g.status)&&<button disabled={busy!==null} type="button" onClick={async()=>{setBusy(g.id);setError('');try{const r=await apiFetch('/api/roster/goals/'+g.id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'completed'})});const d=await r.json();if(!r.ok)throw Error(d.error||'Task update failed.');onRefresh?.();}catch(e){setError((e as Error).message);}finally{setBusy(null);}}}>{busy===g.id?text('Saving…','جار الحفظ…'):text('Mark completed','وضع علامة مكتمل')}</button>}</li>)}</ul>{!(data.goals?.length||data.overdueGoals?.length)&&<p>{text('No tasks this week.','لا توجد مهام لهذا الأسبوع.')}</p>}</>;
- let rows:Array<{title:string;detail?:string}>=[];
+ let rows:Array<{title:string;detail?:ReactNode}>=[];
  switch(widget.widgetId){
- case 'inventory':rows=(data.assets||[]).map((r:any)=>({title:r.name,detail:r.assetTag+' · '+r.status}));break;
+ case 'inventory':rows=(data.assets||[]).map((r:any)=>({title:r.name,detail:<><bdi dir="ltr">{r.assetTag}</bdi> · {assetLabel(r.status,isRtl)}</>}));break;
  case 'support':rows=(data.tickets||[]).map((r:any)=>({title:r.summary,detail:r.status+' · '+(r.handler_name||text('Awaiting handler','بانتظار مسؤول'))}));break;
  case 'communications':rows=(data.messages||[]).map((r:{subject:string;status:string})=>({title:r.subject,detail:r.status}));break;
  case 'meetings':rows=(data.meetings||[]).map((r:{title:string;starts_at:string;timezone:string})=>({title:r.title,detail:new Date(r.starts_at).toLocaleString(isRtl?'ar':'en',{timeZone:r.timezone})+' '+r.timezone}));break;
