@@ -11,6 +11,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{3,4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
 const LOCATION_TYPES = new Set(['headquarters', 'branch', 'warehouse', 'remote_site', 'other']);
 const fail = (statusCode: number, message: string) => Object.assign(new Error(message), { statusCode });
 const uuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
+// Do not coerce absent coordinates, booleans, or arrays into valid zeroes.
+const coordinate = (value: unknown) => typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
 const cleanText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
 async function requireLocationPermission(client: PoolClient, req: express.Request, key: 'locations.view' | 'locations.manage' | 'geofences.manage') {
@@ -23,8 +25,8 @@ function normalizeLocation(body: LocationBody, fallback?: { name: string; code: 
   const name = body.name === undefined ? fallback?.name || '' : cleanText(body.name, 120);
   const codeValue = body.code === undefined ? fallback?.code || '' : cleanText(body.code, 60).toUpperCase();
   const address = body.address === undefined ? fallback?.address || null : cleanText(body.address, 300) || null;
-  const latitude = Number(body.latitude === undefined ? fallback?.latitude : body.latitude);
-  const longitude = Number(body.longitude === undefined ? fallback?.longitude : body.longitude);
+  const latitude = coordinate(body.latitude === undefined ? fallback?.latitude : body.latitude);
+  const longitude = coordinate(body.longitude === undefined ? fallback?.longitude : body.longitude);
   const radius = Number(body.radius === undefined ? fallback?.radius_meters : body.radius);
   const locationType = body.locationType === undefined ? fallback?.location_type || 'branch' : body.locationType;
   const isPrimary = body.isPrimary === undefined ? fallback?.is_primary || false : body.isPrimary === true;
@@ -80,9 +82,11 @@ export function registerLocationRoutes(app: express.Express, { standardAuth, mut
         const existing = method === 'update' ? (await client.query(`SELECT name,code,address,latitude,longitude,radius_meters,location_type,is_primary FROM company_locations WHERE tenant_id=$1 AND id=$2 AND is_active FOR UPDATE`, [user.tenantId, locationId])).rows[0] : undefined;
         if (method === 'update' && !existing) throw fail(404, 'Location not found.'); const value = normalizeLocation(req.body || {}, existing);
         if (value.isPrimary) await client.query(`UPDATE company_locations SET is_primary=false,updated_at=NOW() WHERE tenant_id=$1 AND id<>COALESCE($2::uuid,'00000000-0000-0000-0000-000000000000')`, [user.tenantId, method === 'update' ? locationId : null]);
+        // Storage uses numeric/integer; PostGIS takes doubles. Type each use
+        // explicitly so PostgreSQL can parse shared parameters consistently.
         const sql = method === 'create'
-          ? `INSERT INTO company_locations(tenant_id,name,code,address,location_type,latitude,longitude,radius_meters,boundary,is_primary,is_active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,ST_Buffer(ST_SetSRID(ST_MakePoint($7,$6),4326)::geography,$8)::geometry,$9,true,$10) RETURNING ${locationSelect().replaceAll('location.', '')}`
-          : `UPDATE company_locations location SET name=$3,code=$4,address=$5,location_type=$6,latitude=$7,longitude=$8,radius_meters=$9,boundary=ST_Buffer(ST_SetSRID(ST_MakePoint($8,$7),4326)::geography,$9)::geometry,is_primary=$10,updated_at=NOW() WHERE location.tenant_id=$1 AND location.id=$2 RETURNING ${locationSelect().replaceAll('location.', '')}`;
+          ? `INSERT INTO company_locations(tenant_id,name,code,address,location_type,latitude,longitude,radius_meters,boundary,is_primary,is_active,created_by) VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8::integer,ST_Buffer(ST_SetSRID(ST_MakePoint($7::double precision,$6::double precision),4326)::geography,$8::double precision)::geometry,$9,true,$10) RETURNING ${locationSelect().replaceAll('location.', '')}`
+          : `UPDATE company_locations location SET name=$3,code=$4,address=$5,location_type=$6,latitude=$7::numeric,longitude=$8::numeric,radius_meters=$9::integer,boundary=ST_Buffer(ST_SetSRID(ST_MakePoint($8::double precision,$7::double precision),4326)::geography,$9::double precision)::geometry,is_primary=$10,updated_at=NOW() WHERE location.tenant_id=$1 AND location.id=$2 RETURNING ${locationSelect().replaceAll('location.', '')}`;
         const values = method === 'create' ? [user.tenantId, value.name, value.code, value.address, value.locationType, value.latitude, value.longitude, value.radius, value.isPrimary, user.employeeId] : [user.tenantId, locationId, value.name, value.code, value.address, value.locationType, value.latitude, value.longitude, value.radius, value.isPrimary];
         const row = (await client.query(sql, values)).rows[0];
         await recordAuditEvent(client, { tenantId: user.tenantId, actorId: user.employeeId, action: method === 'create' ? 'location.created' : 'location.updated', targetType: 'company_location', targetId: row.id, metadata: { locationId: row.id, geofenceType: 'circle', active: true } });
