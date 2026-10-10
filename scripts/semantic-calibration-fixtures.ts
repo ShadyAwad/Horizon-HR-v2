@@ -1,0 +1,45 @@
+// Classification-only: yesterday is not a supported operational date filter; its support intent is not a claim of date-filtered execution.
+// Independent challenges: never imported by the production corpus or seeder.
+export const CALIBRATION_CHALLENGES = [
+ ['show me stuff','no_match'],['what about Ahmed?','no_match'],['open requests','no_match'],['show requests','no_match'],['who has requested leave','no_match'],
+ ['open leave or expenses','no_match'],['what is my salary after taxes next year','no_match'],['recommend a vacation destination','no_match'],['change another employee salary','no_match'],['run SELECT * FROM employees','no_match'],
+ ['وريني حاجات','no_match'],['احمد اخباره ايه','no_match'],['طلبات مفتوحة','no_match'],['عايز طلبات leave ولا expense','no_match'],['احذف الشكوى','no_match'],
+ ['Show the devices issued to my account','my_assets'],['How do I sign off at the end of a shift','clock_out_help'],['Is my reimbursement still awaiting approval','no_match'],
+ ['Who supervises my position','my_manager'],['Where is the history of my expense submissions','expense_history'],['Which is my next duty after this one','next_shift'],
+ ['Explain how to start my attendance session','clock_in_help'],['Open all of my salary slips','payslips'],['Find the latest one of my salary slips','latest_payslip'],
+ ['اعرض المعدات المسندة إلي','my_assets'],['ما المتبقي من رصيد إجازتي','leave_balance'],['إزاي أسجل انصرافي من الشغل','clock_out_help'],['عايز أشوف الإيصالات اللي قدمتها زمان','expense_history'],
+ ['وريني my work messages','communications'],['رصيد vacation بتاعي','leave_balance'],['equipment assigned لي','my_assets'],['مواعيد meetings بكره','tomorrow_meetings'],
+ ['my equipmnet list','my_assets'],['show myy work messages','communications'],['remaing leave days','leave_balance'],['clock  out  instructions','clock_out_help'],
+ ['show my work schedule','current_shift'],['What is the finish time of my shift','shift_end_time'],['Open the time off application form','request_leave'],['View the progress of my grievance','grievance_status'],
+ ['what laptop is Ahmed using?','employee_equipment'],['who has NS-LAP-003?','asset_holder'],['show open tickets for Ahmed','support_lookup'],
+ ['show ahmd open suport tikets','support_lookup'],['show unresolved support tickets from yesterday','support_lookup'],['show open tickets created in the last 4 days','operational_support'],
+ ['اعرض تذاكر الدعم غير المحلولة هذا الأسبوع','operational_support'],['show candidates waiting for feedback','operational_hiring'],['show offers expiring next week','operational_hiring'],['show candidates for an unknown confidential job','hiring_candidates_query'],
+ ['open FAKE-EMP-999 grievance','employee_grievance_lookup'],['show grievance for an employee from another tenant','employee_grievance_lookup'],
+] as const;
+
+// One primary diagnosis per original baseline miss; indices refer to the frozen 112 cases.
+export const BASELINE_MISS_CAUSES:Record<number,{category:string;reason:string}>={
+ 16:{category:'D',reason:'Tomorrow is top, but current-shift similarity leaves only a 0.073 margin.'},
+ 18:{category:'A',reason:'Annual allowance wording is distant from the short balance examples.'},
+ 20:{category:'B',reason:'Egyptian meeting transliteration collides with tomorrow shifts.'},
+ 21:{category:'I',reason:'Bare submitted claims do not specify expenses versus another request workflow.'},
+ 22:{category:'D',reason:'Vacation request and remaining-leave examples are only 0.086 apart.'},
+ 23:{category:'A',reason:'Recording departure lacks the corpus clock-out vocabulary.'},
+ 28:{category:'A',reason:'Package inclusions are undercovered by compensation examples.'},
+ 30:{category:'A',reason:'Prior filing language is undercovered by expense-history examples.'},
+ 31:{category:'G',reason:'Explicit help and present employee clock-ins collide semantically.'},
+ 32:{category:'A',reason:'Annual-leave qualifier falls outside the short request grammar/corpus.'},
+ 50:{category:'F',reason:'A broad equipment rule incorrectly treats the speaker as another employee.'},
+ 61:{category:'G',reason:'Following shift is confused with the current work schedule.'},
+ 63:{category:'A',reason:'Direct supervisor vocabulary scores below the manager gate.'},
+ 64:{category:'E',reason:'Latest payroll statement is correct at 0.836, just below 0.84.'},
+ 66:{category:'G',reason:'Shift finish-time and current-schedule intents overlap.'},
+ 67:{category:'G',reason:'An explicit clock-out control is confused with attendance/presence.'},
+ 68:{category:'A',reason:'Old clock-in records are undercovered as attendance history.'},
+ 69:{category:'D',reason:'All historical statements are too close to the latest statement.'},
+ 95:{category:'A',reason:'Recency/announcement wording is below the company-feed gate.'},
+ 96:{category:'A',reason:'Adjusting pointer appearance is undercovered as theme navigation.'},
+ 97:{category:'A',reason:'Readability wording is undercovered as the font-size setting.'},
+ 98:{category:'E',reason:'Personal messages is correct at 0.824, below 0.84.'},
+ 99:{category:'G',reason:'Clocking-in help is nearly tied with clocking-out help.'},
+};

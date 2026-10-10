@@ -47,13 +47,20 @@ function page(value: unknown, fallback: number, maximum: number) {
   return Number.isInteger(number) && number > 0 ? Math.min(number, maximum) : fallback;
 }
 
+// pg parses PostgreSQL DATE as local midnight. Preserve its calendar fields
+// rather than serializing it as a UTC timestamp (which can shift the day).
+function calendarDate(value: Date | string) {
+  if (value instanceof Date) return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  return value;
+}
+
 function safeLeave(row: any) {
   const conflictCount = Number(row.conflict_count || 0);
   return {
     requestId: row.request_id || row.id,
     leaveType: row.leave_type,
-    startDate: row.start_date,
-    endDate: row.end_date,
+    startDate: calendarDate(row.start_date),
+    endDate: calendarDate(row.end_date),
     reason: row.reason || null,
     status: row.status,
     submittedAt: row.submitted_at,
@@ -115,8 +122,8 @@ function safeApproval(row: any, includeReason = false) {
     requestId: row.request_id,
     employee: { employeeId: row.employee_id, displayName: row.employee_name },
     leaveType: row.leave_type,
-    startDate: row.start_date,
-    endDate: row.end_date,
+    startDate: calendarDate(row.start_date),
+    endDate: calendarDate(row.end_date),
     ...(includeReason ? { reason: row.reason || null } : {}),
     status: row.status,
     submittedAt: row.submitted_at,
@@ -259,7 +266,7 @@ async function notify(client: PoolClient, input: { tenantId: string; eventType: 
   };
   await client.query(
     `INSERT INTO outbox_events(tenant_id,event_type,payload)
-     SELECT $1,$2,$3::jsonb
+     SELECT $1::uuid,$2::varchar,$3::jsonb
      WHERE NOT EXISTS (
        SELECT 1 FROM outbox_events WHERE tenant_id=$1 AND event_type=$2 AND payload->>'idempotencyKey'=$4
      )`,
@@ -355,9 +362,9 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
              WHERE tenant_id=$1 AND employee_id=$2 AND leave_type=$3 AND start_date=$4 AND end_date=$5 AND status='pending'
              UNION ALL
              SELECT 1 FROM leave_requests
-             WHERE tenant_id=$1 AND employee_id=$2 AND status IN ('pending','approved') AND start_date <= $6 AND end_date >= $5
+             WHERE tenant_id=$1 AND employee_id=$2 AND status IN ('pending','approved') AND start_date <= $5 AND end_date >= $4
              LIMIT 1`,
-            [user.tenantId, user.employeeId, value.leaveType, value.startDate, value.endDate, value.endDate],
+            [user.tenantId, user.employeeId, value.leaveType, value.startDate, value.endDate],
           )).rows[0];
           if (collision) throw fail(409, 'This leave request conflicts with an existing pending or approved request.');
           const created = (await client.query(
@@ -585,9 +592,9 @@ export function registerLeaveRoutes(app: express.Express, { standardAuth, mutati
           const decisionScopeType = actedThroughStoredRoute ? current.approval_scope_type : access.authority?.resolvedScope?.type || current.approval_scope_type;
           const decisionScopeId = actedThroughStoredRoute ? current.approval_scope_id : access.authority?.resolvedScope?.id || current.approval_scope_id;
           const row = (await client.query(
-            `UPDATE leave_requests SET status=$5,approver_employee_id=$3,approval_source=$6,approval_scope_type=$7,
-               approval_scope_id=$8,approval_note=$9,approval_decided_at=NOW(),approved_at=CASE WHEN $5='approved' THEN NOW() ELSE NULL END,
-               rejected_at=CASE WHEN $5='rejected' THEN NOW() ELSE NULL END,updated_at=NOW(),version=version+1
+            `UPDATE leave_requests SET status=$5::varchar,approver_employee_id=$3,approval_source=$6,approval_scope_type=$7,
+               approval_scope_id=$8,approval_note=$9,approval_decided_at=NOW(),approved_at=CASE WHEN $5::varchar='approved' THEN NOW() ELSE NULL END,
+               rejected_at=CASE WHEN $5::varchar='rejected' THEN NOW() ELSE NULL END,updated_at=NOW(),version=version+1
              WHERE tenant_id=$1 AND id=$2 AND status='pending' AND version=$4
              RETURNING id AS request_id,leave_type,start_date,end_date,status,submitted_at,cancelled_at,approver_employee_id,
                approval_decided_at,approved_at,rejected_at,version`,

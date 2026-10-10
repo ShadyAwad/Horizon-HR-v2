@@ -2722,6 +2722,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             setActiveTimeLogId(data.timeLogId || null);
             setLastClockEvent(`Clocked in at ${new Date(data.clockedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
             setClockMessage(t('dash.clockInSuccess'));
+            // Hydrate the roster-bound breaks/departure controls after a geofenced clock-in.
+            await loadClockStatus(true);
         } else {
             if (res.status === 409) {
               setClockInState('open_shift_conflict');

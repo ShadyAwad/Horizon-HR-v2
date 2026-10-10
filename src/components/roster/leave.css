@@ -1,0 +1,24 @@
+/* Scoped workflow presentation; no shell or roster geometry changes. */
+.leave-workspace,.leave-dialog{color:var(--stanza-text-primary);min-width:0}
+.leave-workspace .leave-records{grid-template-columns:minmax(0,1fr)}
+.leave-records .leave-record{background:var(--stanza-surface-elevated);border:0;border-inline-start:2px solid transparent;border-radius:var(--stanza-radius-sm);box-shadow:none;padding:1rem}
+.leave-records .leave-record[data-status=pending]{border-inline-start-color:var(--stanza-accent)}
+.leave-records .leave-record>dl{display:flex;flex-wrap:wrap;gap:.35rem .75rem;margin-top:.65rem;justify-content:flex-start}
+.leave-records .leave-record>button{margin-top:.65rem}
+.leave-records .leave-record>div>div{min-width:0}
+.leave-records .leave-record>div>span{flex-shrink:1;white-space:normal;text-align:center}
+.leave-summary article{border:0;background:transparent;padding:.5rem .75rem;box-shadow:none}
+.leave-summary article>svg{display:none}.leave-summary article>p{margin-top:.25rem}
+.leave-page-caption{font-size:var(--text-xs);color:var(--stanza-text-secondary);margin-top:1rem}
+.leave-workspace [role=tablist]{flex-wrap:wrap;overflow:visible}
+.leave-workspace [role=tab]{flex-shrink:1;white-space:normal;padding-block:.5rem}
+.leave-workspace :is(button,select,input),.leave-dialog :is(button,select,input,textarea){font-size:var(--text-sm);max-width:100%}
+.leave-workspace :is(input,select),.leave-dialog :is(input,select,textarea){background:var(--stanza-input-bg);color:var(--stanza-text-primary);border-color:var(--stanza-border-default);min-width:0}
+.leave-workspace :is(button,select,input):focus-visible,.leave-dialog :is(button,input,select,textarea,summary):focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:2px}
+.leave-record :is(button):hover,.leave-dialog summary:hover{background:var(--stanza-selected-surface)}
+.leave-dialog{background:var(--stanza-surface-elevated);border-color:var(--stanza-border-default)}
+.leave-dialog dl{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.leave-dialog dd{overflow-wrap:anywhere}
+.leave-prose{white-space:pre-wrap;overflow-wrap:anywhere;max-width:70ch;line-height:1.65;font-size:var(--text-sm);margin-top:.5rem}
+.leave-decision-context{margin-top:1rem;padding:1rem;background:var(--stanza-selected-surface);border-radius:var(--stanza-radius-sm);overflow-wrap:anywhere}
+.leave-decision-context summary{cursor:pointer;margin-top:.5rem}.leave-decision-context p{font-size:var(--text-sm);margin-top:.3rem}
+@media(max-width:599px){.leave-records .leave-record{padding:.8rem}.leave-record>div:first-child{flex-wrap:wrap}.leave-dialog{padding:1rem}}

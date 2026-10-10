@@ -1,5 +1,7 @@
 // Approved multilingual corpus, separate from short exact aliases. Examples are navigation requests,
 // never tenant facts. Keep different operational intents separate; cancellation is unsupported.
+// Reviewed departure-help coverage; no names, private facts, or held-out phrases.
+export const CLOCK_DEPARTURE_EXAMPLES = ['Explain the steps to record a workday checkout', 'Help with recording attendance departure', 'إرشادات تسجيل انصراف الموظف'] as const;
 export const INTENT_EXAMPLES:Record<string,readonly string[]>={
  operational_support:['which open IT tickets are older than 3 days','show tickets created in the last 7 days','show support requests waiting on users','وريني تذاكر الدعم المفتوحة اكتر من 3 ايام','اعرض طلبات الدعم بانتظار المستخدم','show ticktes older than 3 days'],
  operational_hiring:['show candidates waiting for feedback','show offers expiring this week','which jobs have no applicants','who is interviewing for {job_opening} today','اعرض المرشحين بانتظار التقييم','وريني المرشحين مستنيين التقييم','show canddates waiting for feedbak','show candidates in screening for more than 5 days'],
@@ -39,7 +41,7 @@ export const INTENT_EXAMPLES:Record<string,readonly string[]>={
  next_shift:['When is my next scheduled shift','Show the next time I work','متى موعد مناوبتي القادمه','الشيفت الجاي امتى','next shift امتى','nxt shfit',"When do I work next","What is my next duty period","المناوبة اللي بعد الحالية امتى","موعد دوامي القادم","الشيفت اللي جاي بعد ده","when is my next shift بتاعي","nex shift start"],
  current_shift:['What shift am I on right now','Show my current work schedule','ما مناوبتي الحاليه','انا في انهي شيفت دلوقتي','current shift دلوقتي','curent shift',"when is my shift","when do I work","what’s my schedule","what time do I start","my work schedule","شيفتي امتى","هشتغل امتى","جدولي ايه","متى تبدأ مناوبتي الحالية","my shift امتى","whens my shfit","Am I on duty right now"],
  shift_end_time:['What time does my shift finish','When can I finish my scheduled work','متى تنتهي مناوبتي','شيفتي بيخلص امتى','shift end امتى','shift finsh time'],
- clock_out_help:['How do I clock out','Where is the end work attendance button','كيف اسجل انصرافي','اسجل انصراف ازاي','clock out ازاي','clok out help'],
+ clock_out_help:[...CLOCK_DEPARTURE_EXAMPLES,'How do I clock out','Where is the end work attendance button','كيف اسجل انصرافي','اسجل انصراف ازاي','clock out ازاي','clok out help'],
  break_status:['Am I currently on a break','Where are my recorded work breaks','ما حاله استراحتي','انا في بريك دلوقتي','break status بتاعي','my brek status'],
  pending_leave_requests:['Which leave requests are still pending','Is my time off waiting for approval','ما طلبات الاجازه المعلقه','طلب اجازتي لسه مستني موافقه','leave pending عندي','pendng leave'],
  approved_leave:['Show leave that has been approved','Which vacation requests were accepted','ما الاجازات المعتمده لي','الاجازات اللي اتوافق عليها','approved leave بتاعي','aproved vacation'],

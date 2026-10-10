@@ -273,4 +273,19 @@ assert.doesNotMatch(leaveWorkspace, /\/api\/leave-requests(?:[?'`/])/);
 assert.doesNotMatch(leaveWorkspace, /category:\s*['"]leave_request['"]/);
 assert.doesNotMatch(leaveWorkspace, /salary|password|tokenHash|approval_scope_id|role_assignment/);
 
+
+assert.match(routes, /SELECT \$1::uuid,\$2::varchar,\$3::jsonb/, 'outbox parameters have explicit column types');
+assert.match(routes, /SET status=\$5::varchar/, 'decision status has consistent parameter typing');
+assert.match(routes, /startDate: calendarDate\(row.start_date\)/);
+assert.match(routes, /endDate: calendarDate\(row.end_date\)/);
+assert.doesNotMatch(leaveWorkspace, /next\.filter\(\(request\) => isTerminal/, 'history must not filter an incomplete page');
+assert.match(leaveWorkspace, /view === 'history'\) query.set\('status'/, 'history selects authoritative server statuses');
+assert.match(leaveWorkspace, /leave-decision-context/);
+assert.match(leaveWorkspace, /detail.request.reason/);
+assert.doesNotMatch(leaveWorkspace, /entry.action.replaceAll/, 'history uses translated workflow labels');
+
+assert.match(routes, /start_date <= \$5 AND end_date >= \$4/, 'existing overlap rule compares the new end and start, respectively');
+
+assert.doesNotMatch(leaveWorkspace.match(/className="leave-dialog[^"]*/)?.[0] || '', /bg-/, 'dialog avoids global module flattening selector and uses its scoped solid token');
+
 console.log('Leave self-service, scoped approval, roster conflict, and UI contracts passed');

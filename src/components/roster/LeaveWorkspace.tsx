@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { apiFetch } from '../../lib/api';
 import { useLanguage } from '../../lib/LanguageContext';
+import './leave.css';
 import { cn } from '../../lib/utils';
 
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -162,6 +163,12 @@ const EN: Copy = {
   requestCreated: 'Leave request submitted',
   requestCreatedHelp: 'The request is pending the configured approval workflow.',
   calendarDays: 'calendar days',
+  pageSummary: 'On this page',
+  requested: 'Request submitted',
+  approver_resolved: 'Approver selected',
+  approver_unconfigured: 'Approval route needs attention',
+  schedule_conflict_detected: 'Roster conflict recorded',
+  reasonLabel: 'Reason',
   selectedRange: 'Selected date range',
   invalidDates: 'Choose a valid start and end date.',
   tooLong: 'A leave request cannot exceed 366 calendar days.',
@@ -283,6 +290,12 @@ const AR: Copy = {
   requestCreated: 'تم إرسال طلب الإجازة',
   requestCreatedHelp: 'الطلب الآن بانتظار سير الموافقة المحدد.',
   calendarDays: 'أيام تقويمية',
+  pageSummary: 'في هذه الصفحة',
+  requested: 'تم تقديم الطلب',
+  approver_resolved: 'تم تحديد مسؤول الموافقة',
+  approver_unconfigured: 'مسار الموافقة يتطلب متابعة',
+  schedule_conflict_detected: 'تم تسجيل تعارض الجدول',
+  reasonLabel: 'السبب',
   selectedRange: 'الفترة المحددة',
   invalidDates: 'اختر تاريخ بداية ونهاية صالحين.',
   tooLong: 'لا يمكن أن يتجاوز طلب الإجازة 366 يوماً تقويمياً.',
@@ -420,7 +433,7 @@ function LeaveDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="leave-dialog-title"
-        className="max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-emerald-500/20 bg-white p-4 shadow-2xl dark:bg-[#07150f] sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+        className="leave-dialog max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-xl border border-emerald-500/20 p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6"
       >
         <div className="flex items-center justify-between gap-3">
           <h3 id="leave-dialog-title" className="text-base font-bold text-slate-900 dark:text-emerald-50">{title}</h3>
@@ -444,10 +457,6 @@ function statusClass(status: LeaveStatus) {
   if (status === 'rejected') return 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-200';
   if (status === 'cancelled') return 'border-slate-400/25 bg-slate-500/10 text-slate-600 dark:text-slate-300';
   return 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-200';
-}
-
-function isTerminal(status: LeaveStatus) {
-  return status !== 'pending';
 }
 
 export function LeaveWorkspace({
@@ -545,7 +554,8 @@ export function LeaveWorkspace({
       query.set('status', 'approved');
       query.set('fromDate', new Date().toISOString().slice(0, 10));
     } else {
-      if (status) query.set('status', status);
+      if (view === 'history') query.set('status', ['approved', 'rejected', 'cancelled'].includes(status) ? status : 'approved');
+      else if (status) query.set('status', status);
       if (fromDate) query.set('fromDate', fromDate);
       if (toDate) query.set('toDate', toDate);
     }
@@ -560,7 +570,7 @@ export function LeaveWorkspace({
       const data = await response.json() as LeaveListResponse;
       if (!response.ok || !data.success) throw new Error(data.error || copy.loadError);
       const next = data.requests || [];
-      setRequests(view === 'history' ? next.filter((request) => isTerminal(request.status)) : next);
+      setRequests(next);
       setTotal(Number(data.total || 0));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : copy.loadError);
@@ -853,8 +863,9 @@ export function LeaveWorkspace({
       ? 0
       : event.key === 'End'
         ? tabs.length - 1
-        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        : (current + ((event.key === 'ArrowRight') !== isRtl ? 1 : -1) + tabs.length) % tabs.length;
     setView(tabs[next]);
+    setStatus(tabs[next] === 'history' ? 'approved' : '');
     setPage(1);
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   };
@@ -877,7 +888,7 @@ export function LeaveWorkspace({
   const emptyText = view === 'upcoming' ? copy.emptyUpcoming : view === 'history' ? copy.emptyHistory : copy.emptyRequests;
 
   return (
-    <section className="border-t border-emerald-500/10 p-3 sm:p-5" dir={isRtl ? 'rtl' : 'ltr'} data-leave-workspace>
+    <section className="leave-workspace border-t border-emerald-500/10 p-3 sm:p-5" dir={isRtl ? 'rtl' : 'ltr'} data-leave-workspace>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-emerald-50">
@@ -898,7 +909,7 @@ export function LeaveWorkspace({
 
       {message && <p role="status" className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-100">{message}</p>}
 
-      <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
+      {view !== 'approvals' && <><p className="leave-page-caption">{copy.pageSummary}</p><div className="leave-summary mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {summaryCards.map(({ label, count, Icon }) => (
           <article key={label} className="min-w-0 rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/25">
             <Icon className="h-4 w-4 text-emerald-500" />
@@ -906,7 +917,7 @@ export function LeaveWorkspace({
             <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-emerald-100/50">{label}</p>
           </article>
         ))}
-      </div>
+      </div></>}
 
       <div role="tablist" aria-label={copy.title} onKeyDown={tabKeyDown} className="mt-5 flex max-w-full gap-1 overflow-x-auto border-b border-emerald-500/10 pb-2">
         {([
@@ -923,6 +934,7 @@ export function LeaveWorkspace({
             tabIndex={view === value ? 0 : -1}
             onClick={() => {
               setView(value);
+              setStatus(value === 'history' ? 'approved' : '');
               setPage(1);
             }}
             className={cn(
@@ -935,13 +947,13 @@ export function LeaveWorkspace({
         ))}
       </div>
 
-      {view === 'requests' && (
+      {(view === 'requests' || view === 'history') && (
         <div className="mt-4 grid gap-2 rounded-lg border border-emerald-500/10 bg-black/[0.02] p-3 dark:bg-black/20 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
             {copy.status}
             <select value={status} onChange={(event) => setStatus(event.target.value)} className="stanza-select mt-1 w-full">
-              <option value="">{copy.allStatuses}</option>
-              {(['pending', 'approved', 'rejected', 'cancelled'] as LeaveStatus[]).map((value) => <option key={value} value={value}>{labelStatus(value)}</option>)}
+              <>{view !== 'history' && <option value="">{copy.allStatuses}</option>}</>
+              {(view === 'history' ? ['approved', 'rejected', 'cancelled'] as LeaveStatus[] : ['pending', 'approved', 'rejected', 'cancelled'] as LeaveStatus[]).map((value) => <option key={value} value={value}>{labelStatus(value)}</option>)}
             </select>
           </label>
           <label className="text-[11px] font-bold text-slate-600 dark:text-emerald-100/60">
@@ -953,7 +965,7 @@ export function LeaveWorkspace({
             <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
           </label>
           <button type="button" onClick={() => { setPage(1); void loadRequests(); }} className="min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.applyFilters}</button>
-          <button type="button" onClick={() => { setStatus(''); setFromDate(''); setToDate(''); setPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/70">{copy.clearFilters}</button>
+          <button type="button" onClick={() => { setStatus(view === 'history' ? 'approved' : ''); setFromDate(''); setToDate(''); setPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/70">{copy.clearFilters}</button>
         </div>
       )}
 
@@ -966,7 +978,7 @@ export function LeaveWorkspace({
 
       {view === 'approvals' ? (
         <section className="mt-4" aria-label={copy.approvals}>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <div className="leave-summary grid grid-cols-2 gap-2 lg:grid-cols-4">
             {[
               { label: copy.awaitingApproval, count: approvalStatus === 'pending' ? approvalTotal : approvals.filter((request) => request.status === 'pending').length },
               { label: copy.approvedRecently, count: approvals.filter((request) => request.status === 'approved').length },
@@ -975,7 +987,7 @@ export function LeaveWorkspace({
             ].map((card) => (
               <article key={card.label} className="rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/25">
                 <p className="text-xl font-bold text-slate-900 dark:text-emerald-50">{card.count}</p>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-emerald-100/50">{card.label}</p>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-emerald-100/50">{card.label} · {copy.pageSummary}</p>
               </article>
             ))}
           </div>
@@ -1047,20 +1059,20 @@ export function LeaveWorkspace({
             </div>
           )}
           {approvalLoading ? (
-            <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50"><LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />{copy.loading}</div>
+            <div className="flex min-h-28 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50"><LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />{copy.loading}</div>
           ) : approvals.length === 0 ? (
-            <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
+            <div className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
               <CheckCircle2 className="h-8 w-8 text-emerald-500/70" />
               <p className="mt-3 text-sm font-bold text-slate-800 dark:text-emerald-50">{copy.emptyApprovals}</p>
               <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/50">{copy.emptyApprovalsHelp}</p>
             </div>
           ) : (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="leave-records mt-4 grid gap-2">
               {approvals.map((request) => (
-                <article key={request.requestId} className="rounded-lg border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-black/25">
+                <article key={request.requestId} data-status={request.status} className="leave-record rounded-lg border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-black/25">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900 dark:text-emerald-50">{request.employee.displayName}</p>
+                      <p className="break-words text-sm font-bold text-slate-900 dark:text-emerald-50">{request.employee.displayName}</p>
                       <p className="mt-1 text-xs text-slate-600 dark:text-emerald-100/65">{labelType(request.leaveType)}</p>
                     </div>
                     <span className={cn('shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold', statusClass(request.status))}>{labelStatus(request.status)}</span>
@@ -1087,23 +1099,23 @@ export function LeaveWorkspace({
           )}
         </section>
       ) : loading ? (
-        <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50">
+        <div className="flex min-h-28 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50">
           <LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />
           {copy.loading}
         </div>
       ) : requests.length === 0 ? (
-        <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
+        <div className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
           <CalendarDays className="h-8 w-8 text-emerald-500/70" />
           <p className="mt-3 text-sm font-bold text-slate-800 dark:text-emerald-50">{emptyText}</p>
           {view === 'requests' && <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/50">{copy.emptyRequestsHelp}</p>}
         </div>
       ) : (
-        <div role="tabpanel" className="mt-4 grid gap-3 md:grid-cols-2">
+        <div role="tabpanel" className="leave-records mt-4 grid gap-2">
           {requests.map((request) => (
-            <article key={request.requestId} className="min-w-0 rounded-lg border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-black/25">
+            <article key={request.requestId} data-status={request.status} className="leave-record min-w-0 rounded-lg border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-black/25">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-900 dark:text-emerald-50">{labelType(request.leaveType)}</p>
+                  <p className="break-words text-sm font-bold text-slate-900 dark:text-emerald-50">{labelType(request.leaveType)}</p>
                   <p className="mt-1 text-xs font-medium text-slate-600 dark:text-emerald-100/65" dir="ltr">{formatDate(request.startDate)} – {formatDate(request.endDate)}</p>
                 </div>
                 <span className={cn('shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold', statusClass(request.status))}>{labelStatus(request.status)}</span>
@@ -1213,6 +1225,8 @@ export function LeaveWorkspace({
               {detail.request.status === 'pending' && <p className="mt-4 text-xs font-bold text-amber-700 dark:text-amber-200">{detail.request.approvalConfigured ? copy.approvalPending : copy.noApprover}</p>}
             </div>
 
+            {detail.request.reason && <section><h4>{copy.reasonLabel}</h4><p className="leave-prose">{detail.request.reason}</p></section>}
+
             <section>
               <h4 className="text-xs font-bold uppercase text-slate-600 dark:text-emerald-100/60">{copy.conflictsHeading}</h4>
               {detail.request.conflictCount === 0 ? (
@@ -1240,7 +1254,7 @@ export function LeaveWorkspace({
                 {detail.history.map((entry, index) => (
                   <li key={`${entry.createdAt}-${index}`} className="relative text-xs text-slate-600 dark:text-emerald-100/60">
                     <span className="absolute -start-[1.28rem] top-1 h-2 w-2 rounded-full bg-emerald-500" />
-                    <p className="font-bold capitalize text-slate-800 dark:text-emerald-50">{entry.action.replaceAll('_', ' ')}</p>
+                    <p className="font-bold capitalize text-slate-800 dark:text-emerald-50">{copy[entry.action] || labelStatus(entry.newStatus as LeaveStatus)}</p>
                     <p className="mt-1">{formatDateTime(entry.createdAt)}</p>
                   </li>
                 ))}
@@ -1318,7 +1332,7 @@ export function LeaveWorkspace({
                 {approvalDetail.history.map((entry, index) => (
                   <li key={`${entry.createdAt}-${index}`} className="relative text-xs text-slate-600 dark:text-emerald-100/60">
                     <span className="absolute -start-[1.28rem] top-1 h-2 w-2 rounded-full bg-emerald-500" />
-                    <p className="font-bold capitalize text-slate-800 dark:text-emerald-50">{entry.action.replaceAll('_', ' ')}</p>
+                    <p className="font-bold capitalize text-slate-800 dark:text-emerald-50">{copy[entry.action] || labelStatus(entry.newStatus as LeaveStatus)}</p>
                     <p className="mt-1">{formatDateTime(entry.createdAt)}</p>
                   </li>
                 ))}
@@ -1342,6 +1356,7 @@ export function LeaveWorkspace({
           if (!decisionBusy) setDecision(null);
         }}
       >
+        {approvalDetail && <div className="leave-decision-context"><strong>{approvalDetail.request.employee.displayName}</strong><p>{labelType(approvalDetail.request.leaveType)} · {labelStatus(approvalDetail.request.status)}</p><p><bdi>{formatDate(approvalDetail.request.startDate)} – {formatDate(approvalDetail.request.endDate)}</bdi></p>{approvalDetail.request.reason && <details><summary>{copy.reasonLabel}</summary><p className="leave-prose">{approvalDetail.request.reason}</p></details>}</div>}
         <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-emerald-100/65">{decision === 'approve' ? copy.approveConsequence : copy.rejectConsequence}</p>
         {decision === 'approve' && approvalDetail?.request.hasRosterConflict && <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-100">{copy.conflictBeforeApproval}</p>}
         <label className="mt-4 block text-xs font-bold text-slate-700 dark:text-emerald-100/70">
@@ -1350,7 +1365,7 @@ export function LeaveWorkspace({
         </label>
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" disabled={decisionBusy} onClick={() => setDecision(null)} className="min-h-11 rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.close}</button>
-          <button type="button" disabled={decisionBusy} onClick={() => void submitDecision()} className={cn('inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-55', decision === 'approve' ? 'bg-emerald-500 text-black' : 'bg-red-600 text-white')}>
+          <button type="button" disabled={decisionBusy} onClick={() => void submitDecision()} className={cn('inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-55', decision === 'approve' ? 'bg-emerald-500 text-black' : 'border border-red-500/30 text-red-700 dark:text-red-200')}>
             {decisionBusy && <LoaderCircle className="h-4 w-4 animate-spin" />}
             {decisionBusy ? copy.savingDecision : decision === 'approve' ? copy.approve : copy.reject}
           </button>

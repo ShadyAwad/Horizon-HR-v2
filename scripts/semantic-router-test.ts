@@ -26,6 +26,20 @@ await test('strict proposal schema rejects arbitrary actions, routes and malform
 await test('exact aliases and regex never invoke either provider',async()=>{
   embeds=reasons=0;assert.equal((await resolveQuery('request leave',base())).method,'exact');assert.equal((await resolveQuery('I want time off Thursday',base())).method,'rule');assert.equal(embeds,0);assert.equal(reasons,0);
 });
+await test('strong rules distinguish personal assets, domain requests, and asset subjects',async()=>{
+  const d=base();d.authorization={resolve:async()=>({state:'disabled'})};
+  d.search={search:async()=>[{intentKey:'my_assets',score:.98},{intentKey:'employee_equipment',score:.55}]};
+  for(const query of ['what equipment do I have?','show my assigned equipment']){const r=await resolveQuery(query,d);assert.equal(r.intentKey,'my_assets');assert.equal(r.method,'semantic');}
+  d.search={search:async()=>[]};
+  for(const query of ['show requests','who has requested leave'])assert.equal((await resolveQuery(query,d)).outcome,'no_match');
+  for(const [query,key] of [['what laptop is Ahmed using?','employee_equipment'],['what equipment does Ahmed have?','employee_equipment'],['who has NS-LAP-003?','asset_holder'],['who has the company laptop?','asset_holder'],['show support requests','support_lookup']]){const r=await resolveQuery(query,d);assert.equal(r.intentKey,key);assert.equal(r.method,'rule');}
+});
+await test('explicit clock instructions stay local, permission-gated and direction-specific',async()=>{
+  const d=base();let calls=0;d.embedding={...provider,embed:async()=>{calls++;return [1,0];}};
+  for(const [query,key] of [['Assist me with clocking in for work','clock_in_help'],['I would like guidance with clocking out','clock_out_help'],['Where is the clock out button','clock_out_help'],['Clock in instructions','clock_in_help']]){const r=await resolveQuery(query,d);assert.equal(r.intentKey,key);assert.equal(r.method,'rule');assert.equal(r.fallbackUsed,false);}
+  assert.equal(calls,0);d.allowed=async()=>false;assert.equal((await resolveQuery('Assist me with clocking out',d)).outcome,'unauthorized');
+  assert(!INTENTS.find(i=>i.key==='clock_in_help')!.rule!.test(normalizeQuery('who is clocking in')));assert(!INTENTS.find(i=>i.key==='clock_out_help')!.rule!.test(normalizeQuery('show clock out records')));
+});
 await test('semantic aggregation uses competing intent rather than duplicate example',async()=>{
   const d=base();d.search={search:async()=>[{intentKey:'request_leave',score:.93},{intentKey:'request_leave',score:.91},{intentKey:'leave_balance',score:.67}]};reasons=0;
   const r=await resolveQuery('a day away',d);assert.equal(r.method,'semantic');assert.equal(r.competingScore,.67);assert.equal(r.intentKey,'request_leave');assert.equal(reasons,0);

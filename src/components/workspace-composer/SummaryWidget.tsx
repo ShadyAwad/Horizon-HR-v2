@@ -23,7 +23,7 @@ export default function SummaryWidget({widget,result,onRefresh}:{widget:WidgetIn
  case 'communications':rows=(data.messages||[]).map((r:{subject:string;status:string})=>({title:r.subject,detail:r.status}));break;
  case 'meetings':rows=(data.meetings||[]).map((r:{title:string;starts_at:string;timezone:string})=>({title:r.title,detail:new Date(r.starts_at).toLocaleString(isRtl?'ar':'en',{timeZone:r.timezone})+' '+r.timezone}));break;
  case 'breaks': rows=[...(data.breaks||[]).filter((b:any)=>!b.ended_at||b.exception_status==='unresolved').map((b:any)=>({title:b.employee_name||text('Break','استراحة'),detail:!b.ended_at?text('Active','نشطة'):text('Unresolved','تحتاج مراجعة')})),...(data.requests||[]).filter((r:any)=>r.status==='pending').map((r:any)=>({title:r.employee_name||text('Break request','طلب استراحة'),detail:`${r.duration_minutes} ${text('min · Pending','دقيقة · معلق')}`}))];break;
- case 'leave':rows=(data.requests||[]).map((r:any)=>({title:r.employee?.name||r.employeeName||r.leaveType,detail:`${r.startDate} → ${r.endDate}`}));break;
+ case 'leave':rows=(data.requests||[]).map((r:any)=>({title:r.employee?.displayName||r.employee?.name||r.employeeName||r.leaveType,detail:`${r.startDate} → ${r.endDate}`}));break;
  case 'expenses':rows=(data.claims||[]).map((r:any)=>({title:r.merchantName,detail:`${r.amount} ${r.currency} · ${r.status}`}));break;
 
  case 'grievances':rows=(data.grievances||[]).map((r:any)=>({title:`${r.case_number} · ${r.title}`,detail:GRIEVANCE_COPY[r.status as keyof typeof GRIEVANCE_COPY]?.[isRtl?1:0]||r.status}));break;

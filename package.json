@@ -114,7 +114,8 @@
     "test:product-polish": "tsx scripts/product-polish-test.ts && tsx scripts/cursor-motion-benchmark.ts",
     "test:operational:browser": "tsx scripts/operational-browser-test.ts",
     "test:document": "tsx scripts/document-integrity-test.ts",
-    "test:document:browser": "tsx scripts/document-browser-test.ts"
+    "test:document:browser": "tsx scripts/document-browser-test.ts",
+    "test:business-scenarios": "node scripts/business-scenarios-runner.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
