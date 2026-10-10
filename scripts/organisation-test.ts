@@ -260,3 +260,22 @@ assert.match(selectStyles, /\[dir="rtl"\] select/);
 assert.match(selectStyles, /\[role="listbox"\]/);
 assert.match(selectStyles, /\[aria-disabled="true"\]/);
 console.log('Organisation foundation checks passed: 197');
+
+// The existing placement/reporting handlers must be able to audit a successful edit.
+const {recordAuditEvent,presentAuditEvent}=await import('../src/server/audit/audit-events');
+const writes:unknown[][]=[];
+const auditClient={query:async (_sql:string,values:unknown[])=>{writes.push(values);return {rows:[]};}} as unknown as import('pg').PoolClient;
+const auditIdentity={tenantId:'00000000-0000-4000-8000-000000000001',actorId:'00000000-0000-4000-8000-000000000002',targetType:'employee',targetId:'00000000-0000-4000-8000-000000000003'};
+for(const [action,metadata] of [
+ ['organisation.employee_placement.updated',{jobTitleId:null,departmentId:null,teamId:null}],
+ ['organisation.reporting_line.updated',{managerId:null}],
+ ['organisation.department.created',{name:'Fixture department'}],
+ ['organisation.team.created',{name:'Fixture team'}],
+ ['organisation.job_title.created',{name:'Fixture title'}],
+] as const){
+ await recordAuditEvent(auditClient,{...auditIdentity,action,metadata});
+ assert.equal(presentAuditEvent(action,'employee',metadata).module,'organisation');
+ await assert.rejects(recordAuditEvent(auditClient,{...auditIdentity,action,metadata:{...metadata,salary:100}}),/not allowed/);
+}
+assert.equal(writes.length,5,'unsafe metadata never reaches SQL');
+console.log('PASS placement/reporting/setup audit writes retain explicit metadata allowlists and safe presentation');

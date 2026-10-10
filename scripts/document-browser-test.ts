@@ -566,7 +566,7 @@ try {
   const post = posts.posts.find((x: any) => x.title === tag);
   assert(post, "Publication should exist");
   ownedPosts.push(post.id);
-  await p.getByText("Manage Posts", { exact: true }).waitFor();
+  await p.locator(".company-feed-management > summary").click();
   const card = p
     .getByText(tag, { exact: true })
     .last()
@@ -761,7 +761,8 @@ try {
       .first()
       .click();
     await reader
-      .getByText(tag, { exact: true })
+      .locator(".company-feed-publications")
+      .getByRole("heading", { name: tag, exact: true })
       .waitFor()
       .catch(async (e) => {
         console.log(
@@ -770,6 +771,8 @@ try {
         );
         throw e;
       });
+    await reader.getByRole('button', {name: 'Read: ' + tag, exact:true}).click();
+    await reader.locator('.company-feed-reader .stanza-document-content').waitFor();
     assert.equal(
       await reader.locator(".stanza-feed-editor-surface").count(),
       0,
@@ -782,6 +785,7 @@ try {
     console.log(
       "PASS unauthorized content mutation blocked by API; reader loads no editor/drawing tools",
     );
+    await reader.keyboard.press("Escape");
     const scrollSamples = await reader.evaluate(async () => {
       const targets = [
         document.scrollingElement!,
@@ -865,6 +869,7 @@ try {
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   );
   console.log("PASS 390px and Arabic authoring direction");
+  await p.locator(".company-feed-management > summary").click();
   const arabicCard = p
     .getByText(tag, { exact: true })
     .last()

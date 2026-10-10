@@ -40,6 +40,8 @@
     "test:editor": "tsx scripts/editor-test.ts",
     "test:feed-submission": "tsx scripts/feed-submission-test.ts",
     "test:company-feed": "tsx scripts/company-feed-draft-test.ts",
+    "test:company-feed:browser": "tsx scripts/company-feed-polish-browser-test.ts",
+    "test:people:browser": "tsx scripts/people-browser-test.ts",
     "test:organisation": "tsx scripts/organisation-test.ts",
     "test:shift-swaps": "tsx scripts/shift-swaps-test.ts",
     "test:roster-goals": "tsx scripts/roster-goals-test.ts",

@@ -1,3 +1,4 @@
+import { CompanyFeedPublications, publicationPreview } from '../src/components/communications/CompanyFeedPublications';
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LanguageProvider } from "../src/lib/LanguageContext";
@@ -261,3 +262,17 @@ console.log(
   "bytes",
   JSON.stringify(long).length,
 );
+
+const boundedFeedMarkup = renderToStaticMarkup(createElement(LanguageProvider, null,
+  createElement(CompanyFeedPublications, {posts: [{id:'preview',title:'Long publication',content_text:'A'.repeat(2000),content_json:doc,post_type:'general',published_at:'2026-10-01T10:00:00Z',updated_at:'2026-10-02T10:00:00Z'}], loading:false})));
+assert(boundedFeedMarkup.includes('Read post'));
+assert(boundedFeedMarkup.includes('Edited'));
+assert(!boundedFeedMarkup.includes('A'.repeat(301)), 'Text preview is bounded');
+assert(!boundedFeedMarkup.includes('<table'), 'Structural content is deferred to the reader');
+assert(!boundedFeedMarkup.includes('contenteditable'), 'Feed has no authoring surface');
+assert(!boundedFeedMarkup.includes('documentVersion'), 'Internal serialization metadata stays private');
+console.log('PASS bounded feed previews, publication metadata and reader/authoring boundary');
+
+assert.equal(publicationPreview('Line one\n\nLine two'), 'Line one Line two');
+assert.equal(publicationPreview('x'.repeat(1000)).length,301);
+console.log('PASS multiline previews stay compact without clipping rich structure');

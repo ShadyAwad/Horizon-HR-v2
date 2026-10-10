@@ -1,3 +1,5 @@
+import '../components/organisation/people.css';
+import { CompanyFeedPublications } from '../components/communications/CompanyFeedPublications';
 import { AttendanceTerminal } from '../components/attendance/AttendanceTerminal';
 import { PasskeyAction } from '../components/ui/PasskeyAction';
 import { AttendanceStatus } from '../components/attendance/AttendanceStatus';
@@ -282,7 +284,7 @@ class CompanyFeedBoundary extends Component<{ children: ReactNode; onDiscardLoca
     );
   }
 }
-const RichFeedContent = lazy(() => import('../components/FeedDocumentRenderer').then((module) => ({ default: module.RichFeedContent })));
+
 
 type ClockActionState =
   | 'idle'
@@ -3873,7 +3875,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       if (res.ok && data.success) {
         setAdminFeedPosts(data.posts || []);
+      } else {
+        setFeedMessageType('error');
+        setFeedMessage(data.error || t('dash.feedLoadError'));
       }
+    } catch {
+      setFeedMessageType('error');
+      setFeedMessage(t('dash.feedLoadServerError'));
     } finally {
       setAdminFeedLoading(false);
     }
@@ -5567,7 +5575,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {((activeTab==='semanticIntelligence'&&canViewSemantic)||(activeTab==='semanticPlatform'&&canViewSemanticPlatform))&&<Suspense fallback={<div aria-live="polite">{lang==='ar'?'جار التحميل…':'Loading…'}</div>}><SemanticIntelligencePanel key={activeTab} platform={activeTab==='semanticPlatform'}/></Suspense>}
                 {activeTab === 'organisation' && canViewOrganisation && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
-                    <OrganisationPanel initialView={organisationCommandView} openViewSignal={organisationCommandSignal} />
+                    <OrganisationPanel canEditPeople={Boolean(user.permissions?.includes('hierarchy.manage'))} initialView={organisationCommandView} openViewSignal={organisationCommandSignal} />
                   </Suspense>
                 )}
                 {activeTab === 'locations' && canViewLocations && (
@@ -6085,7 +6093,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             <button
                               type="button"
                               onClick={submitFeedPost}
-                              disabled={feedPublishInteraction.disabled}
+                              disabled={feedPublishInteraction.disabled || isOffline}
                               aria-busy={feedPublishInteraction.showSpinner}
                               className={cn(
                                 'stanza-document-publish inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60',
@@ -6109,7 +6117,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                               </Suspense>
                             </div>
                             <div className="stanza-document-draft-actions flex min-h-10 flex-wrap items-center justify-between gap-2 text-sm md:col-span-4">
-                              <span className="flex items-center gap-2">
+                              <span className="flex flex-wrap items-center gap-2">
+                                {!feedEditing && feedDraft.hasDraft && <span className="text-slate-500 dark:text-slate-300">{isRtl ? 'مسودة خاصة · غير منشورة' : 'Private draft · Not published'}</span>}
                                 {!feedEditing && feedDraft.hasDraft && (
                                   <button type="button" onClick={() => void feedDraft.restore()} className="rounded border border-emerald-500/20 px-2 py-1 text-emerald-700 transition hover:border-emerald-500/50 dark:text-emerald-200">
                                     {t('dash.feedDraftContinue')}
@@ -6134,7 +6143,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       )}
 
                       {feedMessage && (
-                        <p className={cn(
+                        <p role={feedMessageType === 'success' ? 'status' : 'alert'} className={cn(
                           "mt-4 rounded-lg border px-3 py-2 text-xs font-semibold",
                           feedMessageType === 'success'
                             ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -6144,55 +6153,18 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                         </p>
                       )}
 
-                      <div className="mt-4 space-y-3">
-                        {feedPosts.map((post) => (
-                          <article key={post.id} className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/35">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{post.title}</h3>
-                                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                  {post.author_name || t('enum.hrAdmin')} · <span dir="ltr">{formatShortDateTime(post.published_at)}</span>
-                                </p>
-                              </div>
-                              <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
-                                {displayEnum(post.post_type)}
-                              </span>
-                            </div>
-                            {post.post_type === 'event' && (post.event_starts_at || post.event_ends_at) && (
-                              <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
-                                <span dir="ltr">{post.event_starts_at ? formatShortDateTime(post.event_starts_at) : t('dash.eventTimeTbd')}</span>
-                                {post.event_ends_at ? ` - ${formatShortDateTime(post.event_ends_at)}` : ''}
-                              </p>
-                            )}
-                            <Suspense fallback={<p className="mt-3 text-xs text-emerald-100/45">{post.content_text}</p>}>
-                              <RichFeedContent contentJson={post.content_json ?? post.contentJson} contentText={post.content_text} />
-                            </Suspense>
-                          </article>
-                        ))}
-
-                        {!feedLoading && feedPosts.length === 0 && (
-                          <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                            {t('dash.noCompanyAnnouncements')}
-                          </p>
-                        )}
-
-                        {feedLoading && (
-                          <p className="rounded-lg border border-emerald-500/15 p-6 text-center text-xs text-neutral-500 dark:border-emerald-500/15 dark:text-emerald-100/45">
-                            {t('dash.loadingCompanyFeed')}
-                          </p>
-                        )}
-                      </div>
+                      <CompanyFeedPublications posts={feedPosts} loading={feedLoading} failed={feedMessageType === 'error' && Boolean(feedMessage)} />
 
                       {canPublishFeed && (
-                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:border-emerald-500/15 dark:bg-black/30">
-                          <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{t('dash.managePosts')}</h3>
+                        <details className="company-feed-management mt-4">
+                          <summary>{t('dash.managePosts')} <span>({adminFeedPosts.length})</span></summary>
                           <div className="space-y-2">
                             {adminFeedPosts.map((post) => (
                               <div key={post.id} className="flex flex-col gap-2 rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:border-emerald-500/15 dark:bg-black/40 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
-                                  <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{post.title}</p>
+                                  <p className="break-words text-xs font-bold text-slate-800 dark:text-slate-100">{post.title}</p>
                                   <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-                                    {displayEnum(post.post_type)} · <span dir="ltr">{formatShortDateTime(post.created_at)}</span>
+                                    {post.status === 'draft' ? (isRtl ? 'غير منشور' : 'Unpublished') : displayEnum(post.status)} · {displayEnum(post.post_type)} · <span dir="ltr">{formatShortDateTime(post.created_at)}</span>
                                   </p>
                                 </div>
                                 <button type="button" className="stanza-document-control" onClick={async()=>{if(!feedEditing&&feedForm.contentText.trim()&&!window.confirm(isRtl?'حفظ المسودة وفتح المنشور؟':'Save the draft and open this publication?'))return;if(!feedEditing&&feedForm.contentText.trim()&&!await feedDraft.saveNow())return;setFeedEditing(post);setFeedForm({...defaultFeedForm,title:post.title,contentText:post.content_text,contentJson:post.content_json??post.contentJson});setFeedEditorKey(k=>k+1);document.querySelector('.stanza-document-workspace')?.scrollIntoView({block:'start'});}}>{isRtl?'تحرير المحتوى':'Edit content'}</button>
@@ -6222,7 +6194,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                               </p>
                             )}
                           </div>
-                        </div>
+                        </details>
                       )}
                    </div>
                   </CompanyFeedBoundary>
@@ -6728,7 +6700,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       ) : showGrievancesPanel ? (
  <Suspense fallback={<p role="status">{isRtl ? 'جار تحميل القضايا…' : 'Loading cases…'}</p>}><GrievancesPanel user={user} initialView={grievancesInitialView} initialCaseId={grievanceCaseId} onBack={()=>setShowGrievancesPanel(false)} onMutation={refreshAttentionCounts} onEmailDraft={()=>selectNavigationItem('communications')}/></Suspense>
                       ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="people-self-profile grid grid-cols-1 md:grid-cols-2 gap-3">
+                         <header className="md:col-span-2 min-w-0 border-b border-emerald-500/15 pb-4">
+                           <h3 className="text-xl font-bold break-words">{user.name}</h3>
+                           <p className="mt-1 text-sm">{user.jobTitle || (isRtl ? 'لم يُحدد المسمى الوظيفي' : 'No job title assigned')}</p>
+                           <p className="mt-2 text-sm break-all"><bdi dir="ltr">{user.email}</bdi></p>
+                           <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">{isRtl ? 'دور الوصول' : 'Access role'}: {user.roleNames?.join(' · ') || displayRole(user.role)}</summary><p className="mt-2 break-words">{isRtl ? 'دور الحساب' : 'Account role'}: {displayRole(user.role)}</p></details>
+                         </header>
                          <div id="stanza-my-equipment" className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
                            <Suspense fallback={<div className="min-h-28 animate-pulse rounded-lg bg-emerald-500/5" />}>
                              <MyEquipmentPanel />
@@ -6742,7 +6720,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          <div className="rounded-xl border border-emerald-500/15 bg-white/70 p-4 dark:bg-black/35 md:col-span-2">
                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                              <div className="flex min-w-0 items-center gap-4">
-                               <UserAvatar name={user.name} imageUrl={user.profileImageUrl} className="h-20 w-20" />
+                               <UserAvatar name={user.name} imageUrl={user.profileImageUrl} className="h-12 w-12" />
                                <div className="min-w-0">
                                  <h3 className="text-sm font-black uppercase tracking-widest text-neutral-800 dark:text-emerald-50">{t('profile.photo')}</h3>
                                  <p className="mt-1 text-xs text-neutral-500 dark:text-emerald-100/50">{t('profile.photoHelp')}</p>
@@ -6802,7 +6780,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          </div>
 
                          {canManageRoles && (
-                           <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl md:col-span-2">
+                           <details className="border-t border-emerald-500/15 pt-4 md:col-span-2"><summary className="cursor-pointer text-sm font-bold">{t('dash.rolesPermissions')}</summary><div className="pt-4">
                              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                <div>
                                  <p className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">{t('dash.rolesPermissions')}</p>
@@ -6951,24 +6929,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                  </div>
                                </div>
                              </div>
-                           </div>
+                           </div></details>
                          )}
 
-                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex flex-col justify-between">
-                            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.leaveName')}</p>
-                            <p className="text-3xl font-bold text-slate-800 dark:text-white">24.5 <span className="text-sm text-slate-500 font-normal">{t('profile.leaveDays')}</span></p>
-                            <div className="w-full h-1 bg-neutral-200 dark:bg-black/60 mt-3 rounded-full overflow-hidden">
-                              <div className="w-[70%] h-full bg-emerald-500"></div>
-                            </div>
-                         </div>
-                         <div className="bg-white/70 dark:bg-black/35 border border-emerald-500/15 dark:border-emerald-500/15 p-4 rounded-xl flex flex-col justify-between">
-                            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{t('profile.loan')}</p>
-                            <p className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
-                               {t('dash.profileLoanCleared')}
-                            </p>
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 font-mono uppercase tracking-widest">{t('dash.noActiveLiabilities')}</p>
-                         </div>
                       </div>
                       )}
                    </div>
