@@ -1,3 +1,4 @@
+import { loadMapLibre } from '../../lib/maplibre';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, Edit3, MapPin, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
@@ -74,16 +75,15 @@ function MapPreview({
     if (!host.current || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
     void (async () => {
       try {
-        const [maplibre] = await Promise.all([
-          import('maplibre-gl'),
-          import('maplibre-gl/dist/maplibre-gl.css'),
-        ]);
+        const maplibre = await loadMapLibre();
         if (disposed || !host.current) return;
         map = new maplibre.Map({
           container: host.current,
           style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${import.meta.env.VITE_MAPTILER_KEY || ''}`,
           center: [lng, lat],
           zoom: 13,
+          // Preserve v5 vector-tile overscaling and label placement.
+          zoomLevelsToOverscale: undefined,
           attributionControl: false,
         });
         const marker = new maplibre.Marker({ draggable: true }).setLngLat([lng, lat]).addTo(map);

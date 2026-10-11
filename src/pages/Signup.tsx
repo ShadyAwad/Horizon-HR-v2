@@ -1,3 +1,4 @@
+import { loadMapLibre } from '../lib/maplibre';
 import React, { useEffect, useMemo, useState ,useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { motion, AnimatePresence } from 'motion/react';
@@ -243,10 +244,7 @@ const InteractiveMap = ({
       setMapStatus('loading');
 
       try {
-        const [maplibreModule] = await Promise.all([
-          import('maplibre-gl'),
-          import('maplibre-gl/dist/maplibre-gl.css'),
-        ]);
+        const maplibreModule = await loadMapLibre();
 
         if (disposed || !mapContainerRef.current) return;
 
@@ -257,6 +255,8 @@ const InteractiveMap = ({
           style: mapStyleUrl(selectedMapStyle, maptilerKey),
           center: initialCenter,
           zoom: hasCoordinates ? 15 : 1.5,
+          // Preserve v5 vector-tile overscaling and label placement.
+          zoomLevelsToOverscale: undefined,
           attributionControl: { compact: true },
         });
 
