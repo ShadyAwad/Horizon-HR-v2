@@ -243,6 +243,13 @@ function isSameOriginSessionMutation(req: express.Request, res: express.Response
   return next();
 }
 
+// Every cookie-authenticated unsafe method uses the same Origin boundary,
+// including legacy modules that predate route-specific mutation guards.
+function finishSessionAuthentication(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return isSameOriginSessionMutation(req, res, next);
+}
+
 function getLoginRateLimitKeys(req: express.Request, normalizedEmail: string) {
   return [`account:${normalizedEmail}`, `ip:${getRequestIp(req)}`];
 }
@@ -291,7 +298,10 @@ function getCookie(req: express.Request, name: string) {
   const cookieHeader = req.header('cookie') || '';
   for (const part of cookieHeader.split(';')) {
     const [key, ...valueParts] = part.trim().split('=');
-    if (key === name) return decodeURIComponent(valueParts.join('='));
+    if (key === name) {
+      try { return decodeURIComponent(valueParts.join('=')); }
+      catch { return null; }
+    }
   }
   return null;
 }
@@ -832,6 +842,8 @@ async function demoAuth(
         ${ACTIVE_AUTH_ROLE_JOINS}
         WHERE employees.id = $1
           AND employees.tenant_id = $2
+          AND employees.is_active = true
+          AND employees.employment_status = 'active'
         GROUP BY employees.id
         LIMIT 1
       `,
@@ -855,7 +867,7 @@ async function demoAuth(
     }
 
     req.authUser = user;
-    next();
+    return finishSessionAuthentication(req, res, next);
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === '42703') {
       try {
@@ -875,6 +887,8 @@ async function demoAuth(
             FROM employees
             WHERE id = $1
               AND tenant_id = $2
+              AND is_active = true
+              AND employment_status = 'active'
             LIMIT 1
           `,
           [employeeId, tenantId],
@@ -888,7 +902,7 @@ async function demoAuth(
         }
 
         req.authUser = fallbackResult.rows[0];
-        return next();
+        return finishSessionAuthentication(req, res, next);
       } catch (fallbackError) {
         console.error('[Auth] Fallback auth failed:', fallbackError);
       }
@@ -1084,6 +1098,8 @@ async function consumeWebAuthnChallenge(
         ORDER BY created_at DESC
         LIMIT 1
       )
+        AND used_at IS NULL
+        AND expires_at > NOW()
       RETURNING id, challenge
     `,
     [tenantId, employeeId, challengeType],
@@ -1141,6 +1157,8 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
         ON tenants.id = employees.tenant_id
       ${ACTIVE_AUTH_ROLE_JOINS}
       WHERE LOWER(employees.email) = $1
+      AND employees.is_active = true
+      AND employees.employment_status = 'active'
       GROUP BY employees.id, tenants.company_name, tenants.slug
       LIMIT 1
     `,
@@ -1318,6 +1336,21 @@ async function startServer() {
     },
   }));
 
+  // Static-file errors must not reach Express's development stack renderer.
+  app.use(profileImageStorage.publicPath, (
+    error: unknown,
+    _req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    if (res.headersSent) return next(error);
+    const suppliedStatus = Number((error as { statusCode?: unknown } | null)?.statusCode);
+    const status = Number.isInteger(suppliedStatus) && suppliedStatus >= 400 && suppliedStatus <= 599
+      ? suppliedStatus : 500;
+    if (status >= 500) logServerError('[Profile Avatar] Retrieval failed:', error);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(status).type('text/plain').send('Profile image unavailable.');
+  });
   // === HORIZON HR API ROUTES ===
 
   registerCommunicationsRoutes(app, { standardAuth: demoAuth, mutationGuard: isSameOriginSessionMutation, rateLimiter: organisationMutationRateLimiter });
@@ -1854,7 +1887,7 @@ registerHiringDepthRoutes(app,{standardAuth:demoAuth,mutationGuard:isSameOriginS
   // Session lifecycle endpoints.
 
 
-app.post('/api/auth/logout', async (req, res) => {
+app.post('/api/auth/logout', isSameOriginSessionMutation, async (req, res) => {
   try {
     if (hasDatabaseConfig()) await revokeAuthSession(req, res);
     else clearAuthSessionCookie(req, res);
@@ -2109,6 +2142,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
           ON tenants.id = employees.tenant_id
         ${ACTIVE_AUTH_ROLE_JOINS}
         WHERE LOWER(employees.email) = $1
+          AND employees.is_active = true
+          AND employees.employment_status = 'active'
         GROUP BY employees.id, tenants.company_name, tenants.slug
         LIMIT 1
       `,
@@ -2172,6 +2207,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             INNER JOIN tenants
               ON tenants.id = employees.tenant_id
             WHERE LOWER(employees.email) = $1
+              AND employees.is_active = true
+              AND employees.employment_status = 'active'
             LIMIT 1
           `,
           [normalizedEmail],
@@ -2226,7 +2263,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
 });
 
 
-app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) => {
+app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, isSameOriginSessionMutation, async (req, res) => {
   const authUser = req.authUser!;
   let newProfileImageUrl: string | null = null;
   let databaseUpdated = false;
@@ -2287,7 +2324,7 @@ app.post('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) =>
   }
 });
 
-app.delete('/api/profile/avatar', avatarRateLimiter, demoAuth, async (req, res) => {
+app.delete('/api/profile/avatar', avatarRateLimiter, demoAuth, isSameOriginSessionMutation, async (req, res) => {
   const authUser = req.authUser!;
   try {
     const previousProfileImageUrl = await withTenant(authUser.tenantId, async (client) => {
@@ -2456,7 +2493,7 @@ app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAut
         expectedOrigin: origin,
         expectedRPID: rpID,
         requireUserVerification: true,
-      });
+      }).catch(() => { throw Object.assign(new Error('Invalid passkey response.'), { statusCode: 400 }); });
 
       if (!verification.verified || !verification.registrationInfo) {
         throw Object.assign(new Error('Passkey registration could not be verified.'), { statusCode: 400 });
@@ -2524,7 +2561,7 @@ app.post('/api/auth/passkeys/register/verify', sensitiveAuthRateLimiter, demoAut
     logServerError('[Passkeys] Failed to verify registration:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
-      error: (error as Error).message || 'Unable to register passkey.',
+      error: Number((error as { statusCode?: number }).statusCode) < 500 ? (error as Error).message : 'Unable to register passkey.',
     });
   }
 });
@@ -2679,7 +2716,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
         expectedRPID: rpID,
         credential: toWebAuthnCredential(credentialRow),
         requireUserVerification: true,
-      });
+      }).catch(() => { throw Object.assign(new Error('Invalid passkey response.'), { statusCode: 400 }); });
 
       if (!verification.verified) {
         throw Object.assign(new Error('Invalid passkey sign in.'), { statusCode: 401 });
@@ -2730,7 +2767,7 @@ app.post('/api/auth/passkeys/login/verify', passkeyLoginRateLimiter, async (req,
     logServerError('[Passkeys] Failed to verify login:', error);
     res.status(Number((error as { statusCode?: number }).statusCode) || 500).json({
       success: false,
-      error: (error as Error).message || 'Unable to sign in with passkey.',
+      error: Number((error as { statusCode?: number }).statusCode) < 500 ? (error as Error).message : 'Unable to sign in with passkey.',
     });
   }
 });

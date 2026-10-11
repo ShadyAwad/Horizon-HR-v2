@@ -243,7 +243,7 @@ type ApprovalAccess = { canView: boolean; canDecide: boolean; authority: Permiss
 async function approvalAccess(client: PoolClient, tenantId: string, actorId: string, request: any): Promise<ApprovalAccess> {
   if (request.employee_id === actorId) return { canView: false, canDecide: false, authority: null };
   if (request.approver_employee_id === actorId) {
-    if (request.approval_source !== 'delegation') return { canView: true, canDecide: true, authority: null };
+    // Stored routing identifies an intended reviewer; current authority still controls access.
     const delegated = await resolveScopedPermission(client, { tenantId, actorEmployeeId: actorId, permissionKey: 'leave.approve', targetEmployeeId: request.employee_id });
     if (delegated.allowed && delegated.source === 'delegation') return { canView: true, canDecide: true, authority: delegated };
   }

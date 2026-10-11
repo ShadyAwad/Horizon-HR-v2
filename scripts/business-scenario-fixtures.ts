@@ -34,7 +34,7 @@ export class BusinessFixtures {
   // Hiring's normal conversion assigns this existing system role; no new role semantics.
   const role=(await this.db.query("INSERT INTO tenant_roles(tenant_id,name,system_key,is_system) VALUES($1,'Employee','employee',true) RETURNING id",[this.primary])).rows[0].id;
   for(const key of self)await this.db.query('INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_key) VALUES($1,$2,$3)',[this.primary,role,key]);
-  const runtime=await getDbPool().query('SELECT current_user AS name');assert.equal(runtime.rows[0].name,'stanza_runtime');
+  const runtime=await getDbPool().query('SELECT current_user AS name');assert.equal(runtime.rows[0].name,process.env.DATABASE_RUNTIME_ROLE||'stanza_runtime');
  }
  async person(tenantId:string,name:string,keys:string[],managerId?:string):Promise<ScenarioActor> {
   const email=`business-${randomUUID()}@example.invalid`;

@@ -7,6 +7,9 @@ import {
   StanzaPreferencesProvider,
 } from './lib/StanzaPreferencesContext';
 import { markDevPerformance } from './lib/dev-performance';
+import { installStaleChunkRecovery } from './lib/pwa-chunk-recovery';
+
+if (import.meta.env.PROD) installStaleChunkRecovery();
 
 if (import.meta.env.LOGIN_AUTOFILL_DIAGNOSTIC) {
   void import('./diagnostics/login-autofill').then(({ installLoginAutofillDiagnostic }) => installLoginAutofillDiagnostic());

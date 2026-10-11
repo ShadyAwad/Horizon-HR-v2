@@ -31,10 +31,12 @@ try {
     const table=identifier(relname), global=relname==='router_semantic_examples';
     const empty=await runtime.query(`SELECT count(*)::int AS n FROM public.${table}${global?' WHERE tenant_id IS NOT NULL':''}`);
     assert.equal(empty.rows[0].n,0,relname+' must deny missing context');
-    const expected=(await admin.query(`SELECT count(*)::int AS n FROM public.${table} WHERE tenant_id=$1`,[own])).rows[0].n;
+    // Restrictive platform-grant policy intentionally hides own-tenant platform rows.
+    const expected=(await admin.query(`SELECT count(*)::int AS n FROM public.${table} WHERE tenant_id=$1${relname==='tenant_role_permissions'?" AND permission_key NOT LIKE 'platform.%'":''}`,[own])).rows[0].n;
     await withTenant(own,async c=>{
       assert.equal((await c.query(`SELECT count(*)::int AS n FROM public.${table} WHERE tenant_id=$1`,[own])).rows[0].n,expected,relname+' own rows');
       assert.equal((await c.query(`SELECT * FROM public.${table} WHERE tenant_id=$1`,[other])).rowCount,0,relname+' cross tenant');
+      if(relname==='tenant_role_permissions')assert.equal((await c.query("SELECT * FROM tenant_role_permissions WHERE tenant_id=$1 AND permission_key LIKE 'platform.%'",[own])).rowCount,0,'platform grants hidden even in own tenant');
       const update=(await c.query("SELECT has_table_privilege(current_user,$1,'UPDATE') AS allowed",['public.'+relname])).rows[0].allowed;
       if(update)assert.equal((await c.query(`UPDATE public.${table} SET tenant_id=tenant_id WHERE tenant_id=$1`,[other])).rowCount,0,relname+' cross-tenant update');
     });

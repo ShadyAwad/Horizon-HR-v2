@@ -29,7 +29,7 @@ async function api(path: string, init: RequestInit = {}) {
 }
 
 async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
-  const email = { hr_admin: 'admin@stanza-demo.com', manager: 'manager@stanza-demo.com', employee: 'employee@stanza-demo.com' }[role];
+  const email = { hr_admin: process.env.AUDIT_TEST_ADMIN_EMAIL || 'admin@stanza-demo.com', manager: process.env.AUDIT_TEST_MANAGER_EMAIL || 'manager@stanza-demo.com', employee: process.env.AUDIT_TEST_EMPLOYEE_EMAIL || 'employee@stanza-demo.com' }[role];
   const result = await api('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: baseUrl },

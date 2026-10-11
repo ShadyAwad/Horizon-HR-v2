@@ -17,7 +17,7 @@ export function caseVersion(value: unknown): number { if (!Number.isSafeInteger(
     throw caseFail(400, 'VERSION_REQUIRED', 'Reload the case and retry.'); return Number(value); }
 export function caseTransition(from: CaseStatus, to: unknown): CaseStatus { if (!CASE_TRANSITIONS[from]?.includes(to as CaseStatus))
     throw caseFail(409, 'INVALID_TRANSITION', 'This case transition is not allowed.'); return to as CaseStatus; }
-export function casePage(value: unknown): number { const n = Number(value ?? 1); if (!Number.isInteger(n) || n < 1 || n > 10000)
+export function casePage(value: unknown): number { if (value != null && typeof value !== 'number' && typeof value !== 'string') throw caseFail(400, 'INVALID_PAGE', 'Invalid page.'); const n = Number(value ?? 1); if (!Number.isInteger(n) || n < 1 || n > 10000)
     throw caseFail(400, 'INVALID_PAGE', 'Invalid page.'); return n; }
 export function caseObject(value: unknown, keys: readonly string[]): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !keys.includes(k)))
     throw caseFail(400, 'INVALID_FIELDS', 'Unexpected case fields.'); return value as Record<string, unknown>; }

@@ -42,6 +42,7 @@ export function registerSupportRoutes(app:express.Express,deps:{standardAuth:exp
  if(b.assetId&&!uuid(b.assetId)||b.evidenceReportId&&!uuid(b.evidenceReportId))fail('Invalid asset or evidence.');
  if(b.issueType==='damage'&&!b.assetId)fail('Choose affected equipment.');
  const requester=b.requesterId?uuid(b.requesterId)?b.requesterId:fail('Invalid requester.'):u.employeeId;if(requester!==u.employeeId&&!await supportAuthority(c,u,'support.manage'))fail('Reporting for another employee requires support handling permission.',403);
+ if(!(await c.query('SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2',[u.tenantId,requester])).rowCount)fail('Requester unavailable.',404);
  let assignment:string|null=null;if(b.assetId){assignment=(await c.query("SELECT id FROM asset_assignments WHERE tenant_id=$1 AND asset_id=$2 AND employee_id=$3 AND status='active'",[u.tenantId,b.assetId,requester])).rows[0]?.id??null;if(!assignment)fail('Assigned equipment unavailable.',404);}
  if(b.evidenceReportId&&!(await c.query('SELECT 1 FROM asset_condition_reports WHERE tenant_id=$1 AND id=$2 AND asset_id=$3 AND reported_by=$4 AND evidence_url IS NOT NULL',[u.tenantId,b.evidenceReportId,b.assetId,u.employeeId])).rowCount)fail('Evidence unavailable.',404);
  // Only explicit, active company-scope support handlers are eligible; the API revalidates every assignment.

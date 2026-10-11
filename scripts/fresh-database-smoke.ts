@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {BusinessFixtures} from './business-scenario-fixtures';
+import {withTenant} from '../src/lib/hr-background';
+import {verifyTenantDatabase} from './tenant-database-checks';
+const f=new BusinessFixtures();
+try{
+ const login=await fetch(process.env.APP_BASE_URL+'/api/auth/login',{method:'POST',headers:{Origin:process.env.APP_BASE_URL!,'Content-Type':'application/json'},body:JSON.stringify({email:'admin@stanza-demo.com',password:process.env.DEMO_PASSWORD})});assert.equal(login.status,200,'supported demo seed account authenticates');
+ await f.setup('fresh-boot');assert.equal(new URL(process.env.DATABASE_URL!).pathname,'/'+process.env.DEMO_DATABASE_NAME,'fixture remains on fresh database');
+ await verifyTenantDatabase(f);const r=spawnSync(process.execPath,['--import','tsx','scripts/runtime-role-test.ts'],{env:process.env,stdio:'inherit'});assert.equal(r.status,0);
+ const {admin,employee}=f;const location=(await f.db.query("INSERT INTO company_locations(tenant_id,name,latitude,longitude,boundary) VALUES($1,'Fresh spatial fixture',30,31,ST_Buffer(ST_SetSRID(ST_MakePoint(31,30),4326)::geography,1000)::geometry) RETURNING id",[f.primary])).rows[0];assert(location);
+ assert.equal((await f.db.query('SELECT ST_Contains(boundary,ST_SetSRID(ST_MakePoint(31,30),4326)) inside FROM company_locations WHERE id=$1',[location.id])).rows[0].inside,true);
+ await f.ok(admin,'/api/roster/shifts',{employeeId:employee.id,startTime:new Date(Date.now()-3600000).toISOString(),endTime:new Date(Date.now()+3600000).toISOString()});await f.ok(employee,'/api/clock-in',{latitude:30,longitude:31});const clock=await f.ok(employee,'/api/clock-status');await f.ok(employee,'/api/clock-out',{latitude:30,longitude:31,confirmEarly:true,timeLogId:clock.timeLogId});
+ let processed=false;for(let i=0;i<80;i++){const rows=(await f.db.query("SELECT count(*)::int n FROM outbox_events WHERE tenant_id=$1 AND event_type='background.hr' AND processed_at IS NOT NULL",[f.primary])).rows[0];if(rows.n>=2){processed=true;break;}await new Promise(r=>setTimeout(r,150));}assert(processed,'built worker consumes durable background work');assert((await f.db.query('SELECT * FROM attendance_daily_summaries WHERE tenant_id=$1',[f.primary])).rowCount);assert((await f.db.query('SELECT * FROM audit_logs WHERE tenant_id=$1',[f.primary])).rowCount);
+ await f.ok(employee,'/api/me/leave-requests',{leaveType:'annual',startDate:'2030-01-02',endDate:'2030-01-03',reason:'Fresh leave fixture'});
+ await f.ok(admin,'/api/hr/assets',{assetTag:'FRESH-'+f.tag,name:'Fresh equipment',category:'laptop',condition:'good'});await f.ok(admin,'/api/support',{issueType:'it_help',urgency:'normal',summary:'Fresh Support',description:'Disposable rehearsal'});
+ const job=(await f.ok(admin,'/api/hiring/jobs',{title:'Fresh engineer',description:'Disposable rehearsal',managerId:admin.id,ownerId:admin.id,employmentType:'full_time',headcount:'1'})).job;await f.ok(admin,'/api/hiring/jobs/'+job.id+'/status',{status:'open'});assert.equal((await f.publicContext.request.get(f.base+'/api/public/jobs/'+job.public_token)).status(),200);
+ await f.ok(admin,'/api/communications/drafts',{subject:'Fresh private draft',body:'Never sent',category:'custom',recipientIds:[employee.id]});
+ const semantic=await f.ok(admin,'/api/command-router/resolve',{query:'where can I see what I got paid?',allowReasoning:false});console.log('SEMANTIC first-boot outcome',JSON.stringify({method:semantic.result.method,intent:semantic.result.intentKey}));assert.equal(semantic.result.method,'semantic');assert.equal(semantic.result.fallbackUsed,false);
+ await withTenant(f.primary,async c=>{const exact=await c.query("SELECT embedding <=> embedding AS distance,vector_dims(embedding) dimensions FROM router_semantic_examples WHERE tenant_id IS NULL AND approval_state='approved' LIMIT 1");assert.equal(Number(exact.rows[0].distance),0);assert.equal(exact.rows[0].dimensions,384);});
+ console.log('PASS seed login, catalog RLS/grants, spatial/geofenced attendance, built worker/outbox/audit, assets, Support, Hiring opaque link, Communications and local semantic first boot');
+}finally{await f.cleanup();}

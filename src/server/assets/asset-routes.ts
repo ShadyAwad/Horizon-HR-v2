@@ -19,9 +19,17 @@ function optionalDate(value: unknown) {
   if (value === undefined || value === null || value === '') return null;
   const date = cleanText(value, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new RouteError('Invalid date.', 400);
+  if (new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date) throw new RouteError('Invalid date.', 400);
   return date;
 }
-function page(query: express.Request['query']) { const value = Math.max(1, Math.min(10_000, Number(query.page) || 1)); const size = Math.max(1, Math.min(100, Number(query.pageSize) || 25)); return { value, size, offset: (value - 1) * size }; }
+function page(query: express.Request['query']) {
+  const bounded = (raw: unknown, fallback: number, maximum: number) => {
+    const parsed = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN;
+    return Number.isFinite(parsed) ? Math.max(1, Math.min(maximum, Math.trunc(parsed) || fallback)) : fallback;
+  };
+  const value = bounded(query.page, 1, 10_000), size = bounded(query.pageSize, 25, 100);
+  return { value, size, offset: (value - 1) * size };
+}
 function sendError(res: express.Response, error: unknown, fallback: string) {
   if (error instanceof RouteError) return res.status(error.status).json({ success: false, error: error.message });
   const databaseError = error as { code?: string; constraint?: string };

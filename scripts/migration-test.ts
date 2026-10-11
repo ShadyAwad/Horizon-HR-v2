@@ -115,6 +115,11 @@ try {
         await withServer('scripts/deployment-http-test.ts', [], 'OPERATIONS_BASE_URL');
         await deploymentProcesses();
     }
+    if (process.argv.includes('--worker-audit')) {
+        assert(process.env.WORKER_SMOKE_REDIS_URL, 'Worker audit requires task-owned Redis');
+        env.REDIS_URL = process.env.WORKER_SMOKE_REDIS_URL;
+        await withServer('scripts/worker-reliability-test.ts', [], 'BROWSER_BASE_URL');
+    }
     if (process.argv.includes('--dev-smoke'))
         await devSmoke();
     console.log('PASS fresh bootstrap, ordered/repeat migrations, seeded integrity and non-demo isolation.');

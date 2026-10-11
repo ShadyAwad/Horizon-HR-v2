@@ -104,16 +104,25 @@ function isProduction() {
   return process.env.NODE_ENV === 'production';
 }
 
-function normalizeFeedDate(value: string | null | undefined) {
-  if (!value) return null;
+function normalizeFeedDate(value: unknown) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const calendarPrefix = /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value) ? value.slice(0, 10) : null;
+  if (calendarPrefix) {
+    const calendar = new Date(calendarPrefix + 'T00:00:00.000Z');
+    if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== calendarPrefix) return undefined;
+  }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
-
 function normalizeFeedVisibility(visibility: FeedVisibilityInput[] | undefined) {
   const rawVisibility = Array.isArray(visibility) && visibility.length > 0
     ? visibility
     : [{ type: 'all' as const }];
+
+  if (rawVisibility.some((rule) => !rule || typeof rule !== 'object' || !isFeedVisibilityType(rule.type))) {
+    return { ok: false as const, error: 'visibility type must be all, role, or location.' };
+  }
 
   if (rawVisibility.some((rule) => rule.type === 'all')) {
     return { ok: true as const, visibility: [{ type: 'all' as const }] };
@@ -135,7 +144,7 @@ function normalizeFeedVisibility(visibility: FeedVisibilityInput[] | undefined) 
     }
 
     if (rule.type === 'location') {
-      if (!rule.locationId) {
+      if (!isUuid(rule.locationId)) {
         return { ok: false as const, error: 'location visibility requires locationId.' };
       }
 
@@ -454,7 +463,7 @@ export function registerCompanyFeedRoutes(
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       const contentText = typeof body.contentText === 'string' ? body.contentText.trim() : '';
       const contentFormat = body.contentFormat || FEED_EDITOR_FORMAT;
-      const expectedVersion = body.expectedVersion == null ? null : Number(body.expectedVersion);
+      const expectedVersion = body.expectedVersion == null ? null : (typeof body.expectedVersion === 'number' || typeof body.expectedVersion === 'string' ? Number(body.expectedVersion) : NaN);
       const serializedContentJson = body.contentJson == null ? '' : JSON.stringify(body.contentJson);
   
       if (contentFormat !== FEED_EDITOR_FORMAT || !Number.isInteger(expectedVersion ?? 0) && expectedVersion !== null) {
@@ -626,8 +635,8 @@ export function registerCompanyFeedRoutes(
   
       const tenantId = req.authUser!.tenantId;
       const actorEmployeeId = req.authUser!.employeeId;
-      const normalizedTitle = title?.trim() || '';
-      const normalizedContent = contentText?.trim() || '';
+      const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+      const normalizedContent = typeof contentText === 'string' ? contentText.trim() : '';
       const normalizedStartsAt = normalizeFeedDate(eventStartsAt);
       const normalizedEndsAt = normalizeFeedDate(eventEndsAt);
   
@@ -1276,14 +1285,14 @@ export function registerCompanyFeedRoutes(
             `
               UPDATE company_feed_posts
               SET
-                status = $3,
+                status = $3::varchar,
                 published_at = CASE
-                  WHEN $3 = 'published' THEN COALESCE(published_at, NOW())
+                  WHEN $3::varchar = 'published' THEN COALESCE(published_at, NOW())
                   ELSE published_at
                 END,
                 archived_at = CASE
-                  WHEN $3 = 'archived' THEN NOW()
-                  WHEN $3 IN ('draft', 'published') THEN NULL
+                  WHEN $3::varchar = 'archived' THEN NOW()
+                  WHEN $3::varchar IN ('draft', 'published') THEN NULL
                   ELSE archived_at
                 END,
                 updated_at = NOW()

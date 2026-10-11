@@ -63,7 +63,10 @@ export async function processMessage(job: Pick<Job<CommunicationJob>, 'data' | '
         return;
     const result = await send({ to: row.recipients, subject: row.subject, text: row.body, html: `<div style="white-space:pre-wrap">${escapeHtml(row.body)}</div>`, ...(row.invitation_ics ? { attachments: [{ filename: 'invitation.ics', content: Buffer.from(row.invitation_ics) }] } : {}) }, `stanza-message-${row.id}`);
     const outcome = classifyDelivery(result, row.attempts);
-    await withTenant(tenantId, async (client) => {
+    const finalized = await withTenant(tenantId, async (client) => {
+        // A replay must not overwrite a confirmed outcome or append its events twice.
+        const current = (await client.query<{ status: string }>('SELECT status FROM communication_messages WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [tenantId, messageId])).rows[0];
+        if (!current || !['queued', 'sending'].includes(current.status)) return false;
         await client.query('UPDATE communication_messages SET status=$3,provider_id=$4,failure_code=$5,failure_reason=$6,sent_at=CASE WHEN $3=\'sent\' THEN now() ELSE NULL END,updated_at=now() WHERE tenant_id=$1 AND id=$2', [tenantId, messageId, outcome.status, result.ok ? result.id : null, outcome.code, outcome.code ? (outcome.retry ? 'Temporary provider error; retry scheduled.' : 'Message was not confirmed sent. Review the failure code.') : null]);
         await client.query('INSERT INTO communication_message_events(tenant_id,message_id,status,code) VALUES($1,$2,$3,$4)', [tenantId, messageId, outcome.status, outcome.code]);
         if (!outcome.retry) {
@@ -71,7 +74,9 @@ export async function processMessage(job: Pick<Job<CommunicationJob>, 'data' | '
             if (!result.ok)
                 await client.query("INSERT INTO outbox_events(tenant_id,event_type,payload) VALUES($1,'notification.communication_failed',$2::jsonb)", [tenantId, JSON.stringify({ employeeId: row.sender_id, messageId, notificationKey: 'system_alerts', idempotencyKey: `communication-failed-${messageId}` })]);
         }
+        return true;
     });
+    if (!finalized) return;
     if (outcome.retry)
         throw new Error(outcome.code!);
     if (!result.ok)

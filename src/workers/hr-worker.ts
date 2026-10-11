@@ -11,6 +11,7 @@ import { rollupAttendanceDailySummary } from '../server/attendance/attendance-ro
 import { Worker, Job } from 'bullmq';
 import { HR_QUEUE_NAME, redisConnection, redisConnectionLabel, withTenant, type AttendanceRollupJobData, type AuditLogJobData, type QrExpiryCleanupJobData, } from '../lib/hr-background';
 import { QrTokenService } from '../server/qr/qr-token-service';
+import { requireUuid } from '../server/qr/qr-token-validation';
 validateProductionConfig();
 console.log(`[Worker Engine] Initializing connection to Redis at ${redisConnectionLabel}...`);
 async function writeAuditLog(data: AuditLogJobData & {
@@ -53,7 +54,7 @@ const hrWorker = new Worker(HR_QUEUE_NAME, async (job: Job) => {
             break;
         case 'expireQrAccessToken': {
             const data = job.data as QrExpiryCleanupJobData;
-            await new QrTokenService().expireToken(data.tenantId, data.tokenRecordId);
+            await new QrTokenService().expireToken(requireUuid(data?.tenantId, 'Tenant ID'), requireUuid(data?.tokenRecordId, 'Token record ID'));
             break;
         }
         default:

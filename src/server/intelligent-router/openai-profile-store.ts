@@ -17,6 +17,25 @@ function windows(script: string, input: unknown): Promise<string> {
     child.stdin.end(JSON.stringify(input));
   });
 }
+/** Windows sharing lock survives a stale sentinel and is released by the OS on process exit.
+ * stdin closure also releases the helper if its owning Node process exits. */
+async function recoveryGate(file: string): Promise<() => Promise<void>> {
+  const script = "$ErrorActionPreference='Stop'; $p=([Console]::In.ReadLine()|ConvertFrom-Json).path; try { $f=[IO.File]::Open($p,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) } catch { exit 2 }; try { [Console]::Out.WriteLine('LOCKED'); [Console]::Out.Flush(); [Console]::In.ReadToEnd() | Out-Null } finally { $f.Dispose() }";
+  const child=spawn(path.join(process.env.SystemRoot || 'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe'),['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+  child.stderr.resume();
+  const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      let output='';
+      child.stdout.on('data',data=>{output+=data;if(output.includes('LOCKED'))resolve();});
+      child.once('error',()=>reject(Error('OPENAI_STORE_UNAVAILABLE')));
+      child.once('close',code=>reject(Error(code===2?'OPENAI_STORE_BUSY':'OPENAI_STORE_UNAVAILABLE')));
+      child.stdin.on('error',()=>reject(Error('OPENAI_STORE_UNAVAILABLE')));
+      child.stdin.write(JSON.stringify({path:file})+'\n');
+    });
+  } catch(error) { child.stdin.end();await closed;throw error; }
+  return async()=>{child.stdin.end();await closed;};
+}
 /** Local Windows vault: AES-256-GCM records, DPAPI CurrentUser-wrapped key, private ACL.
  * Same cryptographic primitive as Stanza QR encryption, with a separate key and owner AAD.
  * A process lease prevents two preview processes racing renewable credentials.
@@ -47,6 +66,9 @@ export class LocalOpenAIProfileStore implements OpenAIProfileStore {
     try {await writeFile(leasePath,leaseRecord,{flag:'wx',mode:0o600});}
     catch(e) {
       if((e as NodeJS.ErrnoException).code!=='EEXIST')throw Error('OPENAI_STORE_UNAVAILABLE');
+      const releaseGate=await recoveryGate(path.join(this.root,'recovery.lock'));
+      try {
+      // Reread only after obtaining the OS gate: a prior recoverer may own the lease now.
       const old=JSON.parse(await readFile(leasePath,'utf8'));let alive=true;
       try{process.kill(old.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')alive=false;}
       if(alive){
@@ -55,7 +77,10 @@ export class LocalOpenAIProfileStore implements OpenAIProfileStore {
         }catch{/* An inaccessible live owner retains its lease. */}
       }
       if(alive)throw Error('OPENAI_STORE_BUSY');
-      await unlink(leasePath);await writeFile(leasePath,leaseRecord,{flag:'wx',mode:0o600});
+      await unlink(leasePath);
+      try {await writeFile(leasePath,leaseRecord,{flag:'wx',mode:0o600});}
+      catch(error) {throw Error((error as NodeJS.ErrnoException).code==='EEXIST'?'OPENAI_STORE_BUSY':'OPENAI_STORE_UNAVAILABLE');}
+      } finally {await releaseGate();}
     }
     this.owned=true;
     try {

@@ -242,7 +242,7 @@ export class FeedImageNode extends DecoratorNode<JSX.Element> {
     const dimensions = normalizeFeedImageDimensions(width, height);
     this.__uploadId = uploadId;
     this.__src = src;
-    this.__altText = altText.slice(0, FEED_IMAGE_ALT_MAX_LENGTH);
+    this.__altText = typeof altText === 'string' ? altText.slice(0, FEED_IMAGE_ALT_MAX_LENGTH) : '';
     this.__width = dimensions.width;
     this.__height = dimensions.height;
   }

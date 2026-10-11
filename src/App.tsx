@@ -164,10 +164,17 @@ export default function App() {
       window.location.reload();
     };
 
+    let cancelled = false;
     window.addEventListener('stanza-service-worker-update', handleServiceWorkerUpdate);
     navigator.serviceWorker?.addEventListener('controllerchange', handleControllerChange);
+    if (import.meta.env.PROD && navigator.serviceWorker) {
+      void navigator.serviceWorker.getRegistration().then((registration) => {
+        if (!cancelled && registration?.waiting) setServiceWorkerRegistration(registration);
+      }).catch(() => undefined);
+    }
 
     return () => {
+      cancelled = true;
       window.removeEventListener('stanza-service-worker-update', handleServiceWorkerUpdate);
       navigator.serviceWorker?.removeEventListener('controllerchange', handleControllerChange);
     };

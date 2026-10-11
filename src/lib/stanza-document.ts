@@ -45,7 +45,7 @@ export function validateSketch(value: unknown): value is SketchData {
     (shape) =>
       isRecord(shape) &&
       ["pen", "line", "arrow", "rectangle", "ellipse", "text"].includes(
-        String(shape.tool),
+        shape.tool as string,
       ) &&
       SKETCH_COLORS.includes(shape.color as (typeof SKETCH_COLORS)[number]) &&
       (shape.text == null ||
@@ -135,6 +135,11 @@ function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+// Serialized numeric strings remain supported; objects never invoke coercion hooks.
+function documentNumber(value: unknown): number {
+  return typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+}
+
 function validateDirection(value: unknown) {
   return value == null || value === "" || value === "ltr" || value === "rtl";
 }
@@ -188,12 +193,13 @@ export function validateFeedImageAttributes(node: JsonRecord) {
   const sourceMatch =
     typeof node.src === "string" ? FEED_IMAGE_URL_PATTERN.exec(node.src) : null;
   const altText = typeof node.altText === "string" ? node.altText : "";
-  const width = Number(node.width);
-  const height = Number(node.height);
+  const width = documentNumber(node.width);
+  const height = documentNumber(node.height);
 
   return Boolean(
     UUID_PATTERN.test(uploadId) &&
     sourceMatch?.[1]?.toLowerCase() === uploadId.toLowerCase() &&
+    (node.altText == null || typeof node.altText === 'string') &&
     altText.length <= FEED_IMAGE_ALT_MAX_LENGTH &&
     Number.isInteger(width) &&
     width >= FEED_IMAGE_MIN_DISPLAY_WIDTH &&
@@ -272,7 +278,7 @@ function validateNode(
       (node.caption == null ||
         (typeof node.caption === "string" && node.caption.length <= 500)) &&
       (node.align == null ||
-        ["start", "center", "end"].includes(String(node.align)))
+        ["start", "center", "end"].includes(node.align as string))
       ? null
       : "Editor image attributes are invalid.";
   }
@@ -282,12 +288,12 @@ function validateNode(
   if (
     type === "stanza-block" &&
     (!["callout", "section", "box", "code", "divider"].includes(
-      String(node.kind),
+      node.kind as string,
     ) ||
       !CALLOUT_TONES.includes(node.tone as (typeof CALLOUT_TONES)[number]) ||
       !BLOCK_BORDERS.includes(node.border as (typeof BLOCK_BORDERS)[number]) ||
       typeof node.shaded !== "boolean" ||
-      ![1, 2].includes(Number(node.thickness)) ||
+      ![1, 2].includes(documentNumber(node.thickness)) ||
       typeof node.title !== "string" ||
       node.title.length > 240 ||
       typeof node.open !== "boolean")
@@ -335,7 +341,7 @@ function validateNode(
     type === "tablecell" &&
     (node.colSpan !== 1 ||
       node.rowSpan !== 1 ||
-      ![0, 1, 2, 3].includes(Number(node.headerState)) ||
+      ![0, 1, 2, 3].includes(documentNumber(node.headerState)) ||
       node.backgroundColor != null ||
       (node.width != null &&
         (typeof node.width !== "number" ||
@@ -352,7 +358,7 @@ function validateNode(
     return "Invalid checklist state.";
   if (
     type === "heading" &&
-    !["h1", "h2", "h3", "h4"].includes(String(node.tag))
+    !["h1", "h2", "h3", "h4"].includes(node.tag as string)
   ) {
     return "Editor heading level is not supported.";
   }
@@ -360,11 +366,11 @@ function validateNode(
   if (type === "list") {
     if (
       node.listType != null &&
-      !["bullet", "number", "check"].includes(String(node.listType))
+      !["bullet", "number", "check"].includes(node.listType as string)
     ) {
       return "Editor list type is not supported.";
     }
-    if (node.tag != null && !["ul", "ol"].includes(String(node.tag))) {
+    if (node.tag != null && !["ul", "ol"].includes(node.tag as string)) {
       return "Editor list tag is not supported.";
     }
   }

@@ -20,7 +20,7 @@ async function request(path: string, init: RequestInit = {}) {
 }
 
 async function demoSession(role: 'hr_admin' | 'manager' | 'employee') {
-  const email = { hr_admin: 'admin@stanza-demo.com', manager: 'manager@stanza-demo.com', employee: 'employee@stanza-demo.com' }[role];
+  const email = { hr_admin: process.env.SESSIONS_TEST_ADMIN_EMAIL || 'admin@stanza-demo.com', manager: process.env.SESSIONS_TEST_MANAGER_EMAIL || 'manager@stanza-demo.com', employee: process.env.SESSIONS_TEST_EMPLOYEE_EMAIL || 'employee@stanza-demo.com' }[role];
   const result = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ email, password: process.env.DEMO_PASSWORD }) });
   assert(result.response.status === 200, `${role} session setup failed (${result.response.status}). Run against explicit demo mode.`);
   const cookie = result.response.headers.get('set-cookie')?.split(';', 1)[0];

@@ -22,6 +22,11 @@ type HiringRouteDependencies = {
   requirePermission: (permission: string) => Middleware;
 };
 
+/** Applicant API fields are explicit: private CV storage keys remain server-only. */
+function publicApplicant(row: Record<string, unknown>) {
+  const fields = ['id', 'tenant_id', 'full_name', 'email', 'phone', 'position_title', 'department', 'source', 'stage', 'status', 'current_owner_id', 'created_by', 'updated_by', 'applied_at', 'created_at', 'updated_at', 'archived_at', 'job_id', 'cover_note', 'consent_at', 'hired_employee_id', 'application_answers', 'question_snapshot', 'screening_flags', 'current_owner_name'];
+  return { ...Object.fromEntries(fields.map(key => [key, row[key]])), resume_available: Boolean(row.resume_key) };
+}
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^[+()\d\s.-]{3,40}$/;
 const asText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -42,7 +47,11 @@ const validatedText = (value: unknown, max: number, field: string, required = fa
 };
 const validatedDate = (value: unknown, field: string) => {
   if (value === undefined || value === null || value === '') return null;
-  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) {
+    throw fail(400, 'HIRING_VALIDATION_ERROR', `${field} is invalid.`);
+  }
+  const calendar = new Date(value.slice(0, 10) + 'T00:00:00.000Z');
+  if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== value.slice(0, 10)) {
     throw fail(400, 'HIRING_VALIDATION_ERROR', `${field} is invalid.`);
   }
   const date = new Date(value);
@@ -112,8 +121,8 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
   app.get('/api/hiring/applicants', demoAuth, requirePermission('hiring.view'), async (req, res) => {
     try {
       const { tenantId, employeeId } = req.authUser!;
-      const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
-      const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.pageSize || '25'), 10) || 25));
+      const page = Math.min(10_000, Math.max(1, Number.parseInt(typeof req.query.page === 'string' ? req.query.page : '1', 10) || 1));
+      const pageSize = Math.min(100, Math.max(1, Number.parseInt(typeof req.query.pageSize === 'string' ? req.query.pageSize : '25', 10) || 25));
       const stage = req.query.stage === undefined ? null : String(req.query.stage);
       const status = req.query.status === undefined ? 'active' : String(req.query.status);
       if (stage && !isHiringStage(stage)) throw fail(400, 'HIRING_INVALID_STAGE', 'Stage is invalid.');
@@ -149,7 +158,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         await outbox(client, tenantId, 'hiring.applicant.created', { applicantId: applicant.id, ownerId });
         return { applicant, duplicate };
       });
-      res.status(201).json({ success: true, applicant: result.applicant, warnings: result.duplicate ? [{ code: 'POSSIBLE_DUPLICATE_APPLICANT', applicantId: result.duplicate.id, message: 'A candidate with this email already exists.' }] : [] });
+      res.status(201).json({ success: true, applicant: publicApplicant(result.applicant), warnings: result.duplicate ? [{ code: 'POSSIBLE_DUPLICATE_APPLICANT', applicantId: result.duplicate.id, message: 'A candidate with this email already exists.' }] : [] });
     } catch (error) { handleError(res, error, 'Failed to create applicant'); }
   });
 
@@ -163,7 +172,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         const notes = canViewNotes ? (await client.query(`SELECT n.id,n.note_text,n.note_type,n.visibility,n.created_at,n.updated_at,e.full_name AS author_name,e.role AS author_role FROM hiring_applicant_notes n JOIN employees e ON e.tenant_id=n.tenant_id AND e.id=n.author_id WHERE n.tenant_id=$1 AND n.applicant_id=$2 AND n.deleted_at IS NULL AND ($3::boolean OR n.visibility='hiring_team') ORDER BY n.created_at DESC`, [tenantId,id,canViewHrOnly])).rows : [];
         const handoffs = (await client.query(`SELECT h.*,f.full_name AS from_user_name,t.full_name AS to_user_name,b.full_name AS handed_off_by_name FROM hiring_handoffs h LEFT JOIN employees f ON f.tenant_id=h.tenant_id AND f.id=h.from_user_id JOIN employees t ON t.tenant_id=h.tenant_id AND t.id=h.to_user_id JOIN employees b ON b.tenant_id=h.tenant_id AND b.id=h.handed_off_by WHERE h.tenant_id=$1 AND h.applicant_id=$2 ORDER BY h.created_at DESC`, [tenantId,id])).rows;
         const history = (await client.query(`SELECT s.*,e.full_name AS actor_name FROM hiring_stage_history s LEFT JOIN employees e ON e.tenant_id=s.tenant_id AND e.id=s.actor_id WHERE s.tenant_id=$1 AND s.applicant_id=$2 ORDER BY s.created_at DESC`, [tenantId,id])).rows;
-        return { applicant, notes, handoffs, stageHistory: history };
+        return { applicant: publicApplicant(applicant), notes, handoffs, stageHistory: history };
       });
       res.json({ success: true, ...detail });
     } catch (error) { handleError(res, error, 'Failed to load applicant'); }
@@ -178,7 +187,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
       if ('appliedAt' in req.body) { values.push(validatedDate(req.body.appliedAt, 'Applied date')); updates.push(`applied_at=$${values.length}`); changed.push('appliedAt'); }
       if (!updates.length) throw fail(400,'HIRING_VALIDATION_ERROR','No editable fields supplied.'); values.push(employeeId); updates.push(`updated_by=$${values.length}`,'updated_at=NOW()');
       const applicant=await withTenant(tenantId,async client=>{ const row=(await client.query(`UPDATE hiring_applicants SET ${updates.join(',')} WHERE tenant_id=$1 AND id=$2 RETURNING *`,values)).rows[0]; if(!row)throw fail(404,'HIRING_APPLICANT_NOT_FOUND','Applicant not found.'); await audit(client,tenantId,employeeId,'hiring.applicant.updated','hiring_applicant',id,{changedFields:changed}); return row; });
-      res.json({success:true,applicant});
+      res.json({success:true,applicant:publicApplicant(applicant)});
     } catch(error){handleError(res,error,'Failed to update applicant');}
   });
 
@@ -220,7 +229,7 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
         if (target === 'final_review') await outbox(client, tenantId, 'hiring.final_decision.requested', { applicantId: id, currentOwnerId: row.current_owner_id });
         return row;
       });
-      res.json({ success: true, applicant });
+      res.json({ success: true, applicant: publicApplicant(applicant) });
     } catch (error) { handleError(res, error, 'Failed to change stage'); }
   });
 
@@ -266,5 +275,5 @@ export function registerHiringRoutes(app: express.Express, { demoAuth, requirePe
 
   app.post('/api/hiring/handoffs/:id/acknowledge',demoAuth,requirePermission('hiring.view'),async(req,res)=>{try{const id=assertUuid(req.params.id,'HIRING_HANDOFF_NOT_ASSIGNED_TO_USER');const{tenantId,employeeId}=req.authUser!;const handoff=await withTenant(tenantId,async client=>{const current=(await client.query(`SELECT * FROM hiring_handoffs WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,id])).rows[0];if(!current)throw fail(404,'HIRING_HANDOFF_NOT_ASSIGNED_TO_USER','Handoff not found.');if(current.to_user_id!==employeeId&&!hasPermission(req,'hiring.archive'))throw fail(403,'HIRING_HANDOFF_NOT_ASSIGNED_TO_USER','Handoff is not assigned to you.');if(current.status==='acknowledged')return current;if(current.status!=='pending')throw fail(409,'HIRING_HANDOFF_NOT_PENDING','Handoff is not pending.');const row=(await client.query(`UPDATE hiring_handoffs SET status='acknowledged',acknowledged_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[tenantId,id])).rows[0];await audit(client,tenantId,employeeId,'hiring.handoff.acknowledged','hiring_handoff',id,{applicantId:row.applicant_id});await outbox(client,tenantId,'hiring.handoff.acknowledged',{applicantId:row.applicant_id,handoffId:id,reviewerId:row.to_user_id});return row;});res.json({success:true,handoff});}catch(error){handleError(res,error,'Failed to acknowledge handoff');}});
 
-  app.post('/api/hiring/applicants/:id/archive',demoAuth,requirePermission('hiring.archive'),async(req,res)=>{try{const id=assertUuid(req.params.id);const{tenantId,employeeId}=req.authUser!;const applicant=await withTenant(tenantId,async client=>{const row=(await client.query(`UPDATE hiring_applicants SET status='archived',archived_at=COALESCE(archived_at,NOW()),updated_by=$3,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[tenantId,id,employeeId])).rows[0];if(!row)throw fail(404,'HIRING_APPLICANT_NOT_FOUND','Applicant not found.');await audit(client,tenantId,employeeId,'hiring.applicant.archived','hiring_applicant',id);await outbox(client,tenantId,'hiring.applicant.archived',{applicantId:id});return row;});res.json({success:true,applicant});}catch(error){handleError(res,error,'Failed to archive applicant');}});
+  app.post('/api/hiring/applicants/:id/archive',demoAuth,requirePermission('hiring.archive'),async(req,res)=>{try{const id=assertUuid(req.params.id);const{tenantId,employeeId}=req.authUser!;const applicant=await withTenant(tenantId,async client=>{const row=(await client.query(`UPDATE hiring_applicants SET status='archived',archived_at=COALESCE(archived_at,NOW()),updated_by=$3,updated_at=NOW() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[tenantId,id,employeeId])).rows[0];if(!row)throw fail(404,'HIRING_APPLICANT_NOT_FOUND','Applicant not found.');await audit(client,tenantId,employeeId,'hiring.applicant.archived','hiring_applicant',id);await outbox(client,tenantId,'hiring.applicant.archived',{applicantId:id});return row;});res.json({success:true,applicant:publicApplicant(applicant)});}catch(error){handleError(res,error,'Failed to archive applicant');}});
 }

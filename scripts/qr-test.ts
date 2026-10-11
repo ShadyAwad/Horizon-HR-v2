@@ -408,7 +408,7 @@ if (process.env.DATABASE_URL) {
   assertDatabaseMutationSafety(process.env.DATABASE_URL,'QR integration');
   // Fixture setup/readback needs the migration connection; service calls still use stanza_runtime.
   const pool = getMigrationPool();
-  const tenant = await pool.query('SELECT id FROM tenants ORDER BY created_at LIMIT 1');
+  const tenant = await pool.query('SELECT id FROM tenants WHERE ($1::uuid IS NULL OR id=$1) ORDER BY created_at LIMIT 1',[process.env.QR_TEST_TENANT_ID||null]);
   assert(tenant.rows[0], 'Local QR concurrency test requires one existing tenant.');
   const tenantId = tenant.rows[0].id as string;
   const service = new QrTokenService();
@@ -457,6 +457,7 @@ if (process.env.DATABASE_URL) {
        JOIN tenant_role_permissions permission
          ON permission.tenant_id=assignment.tenant_id AND permission.role_id=assignment.role_id
        WHERE employee.is_active=true AND employee.employment_status='active'
+         AND ($1::uuid IS NULL OR employee.id=$1) AND ($2::uuid IS NULL OR employee.tenant_id=$2)
          AND assignment.revoked_at IS NULL
          AND assignment.assigned_at<=NOW()
          AND (assignment.expires_at IS NULL OR assignment.expires_at>NOW())
@@ -469,7 +470,7 @@ if (process.env.DATABASE_URL) {
              AND token.status='active'
          )
        ORDER BY employee.created_at
-       LIMIT 1`,
+       LIMIT 1`, [process.env.QR_TEST_EMPLOYEE_ID||null,process.env.QR_TEST_TENANT_ID||null],
     )).rows[0] as { tenantId: string; employeeId: string } | undefined;
     assert(badgeActor, 'Local QR lifecycle test requires one active employee with self-badge authority.');
     const oldBadgeRaw = generateOpaqueQrToken();
@@ -491,8 +492,8 @@ if (process.env.DATABASE_URL) {
     await expectQrError(service.rotate(badgeActor, oldBadge.id), 'QR_TOKEN_NOT_ACTIVE');
 
     const otherTenant = (await pool.query(
-      'SELECT id FROM tenants WHERE id<>$1 ORDER BY created_at LIMIT 1',
-      [badgeActor.tenantId],
+      'SELECT id FROM tenants WHERE id<>$1 AND ($2::uuid IS NULL OR id=$2) ORDER BY created_at LIMIT 1',
+      [badgeActor.tenantId,process.env.QR_TEST_OTHER_TENANT_ID||null],
     )).rows[0]?.id as string | undefined;
     assert(otherTenant, 'Local QR isolation test requires a second tenant.');
     await expectQrError(

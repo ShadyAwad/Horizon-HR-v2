@@ -1,5 +1,6 @@
-const STATIC_CACHE = 'stanza-static-v10';
-const RUNTIME_CACHE = 'stanza-runtime-v10';
+const BUILD_REVISION = 'unversioned';
+const STATIC_CACHE = 'stanza-static-v11-' + BUILD_REVISION;
+const RUNTIME_CACHE = 'stanza-runtime-v11-' + BUILD_REVISION;
 const STATIC_ASSETS = [
   '/index.html',
   '/stanza-bootstrap.js',
@@ -25,7 +26,7 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((cacheNames) => Promise.all(
         cacheNames
-          .filter((cacheName) => ![STATIC_CACHE, RUNTIME_CACHE].includes(cacheName))
+          .filter((cacheName) => /^stanza-(?:static|runtime)-v/.test(cacheName) && ![STATIC_CACHE, RUNTIME_CACHE].includes(cacheName))
           .map((cacheName) => caches.delete(cacheName)),
       ))
       .then(() => self.clients.claim()),
