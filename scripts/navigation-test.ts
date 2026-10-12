@@ -114,7 +114,7 @@ const checks: Array<[string, boolean]> = [
   ['horizontal global strip is removed from the rendered dashboard', /<div className="hidden">[\s\S]*Tab Contents/.test(dashboard)],
   ['only the registry-backed desktop rail is live', (dashboard.match(/<DashboardNavigation\s/g) || []).length === 1 && /\{false && <aside/.test(dashboard)],
   ['launcher-only is the default desktop mode and has no permanent module rail', /desktopMode = 'launcher'/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
-  ['launcher-only has one external command button and no external settings button', /desktopMode === 'rail' && <button[^>]*onClick=\{onOpenControlCenter\}/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
+  ['launcher-only has one external command button and no external settings button', /desktopMode === 'rail' && <ControlTooltip[^>]*><button[^>]*onClick=\{onOpenControlCenter\}/.test(nav) && /desktopMode === 'rail' && <nav/.test(nav)],
   ['compact rail is an optional registry-backed presentation', /desktopMode === 'rail'/.test(nav) && /orderedRailItems\.map/.test(nav)],
   ['desktop navigation preference persists and preserves the active route', /desktopNavigationMode/.test(dashboard) && /setDesktopNavigationMode\(mode\)/.test(dashboard) && /setActiveTab/.test(dashboard)],
   ['launcher-only uses one fixed portal assembly rather than a header-bound sticky anchor', /data-stanza-launcher-assembly/.test(nav) && /createPortal\(launcherAssembly, document\.body\)/.test(nav) && /fixed inset-0 z-20/.test(nav) && !/desktopLauncherTarget/.test(nav)],
@@ -205,8 +205,8 @@ const checks: Array<[string, boolean]> = [
     !/desktopNavigationMode === mode[\s\S]{0,150}bg-emerald/.test(dashboard) &&
     !/rosterDisplayMode === mode[\s\S]{0,150}bg-emerald/.test(dashboard)],
   ['shared surface states do not override the launcher branded hover and open treatments',
-    /\.stanza-interactive-control\[data-selected="true"\]:not\(\.stanza-destructive-action\):not\(#stanza-control-center-trigger\)/.test(css) &&
-    /\.stanza-interactive-control, \.stanza-secondary-action, \.stanza-icon-action\):not\(#stanza-control-center-trigger\)/.test(css)],
+    /\.stanza-interactive-control\[data-selected="true"\]:not\(\.stanza-destructive-action\):where\(:not\(#stanza-control-center-trigger\)\)/.test(css) &&
+    /\.stanza-interactive-control, \.stanza-secondary-action, \.stanza-icon-action\):where\(:not\(#stanza-control-center-trigger\)\)/.test(css)],
   ['mobile bottom navigation is content-sized and keeps the add action adjacent', /w-fit max-w-\[calc\(100vw-1\.5rem\)\]/.test(nav) && /left-1\/2 -translate-x-1\/2 md:hidden/.test(nav) && /max-w-\[calc\(100vw-7\.5rem\)\]/.test(nav)],
   ['mobile search filters the existing navigation registry instead of opening a second Command Palette', /isMobileLayout \? <label/.test(nav) && /mobileVisibleItems/.test(nav) && /setMobileSearch/.test(nav) && /onOpenCommandPalette\(launcherRef\.current\)/.test(nav)],
 ];
@@ -237,7 +237,7 @@ const {BrandWordmark}=await import('../src/components/BrandWordmark');
 const {PageHeaderActions}=await import('../src/components/navigation/PageHeaderActions');
 assert.match(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})),/aria-label="Stanza"/);assert.match(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})),/stanza-brand-neon/);
 assert.doesNotMatch(renderToStaticMarkup(createElement(BrandWordmark,{neon:true})), /<svg|<path|stanza-brand-neon-metric/);
-const actions=renderToStaticMarkup(createElement(PageHeaderActions,{navigation:'Back',navigationLabel:'History',label:'Page actions',children:'Add to Workspace'}));
+const actions=renderToStaticMarkup(createElement(PageHeaderActions,{navigation:'Back',navigationLabel:'History',label:'Page actions',children:'Add to workspace'}));
 assert.match(actions,/role="group" aria-label="Page actions"/);assert.match(actions,/<nav aria-label="History">Back/);
 assert(nav.includes('stanza-rail-scroll')&&nav.includes('railScrollRef'));assert(css.includes('max-height:calc(100dvh - 1.5rem)'));assert(!css.includes('.stanza-module-toolbar .module-add {margin-inline-start:auto'));
 console.log('PASS rare bounded neon scheduling, hidden/reduced-effects cancellation and cleanup; accessible shell branding, anchored actions and bounded rail contracts');

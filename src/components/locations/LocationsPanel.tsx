@@ -284,7 +284,7 @@ export function LocationsPanel() {
         <button
           type="button"
           onClick={(event) => open('new', event.currentTarget)}
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold text-black"
+          className="stanza-primary-action inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold text-black"
         >
           <Plus className="h-4 w-4" />
           {tr('Create location', 'إضافة موقع')}
@@ -479,7 +479,7 @@ export function LocationsPanel() {
               <button type="button" onClick={resetForm} disabled={saving} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-emerald-500/25 px-3 text-sm font-bold">
                 <RotateCcw className="h-4 w-4" />{tr('Reset', 'إعادة تعيين')}
               </button>
-              <button type="submit" disabled={saving} className="min-h-11 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-black disabled:opacity-50">
+              <button type="submit" disabled={saving} className="stanza-primary-action min-h-11 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-black disabled:opacity-50">
                 {saving ? tr('Saving...', 'جارٍ الحفظ...') : tr('Save location', 'حفظ الموقع')}
               </button>
             </footer>

@@ -95,7 +95,11 @@ assert.match(css, /stanza-input-bg/);
 assert.match(css, /stanza-menu-bg/);
 assert.match(css, /stanza-select-option-bg/);
 assert.doesNotMatch(css, /filter:\s*brightness/i);
-assert.doesNotMatch(css, /:root[^\{]*\{[^}]*opacity:/s);
+// Guard the document itself, not pattern descendants or --*-opacity tokens.
+for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  if (rule[1].split(',').some(selector => /^:root(?:\[[^\]]+\]|:not\([^)]*\))*$/.test(selector.trim())))
+    assert.doesNotMatch(rule[2], /(?:^|;)\s*opacity\s*:/, 'root opacity must remain intact');
+}
 assert.doesNotMatch(css, /:root\[data-theme="dark"\]\[data-light-intensity/);
 assert.match(css, /\.dark \{/);
 for (const preset of BACKGROUND_PRESET_IDS) {
@@ -192,7 +196,8 @@ assert.match(css, /:root\[data-background-preset\]\[data-theme="light"\] \{\s*--
 assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/);
 assert.match(css, /\.stanza-navigation-item\[data-selected="true"\]/);
 assert.match(css, /color-mix\(in srgb, var\(--stanza-surface-selected\) 82%, var\(--stanza-accent\) 18%\)/);
-assert.match(css, /transform: scale\(\.98\)/);
+assert.match(css, /\.stanza-primary-action:not\(:disabled\):active,[\s\S]*?transform: none;/);
+assert.match(css, /:active\s*\{box-shadow:inset 0 2px 2px/);
 assert.match(css, /outline: 2px solid var\(--stanza-focus-ring\)/);
 assert.match(css, /:not\(:disabled\):not\(\[aria-disabled="true"\]\)[\s\S]*cursor: pointer;/);
 assert.match(css, /\.stanza-destructive-action:not\(:disabled\):hover/);

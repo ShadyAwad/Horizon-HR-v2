@@ -1,3 +1,4 @@
+import {applyAppearanceOptions,normaliseBackgroundStyle,normaliseBackgroundIntensity,normaliseThemeTransition,type AppearanceOptions} from './appearance-options';
 import { applyFontScale, normaliseFontScale, applyFontProfile, normaliseFontProfile, type FontProfileId } from './typography';
 import {
   createContext,
@@ -31,7 +32,7 @@ export type LightIntensity = number;
 export type RosterPresentationMode = 'auto' | 'fit' | 'detailed';
 export type DesktopNavigationMode = 'launcher' | 'rail';
 
-export type StanzaPreferences = {
+export type StanzaPreferences = AppearanceOptions & {
   lanyardEnabled: boolean;
   interfaceScale: number;
   fontScale: number;
@@ -55,6 +56,7 @@ export type StanzaPreferences = {
 };
 
 const DEFAULT_PREFERENCES: StanzaPreferences = {
+  backgroundStyle:'topographic', backgroundIntensity:'normal', themeTransition:'subtle',
   lanyardEnabled: true,
   interfaceScale: 1,
   fontScale: 1,
@@ -112,6 +114,9 @@ export function readStanzaPreferences(rawValue?: string | null): StanzaPreferenc
     const customTheme = normaliseCustomTheme(parsed.customTheme, parsed.customAccent);
     const tutorials = readTutorialProgress(parsed);
     return {
+      backgroundStyle:normaliseBackgroundStyle(parsed.backgroundStyle),
+      backgroundIntensity:normaliseBackgroundIntensity(parsed.backgroundIntensity),
+      themeTransition:normaliseThemeTransition(parsed.themeTransition),
       lanyardEnabled: typeof parsed.lanyardEnabled === 'boolean'
         ? parsed.lanyardEnabled
         : DEFAULT_PREFERENCES.lanyardEnabled,
@@ -163,6 +168,7 @@ export function applyLightIntensity(lightIntensity: LightIntensity) {
 
 export function initializeStanzaPreferences() {
   const preferences = readStanzaPreferences();
+  applyAppearanceOptions(preferences);
   applyFontScale(preferences.fontScale);
   applyFontProfile(preferences.fontProfile);
   applyInterfaceScale(preferences.interfaceScale);
@@ -173,6 +179,7 @@ export function initializeStanzaPreferences() {
 }
 
 type StanzaPreferencesContextValue = StanzaPreferences & {
+  setAppearanceOptions: (next:Partial<AppearanceOptions>)=>void;
   setLanyardEnabled: (enabled: boolean) => void;
   setInterfaceScale: (scale: number) => void;
   setFontScale: (scale: number) => void;
@@ -202,6 +209,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const [preferences, setPreferences] = useState<StanzaPreferences>(readStanzaPreferences);
   const preferencesRef=useRef(preferences);preferencesRef.current=preferences;
 
+  useEffect(()=>applyAppearanceOptions(preferences),[preferences.backgroundStyle,preferences.backgroundIntensity,preferences.themeTransition]);
   useEffect(() => {
     applyInterfaceScale(preferences.interfaceScale);
   }, [preferences.interfaceScale]);
@@ -223,6 +231,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     const syncPreferences = (event: StorageEvent) => {
       if (event.key !== STANZA_PREFERENCES_KEY) return;
       const nextPreferences = readStanzaPreferences(event.newValue);
+      applyAppearanceOptions(nextPreferences);
       applyFontScale(nextPreferences.fontScale);
       applyFontProfile(nextPreferences.fontProfile);
       applyInterfaceScale(nextPreferences.interfaceScale);
@@ -236,6 +245,11 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     return () => window.removeEventListener('storage', syncPreferences);
   }, []);
 
+  const setAppearanceOptions = useCallback((next:Partial<AppearanceOptions>)=>setPreferences(current=>({...current,
+   backgroundStyle:next.backgroundStyle===undefined?current.backgroundStyle:normaliseBackgroundStyle(next.backgroundStyle),
+   backgroundIntensity:next.backgroundIntensity===undefined?current.backgroundIntensity:normaliseBackgroundIntensity(next.backgroundIntensity),
+   themeTransition:next.themeTransition===undefined?current.themeTransition:normaliseThemeTransition(next.themeTransition),
+  })),[]);
   const setLanyardEnabled = useCallback((enabled: boolean) => {
     setPreferences((current) => ({ ...current, lanyardEnabled: enabled }));
   }, []);
@@ -331,6 +345,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
   const [lanyardPreview, setLanyardPreview] = useState<CustomThemeConfig["lanyardStyle"] | null>(null);
   const value = useMemo<StanzaPreferencesContextValue>(() => ({
     ...preferences,
+    setAppearanceOptions,
     lanyardPreview, setLanyardPreview,
     setLanyardEnabled,
     setFontScale,
@@ -351,7 +366,7 @@ export function StanzaPreferencesProvider({ children }: { children: ReactNode })
     setCustomAccent,
     setCustomTheme,
     updateTutorialProgress,
-  }), [preferences, setFontProfile, setFontScale, lanyardPreview, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
+  }), [preferences, setAppearanceOptions, setFontProfile, setFontScale, lanyardPreview, setCustomTheme, setCustomAccent, resetInterfaceScale, resetModuleUsage, resetPinnedQuickActions, setBackgroundPreset, setDesktopNavigationMode, setDesktopRailOrder, setInterfaceScale, setLanyardEnabled, setLightIntensity, setMobileShortcuts, setModuleUsage, setPinnedQuickActionIds, setRecentCommandIds, setRosterPresentationMode, updateTutorialProgress]);
 
   return <StanzaPreferencesContext.Provider value={value}>{children}
     {preferences.backgroundPreset === 'custom' && hasCustomCursor(preferences.customTheme)

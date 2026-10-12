@@ -1,3 +1,4 @@
+import {AppearancePatternControls} from '../components/ui/AppearancePatternControls';
 import '../components/organisation/people.css';
 import { CompanyFeedPublications } from '../components/communications/CompanyFeedPublications';
 import { AttendanceTerminal } from '../components/attendance/AttendanceTerminal';
@@ -2713,7 +2714,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             })
         });
         const data = await readApiJson(res, 'Attendance service', { allowErrorResponse: true });
-        
+
         if (res.ok && data.success) {
             setClockInState('success');
             setIsClockedIn(true);
@@ -2742,7 +2743,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         setClockInState('failed');
         setClockMessage(err instanceof ApiResponseError ? err.message : t('dash.clockInTryAgain'));
     }
-    
+
     // Reset state after 4 seconds
     setTimeout(() => {
       setClockInState('idle');
@@ -4164,7 +4165,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           type="button"
           onClick={saveNotificationSettings}
           disabled={isOffline || notificationSaving || notificationLoading}
-          className="rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+          className="stanza-primary-action rounded bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
         >
           {notificationSaving ? t('dash.saving') : t('dash.saveSettings')}
         </button>
@@ -4296,7 +4297,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           <button
             type="button"
             onClick={installStanza}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
+            className="stanza-primary-action inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
           >
             <Download className="h-3.5 w-3.5" />
             {t('dash.installStanza')}
@@ -4705,6 +4706,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           {backgroundPreset === 'custom' && <CustomThemeEditor />}
         </fieldset>
         <div className="sm:col-span-2"><FontSizeControl /></div>
+        <div className="sm:col-span-2"><AppearancePatternControls /></div>
 
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 dark:border-emerald-500/20 dark:bg-black/40">
           <button
@@ -4862,6 +4864,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 >
 {/* Background Atmosphere */}
 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+
   {/* Light mode base */}
   {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.decorativeGradients && <div className="stanza-light-atmosphere absolute inset-0 dark:hidden" />}
 
@@ -4904,8 +4907,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   {/* Dark mode soft glows */}
   {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.atmosphericGlows && <><div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" /><div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" /></>}
 
+  {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div className="stanza-background-pattern absolute inset-0" aria-hidden="true" />}
   {/* Dark mode vignette only */}
-  {performanceIsolation.decorativeGradients && <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />}
+  {performanceIsolation.decorativeGradients && <div className="stanza-background-vignette absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />}
 </div>
 
       <DashboardNavigation
@@ -5329,7 +5333,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
       <main data-tutorial-target={getTutorialModuleTarget(showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab)} className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
         <ActiveModuleRenderProbe module={showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab} />
-        
+
         {/* Header Pipeline */}
         <header
           data-dashboard-context-header
@@ -5365,10 +5369,10 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         </header>
         {/* Dashboard Grid Container */}
         <div className="flex flex-col xl:flex-row gap-4 flex-1 w-full max-w-full min-w-0 items-start">
-            
+
             {/* Main Action Area (Left / Center) */}
             <div className="flex-1 space-y-4 w-full max-w-full min-w-0">
-                
+
                 {/* Tabs styled like immersive pills (Hidden on small screens, duplicated from sidebar for context) */}
                 {false && <div className="hidden">
                     <button 
@@ -5639,7 +5643,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-transparent font-mono border border-emerald-200 dark:border-emerald-500/30 px-2 py-0.5 rounded uppercase tracking-widest">{attendanceLocationMode === 'required' ? t('dash.hqSecure') : attendanceLocationMode === 'optional' ? (isRtl ? 'الموقع اختياري' : 'LOCATION OPTIONAL') : (isRtl ? 'الموقع معطل' : 'LOCATION DISABLED')}</p>
                            </div>
                        </div>
-                       
+
 
                        <div data-tutorial-target="geo-clock" className="attendance-primary relative z-10 w-full max-w-full text-start">
                            <div className="attendance-status-context">
@@ -5729,7 +5733,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       </div>
                       <div className="flex items-center gap-2">
                         {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}</span>}
-                        {(rosterSubview === 'leave' || rosterSubview === 'schedule') && <button type="button" onClick={openLeaveRequestFlow} className="rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
+                        {(rosterSubview === 'leave' || rosterSubview === 'schedule') && <button type="button" onClick={openLeaveRequestFlow} className="stanza-primary-action rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
                       </div>
                     </div>
                     <div role="tablist" aria-label={t('dash.rosterHub')} className="flex max-w-full gap-1 overflow-x-auto p-2" onKeyDown={(event) => {
@@ -6009,7 +6013,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                             loadAdminFeed();
                           }}
                           disabled={isOffline || feedLoading || adminFeedLoading}
-                          className="rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
+                          className="stanza-quiet-action rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
                         >
                           {t('dash.refresh')}
                         </button>
@@ -6098,7 +6102,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                               disabled={feedPublishInteraction.disabled || isOffline}
                               aria-busy={feedPublishInteraction.showSpinner}
                               className={cn(
-                                'stanza-document-publish inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60',
+                                'stanza-document-publish stanza-primary-action inline-flex min-h-10 items-center justify-center gap-2 rounded bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60',
                                 feedPublishInteraction.cursor === 'wait'
                                   ? 'cursor-wait'
                                   : feedPublishInteraction.cursor === 'progress'
@@ -6307,7 +6311,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                     type="button"
                                     onClick={saveCompensationProfile}
                                   disabled={isOffline || compensationSaving || !compensationForm.employeeId}
-                                    className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-6"
+                                    className="stanza-primary-action rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-6"
                                   >
                                     {compensationSaving ? t('dash.saving') : t('dash.saveCompensation')}
                                   </button>
@@ -6499,7 +6503,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                   type="button"
                                   onClick={createEmployeeLoan}
                                   disabled={isOffline || loanSaving || !loanForm.employeeId}
-                                  className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-3"
+                                  className="stanza-primary-action rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60 md:col-span-3"
                                 >
                                   {loanSaving ? t('dash.creating') : t('dash.createLoan')}
                                 </button>
@@ -6924,7 +6928,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                      type="button"
                                      onClick={createTenantRole}
                                      disabled={isOffline || roleSaving || !roleForm.name.trim()}
-                                     className="w-full rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                                     className="stanza-primary-action w-full rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
                                    >
                                      {roleSaving ? t('dash.creating') : t('dash.createRole')}
                                    </button>

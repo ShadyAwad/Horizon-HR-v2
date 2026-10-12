@@ -2,7 +2,7 @@
 .composer h2 {font-size:var(--stanza-type-display);font-weight:700}.composer h3 {font-weight:700}
 .composer-heading {margin-bottom:20px}.composer-caption {font-size:var(--stanza-type-metadata);color:var(--stanza-text-muted);margin:8px 0 16px}
 .composer-toolbar,.composer-tools {display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.composer button,.composer select,.composer input,.composer-dialog button,.composer-dialog input,.composer-dialog select,.composer-launch {min-height:40px;border:1px solid var(--stanza-border-subtle);border-radius:8px;padding:7px 10px;color:var(--stanza-text-primary);background:var(--stanza-surface-elevated);font-size:calc(.82rem * var(--stanza-font-scale, 1))}
+.composer button,.composer select,.composer input,.composer-dialog button,.composer-dialog input,.composer-dialog select,.composer-launch {min-height:var(--stanza-control-height-standard);border:1px solid var(--stanza-border-subtle);border-radius:var(--stanza-control-radius);padding:7px 10px;color:var(--stanza-text-primary);background:var(--stanza-surface-elevated);font-size:calc(.82rem * var(--stanza-font-scale, 1))}
 .composer button:not(:disabled):hover,.composer-dialog button:not(:disabled):hover,.composer-launch:not(:disabled):hover {border-color:var(--stanza-accent);background:var(--stanza-surface-hover)}
 .composer button:disabled,.composer-dialog button:disabled {opacity:.5;cursor:not-allowed}
 .composer :focus-visible,.composer-dialog :focus-visible {outline:2px solid var(--stanza-accent);outline-offset:3px}

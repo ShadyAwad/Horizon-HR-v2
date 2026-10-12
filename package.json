@@ -79,7 +79,7 @@
     "check": "npm run lint && npm run build && npm audit",
     "check:security": "npm run lint && npm run build && npm audit && npm run test:security",
     "test:typography:browser": "tsx scripts/typography-browser-test.ts",
-    "test:appearance": "tsx scripts/appearance-test.ts",
+    "test:appearance": "tsx scripts/appearance-test.ts && tsx scripts/visual-system-test.ts",
     "test:grievances": "tsx scripts/grievances-migration-test.ts && tsx scripts/grievances-test.ts",
     "test:hiring-role-ux": "tsx scripts/hiring-role-ux-test.ts",
     "test:demo-seed": "tsx scripts/demo-seed-test.ts",
@@ -134,7 +134,10 @@
     "test:release-pool": "tsx scripts/release-pool-test.ts",
     "test:tenant-isolation": "node scripts/business-scenarios-runner.mjs tenant-isolation tenant-isolation-entities",
     "test:origin-csrf": "node scripts/business-scenarios-runner.mjs origin-csrf origin-csrf-production",
-    "test:maplibre:browser": "node scripts/business-scenarios-runner.mjs maplibre"
+    "test:maplibre:browser": "node scripts/business-scenarios-runner.mjs maplibre",
+    "test:visual-system": "tsx scripts/visual-system-test.ts",
+    "test:visual-system:browser": "node scripts/business-scenarios-runner.mjs visual-system",
+    "test:visual-correction:browser": "node scripts/business-scenarios-runner.mjs visual-correction"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

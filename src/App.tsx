@@ -346,7 +346,7 @@ export default function App() {
              <button
                type="button"
                onClick={applyServiceWorkerUpdate}
-               className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
+               className="stanza-primary-action rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-400"
              >
                Refresh
              </button>

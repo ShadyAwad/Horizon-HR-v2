@@ -900,7 +900,7 @@ export function LeaveWorkspace({
         <button
           type="button"
           onClick={openRequestDialog}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 dark:ring-offset-[#07150f]"
+          className="stanza-primary-action inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 dark:ring-offset-[#07150f]"
         >
           <FileText className="h-4 w-4" />
           {copy.requestLeave}
@@ -964,7 +964,7 @@ export function LeaveWorkspace({
             {copy.toDate}
             <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 w-full rounded-md border border-emerald-500/20 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-400 dark:bg-black/35 dark:text-emerald-50" />
           </label>
-          <button type="button" onClick={() => { setPage(1); void loadRequests(); }} className="min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.applyFilters}</button>
+          <button type="button" onClick={() => { setPage(1); void loadRequests(); }} className="stanza-primary-action min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.applyFilters}</button>
           <button type="button" onClick={() => { setStatus(view === 'history' ? 'approved' : ''); setFromDate(''); setToDate(''); setPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-100/70">{copy.clearFilters}</button>
         </div>
       )}
@@ -1049,7 +1049,7 @@ export function LeaveWorkspace({
                 </select>
               </label>
             )}
-            <button type="button" onClick={() => { setApprovalPage(1); void loadApprovals(); }} className="min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white">{copy.applyFilters}</button>
+            <button type="button" onClick={() => { setApprovalPage(1); void loadApprovals(); }} className="stanza-primary-action min-h-10 self-end rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white">{copy.applyFilters}</button>
             <button type="button" onClick={() => { setApprovalSearch(''); setApprovalStatus('pending'); setApprovalLeaveType(''); setApprovalFromDate(''); setApprovalToDate(''); setApprovalDepartmentId(''); setApprovalTeamId(''); setApprovalLocationId(''); setActionableOnly(true); setApprovalPage(1); }} className="min-h-10 self-end rounded-md border border-emerald-500/20 px-3 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.clearFilters}</button>
           </div>
           {approvalError && (
@@ -1083,7 +1083,7 @@ export function LeaveWorkspace({
                     {request.scopeLabel && <span className="rounded-full border border-slate-400/20 px-2 py-1 text-slate-500 dark:text-slate-300">{request.scopeLabel}</span>}
                   </div>
                   {request.hasRosterConflict && <p className="mt-3 flex items-center gap-2 text-[11px] font-bold text-amber-700 dark:text-amber-200"><AlertTriangle className="h-4 w-4" />{request.conflictCount === 1 ? copy.oneConflict : `${request.conflictCount} ${copy.manyConflicts}`}</p>}
-                  <button type="button" onClick={() => void loadApprovalDetail(request.requestId)} className="mt-4 min-h-10 rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.review}</button>
+                  <button type="button" onClick={() => void loadApprovalDetail(request.requestId)} className="stanza-primary-action mt-4 min-h-10 rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.review}</button>
                 </article>
               ))}
             </div>
@@ -1168,7 +1168,7 @@ export function LeaveWorkspace({
             </label>
             {requestError && <p role="alert" className="rounded border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200">{requestError}</p>}
             <div className="flex justify-end">
-              <button type="submit" className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.continue}</button>
+              <button type="submit" className="stanza-primary-action min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{copy.continue}</button>
             </div>
           </form>
         )}
@@ -1186,7 +1186,7 @@ export function LeaveWorkspace({
             {requestError && <p role="alert" className="mt-4 rounded border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200">{requestError}</p>}
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" disabled={submitting} onClick={() => setRequestStep('details')} className="min-h-11 rounded-lg border border-emerald-500/20 px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-100/70">{copy.back}</button>
-              <button type="button" disabled={submitting} onClick={() => void submitRequest()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black disabled:opacity-55">{submitting && <LoaderCircle className="h-4 w-4 animate-spin" />}{submitting ? copy.submitting : copy.submit}</button>
+              <button type="button" disabled={submitting} onClick={() => void submitRequest()} className="stanza-primary-action inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black disabled:opacity-55">{submitting && <LoaderCircle className="h-4 w-4 animate-spin" />}{submitting ? copy.submitting : copy.submit}</button>
             </div>
           </div>
         )}
@@ -1195,7 +1195,7 @@ export function LeaveWorkspace({
             <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
             <p className="mt-4 text-base font-bold text-slate-900 dark:text-emerald-50">{copy.requestCreated}</p>
             <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/55">{copy.requestCreatedHelp}</p>
-            <button type="button" onClick={closeRequestDialog} className="mt-5 min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black">{copy.close}</button>
+            <button type="button" onClick={closeRequestDialog} className="stanza-primary-action mt-5 min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black">{copy.close}</button>
           </div>
         )}
       </LeaveDialog>
@@ -1342,7 +1342,7 @@ export function LeaveWorkspace({
             {approvalDetail.request.canDecide && approvalDetail.request.status === 'pending' && (
               <div className="flex flex-col gap-2 border-t border-emerald-500/10 pt-4 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setDecision('reject')} className="min-h-11 rounded-lg border border-red-500/30 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-500/10 dark:text-red-200">{copy.reject}</button>
-                <button type="button" onClick={() => setDecision('approve')} className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black">{copy.approve}</button>
+                <button type="button" onClick={() => setDecision('approve')} className="stanza-primary-action min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-black">{copy.approve}</button>
               </div>
             )}
           </div>

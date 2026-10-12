@@ -3,7 +3,7 @@
 .people-search,.people-pagination,.people-row-actions,.people-profile footer{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
 .people-search label{flex:1;min-width:0;font-size:var(--text-sm);font-weight:600}
 .people-search input{display:block;width:100%;margin-top:.35rem;padding:.6rem .75rem;border:1px solid var(--stanza-border-default);border-radius:.5rem;background:var(--stanza-input-bg,var(--stanza-surface));color:var(--stanza-text-primary)}
-.people-directory button,.people-profile button{border-radius:.4rem;padding:.5rem .7rem;font-size:var(--text-sm);color:var(--stanza-text-primary)}
+.people-directory button,.people-profile button{border-radius:var(--stanza-control-radius);padding:.5rem .7rem;font-size:var(--text-sm);color:var(--stanza-text-primary)}
 .people-directory button:focus-visible,.people-search input:focus-visible,.people-profile button:focus-visible{outline:2px solid var(--stanza-accent);outline-offset:3px}
 .people-directory button:disabled{opacity:.5;cursor:not-allowed}
 .people-list{margin-top:.75rem}

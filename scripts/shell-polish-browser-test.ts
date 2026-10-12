@@ -30,7 +30,7 @@ try{
   }
   await p.setViewportSize({width:1440,height:900});
   await p.locator('[data-tutorial-target="stanza-launcher"]').click();await p.locator('#stanza-navigation-panel .stanza-navigation-item').filter({hasText:ar?'عمليات الموقع':'Geo-Operations'}).last().click();
-  const add=p.getByRole('button',{name:ar?'إضافة إلى مساحة مخصصة':'Add to Workspace',exact:true}).first();await add.click();await p.locator('.composer-dialog').waitFor();await p.keyboard.press('Escape');assert(await add.evaluate((e:HTMLElement)=>document.activeElement===e));
+  const add=p.getByRole('button',{name:ar?'إضافة إلى مساحة مخصصة':'Add to workspace',exact:true}).first();await add.click();await p.locator('.composer-dialog').waitFor();await p.keyboard.press('Escape');assert(await add.evaluate((e:HTMLElement)=>document.activeElement===e));
   await p.locator('[data-tutorial-target="stanza-launcher"]').click();await p.locator('#stanza-navigation-panel .stanza-navigation-item').filter({hasText:ar?'طلبات الاستقالة':'Resignations'}).last().click();await p.locator('[data-dashboard-context-header] .stanza-page-header-actions').waitFor();
   const back=p.locator('.stanza-history-controls button[data-direction=back]');await back.hover();await p.waitForTimeout(180);assert.equal(await back.locator('svg').evaluate((e:SVGElement)=>new DOMMatrixReadOnly(getComputedStyle(e).transform).m41),ar?2:-2);
   await p.keyboard.press('Tab');await back.focus();assert.equal(await back.evaluate((e:HTMLElement)=>getComputedStyle(e).outlineStyle),'solid');

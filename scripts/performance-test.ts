@@ -162,9 +162,11 @@ check('attention refresh is visibility-gated, removes listeners and has no polli
 check('idle attendance readiness indicator is static rather than an infinite compositor animation',
   dashboard.includes('<AttendanceStatus ') &&
   !/animate-|setInterval|setTimeout|requestAnimationFrame/.test(read('src/components/attendance/AttendanceStatus.tsx')) &&
-  !/animation\s*:/.test(styles.slice(styles.indexOf('/* Attendance composition only;'))));
-check('CSS infinite animation is restricted to the authentication loading fingerprint',
-  (styles.match(/animation\s*:[^;{}]*\binfinite\b/g) || []).length === 2 &&
+  !/animation\s*:/.test(styles.slice(styles.indexOf('/* Attendance composition only;'), styles.indexOf('/* Personal static backgrounds.'))));
+check('CSS infinite animation is restricted to authentication and request-bound refresh loading',
+  (styles.match(/animation\s*:[^;{}]*\binfinite\b/g) || []).length === 3 &&
+  styles.includes('.stanza-refresh-action[aria-busy=true] > svg') &&
+  read('src/components/assets/AssetsPanel.tsx').includes('aria-busy={loading}') &&
   styles.includes('.stanza-fingerprint-loader-loading') &&
   styles.includes('.stanza-fingerprint-groove'));
 check('signed-in pulse animations remain confined to explicit loading and attendance-transition surfaces',
@@ -177,7 +179,7 @@ check('signed-in pulse animations remain confined to explicit loading and attend
 check('spinner animations remain confined to request, extraction, refresh, and attendance progress components',
   spinnerSourceFiles.every((path) => permittedSpinnerFiles.has(path)));
 check('signed-in frontend has no bounce animation', !frontendAnimationSources.some(({ source }) => source.includes('animate-bounce')));
-check('shared Dashboard interactions use lightweight property transitions', styles.includes('transition: background-color var(--stanza-interaction-normal) ease, border-color var(--stanza-interaction-normal) ease, color var(--stanza-interaction-normal) ease, box-shadow var(--stanza-interaction-normal) ease, transform var(--stanza-interaction-fast) ease, opacity var(--stanza-interaction-normal) ease'));
+check('shared Dashboard interactions use lightweight property transitions', ['background-color','border-color','color','box-shadow','transform','opacity'].every(property => new RegExp(property+' var\\(--stanza-interaction-(?:normal|fast)\\) var\\(--stanza-control-ease\\)').test(interactionStyles)));
 check('shared hover styling preserves selected and active controls',
   interactionStyles.includes('@media (hover: hover) and (pointer: fine)') &&
   interactionStyles.includes(':not([data-selected="true"]):not([aria-current="page"]):not([aria-selected="true"]):not([aria-pressed="true"]):not([aria-checked="true"])') &&
@@ -186,7 +188,7 @@ check('shared hover styling preserves selected and active controls',
   interactionStyles.includes('color-mix(in srgb, var(--stanza-surface-selected) 82%, var(--stanza-accent) 18%)') &&
   !interactionStyles.includes('!important'));
 check('interaction state system covers press, focus, disabled, destructive, and semantic tab controls',
-  interactionStyles.includes('transform: scale(.98)') &&
+  interactionStyles.includes('transform: none') && !interactionStyles.includes('transform: scale(.98)') &&
   interactionStyles.includes('outline: 2px solid var(--stanza-focus-ring)') &&
   interactionStyles.includes('cursor: not-allowed') &&
   interactionStyles.includes('.stanza-destructive-action:not(:disabled):hover') &&

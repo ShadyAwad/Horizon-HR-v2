@@ -251,17 +251,17 @@ export function HiringPanel({ user, onRefreshAttentionCounts, openCreateSignal =
   return (
     <section data-tutorial-target="hiring-workspace" className={cn('hiring-panel min-w-0 rounded-xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4', isRtl && 'text-right')}>
       <div className="mb-4 flex flex-col gap-3 border-b border-emerald-500/15 pb-4 lg:flex-row lg:items-start lg:justify-between">
-        <div><div className="flex items-center gap-2"><BriefcaseBusiness className="h-5 w-5 text-emerald-500" /><h2 className="text-lg font-black text-slate-900 dark:text-emerald-50">{t('hiring.title')}</h2></div><p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('hiring.subtitle')}</p></div>
+        <div><div className="flex items-center gap-2"><BriefcaseBusiness className="h-5 w-5 text-[var(--stanza-accent)]" /><h2 className="text-lg font-black text-slate-900 dark:text-emerald-50">{t('hiring.title')}</h2></div><p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('hiring.subtitle')}</p></div>
         <div className="flex flex-wrap items-center gap-2">
           {HIRING_COUNTER_STAGES.map((stage) => {
             const count = stageCounts[stage] || 0;
-            return <button type="button" key={stage} aria-pressed={filters.stage === stage} onClick={() => setFilters(current => toggleHiringStage(current,stage))} data-hiring-review-counter aria-label={`${stageLabel(stage)}: ${count}`} className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 aria-pressed:ring-2 aria-pressed:ring-emerald-500 inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs font-bold text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100">
+            return <button type="button" key={stage} aria-pressed={filters.stage === stage} onClick={() => setFilters(current => toggleHiringStage(current,stage))} data-hiring-review-counter aria-label={`${stageLabel(stage)}: ${count}`} className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 aria-pressed:ring-2 aria-pressed:ring-emerald-500 inline-flex min-h-9 items-center gap-2 rounded-lg border border-[var(--stanza-border-subtle)] bg-emerald-500/5 px-2.5 py-1.5 text-xs font-bold text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-100">
               <span className="whitespace-nowrap">{stageLabel(stage)}</span>
               <span dir="ltr" className="grid h-5 min-w-5 place-items-center rounded-full bg-emerald-500/15 px-1 text-[11px] font-black tabular-nums text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-50">{count}</span>
               {filters.stage === stage && <span>{isRtl ? 'محدد' : 'Selected'}</span>}
             </button>;
           })}
-          {can('hiring.create') && <button type="button" onClick={openCreate} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400"><FilePlus2 className="h-4 w-4" />{t('hiring.addApplicant')}</button>}
+          {can('hiring.create') && <button type="button" onClick={openCreate} className="stanza-primary-action inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400"><FilePlus2 className="h-4 w-4" />{t('hiring.addApplicant')}</button>}
         </div>
       </div>
 
@@ -305,7 +305,7 @@ function ApplicantDetail({ detail, user, locale, can, stageLabel, stageBadge, on
 }
 function History({ title, children }: { title: string; children: ReactNode }) { return <details className="hiring-history"><summary>{title}</summary><ul>{children}</ul></details>; }
 function Detail({ label, value }: { label: string; value: string }) { return <div><dt className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-emerald-100/45">{label}</dt><dd className="mt-0.5 break-words text-slate-800 dark:text-emerald-50">{value}</dd></div>; }
-function Action({ label, icon, onClick, danger,primary }: { label: string; icon: ReactNode; onClick: () => void; danger?: boolean;primary?:boolean }) { return <button type="button" title={label} onClick={onClick} className={cn(primary&&'hiring-primary','stanza-interactive-control inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-bold transition', danger ? 'border-red-500/25 text-red-700 hover:bg-red-500/10 dark:text-red-200' : 'border-emerald-500/20 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300')}>{icon}<span>{label}</span></button>; }
+function Action({ label, icon, onClick, danger,primary }: { label: string; icon: ReactNode; onClick: () => void; danger?: boolean;primary?:boolean }) { return <button type="button" onClick={onClick} className={cn(primary?'hiring-primary stanza-primary-action':danger?'stanza-secondary-action':'stanza-quiet-action','stanza-interactive-control inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-bold transition', danger ? 'border-red-500/25 text-red-700 hover:bg-red-500/10 dark:text-red-200' : '')}>{icon}<span>{label}</span></button>; }
 function Modal({title,children,onClose,isRtl:_isRtl}:{title:string;children:ReactNode;onClose:()=>void;isRtl:boolean}){return <ComposerDialog title={title} onClose={onClose}><div className="hiring-dialog">{children}</div></ComposerDialog>;}
 function ApplicantForm({
   form,
@@ -378,4 +378,4 @@ function ApplicantForm({
   );
 }
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[][] }) { return <label className="block text-sm font-bold">{label}<select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-emerald-500/20 bg-black/5 px-3 py-2 text-base dark:bg-black/35">{options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>; }
-function Submit({ loading, label }: { loading: boolean; label: string }) { return <button type="submit" disabled={loading} className="flex w-full items-center justify-center rounded-lg bg-emerald-500 px-4 py-3 text-sm font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400 disabled:opacity-50">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : label}</button>; }
+function Submit({ loading, label }: { loading: boolean; label: string }) { return <button type="submit" disabled={loading} className="stanza-primary-action flex w-full items-center justify-center rounded-lg bg-emerald-500 px-4 py-3 text-sm font-black uppercase tracking-wider text-[#02110b] transition hover:bg-emerald-400 disabled:opacity-50">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : label}</button>; }

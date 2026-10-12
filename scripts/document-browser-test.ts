@@ -560,7 +560,7 @@ try {
   assert((await canvas.innerText()).includes("Callout body"));
   assert((await canvas.innerText()).includes("Table body"));
   console.log("PASS rich document save/reload/edit");
-  await p.getByRole("button", { name: "Publish Post", exact: true }).click();
+  await p.getByRole("button", { name: "Publish post", exact: true }).click();
   await p.waitForTimeout(1500);
   const posts = await req("/api/company-feed/admin");
   const post = posts.posts.find((x: any) => x.title === tag);

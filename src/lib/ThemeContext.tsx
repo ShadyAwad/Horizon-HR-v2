@@ -1,3 +1,5 @@
+import {flushSync} from 'react-dom';
+import {transitionTheme} from './theme-transition';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { recordDevInteraction } from './dev-performance';
 
@@ -7,7 +9,7 @@ type ThemeContextType = {
   theme: Theme;
   isDark: boolean;
   setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
+  toggleTheme: (event?:{currentTarget:HTMLElement}) => void;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -34,13 +36,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const value = useMemo<ThemeContextType>(() => {
-    const setTheme = (nextTheme: Theme) => recordDevInteraction('theme-change', () => setThemeState(nextTheme));
+    const setTheme = (nextTheme: Theme) => recordDevInteraction('theme-change', () => transitionTheme(()=>flushSync(()=>setThemeState(nextTheme))));
 
     return {
       theme,
       isDark: theme === 'dark',
       setTheme,
-      toggleTheme: () => recordDevInteraction('theme-change', () => setThemeState((current) => (current === 'dark' ? 'light' : 'dark'))),
+      toggleTheme: (event) => recordDevInteraction('theme-change', () => transitionTheme(()=>flushSync(()=>setThemeState(current=>current==='dark'?'light':'dark')),event?.currentTarget)),
     };
   }, [theme]);
 
