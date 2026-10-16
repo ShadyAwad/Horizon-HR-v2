@@ -137,7 +137,13 @@
     "test:maplibre:browser": "node scripts/business-scenarios-runner.mjs maplibre",
     "test:visual-system": "tsx scripts/visual-system-test.ts",
     "test:visual-system:browser": "node scripts/business-scenarios-runner.mjs visual-system",
-    "test:visual-correction:browser": "node scripts/business-scenarios-runner.mjs visual-correction"
+    "test:visual-correction:browser": "node scripts/business-scenarios-runner.mjs visual-correction",
+    "demo:reset": "tsx scripts/recover-demo.ts",
+    "demo:preview": "npm run build && node scripts/local-preview.mjs --public-demo",
+    "test:demo-recovery": "tsx scripts/demo-recovery-test.ts",
+    "demo:verify": "tsx scripts/verify-demo.ts",
+    "test:demo-resources": "tsx scripts/demo-resource-test.ts",
+    "test:demo-public": "node scripts/business-scenarios-runner.mjs demo-public"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

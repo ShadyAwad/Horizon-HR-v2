@@ -37,7 +37,9 @@ for (const permission of permissionDefinitions) {
 }
 assert.equal(getPermissionDefinition('roles.manage')?.protected, true);
 assert.equal(getPermissionDefinition('roles.manage')?.delegatable, false);
-assert.match(demoSeed, /seedOrganisation/);
+assert.match(demoSeed, /seedDemoContents/);
+const demoContents = await readFile('scripts/demo/seed.ts', 'utf8');
+assert.match(demoContents, /organisation and employees', seedOrganisation/);
 assert.ok(demoSeed.includes("process.argv.includes('--organisation')"));
 assert.match(demoSeed, /STANZA_DEMO_ENV\s*!==\s*'true'/);
 assert.match(demoSeed, /ALLOW_DEMO_DATA_MUTATION\s*!==\s*'true'/);

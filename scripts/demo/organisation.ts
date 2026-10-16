@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { PERMISSION_REGISTRY, validatePermissionKeys } from '../../src/server/organisation/permission-registry';
 import { employeeFixtures, emailFor, COMPANY, demoAmount, type DemoContext } from './core';
-export const employeePermissions = ['locations.read', 'attendance.clock', 'break_requests.create', 'break_requests.view_own', 'leave.create', 'leave.view.self', 'leave.cancel.self', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self', 'grievances.create', 'grievances.view_own', 'feed.read', 'expenses.submit.self', 'expenses.view.self', 'expenses.cancel.self', 'roster.goals.view_self', 'roster.goals.complete_self', 'performance.view', 'performance.review', 'organisation.view'];
+export const employeePermissions = ['qr.employee_badge.self', 'locations.read', 'attendance.clock', 'break_requests.create', 'break_requests.view_own', 'leave.create', 'leave.view.self', 'leave.cancel.self', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self', 'grievances.create', 'grievances.view_own', 'feed.read', 'expenses.submit.self', 'expenses.view.self', 'expenses.cancel.self', 'roster.goals.view_self', 'roster.goals.complete_self', 'performance.view', 'performance.review', 'organisation.view'];
 export const managerPermissions = [...employeePermissions, 'attendance.view', 'attendance.view_live', 'break_requests.review', 'attendance.early_leave.review', 'break_requests.view_all', 'leave.view.scoped', 'leave.approve', 'leave.review', 'roster.view_all', 'roster.goals.view_scoped', 'roster.goals.manage', 'performance.manage_goals', 'performance.view_reports', 'expenses.view.scoped', 'expenses.approve'];
-export const customRoles = [{ name: 'Recruitment Coordinator', person: 'recruiter', keys: ['hiring.view', 'hiring.create', 'hiring.edit', 'hiring.add_notes', 'hiring.view_notes', 'hiring.advance_stage'] }, { name: 'Payroll Specialist', person: 'payroll', keys: ['payroll.export_pdf', 'expenses.view.scoped', 'attendance.view'] }, { name: 'Operations Supervisor', person: 'ops', keys: ['attendance.view', 'attendance.view_live', 'break_requests.review', 'attendance.early_leave.review', 'break_requests.view_all', 'roster.goals.view_scoped', 'roster.goals.manage'] }];
+export const publicHrPermissions = [...employeePermissions, ...managerPermissions, 'roster.manage', 'feed.publish', 'hiring.view', 'hiring.create', 'hiring.edit', 'hiring.add_notes', 'hiring.view_notes', 'hiring.advance_stage', 'hiring.manage_jobs', 'hiring.schedule_interviews', 'hiring.evaluate', 'hiring.review_applications', 'hiring.onboarding.view', 'assets.view', 'assets.assign', 'assets.return', 'support.view', 'support.manage', 'grievances.view', 'grievances.triage', 'grievances.assign', 'grievances.respond', 'grievances.internal_notes', 'grievances.resolve', 'communications.view', 'communications.meetings.view'];
+export const customRoles = [{ name:'Demo HR / Hiring',person:'admin',keys:[...new Set(publicHrPermissions)] }, { name: 'Recruitment Coordinator', person: 'recruiter', keys: ['hiring.view', 'hiring.create', 'hiring.edit', 'hiring.add_notes', 'hiring.view_notes', 'hiring.advance_stage'] }, { name: 'Payroll Specialist', person: 'payroll', keys: ['payroll.export_pdf', 'expenses.view.scoped', 'attendance.view'] }, { name: 'Operations Supervisor', person: 'ops', keys: ['attendance.view', 'attendance.view_live', 'break_requests.review', 'attendance.early_leave.review', 'break_requests.view_all', 'roster.goals.view_scoped', 'roster.goals.manage'] }];
 export async function seedOrganisation(ctx: DemoContext) {
     const { client, tenantId: t } = ctx;
     await client.query('UPDATE tenants SET company_name=$2 WHERE id=$1', [t, COMPANY]);
@@ -24,7 +25,7 @@ export async function seedOrganisation(ctx: DemoContext) {
             await client.query('INSERT INTO tenant_role_permissions(tenant_id,role_id,permission_key) VALUES($1,$2,$3)', [t, id, permission]);
     }
     for (const role of customRoles) {
-        if (!validatePermissionKeys(role.keys) || role.keys.some(k => { const p = PERMISSION_REGISTRY.find(p => p.key === k)!; return p.protected || !p.delegatable; }))
+        if (!validatePermissionKeys(role.keys) || role.keys.some(k => { const p = PERMISSION_REGISTRY.find(p => p.key === k)!; return p.protected || (role.person !== 'admin' && !p.delegatable); }))
             throw new Error(`Invalid custom role: ${role.name}`);
         const id = await ctx.row('tenant_roles', role.person, { name: role.name, description: `Supports ${role.name.toLowerCase()} duties without company administration.`, is_system: false, is_active: true });
         roles.set(role.person, id);
@@ -40,12 +41,14 @@ export async function seedOrganisation(ctx: DemoContext) {
         const existing = await client.query('SELECT id FROM employees WHERE tenant_id=$1 AND email=$2', [t, emailFor(key)]);
         let id = existing.rows[0]?.id;
         if (!id)
-            id = await ctx.row('employees', key, { full_name: name, email: emailFor(key), password_hash: hash, role, job_title: title, created_at: ctx.time(key === 'new' ? -6 : -540), is_active: key !== 'former', employment_status: key === 'former' ? 'terminated' : 'active' });
+            id = await ctx.row('employees', key, { full_name: name, email: emailFor(key), password_hash: hash, role: key === 'admin' ? 'employee' : role, job_title: title, created_at: ctx.time(key === 'new' ? -6 : -540), is_active: key !== 'former', employment_status: key === 'former' ? 'terminated' : 'active' });
         else
-            await client.query('UPDATE employees SET full_name=$3,role=$4,job_title=$5,is_active=$6,employment_status=$7 WHERE tenant_id=$1 AND id=$2', [t, id, name, role, title, key !== 'former', key === 'former' ? 'terminated' : 'active']);
+            await client.query('UPDATE employees SET full_name=$3,role=$4,job_title=$5,is_active=$6,employment_status=$7 WHERE tenant_id=$1 AND id=$2', [t, id, name, key === 'admin' ? 'employee' : role, title, key !== 'former', key === 'former' ? 'terminated' : 'active']);
         ctx.people.set(key, id);
-        if (['admin', 'manager', 'employee'].includes(key))
+        if (['admin', 'manager', 'employee'].includes(key)) {
+            await client.query('UPDATE employees SET profile_image_url=NULL WHERE tenant_id=$1 AND id=$2', [t,id]);
             ctx.tables.get('employees')?.delete(id);
+        }
         await ctx.row('employee_compensation_profiles', key, { employee_id: id, pay_type: 'monthly', base_amount: demoAmount(ctx, salary), currency: ctx.currency, effective_from: ctx.date(-180), is_active: true, created_by: null, updated_by: null });
     }
     for (const [key, , department, title, role, manager] of employeeFixtures) {
@@ -61,9 +64,9 @@ export async function seedOrganisation(ctx: DemoContext) {
         const job = await ctx.row('organisation_job_titles', title, { name: title, description: `${title} at Northstar Systems.`, level: role === 'employee' ? 2 : 4 });
         await client.query('UPDATE employees SET department_id=$3,team_id=$4,job_title_id=$5,manager_id=$6 WHERE tenant_id=$1 AND id=$2', [t, id, dep, team, job, manager ? ctx.people.get(manager) : null]);
         await ctx.row('organisation_team_memberships', key, { team_id: team, employee_id: id, membership_type: key === head[0] ? 'lead' : 'member', starts_at: ctx.date(-180), ends_at: key === 'former' ? ctx.date(-30) : null });
-        await client.query("DELETE FROM employee_role_assignments a USING tenant_roles r WHERE a.tenant_id=$1 AND a.employee_id=$2 AND r.id=a.role_id AND r.tenant_id=a.tenant_id AND r.system_key IN ('employee','manager','hr_admin') AND r.system_key<>$3 AND NOT($3='manager' AND r.system_key='employee')", [t, id, role]);
+        await client.query("DELETE FROM employee_role_assignments a USING tenant_roles r WHERE a.tenant_id=$1 AND a.employee_id=$2 AND r.id=a.role_id AND r.tenant_id=a.tenant_id AND r.system_key IN ('employee','manager','hr_admin') AND r.system_key<>$3 AND NOT($3='manager' AND r.system_key='employee')", [t, id, key === 'admin' ? 'employee' : role]);
         if (role !== 'manager')
-            await client.query("INSERT INTO employee_role_assignments(tenant_id,employee_id,role_id,assigned_by,scope_type,assigned_at) SELECT $1,$2,$3,$4,'company',$5 WHERE NOT EXISTS(SELECT 1 FROM employee_role_assignments WHERE tenant_id=$1 AND employee_id=$2 AND role_id=$3 AND revoked_at IS NULL)", [t, id, roles.get(role), ctx.people.get('admin'), ctx.time(-180)]);
+            await client.query("INSERT INTO employee_role_assignments(tenant_id,employee_id,role_id,assigned_by,scope_type,assigned_at) SELECT $1,$2,$3,$4,'company',$5 WHERE NOT EXISTS(SELECT 1 FROM employee_role_assignments WHERE tenant_id=$1 AND employee_id=$2 AND role_id=$3 AND revoked_at IS NULL)", [t, id, roles.get(key === 'admin' ? 'employee' : role), ctx.people.get('admin'), ctx.time(-180)]);
         else {
             // Personal rights use the Employee role; managerial rights use the direct-report scope.
             for (const [r, scope] of [[roles.get('employee'), 'company'], [roles.get('manager'), 'direct_reports']] as const)

@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import {publicDemoOverrides} from './demo/environment.mjs';
 import { spawn } from 'node:child_process';
 if (process.env.NODE_ENV === 'production') throw new Error('Use npm start for production; local preview is loopback-only');
 config({ quiet: true });
@@ -12,6 +13,7 @@ Object.assign(process.env, {
   WEBAUTHN_RP_ID: 'localhost', TRUST_PROXY_HOPS: '0',
   DEV_AUTH_HEADERS: 'false', ALLOW_TRYCLOUDFLARE_DEV_ORIGINS: 'false',
 });
+if(process.argv.includes('--public-demo'))Object.assign(process.env,publicDemoOverrides());
 const bundles=['dist/server.cjs','dist/worker.cjs'];
 const children = bundles.map(bundle =>
   spawn(process.execPath, [bundle], { stdio: 'inherit', env: process.env, windowsHide: true }));
