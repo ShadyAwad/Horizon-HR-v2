@@ -1,3 +1,4 @@
+import {RefreshButton} from '../ui/RefreshButton';
 import { loadMapLibre } from '../../lib/maplibre';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, Edit3, MapPin, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
@@ -273,7 +274,7 @@ export function LocationsPanel() {
   const hasCoordinatePreview = Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude));
 
   return (
-    <section dir={isRtl ? 'rtl' : 'ltr'} className="min-w-0 space-y-4 text-left dark:text-emerald-50">
+    <section dir={isRtl ? 'rtl' : 'ltr'} className="locations-panel min-w-0 space-y-4 text-left dark:text-emerald-50">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">{tr('Locations', 'المواقع')}</h2>
@@ -315,9 +316,7 @@ export function LocationsPanel() {
         <button type="button" onClick={() => setStatus(status === 'active' ? 'archived' : 'active')} className="rounded-lg border border-emerald-500/20 px-3 py-2 text-sm">
           {status === 'active' ? tr('Archived', 'المؤرشفة') : tr('Active', 'النشطة')}
         </button>
-        <button type="button" onClick={() => void load()} className="rounded-lg border border-emerald-500/20 p-2" aria-label={tr('Refresh', 'تحديث')}>
-          <RefreshCw className="h-4 w-4" />
-        </button>
+        <RefreshButton onClick={() => void load()} loading={loading} aria-label={tr('Refresh','تحديث')}/>
       </div>
 
       {error && (
@@ -347,7 +346,7 @@ export function LocationsPanel() {
                     {location.address || tr('Address unavailable', 'العنوان غير متاح')}
                   </p>
                 </div>
-                <span className={location.isActive ? 'text-xs font-bold text-emerald-600' : 'text-xs font-bold text-amber-600'}>
+                <span className={location.isActive ? 'stanza-positive text-xs font-bold' : 'stanza-neutral-status text-xs font-bold'}>
                   {location.isActive ? tr('Active', 'نشط') : tr('Archived', 'مؤرشف')}
                 </span>
               </div>
@@ -355,13 +354,13 @@ export function LocationsPanel() {
                 {tr('Circle', 'دائرة')} · {location.radius}m · {location.teamCount || 0} {tr('teams', 'فرق')} · {location.futureShiftCount || 0} {tr('future shifts', 'ورديات قادمة')}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" onClick={(event) => open(location, event.currentTarget)} className="inline-flex items-center gap-1 rounded border border-emerald-500/25 px-2 py-1.5 text-xs font-bold">
+                <button type="button" onClick={(event) => open(location, event.currentTarget)} className="stanza-secondary-action inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold">
                   <Edit3 className="h-3.5 w-3.5" />{tr('Edit', 'تعديل')}
                 </button>
-                <button type="button" onClick={() => { setEditing(location); void loadUsage(location); }} className="inline-flex items-center gap-1 rounded border border-emerald-500/25 px-2 py-1.5 text-xs font-bold">
+                <button type="button" onClick={() => { setEditing(location); void loadUsage(location); }} className="stanza-secondary-action inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold">
                   <MapPin className="h-3.5 w-3.5" />{tr('Usage', 'الاستخدام')}
                 </button>
-                <button type="button" onClick={() => void lifecycle(location, location.isActive ? 'archive' : 'restore')} className="inline-flex items-center gap-1 rounded border border-emerald-500/25 px-2 py-1.5 text-xs font-bold">
+                <button type="button" onClick={() => void lifecycle(location, location.isActive ? 'archive' : 'restore')} className="stanza-secondary-action inline-flex items-center gap-1 px-2 py-1.5 text-xs font-bold">
                   <Archive className="h-3.5 w-3.5" />{location.isActive ? tr('Archive', 'أرشفة') : tr('Restore', 'استعادة')}
                 </button>
               </div>

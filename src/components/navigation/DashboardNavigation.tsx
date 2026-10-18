@@ -166,11 +166,11 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
   );
   const launcherAssembly = !isMobileLayout ? (
     <div
-      data-stanza-launcher-assembly
+      data-stanza-launcher-assembly data-navigation-mode={desktopMode}
       className="pointer-events-none fixed inset-0 z-20 hidden overflow-visible md:block"
     >
       {lanyardSlot}
-      <div className="pointer-events-auto absolute start-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] z-20">
+      <div className="stanza-launcher-dock pointer-events-auto absolute start-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] z-20">
         {launcherAnchor}
       </div>
     </div>

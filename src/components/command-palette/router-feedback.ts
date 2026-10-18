@@ -4,7 +4,10 @@ export function routerFeedback(result:RouterResult|null,busy:boolean,hasCommands
   if(busy)return text('Finding a Stanza command…','جارٍ البحث عن أمر…');
   if(!result)return text('Ask Stanza… No approved command found yet.','اسأل Stanza… لم يتم العثور على أمر معتمد.');
   if(result.unsupported)return text('This request is not supported. Try a read-only Stanza command.','هذا الطلب غير مدعوم. جرّب أمرًا لعرض المعلومات في Stanza.');
+  if(result.entityRoute?.status==='unresolved'&&result.entityRoute.entities.some(e=>e.status==='unresolved'))return text('Which record do you mean? Enter a name or identifier.','أي سجل تقصد؟ أدخل اسمًا أو معرّفًا.');
+  if(result.entityRoute?.status==='resolved'&&result.entityRoute.total===0)return text('Request understood. No matching records.','تم فهم الطلب. لا توجد سجلات مطابقة.');
   if(result.entityRoute&&result.entityRoute.status!=='resolved')return result.entityRoute.status==='ambiguous'?text('Clarification required. Choose an authorized match below.','يلزم التوضيح. اختر نتيجة مسموحًا بها أدناه.'):text('No authorized matching record is available. Check the entities and your access.','لا يوجد سجل مطابق متاح لك. تحقق من البيانات وصلاحياتك.');
+  if(result.entityRoute?.status==='resolved'&&result.entityRoute.total!==undefined)return text('Read-only results. Review the records below.','نتائج للقراءة فقط. راجع السجلات أدناه.');
   if(result.outcome==='unauthorized'||result.outcome==='matched'&&!hasCommands)return text('This capability is unavailable for your account.','هذه الإمكانية غير متاحة لحسابك.');
   if(result.outcome==='matched')return result.method==='semantic'?text('Suggested command (semantic). Review the destination below before opening.','أمر مقترح (مطابقة دلالية). راجع الوجهة أدناه قبل الفتح.'):result.method==='llm'?text('Suggested command (llm). Review before opening.','أمر مقترح (تفسير الذكاء الاصطناعي)؛ راجعه قبل الفتح.'):text('Suggested command. Review before opening.','أمر مقترح؛ راجعه قبل الفتح.');
   if(result.outcome==='ambiguous')return text('More than one interpretation fits. Review the suggested destinations.','يوجد أكثر من تفسير محتمل. راجع الوجهات المقترحة.');

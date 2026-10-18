@@ -108,7 +108,8 @@ test('dashboard exposes stable accessible draft status and recovery controls', (
   assert.match(dashboard, /feedDraftContinue/);
   assert.match(dashboard, /feedDraftDiscard/);
   assert.match(dashboard, /feedDraftRetry/);
-  assert.match(dashboard, /min-h-10 flex-wrap/);
+  assert.match(dashboard, /stanza-document-draft-actions/);
+  assert.match(readFileSync('src/index.css','utf8'), /\.stanza-document-draft-actions[^{}]*\{[^}]*flex-wrap:\s*wrap/, 'Shared draft strip wraps instead of depending on utility-class text');
   assert.match(dashboard, /class CompanyFeedBoundary/);
   assert.match(dashboard, /Company Feed could not be loaded\./);
   assert.match(dashboard, /Discard local recovery data/);

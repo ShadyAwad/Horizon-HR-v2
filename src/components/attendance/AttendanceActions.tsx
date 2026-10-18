@@ -1,3 +1,4 @@
+import {MapPinOff} from 'lucide-react';
 import {useEffect,useState} from 'react';
 import {useAttendanceBoundary} from '../../hooks/useAttendanceBoundary';
 import {ComposerDialog} from '../workspace-composer/ComposerDialog';
@@ -30,7 +31,7 @@ export function AttendanceActions({attendance,hasShift,canClock,offline,onChange
  const submit=async()=>{setBusy(true);setError('');try{await request(dialog==='no_location'?'/api/attendance/clock-in-without-location':'/api/attendance/early-leave',dialog==='no_location'?{confirm:true,note}:{timeLogId:attendance.timeLogId,departureTime:new Date(departure).toISOString(),reason:note});setDialog(null);onChanged();}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
  const current=attendance?.earlyLeaveRequest;
  return <div className="attendance-secondary-actions w-full space-y-2 text-start">
- <div className="flex flex-wrap gap-2">{canClock&&hasShift&&(attendance?.activeBreak||attendance?.plannedBreaks?.some((b:any)=>b.state==='due'))&&<button className={button} disabled={offline||busy} onClick={onClockOut}>{text('Clock out','تسجيل الانصراف')}</button>}{canClock&&!hasShift&&<button className={button} disabled={offline||busy} onClick={()=>open('no_location')}>{text('Clock in without location','تسجيل الحضور دون موقع')}</button>}
+ <div className="flex flex-wrap gap-2">{canClock&&hasShift&&(attendance?.activeBreak||attendance?.plannedBreaks?.some((b:any)=>b.state==='due'))&&<button className={button} disabled={offline||busy} onClick={onClockOut}>{text('Clock out','تسجيل الانصراف')}</button>}{canClock&&!hasShift&&<button className="stanza-quiet-action attendance-location-fallback" disabled={offline||busy} onClick={()=>open('no_location')}><MapPinOff aria-hidden="true" size={16}/>{text('Clock in without location','تسجيل الحضور دون موقع')}</button>}
  {canClock&&hasShift&&attendance?.remainingSeconds>0&&!['pending','approved'].includes(current?.status)&&<button className={button} disabled={offline||busy} onClick={()=>open('request')}>{text('Request early leave','طلب انصراف مبكر')}</button>}</div>
  {current&&<p className="attendance-muted text-sm" role="status">{text('Early leave request:','طلب الانصراف المبكر:')} {({pending:text('Pending','معلق'),approved:text('Approved','معتمد'),rejected:text('Rejected','مرفوض')} as Record<string,string>)[current.status]} · {time(current.requested_departure_time)}{current.review_note&&' · '+current.review_note}</p>}
  {dialog&&<ComposerDialog title={dialog==='no_location'?text('Clock in without location','تسجيل الحضور دون موقع'):text('Request early leave','طلب انصراف مبكر')} onClose={()=>{if(!busy)setDialog(null);}}><form className="space-y-4 text-start" onSubmit={e=>{e.preventDefault();void submit();}}>

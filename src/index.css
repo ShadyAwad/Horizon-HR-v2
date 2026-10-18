@@ -317,8 +317,8 @@
   }
 
   ::selection {
-    background-color: rgb(16 185 129 / 0.35);
-    color: #ecfdf5;
+    background-color: color-mix(in srgb,var(--stanza-accent) 35%,transparent);
+    color: var(--stanza-text-primary);
   }
 
   /* RTL Support Enhancements */
@@ -509,11 +509,11 @@
 @keyframes stanzaFingerprintSurface {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 18px rgb(16 185 129 / 0.2);
+    box-shadow: 0 0 18px color-mix(in srgb,var(--stanza-accent) 20%,transparent);
   }
   50% {
     transform: scale(1.035);
-    box-shadow: 0 0 28px rgb(52 211 153 / 0.34);
+    box-shadow: 0 0 28px color-mix(in srgb,var(--stanza-accent-hover) 34%,transparent);
   }
 }
 
@@ -548,7 +548,7 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #34d399, #059669);
+  background: linear-gradient(135deg,var(--stanza-accent-hover),var(--stanza-accent));
   color: #020604;
   box-shadow: 0 0 20px rgb(16 185 129 / 0.3);
 }
@@ -641,8 +641,8 @@
   }
 
   .stanza-login-input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
-    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    -webkit-box-shadow: 0 0 0 1px var(--stanza-focus-ring), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1px var(--stanza-focus-ring), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
   }
 
   .stanza-login-input:-moz-autofill,
@@ -673,11 +673,11 @@
   }
 
   .stanza-login-input:-moz-autofill:focus {
-    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1px var(--stanza-focus-ring), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
   }
 
   .stanza-login-input:-moz-autofill-preview:focus {
-    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1px var(--stanza-focus-ring), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
   }
 
   .stanza-login-input:autofill,
@@ -695,7 +695,7 @@
   }
 
   .stanza-login-input:autofill:focus {
-    box-shadow: 0 0 0 1px var(--color-horizon-emerald), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
+    box-shadow: 0 0 0 1px var(--stanza-focus-ring), 0 0 0 1000px var(--stanza-login-input-bg) inset !important;
   }
 }
 .stanza-lanyard-dragging,
@@ -933,17 +933,17 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 .stanza-theme-outline:not(:disabled):not([aria-disabled="true"]):hover { background-color: var(--stanza-accent-soft) !important; border-color: var(--stanza-focus-ring) !important; }
 
 /* Tailwind utility remnants used for generic cards, dividers, and controls.
-   Keep the actual green success fills/text out of this mapping so status
-   meaning remains stable across visual presets. */
+   Persistent positive states follow the accent; explicitly marked ephemeral
+   feedback retains its separate success treatment. */
 :root[data-background-preset]:not([data-background-preset="emerald"]) .stanza-dashboard :is(
-  [class~="border-emerald-500/10"], [class~="border-emerald-500/15"], [class~="border-emerald-500/20"], [class~="border-emerald-500/30"],
+  [class~="border-emerald-500/10"], [class~="border-emerald-500/15"], [class~="border-emerald-500/20"], [class~="border-emerald-500/25"], [class~="border-emerald-500/30"],
   [class~="border-emerald-200"], [class~="border-emerald-300"], [class~="border-emerald-400"],
   [class~="divide-emerald-500/10"], [class~="divide-emerald-500/15"], [class~="divide-emerald-500/20"]
 ) { border-color: var(--stanza-border-default) !important; }
 :root[data-background-preset]:not([data-background-preset="emerald"]) .stanza-dashboard :is(
   [class*="focus-visible:ring-emerald"], [class*="focus:ring-emerald"], [class*="ring-emerald"]
 ) { --tw-ring-color: var(--stanza-focus-ring) !important; }
-:root[data-background-preset]:not([data-background-preset="emerald"]) .stanza-dashboard button:is([class*="text-emerald"]):not([class*="bg-emerald"]):not([class*="text-red"]):not([class*="text-amber"]) {
+:root[data-background-preset]:not([data-background-preset="emerald"]) .stanza-dashboard button:is([class*="text-emerald"]):not(.passkey-action):not([data-stanza-status="success"]):not([class*="text-red"]):not([class*="text-amber"]) {
   color: var(--stanza-accent-hover) !important;
 }
 :root[data-background-preset]:not([data-background-preset="emerald"]) .stanza-dashboard :is(
@@ -1079,7 +1079,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
 }
 
 :is(.stanza-navigation-item[data-selected="true"], .stanza-navigation-item[aria-current="page"], .stanza-interactive-control[data-selected="true"]:where(:not(#stanza-control-center-trigger))):active,
-:where(.stanza-dashboard, .stanza-preference-surface, .stanza-control-center-panel, .stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-tutorial-dialog) :is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"], [role="radio"][aria-checked="true"], [role="switch"][aria-checked="true"]):not(.stanza-destructive-action):not(.stanza-toggle-track):active {
+:where(.stanza-dashboard, .stanza-preference-surface, .stanza-control-center-panel, .stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-tutorial-dialog) :is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"], [role="radio"][aria-checked="true"], [role="switch"][aria-checked="true"]):not(.stanza-destructive-action):not(.stanza-toggle-track):not(.stanza-tab--underline):active {
   background-color: color-mix(in srgb, var(--stanza-surface-selected) 82%, var(--stanza-accent) 18%);
   border-color: var(--stanza-border-strong);
   color: var(--stanza-nav-active-foreground);
@@ -1144,7 +1144,7 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
   }
 
   :is(.stanza-navigation-item[data-selected="true"], .stanza-navigation-item[aria-current="page"], .stanza-interactive-control[data-selected="true"]:where(:not(#stanza-control-center-trigger))):hover,
-  :where(.stanza-dashboard, .stanza-preference-surface, .stanza-control-center-panel, .stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-tutorial-dialog) :is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"], [role="radio"][aria-checked="true"], [role="switch"][aria-checked="true"]):not(.stanza-destructive-action):not(.stanza-toggle-track):hover {
+  :where(.stanza-dashboard, .stanza-preference-surface, .stanza-control-center-panel, .stanza-navigation-shell, .stanza-navigation-panel, .stanza-command-palette, .stanza-tutorial-dialog) :is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"], [role="radio"][aria-checked="true"], [role="switch"][aria-checked="true"]):not(.stanza-destructive-action):not(.stanza-toggle-track):not(.stanza-tab--underline):hover {
     background-color: color-mix(in srgb, var(--stanza-surface-selected) 82%, var(--stanza-accent) 18%);
     border-color: var(--stanza-border-strong);
     color: var(--stanza-nav-active-foreground);
@@ -1315,14 +1315,9 @@ button.stanza-geo-break-primary:not(:disabled):is(:hover, :active) {
   .performance-confetti { display: none; }
 }
 
-/* Settings status messages opt out of the older shell-wide emerald remapping.
-   Custom identity colors must not turn a successful/online state purple. */
-:root[data-background-preset="custom"] [data-stanza-status="success"] {
-  color: var(--color-emerald-300) !important;
-  background-color: color-mix(in srgb, var(--color-emerald-500) 10%, transparent) !important;
-  border-color: color-mix(in srgb, var(--color-emerald-500) 25%, transparent) !important;
-}
-:root[data-background-preset="custom"][data-theme="light"] [data-stanza-status="success"] { color: var(--color-emerald-700) !important; }
+/* Ephemeral feedback remains semantic; persistent records use the positive variant. */
+[data-stanza-status="success"] {color:#6ee7b7;background-color:rgb(16 185 129 / .1);border-color:rgb(16 185 129 / .25);}
+:root[data-theme="light"] [data-stanza-status="success"] {color:#047857;}
 /* Theme Studio stays local until Apply; only explicit Custom overrides affect actions. */
 .stanza-custom-editor { display: grid; gap: .75rem; margin-top: 1rem; font-size: calc(.8rem * var(--stanza-font-scale, 1)); color: var(--stanza-text-primary); }
 .stanza-custom-editor h3, .stanza-custom-editor h4, .stanza-studio-section summary { font-weight: 700; }
@@ -1540,11 +1535,11 @@ button.stanza-close-action:disabled { opacity: .52; cursor: not-allowed; }
 .stanza-id-dialog { margin: auto; padding: 0; border: 0; background: transparent; overflow: visible; width: min(26rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); color: var(--id-text); }
 .stanza-id-dialog::backdrop { background: rgb(0 0 0 / .65); animation: stanza-id-backdrop 180ms ease-out; }
 @keyframes stanza-id-backdrop { from { opacity: 0; } to { opacity: 1; } }
-.geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary) { transition: transform 160ms cubic-bezier(.2,.8,.2,1), border-color 160ms ease, background-color 180ms ease, color 160ms ease; }
+.geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary):not(.stanza-refresh-action) { transition: transform 160ms cubic-bezier(.2,.8,.2,1), border-color 160ms ease, background-color 180ms ease, color 160ms ease; }
 @media (hover: hover) {
-  .geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary):not(:disabled):hover { transform: translateY(-1px); }
+  .geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary):not(.stanza-refresh-action):not(:disabled):hover { transform: translateY(-1px); }
 }
-.geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary):not(:disabled):active { transform: translateY(1px) scale(.98); transition-duration: 80ms; }
+.geo-operations-content button:not(.attendance-terminal):not(.stanza-geo-break-primary):not(.stanza-refresh-action):not(:disabled):active { transform: translateY(1px) scale(.98); transition-duration: 80ms; }
 .geo-operations-content button[aria-pressed="true"] { border-color: var(--stanza-accent); }
 .geo-operations-content button:focus-visible { outline: 2px solid var(--stanza-focus-ring); outline-offset: 3px; }
 .stanza-geo-action-content { display: inline-block; }
@@ -1604,7 +1599,7 @@ body{font-size:var(--text-base)}
 .stanza-logout {color:var(--stanza-text-primary);border-color:color-mix(in srgb,#dc2626 55%,var(--stanza-border-default));background:color-mix(in srgb,#dc2626 9%,var(--stanza-surface));}
 .stanza-logout svg {color:#dc2626}.stanza-logout:hover {border-color:#dc2626}.stanza-history-controls {display:flex;gap:.3rem}
 .stanza-history-controls button {background:var(--stanza-surface-muted);border-color:transparent;transition:transform 120ms ease,background-color 120ms ease}
-.stanza-history-controls button:hover:not(:disabled){background:var(--stanza-hover-surface)}.stanza-history-controls button:active:not(:disabled){transform:none;box-shadow:inset 0 2px 2px rgb(0 0 0 / .2)}
+.stanza-history-controls button:hover:not(:disabled){background:var(--stanza-surface-hover)}.stanza-history-controls button:active:not(:disabled){transform:none;box-shadow:inset 0 2px 2px rgb(0 0 0 / .2)}
 .stanza-history-controls button:disabled{opacity:.38;cursor:not-allowed;border-style:dashed;border-color:var(--stanza-border-default)}
 .stanza-surface-selector {display:flex;flex-wrap:wrap;gap:3px;padding:3px;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-muted)}
 .stanza-surface-selector button {display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:.4rem .55rem;border-radius:8px;font-size:var(--text-xs);min-height:36px;border:1px solid transparent;background:transparent;color:var(--stanza-text-secondary)}
@@ -1644,18 +1639,27 @@ body{font-size:var(--text-base)}
 .stanza-id-controls button{border:none;background:transparent;color:#fff;padding:6px 10px;min-height:36px;font-size:var(--text-sm)}
 .stanza-id-controls button:hover{background:#ffffff18}.stanza-id-controls button:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:2px}
 
-/* Compact shared panel-surface menu. Logical edges keep it safe in RTL. */
+/* A stable trigger anchors a floating rail; only its own width expands. */
 .stanza-surface-selector {position:relative;display:inline-flex;flex:none;padding:0;border:0;background:transparent}
-.stanza-surface-selector .stanza-surface-trigger {width:40px;min-height:40px;padding:8px;border:1px solid var(--stanza-border-default);background:var(--stanza-surface-muted)}
-.stanza-surface-menu {position:absolute;z-index:80;inset-block-start:calc(100% + 6px);inset-inline-end:0;width:190px;max-width:calc(100vw - 24px);padding:5px;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-elevated);color:var(--stanza-text-primary);box-shadow:0 8px 28px #0003}
-.stanza-surface-menu button {display:flex;width:100%;justify-content:flex-start;text-align:start;min-height:40px}
-.stanza-surface-menu button span:last-child {margin-inline-start:auto}
-.stanza-surface-menu button[aria-checked=true] {background:var(--stanza-selected-surface);color:var(--stanza-text-primary)}
+.stanza-surface-selector .stanza-surface-trigger {width:40px;min-height:40px;padding:8px;border:1px solid var(--stanza-border-default);background:var(--stanza-surface-muted);color:var(--stanza-accent-ink)}
+.stanza-surface-menu {position:absolute;z-index:80;inset-block-start:calc(100% + 6px);left:var(--surface-tray-left);width:var(--surface-tray-width);display:flex;gap:7px;padding:6px;overflow-x:auto;overflow-y:hidden;border:1px solid var(--stanza-border-default);border-radius:12px;background:var(--stanza-surface-elevated);color:var(--stanza-text-primary);box-shadow:0 8px 20px #0003;animation:surface-rail-open 230ms cubic-bezier(.22,.8,.25,1) both;}
+.stanza-surface-menu button {display:flex;flex:1 0 auto;white-space:nowrap;justify-content:center;gap:7px;padding:8px 10px;min-height:40px;animation:surface-option-open 130ms ease-out both;animation-delay:calc(60ms + 18ms * var(--surface-option-index));transition:background-color 140ms ease,border-color 140ms ease,color 140ms ease;}
+.stanza-surface-menu button > svg{width:18px;height:18px;flex:none;}
+.stanza-surface-menu button span:last-child {inline-size:.6rem;flex:none;}
+.stanza-surface-menu button[aria-checked=true] {background:var(--stanza-selected-surface);border-color:var(--stanza-border-accent);color:var(--stanza-accent-ink);}
+.stanza-surface-selector[data-phase=closing] .stanza-surface-menu {pointer-events:none;animation:surface-rail-close 210ms cubic-bezier(.22,.8,.25,1) 80ms both;}
+.stanza-surface-selector[data-phase=closing] .stanza-surface-menu button{animation:surface-option-close 80ms ease-out both;}
+@keyframes surface-rail-open{from{width:40px;opacity:0}65%{opacity:1}to{width:var(--surface-tray-width);opacity:1}}
+@keyframes surface-rail-close{from{width:var(--surface-tray-width);opacity:1}to{width:40px;opacity:0}}
+@keyframes surface-option-open{from{opacity:0;translate:var(--surface-option-start,-5px) 0}to{opacity:1;translate:0 0}}
+@keyframes surface-option-close{to{opacity:0;translate:var(--surface-option-start,-5px) 0}}
+.stanza-surface-selector:dir(rtl) .stanza-surface-menu{--surface-option-start:5px;left:auto;right:calc(40px - var(--surface-tray-left) - var(--surface-tray-width));}
+@media(prefers-reduced-motion:reduce){.stanza-surface-menu,.stanza-surface-menu button{animation:none!important;}}
 /* Shared authoring and reader styling uses the existing appearance tokens. */
 .stanza-document-editor, .stanza-document-expanded { color: var(--stanza-text-primary); background: var(--stanza-surface-elevated); }
 .stanza-document-modebar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; padding:1rem; border-bottom:1px solid var(--stanza-border-subtle); }
 .stanza-document-control { min-height:2.75rem; padding:.45rem .7rem; border:1px solid var(--stanza-border-default); border-radius:.5rem; background:var(--stanza-surface); color:var(--stanza-text-primary); font-size:var(--text-sm); white-space:normal; }
-.stanza-document-control:not(:disabled):hover { background:var(--stanza-hover-surface); }
+.stanza-document-control:not(:disabled):hover { background:var(--stanza-surface-hover); }
 .stanza-document-control:disabled { opacity:.5; }
 .stanza-document-control:focus-visible, .stanza-document-editor summary:focus-visible, .stanza-document-table-scroll:focus-visible { outline:2px solid var(--stanza-accent); outline-offset:2px; }
 .stanza-document-control[aria-pressed=true], .stanza-document-control[aria-selected=true] { background:var(--stanza-selected-surface); }
@@ -1716,7 +1720,7 @@ figure.stanza-document-image { display:flex; flex-direction:column; }
 .stanza-document-primary-toolbar { display:flex; flex-wrap:wrap; align-items:center; position:relative; gap:.2rem; padding:.55rem; background:var(--stanza-surface-muted); border-radius:.65rem .65rem 0 0; }
 .stanza-document-primary-toolbar > button, .stanza-document-primary-toolbar > div > button { border:0; box-shadow:none; background:transparent; color:var(--stanza-text-secondary); }
 .stanza-document-primary-toolbar button[aria-pressed=true] { background:var(--stanza-selected-surface); color:var(--stanza-text-primary); }
-.stanza-document-primary-toolbar button:not(:disabled):hover, .stanza-document-rail-button:not(:disabled):hover, .stanza-document-mode-action:not(:disabled):hover { background:var(--stanza-hover-surface); color:var(--stanza-text-primary); }
+.stanza-document-primary-toolbar button:not(:disabled):hover, .stanza-document-rail-button:not(:disabled):hover, .stanza-document-mode-action:not(:disabled):hover { background:var(--stanza-surface-hover); color:var(--stanza-text-primary); }
 .stanza-document-primary-toolbar select { border:0; background:transparent; font-size:var(--text-sm); color:var(--stanza-text-primary); }
 .stanza-document-text-options { position:static; }
 .stanza-document-text-options-panel { position:absolute; inset-inline-end:0; top:calc(100% + .35rem); z-index:80; width:min(23rem,calc(100vw - 2rem)); padding:.8rem; background:var(--stanza-surface-elevated); color:var(--stanza-text-primary); border:1px solid var(--stanza-border-default); border-radius:.75rem; box-shadow:0 10px 35px #0003; }
@@ -1823,7 +1827,7 @@ body { font-family:var(--stanza-font-latin); line-height:var(--stanza-leading-bo
 }
 @media (hover:hover) {
   :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button):not(:disabled):not([aria-disabled=true]):not([aria-pressed=true]):not([aria-selected=true]):hover {
-    background:var(--stanza-hover-surface); border-color:var(--stanza-border-strong);
+    background:var(--stanza-surface-hover); border-color:var(--stanza-border-strong);
   }
 }
 :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button):not(:disabled):not([aria-disabled=true]):active {
@@ -1842,7 +1846,7 @@ body { font-family:var(--stanza-font-latin); line-height:var(--stanza-leading-bo
   border-color:var(--stanza-border-default); background:var(--stanza-surface-muted); box-shadow:none; transform:none;
 }
 .stanza-form-control:disabled { background:var(--stanza-surface-muted); opacity:1; }
-.stanza-surface-menu { animation:stanza-menu-enter 160ms ease-out; }
+
 @keyframes stanza-menu-enter { from { opacity:0; transform:translateY(-2px); } to { opacity:1; transform:none; } }
 @media (prefers-reduced-motion:reduce) {
   :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button,.stanza-form-control) { transition:none; }
@@ -1941,7 +1945,7 @@ body:lang(ar) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); 
 }
 
 @media(hover:hover) {
- .composer-library button:not(:disabled):hover {background:var(--stanza-hover-surface);border-color:var(--stanza-border-accent);}
+ .composer-library button:not(:disabled):hover {background:var(--stanza-surface-hover);border-color:var(--stanza-border-accent);}
  .composer-launch:not(:disabled):hover > svg {transform:translateX(2px);}
  .composer-launch:dir(rtl):not(:disabled):hover > svg {transform:translateX(-2px);}
 }
@@ -1952,11 +1956,13 @@ body:lang(ar) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); 
 :where(.stanza-dashboard,.composer,.composer-dialog) button[aria-disabled=true]:active {transform:none;}
 
 /* Attendance composition only; shared shell, typography and interaction tokens remain authoritative. */
-.attendance-primary { display:grid; grid-template-columns:minmax(0,1fr) 9rem; align-items:center; gap:1rem 1.5rem; padding:1rem; max-inline-size:34rem; margin-inline:auto; }
-.attendance-status-context { min-width:0; }
+.attendance-primary { display:grid; grid-template-columns:minmax(0,1fr); align-items:center; justify-items:center; gap:.8rem; padding:.85rem; max-inline-size:28rem; margin-inline:auto; }
+.attendance-status-context { min-width:0;text-align:center; }
+.attendance-primary .attendance-schedule{justify-content:center;}
+.attendance-primary .attendance-secondary-actions > div{justify-content:center;}
 .attendance-status-context > p { font-size:var(--text-sm); margin-block-start:.5rem; }
 .attendance-status { min-width:0; }
-.attendance-status h3 { font-size:var(--text-xl); font-weight:800; margin-block-end:.35rem; }
+.attendance-status h3 { font-size:var(--text-xl); font-weight:650; margin-block-end:.35rem; }
 .attendance-muted { color:var(--stanza-text-secondary); }
 .attendance-status p { font-size:var(--text-sm); margin-block:.3rem; }
 .attendance-schedule { display:flex; flex-wrap:wrap; gap:.75rem 1.5rem; margin-block-start:1rem; font-size:var(--text-sm); }
@@ -1981,48 +1987,33 @@ body:lang(ar) { font-family:var(--stanza-font-arabic),var(--stanza-font-latin); 
 .attendance-location svg { flex-shrink:0; }
 .attendance-breaks [aria-pressed="true"] { background:var(--stanza-accent-muted); border-color:var(--stanza-border-accent); }
 
-/* Attendance access puck: one action face and a quiet continuous rim, never progress. */
+/* Historical circular Attendance face: one substantial object, with bounded internal state transitions. */
 button.attendance-terminal {
-  --terminal-tone:var(--stanza-accent);
-  position:relative; display:grid; place-items:center; justify-self:center;
-  inline-size:8.5rem; block-size:8.5rem; flex-shrink:0; padding:0; border:0; border-radius:50%;
-  background:transparent; color:var(--stanza-text-primary); transform:none; scale:none;
-  transition:none; isolation:isolate;
+ --terminal-face:color-mix(in srgb,var(--stanza-accent) 55%,#11131d);--terminal-ink:#fff;
+ position:relative;display:grid;place-items:center;justify-self:center;isolation:isolate;
+ inline-size:9rem;block-size:9rem;min-block-size:9rem;max-inline-size:100%;padding:0;
+ border:0;border-radius:50%;background:transparent;color:var(--terminal-ink);
+ transform:none;scale:none;
 }
-.attendance-terminal::before {
-  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
-  border:2px solid color-mix(in srgb,var(--terminal-tone) 30%,var(--stanza-border-default));
-  opacity:.85;
-  transition:opacity 140ms ease;
-}
-.attendance-terminal-core {
-  display:flex; flex-direction:column; justify-content:center; align-items:center; gap:.4rem;
-  position:absolute; inset:.6rem; padding:.65rem; border:0; border-radius:inherit;
-  background:linear-gradient(150deg,color-mix(in srgb,var(--stanza-accent) 14%,var(--stanza-surface-elevated)),var(--stanza-surface)) var(--stanza-surface);
-  box-shadow:inset 0 2px 1px rgb(255 255 255 / .10),inset 0 -2px 1px rgb(0 0 0 / .14);
-  font-size:var(--text-base); font-weight:850; letter-spacing:.015em;
-  line-height:1.15; text-align:center; overflow-wrap:anywhere;
-  transition:box-shadow 140ms ease,scale 100ms ease;
-}
-.attendance-terminal-core > svg {
-  inline-size:1rem; block-size:1rem; padding:.2rem; box-sizing:content-box;
-  border-radius:.4rem; background:var(--stanza-accent-soft); color:var(--terminal-tone); flex-shrink:0;
-}
+.attendance-terminal::before {content:none;}
+.attendance-terminal-face {position:absolute;inset:0;display:grid;place-items:center;padding:1rem;border-radius:50%;border:1px solid color-mix(in srgb,var(--terminal-face) 70%,white);background:radial-gradient(ellipse at 36% 16%,#ffffff16,transparent 58%),linear-gradient(155deg,color-mix(in srgb,var(--terminal-face) 88%,white),var(--terminal-face) 50%,color-mix(in srgb,var(--terminal-face) 78%,black));box-shadow:inset 0 2px 1px #ffffff20,inset 0 -5px 9px #0003,0 8px 15px #0004;transition:transform 170ms cubic-bezier(.2,.8,.2,1),box-shadow 170ms ease;}
+button.attendance-terminal[aria-busy=true]:disabled {opacity:1;cursor:progress;}
+.attendance-terminal-core {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;min-width:0;max-width:100%;font-size:var(--text-base);font-weight:650;line-height:1.25;letter-spacing:0;text-align:center;overflow-wrap:anywhere;animation:terminal-state-enter 180ms ease-out 1;}
+.attendance-terminal-core > svg {inline-size:2rem;block-size:2rem;flex:none;color:inherit;transition:translate 170ms ease;}
 button.attendance-terminal:not(:disabled):is(:hover,:active) { transform:none; scale:none; }
-.attendance-terminal:not(:disabled):hover::before,.attendance-terminal:focus-visible::before { opacity:1; }
-.attendance-terminal:not(:disabled):hover .attendance-terminal-core {
-  box-shadow:inset 0 2px 1px rgb(255 255 255 / .17),inset 0 -2px 1px rgb(0 0 0 / .14);
-}
-.attendance-primary button.attendance-terminal:focus-visible { outline:2px solid var(--stanza-focus-ring); outline-offset:3px; }
-.attendance-terminal:not(:disabled):active .attendance-terminal-core {
-  scale:var(--stanza-control-press,.97); box-shadow:inset 0 2px 3px rgb(0 0 0 / .16);
-}
-.attendance-terminal[data-state=failed],.attendance-terminal[data-state=outside_geofence] { --terminal-tone:var(--stanza-danger,#ef4444); }
-.attendance-terminal[data-state=open_shift_conflict] { --terminal-tone:var(--stanza-warning,#f59e0b); }
-.attendance-terminal:is([data-state=failed],[data-state=outside_geofence],[data-state=open_shift_conflict]) .attendance-terminal-core > span {
-  font-size:var(--text-sm); letter-spacing:0;
-}
-.attendance-terminal[aria-busy=true]::before { opacity:.5; }
+@media(hover:hover){.attendance-terminal:not(:disabled):hover .attendance-terminal-face{transform:translateY(-2px) scale(1.03);box-shadow:inset 0 2px 1px #ffffff25,inset 0 -5px 9px #0003,0 12px 20px #0005;}.attendance-terminal:not(:disabled):hover .attendance-terminal-core > svg{translate:0 -1px;}}
+.attendance-terminal:not(:disabled):active .attendance-terminal-face{transform:scale(.97);box-shadow:inset 0 3px 8px #0004,0 2px 5px #0003;transition-duration:90ms;}
+.attendance-primary button.attendance-terminal:focus-visible{outline:2px solid var(--stanza-focus-ring);outline-offset:7px;}
+button.attendance-terminal[data-clocked-in=true][data-state=idle],button.attendance-terminal[data-state=open_shift_conflict]{--terminal-face:#fbbf24;--terminal-ink:#291c05;}
+button.attendance-terminal:is([data-state=success],[data-state=clocked_out]){--terminal-face:#34d399;--terminal-ink:#052e1f;}
+button.attendance-terminal:is([data-state=failed],[data-state=outside_geofence]){--terminal-face:#b91c1c;--terminal-ink:#fff;}
+.attendance-terminal[data-state=locating] .attendance-terminal-core > svg{animation:terminal-locate 1200ms ease-in-out 2;}
+.attendance-terminal:is([data-state=success],[data-state=clocked_out]) .attendance-terminal-core > svg{animation:terminal-confirm 360ms ease-out 1;}
+@keyframes terminal-state-enter{from{opacity:.35;transform:translateY(3px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes terminal-locate{0%,100%{transform:rotate(-15deg) translateY(1px)}50%{transform:rotate(25deg) translateY(-2px)}}
+@keyframes terminal-confirm{0%{transform:scale(.8)}65%{transform:scale(1.06)}100%{transform:none}}
+@media(max-width:600px){button.attendance-terminal{inline-size:8.5rem;block-size:8.5rem;min-block-size:8.5rem;}}
+@media(prefers-reduced-motion:reduce){button.attendance-terminal,.attendance-terminal-face,.attendance-terminal-core,.attendance-terminal-core > svg{animation:none!important;transition:none!important;transform:none!important;scale:none!important;translate:none!important;}}
 button.passkey-action {
   display:inline-flex; align-items:center; flex-shrink:0; align-self:flex-start; max-inline-size:100%;
   padding:.65rem .8rem; border:1px solid var(--stanza-border-accent); border-radius:var(--stanza-radius-md,.5rem);
@@ -2035,7 +2026,7 @@ button.passkey-action {
 .passkey-action-label { display:grid; min-inline-size:0; text-align:start; }
 .passkey-action-label > span { grid-area:1/1; overflow-wrap:anywhere; }
 button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:none; }
-.passkey-action:not(:disabled):hover { background:var(--stanza-hover-surface); border-color:var(--stanza-focus-ring); }
+.passkey-action:not(:disabled):hover { background:var(--stanza-surface-hover); border-color:var(--stanza-focus-ring); }
 .passkey-action:focus-visible { outline:2px solid var(--stanza-focus-ring); outline-offset:3px; }
 .passkey-action:not(:disabled):active .passkey-action-content { scale:var(--stanza-control-press,.97); }
 .passkey-action-direction { transition:transform 140ms ease; }
@@ -2063,7 +2054,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .support-panel summary,.support-detail summary { cursor:pointer; font-size:var(--text-sm); font-weight:600; }
 .support-queue { display:grid; }
 .support-ticket-row { width:100%; display:grid; gap:.45rem; padding:1rem .75rem; text-align:start; border:0; border-block-start:1px solid var(--stanza-border-subtle); background:transparent; color:var(--stanza-text-primary); transition:background-color 140ms,border-color 140ms; }
-.support-ticket-row:not(:disabled):not([aria-pressed=true]):hover { background:var(--stanza-hover-surface); border-color:var(--stanza-border-accent); }
+.support-ticket-row:not(:disabled):not([aria-pressed=true]):hover { background:var(--stanza-surface-hover); border-color:var(--stanza-border-accent); }
 .support-ticket-row[aria-pressed=true] { background:var(--stanza-selected-surface); box-shadow:inset 3px 0 var(--stanza-accent); }
 .support-ticket-row:dir(rtl)[aria-pressed=true] { box-shadow:inset -3px 0 var(--stanza-accent); }
 .support-ticket-row:disabled { opacity:.65; }
@@ -2118,7 +2109,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .hiring-filter-state { font-size:var(--text-sm); color:var(--stanza-text-secondary); }
 .hiring-panes { border:0; background:transparent; }
 .hiring-candidate-row { background:transparent; border:0; border-block-start:1px solid var(--stanza-border-subtle); border-radius:0; transition:background-color 140ms; }
-.hiring-candidate-row:not([aria-pressed=true]):hover { background:var(--stanza-hover-surface); }
+.hiring-candidate-row:not([aria-pressed=true]):hover { background:var(--stanza-surface-hover); }
 .hiring-candidate-row[aria-pressed=true] { background:var(--stanza-selected-surface); box-shadow:inset 3px 0 var(--stanza-accent); }
 .hiring-candidate-row:dir(rtl)[aria-pressed=true] { box-shadow:inset -3px 0 var(--stanza-accent); }
 .hiring-candidate-row :is(span,time) { color:var(--stanza-text-secondary); }
@@ -2133,7 +2124,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .hiring-task { border-block-start:1px solid var(--stanza-border-subtle); padding-block:.5rem; }
 .hiring-hire-summary { background:var(--stanza-accent-soft); padding:.75rem; border-radius:.5rem; }
 :is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-interactive-control { display:inline-flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:.4rem; min-height:2.5rem; max-inline-size:100%; padding:.5rem .75rem; border:1px solid var(--stanza-border-default); border-radius:var(--stanza-radius-md); background:var(--stanza-surface-muted); color:var(--stanza-text-primary); font-size:var(--text-sm); }
-:is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-interactive-control:not(:disabled):hover { background:var(--stanza-hover-surface); }
+:is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-interactive-control:not(:disabled):hover { background:var(--stanza-surface-hover); }
 :is(.hiring-panel,.hiring-dialog,.hiring-public) :focus-visible { outline:2px solid var(--stanza-focus-ring); outline-offset:3px; }
 :is(.hiring-panel,.hiring-dialog,.hiring-public) :disabled { opacity:.5; cursor:not-allowed; }
 .hiring-direction { flex-shrink:0; }
@@ -2159,7 +2150,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .assets-modes button[aria-pressed=true] { border-color:var(--stanza-accent); color:var(--stanza-text-primary); }
 .assets-filters { display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end; }
 .assets-filters label { flex:1 1 10rem; min-inline-size:0; font-size:var(--text-sm); }
-.assets-filters label:first-child { flex-grow:2; }
+.assets-filters > label:first-child { flex-grow:2; }
 .assets-summary { display:flex; flex-wrap:wrap; gap:1rem 2rem; margin-block:1rem; padding-block:.75rem; border-block-end:1px solid var(--stanza-border-subtle); }
 .assets-summary dd { font-size:var(--text-xl); font-weight:800; }
 .assets-list { list-style:none; padding:0; margin:0; }
@@ -2168,7 +2159,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .assets-row strong { font-weight:700; }
 .assets-row-identity > .assets-identifier { justify-self:start; max-inline-size:100%; }
 .assets-row-state { font-size:var(--text-sm); }
-.assets-row:not([aria-pressed=true]):hover { background:var(--stanza-hover-surface); }
+.assets-row:not([aria-pressed=true]):hover { background:var(--stanza-surface-hover); }
 .assets-row[aria-pressed=true] { background:var(--stanza-selected-surface); box-shadow:inset 3px 0 var(--stanza-accent); }
 .assets-row:dir(rtl)[aria-pressed=true] { box-shadow:inset -3px 0 var(--stanza-accent); }
 .assets-identifier { font-family:var(--font-mono,ui-monospace,monospace); font-size:var(--text-sm); color:var(--stanza-text-secondary); overflow-wrap:anywhere; }
@@ -2185,7 +2176,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .assets-facts dd { overflow-wrap:anywhere; font-size:var(--text-sm); }
 .assets-actions,.assets-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-block:.75rem; }
 .assets-control { display:inline-flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:.35rem; min-block-size:var(--stanza-control-height-standard); max-inline-size:100%; padding:.45rem .65rem; border:1px solid var(--stanza-border-default); border-radius:var(--stanza-control-radius); background:var(--stanza-surface-muted); color:var(--stanza-text-primary); font-size:var(--text-sm); overflow-wrap:anywhere; }
-.assets-control:not(:disabled):hover { background:var(--stanza-hover-surface); }
+.assets-control:not(:disabled):hover { background:var(--stanza-surface-hover); }
 .assets-primary { background:var(--stanza-action-primary-bg); color:var(--stanza-text-primary); border-color:var(--stanza-action-primary-border); }
 .assets-primary:not(:disabled):hover { background:var(--stanza-action-primary-hover); }
 .assets-direction,.assets-navigation > svg { flex-shrink:0; }
@@ -2302,7 +2293,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 /* Surgical workflow hierarchy corrections: ordinary action copy is sentence case. */
 :is(.stanza-primary-action,.stanza-secondary-action,.stanza-quiet-action,.stanza-icon-action,.stanza-theme-outline,.stanza-document-control,.assets-control,.stanza-support-button,.composer-launch,.composer button,.composer-dialog button,.hiring-panel button,.hiring-dialog button) {text-transform:none!important;letter-spacing:normal;}
 :is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-quiet-action:not([aria-pressed=true]):not([aria-selected=true]) {background:transparent;border-color:transparent;box-shadow:none;color:var(--stanza-text-secondary);}
-:is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-quiet-action:not(:disabled):hover {background:var(--stanza-hover-surface);border-color:var(--stanza-border-subtle);}
+:is(.hiring-panel,.hiring-workflow,.hiring-dialog,.hiring-public) .stanza-quiet-action:not(:disabled):hover {background:var(--stanza-surface-hover);border-color:var(--stanza-border-subtle);}
 .hiring-panel [data-hiring-review-counter] {background:transparent;border-color:var(--stanza-border-subtle);box-shadow:none;color:var(--stanza-text-primary);}
 .hiring-panel [data-hiring-review-counter] > span[dir=ltr] {background:var(--stanza-accent-soft);color:var(--stanza-text-primary);}
 .hiring-panel [data-hiring-review-counter][aria-pressed=true] {background:var(--stanza-accent-soft);border-color:var(--stanza-border-accent);box-shadow:inset 0 -2px var(--stanza-accent);}
@@ -2325,3 +2316,139 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 /* Keep light-intensity copy readable without changing the accent slider. */
 :root[data-theme=light] .stanza-dashboard .stanza-light-intensity-control :is(p,output,span) {color:var(--stanza-text-secondary) !important;}
 :root[data-theme=light] .stanza-dashboard .stanza-light-intensity-control #stanza-light-intensity-label {color:var(--stanza-text-primary) !important;}
+
+/* Explicit decorative and persistent positive ownership. */
+.stanza-accent-ink {color:var(--stanza-accent-ink,var(--stanza-accent-hover))!important;}
+.stanza-accent-fill {background-color:var(--stanza-accent-soft);border-color:var(--stanza-border-accent);}
+.stanza-module-eyebrow {color:var(--stanza-accent-ink,var(--stanza-accent-hover));}
+/* Only the rail trigger receives a small dock; the rail and page geometry stay fixed. */
+@media(min-width:768px){[data-stanza-launcher-assembly][data-navigation-mode=rail] .stanza-launcher-dock::before{content:"";position:absolute;inset:-4px -5px;border:1px solid var(--stanza-border-default);border-radius:1rem;background:var(--stanza-surface-panel);pointer-events:none;z-index:-1;}}
+.stanza-launcher-dock {isolation:isolate;}
+/* Geometry restored from 93adc20; bounded action copy preserves the 28px / 14px icon proportions. */
+.stanza-demo-persona-restored {text-align:start;}
+.stanza-demo-persona-restored > span:first-child{inline-size:28px;block-size:28px;}
+.stanza-demo-persona-restored > span:first-child > svg{inline-size:14px;block-size:14px;}
+.stanza-demo-persona-cta{max-inline-size:6.5rem;white-space:normal;text-align:end;overflow-wrap:anywhere;line-height:1.4;}
+.stanza-record-status {color:var(--stanza-text-secondary);background:var(--stanza-surface-muted);}
+.stanza-record-status[data-stanza-status=positive] {color:var(--stanza-accent-ink);background:var(--stanza-accent-soft);border-color:var(--stanza-border-accent);}
+.stanza-record-status[data-stanza-status=info] {color:#7dd3fc;background:rgb(14 165 233 / .12);}
+
+:root[data-theme=light] .stanza-record-status[data-stanza-status=info] {color:#0369a1;}
+
+/* Plain legacy metadata follows secondary text. Do not neutralize icon containers, interactive labels, accent roles, or statuses. */
+:root[data-background-preset]:not([data-background-preset=emerald]) .stanza-dashboard :is(p,span,dt,dd)[class*="dark:text-emerald-100/"]:not(:has(svg)):not([role]):not([data-accent-role]):not([data-stanza-status]):not(.stanza-record-status):not(.stanza-accent-ink):not(.stanza-accent-chip){color:var(--stanza-text-secondary)!important;}
+.attendance-primary button.attendance-location-fallback{background:transparent!important;border-color:transparent!important;box-shadow:none;color:var(--stanza-text-secondary);}
+.attendance-primary button.attendance-location-fallback:not(:disabled):hover{background:var(--stanza-surface-hover)!important;border-color:var(--stanza-border-subtle)!important;}
+
+/* Ordinary accent labels are explicit; state severity remains a separate owner. */
+:root{--stanza-accent-ink:var(--stanza-accent-hover);}
+:root[data-theme=light]{--stanza-accent-ink:color-mix(in srgb,var(--stanza-accent) 42%,black);}
+.stanza-accent-chip{color:var(--stanza-accent-ink)!important;border-color:var(--stanza-border-accent)!important;background:var(--stanza-accent-soft)!important;}
+.stanza-status-info{color:#7dd3fc;border-color:rgb(14 165 233 / .3);background:rgb(14 165 233 / .1);}
+:root[data-theme=light] .stanza-status-info{color:#0369a1;}
+/* Solid legacy action fills are affordances, rather than completed/approved state badges. */
+:root[data-background-preset] .stanza-dashboard button:is([class~="bg-emerald-500"],[class~="bg-emerald-600"]):not(.passkey-action):not(.attendance-terminal):not(:disabled):not([aria-disabled=true]){background:var(--stanza-action-primary-bg)!important;color:var(--stanza-text-primary)!important;border-color:var(--stanza-action-primary-border)!important;}
+:root[data-background-preset] .stanza-dashboard button:is([class~="bg-emerald-500"],[class~="bg-emerald-600"]):not(.passkey-action):not(.attendance-terminal):not(:disabled):hover{background:var(--stanza-action-primary-hover)!important;}
+/* Dark-prefixed legacy panel borders were missed by the earlier utility bridge. */
+:root[data-background-preset]:not([data-background-preset=emerald]) .stanza-dashboard :is([class~="dark:border-emerald-500/10"],[class~="dark:border-emerald-500/15"],[class~="dark:border-emerald-500/20"],[class~="dark:border-emerald-500/30"]){border-color:var(--stanza-border-default)!important;}
+
+.group:hover .stanza-row-accent{color:var(--stanza-accent-ink);}
+
+:root[data-background-preset] .stanza-dashboard button:is([class~="bg-emerald-500"],[class~="bg-emerald-600"]):not(.passkey-action):not(.attendance-terminal):is(:disabled,[aria-disabled=true]){background:var(--stanza-surface-muted)!important;color:var(--stanza-text-muted)!important;border-color:var(--stanza-border-subtle)!important;}
+
+/* Explicit decorative ownership: native preferences, avatars, and authenticated startup. */
+.stanza-dashboard input:is([type=checkbox],[type=radio],[type=range]) {accent-color:var(--stanza-accent);}
+.stanza-user-avatar {border-color:var(--stanza-accent)!important;}
+.stanza-user-avatar > div {background:var(--stanza-accent-soft)!important;}
+.stanza-photo-upload {background:var(--stanza-accent)!important;color:var(--stanza-accent-contrast)!important;}
+.stanza-photo-upload:hover {background:var(--stanza-accent-hover)!important;}
+.stanza-photo-upload:focus-within {outline:2px solid var(--stanza-focus-ring);outline-offset:3px;}
+.stanza-auth-loader {color:var(--stanza-text-primary);}
+.stanza-auth-loader > [role=status] {background:var(--stanza-surface-elevated);border-color:var(--stanza-border-accent);}
+.stanza-auth-loader [role=status] > p {color:var(--stanza-text-secondary);}
+.stanza-auth-loader .stanza-fingerprint-loader {background:linear-gradient(145deg,var(--stanza-accent-hover,#a3a3a3),var(--stanza-accent,#737373));color:var(--stanza-accent-contrast,#111);box-shadow:0 4px 16px #0003;}
+.stanza-auth-loader .stanza-fingerprint-loader > svg {color:inherit;}
+
+.stanza-auth-loader .stanza-fingerprint-loader-loading {animation-name:stanzaAuthenticatedLoader;}
+.stanza-auth-loader .stanza-fingerprint-loader-success {animation-name:stanzaAuthenticatedLoader;}
+@keyframes stanzaAuthenticatedLoader {0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+
+/* Decorative layers and row feedback share accent ownership, independent of success paint. */
+:root {--stanza-decorative-wash:color-mix(in srgb,var(--stanza-accent) 4%,transparent);--stanza-tonal-hover:color-mix(in srgb,var(--stanza-accent) 8%,transparent);}
+.stanza-surface-wash {background:var(--stanza-decorative-wash);}
+.stanza-tonal-hover:hover {background-color:var(--stanza-tonal-hover);}
+button.stanza-refresh-action {display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:36px;padding:.45rem .65rem;border:1px solid transparent;border-radius:var(--stanza-control-radius);background:transparent;color:var(--stanza-accent-ink);box-shadow:none;font-size:var(--text-xs);font-weight:650;text-transform:none;letter-spacing:normal;transition:background-color 160ms ease,border-color 160ms ease,box-shadow 110ms ease;}
+button.stanza-refresh-action > svg {width:1rem;height:1rem;flex:none;transition:rotate 160ms ease,scale 100ms ease;}
+button.stanza-refresh-action:not(:disabled):hover {background:var(--stanza-tonal-hover);border-color:var(--stanza-border-accent);}
+button.stanza-refresh-action:not(:disabled):hover > svg {rotate:25deg;}
+button.stanza-refresh-action:not(:disabled):active {box-shadow:inset 0 1px 3px #0002;transition-duration:100ms;}
+button.stanza-refresh-action:not(:disabled):active > svg {scale:.94;}
+button.stanza-refresh-action:focus-visible {outline:2px solid var(--stanza-focus-ring);outline-offset:3px;}
+.stanza-surface-menu .stanza-surface-close {flex:0 0 30px;min-width:30px;align-self:center;padding:5px;animation-delay:114ms;color:var(--stanza-text-secondary);}
+.stanza-document-modebar {position:relative;}
+.stanza-document-modebar:has(.stanza-advanced-exit) {padding-inline-end:3.5rem;}
+.stanza-advanced-exit {position:absolute;inset-inline-end:1rem;inset-block-start:1rem;}
+.stanza-document-draft-actions,.stanza-document-draft-actions > span {display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:.5rem;}
+.stanza-draft-status {color:var(--stanza-text-secondary);font-size:var(--text-xs);margin-inline-end:.5rem;}
+.stanza-document-draft-actions button {min-height:34px;padding:.4rem .65rem;border:1px solid var(--stanza-border-subtle);border-radius:var(--stanza-control-radius);transition:background-color 140ms ease,border-color 140ms ease,color 140ms ease;}
+.stanza-document-draft-actions .stanza-draft-discard {background:transparent;color:var(--stanza-text-secondary);border-color:transparent;}
+.stanza-document-draft-actions .stanza-draft-discard:is(:hover,:focus-visible) {color:var(--stanza-danger-text,#f87171);background:color-mix(in srgb,#dc2626 9%,transparent);border-color:color-mix(in srgb,#dc2626 35%,transparent);}
+@media(prefers-reduced-motion:reduce){button.stanza-refresh-action,button.stanza-refresh-action > svg,.stanza-document-draft-actions button{transition:none;animation:none!important;rotate:none!important;scale:none!important;}}
+
+.stanza-surface-menu {overflow:hidden;}
+.stanza-surface-options {display:flex;flex:1;min-width:0;gap:7px;overflow-x:auto;overflow-y:hidden;}
+
+button.stanza-refresh-action:not(:disabled):is(:hover,:active){transform:none;scale:none;}
+.stanza-tab.stanza-tab--underline {position:relative;padding-inline:.75rem;border:0;border-radius:.4rem .4rem 0 0;background:transparent;transition:background-color 110ms ease,color 160ms ease;}
+.stanza-tab.stanza-tab--underline::after {content:"";position:absolute;inset-inline:.75rem;inset-block-end:0;height:2px;background:var(--stanza-accent);opacity:0;transition:opacity 160ms ease;}
+.stanza-tab.stanza-tab--underline:hover {background:var(--stanza-tonal-hover);}
+.stanza-tab.stanza-tab--underline[aria-pressed=true] {color:var(--stanza-accent-ink);background:transparent;box-shadow:none;}
+.stanza-tab.stanza-tab--underline[aria-pressed=true]::after {opacity:1;}
+.stanza-tab.stanza-tab--underline:not(:disabled):active {transform:none;scale:none;}
+@media(prefers-reduced-motion:reduce){.stanza-tab.stanza-tab--underline,.stanza-tab.stanza-tab--underline::after{transition:none;}}
+
+:root[data-theme=light] .stanza-document-draft-actions .stanza-draft-discard:is(:hover,:focus-visible){color:#b91c1c;}
+
+.stanza-tab.stanza-tab--underline[aria-pressed=true]:is(:hover,:active){background:transparent;box-shadow:none;}
+
+/* Legacy emerald utilities in product chrome express interaction/normal persistent
+   state, not success. Resolve their palette before mount, including skeletons.
+   Error, warning and information families remain independent. */
+:root[data-background-preset]:not([data-background-preset=emerald]) {
+ --color-emerald-50:color-mix(in srgb,var(--stanza-accent) 5%,white);
+ --color-emerald-100:color-mix(in srgb,var(--stanza-accent) 12%,white);
+ --color-emerald-200:color-mix(in srgb,var(--stanza-accent) 28%,white);
+ --color-emerald-300:var(--stanza-accent-hover);
+ --color-emerald-400:var(--stanza-accent-hover);
+ --color-emerald-500:var(--stanza-accent);
+ --color-emerald-600:var(--stanza-accent-ink);
+ --color-emerald-700:color-mix(in srgb,var(--stanza-accent) 62%,black);
+ --color-emerald-800:color-mix(in srgb,var(--stanza-accent) 42%,black);
+ --color-emerald-900:color-mix(in srgb,var(--stanza-accent) 25%,black);
+}
+/* Structural boundaries never inherit the legacy positive palette. Tailwind
+   divide utilities paint children, rather than the list container itself. */
+:is(.stanza-dashboard,.stanza-auth-shell,.stanza-command-palette) [class*="divide-emerald"] > :not(:last-child) {border-color:var(--stanza-border-subtle)!important;}
+.stanza-dashboard thead {background:var(--stanza-surface-muted)!important;}
+.stanza-command-palette > :last-child {border-color:var(--stanza-border-subtle)!important;}
+.stanza-command-palette > :last-child button {text-decoration-color:currentColor;}
+.stanza-positive {color:var(--stanza-accent-ink)!important;background-color:var(--stanza-accent-soft);border-color:var(--stanza-border-accent);}
+.stanza-neutral-status {color:var(--stanza-text-secondary)!important;}
+/* Keep previously accepted auth geometry; only its paint follows preferences. */
+.stanza-auth-shell [class*="shadow-[0_0_"] {box-shadow:0 0 25px color-mix(in srgb,var(--stanza-accent) 16%,transparent);}
+.stanza-auth-shell .stanza-fingerprint-loader {background:linear-gradient(135deg,var(--stanza-accent-hover),var(--stanza-accent));}
+.assets-hardware-filters {display:contents;}
+.assets-hardware-filters[hidden] {display:none;}
+.assets-layout {min-block-size:18rem;}
+.assets-loading {min-block-size:1.6em;margin-block:.4rem;color:var(--stanza-text-secondary);font-size:var(--text-xs);}
+.assets-summary {min-block-size:5rem;}
+.assets-modes .stanza-tab.stanza-tab--underline {border:0;}
+
+/* Legacy dark green surfaces are neutral module structure, including lazy entry. */
+.stanza-dashboard :is([class~="dark:bg-[#061411]/90"],[class~="dark:bg-[#04100d]/55"],[class~="dark:bg-[#07130f]"]) {background-color:var(--stanza-surface-panel);}
+.stanza-positive {border-radius:.25rem;}
+
+[data-stanza-status=positive] {color:var(--stanza-accent-ink)!important;background-color:var(--stanza-accent-soft);border-color:var(--stanza-border-accent);}
+
+/* Notification count decoration is interaction chrome, not success feedback. */
+.stanza-attention-badge {box-shadow:0 0 10px color-mix(in srgb,var(--stanza-accent) 24%,transparent);color:var(--stanza-accent-contrast);}

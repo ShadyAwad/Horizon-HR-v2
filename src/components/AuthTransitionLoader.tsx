@@ -22,10 +22,10 @@ export function AuthTransitionLoader({ transition, overlay = false, contained = 
 
   return (
     <div className={overlay
-      ? 'fixed inset-0 z-[80] flex min-h-[100dvh] items-center justify-center bg-[#020604]/88 px-4 text-emerald-50'
+      ? 'stanza-auth-loader fixed inset-0 z-[80] flex min-h-[100dvh] items-center justify-center bg-[#020604]/88 px-4 text-emerald-50'
       : contained
-        ? 'absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-[#030b08]/82 px-4 text-emerald-50'
-        : 'flex min-h-[100dvh] items-center justify-center px-4 text-emerald-50'}
+        ? 'stanza-auth-loader absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-[#030b08]/82 px-4 text-emerald-50'
+        : 'stanza-auth-loader flex min-h-[100dvh] items-center justify-center px-4 text-emerald-50'}
     >
       <div
         role="status"

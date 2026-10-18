@@ -1,8 +1,9 @@
+import {COVERAGE_EXAMPLES} from './router-coverage-examples';
 // Approved multilingual corpus, separate from short exact aliases. Examples are navigation requests,
 // never tenant facts. Keep different operational intents separate; cancellation is unsupported.
 // Reviewed departure-help coverage; no names, private facts, or held-out phrases.
 export const CLOCK_DEPARTURE_EXAMPLES = ['Explain the steps to record a workday checkout', 'Help with recording attendance departure', 'إرشادات تسجيل انصراف الموظف'] as const;
-export const INTENT_EXAMPLES:Record<string,readonly string[]>={
+const BASE_EXAMPLES:Record<string,readonly string[]>={
  operational_support:['which open IT tickets are older than 3 days','show tickets created in the last 7 days','show support requests waiting on users','وريني تذاكر الدعم المفتوحة اكتر من 3 ايام','اعرض طلبات الدعم بانتظار المستخدم','show ticktes older than 3 days'],
  operational_hiring:['show candidates waiting for feedback','show offers expiring this week','which jobs have no applicants','who is interviewing for {job_opening} today','اعرض المرشحين بانتظار التقييم','وريني المرشحين مستنيين التقييم','show canddates waiting for feedbak','show candidates in screening for more than 5 days'],
  operational_onboarding:['which new hires still need equipment','who starts this week','show onboarding tasks overdue','which hires are blocked','who still needs a badge','show new hires without first shift assigned','وريني الموظفين الجدد محتاجين معدات','show onboarding tasks overdu'],
@@ -71,3 +72,5 @@ export const INTENT_EXAMPLES:Record<string,readonly string[]>={
  help_center:['Where can I find application help','Show the help articles','افتح مركز المساعده','محتاج مساعده في التطبيق','help center فين','help cnter'],
  settings:['Where can I change my personal preferences','Open appearance settings','افتح اعداداتي الشخصيه','عايز اظبط شكل التطبيق','settings فين','my setings'],
 };
+
+export const INTENT_EXAMPLES:Record<string,readonly string[]>=Object.fromEntries([...new Set([...Object.keys(BASE_EXAMPLES),...Object.keys(COVERAGE_EXAMPLES)])].map(key=>[key,[...(BASE_EXAMPLES[key]??[]),...(COVERAGE_EXAMPLES[key]??[])]]));

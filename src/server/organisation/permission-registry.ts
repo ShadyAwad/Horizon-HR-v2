@@ -49,6 +49,7 @@ export const PERMISSION_REGISTRY: readonly PermissionMetadata[] = [
   definePermission('communications.meetings.view', 'View own meetings', 'Read meetings you organize or attend.', 'Communications', 'low', companyScope, false),
   definePermission('communications.meetings.manage', 'Manage company meetings', 'Schedule and manage company meetings.', 'Communications', 'high', companyScope, false),
 
+  definePermission('locations.view','View location workspace','View authorised company location information.','Locations','low'),
   definePermission('locations.read', 'View locations', 'View company locations.', 'Locations', 'low'),
   definePermission('locations.manage', 'Manage locations', 'Create and update company locations and geofences.', 'Locations', 'high', companyScope, false),
   definePermission('geofences.manage', 'Manage geofences', 'Create and update company geofence boundaries.', 'Locations', 'high', companyScope, false),

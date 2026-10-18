@@ -1,3 +1,7 @@
+import bcrypt from 'bcryptjs';
+import {PUBLIC_DEMO_PASSWORD} from '../src/lib/demo-personas';
+import {seedDemoTenantAdmin} from './demo/admin-persona';
+import {context} from './demo/core';
 import './router-env';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -5,12 +9,16 @@ import {getMigrationPool,migrationUrl} from './migration-pool';
 import {assertDatabaseMutationSafety} from './mutation-safety';
 import {lockRecovery,recoverDemo,RECOVERY_TABLES} from './demo/recovery';
 import {readManifest} from './demo/reset';
+import {DEMO_ADMIN_EMAIL} from '../src/lib/demo-personas';
+import {demoAdminPermissions} from './demo/admin-persona';
 assertDatabaseMutationSafety(migrationUrl(),'Demo recovery regression',true,true);
 const pool=getMigrationPool(),client=await pool.connect();
 async function fingerprint(t:string){const result:Record<string,string>={};for(const table of RECOVERY_TABLES)result[table]=(await client.query(`SELECT md5(COALESCE(string_agg(to_jsonb(r)::text,'' ORDER BY id),'')) hash FROM ${table} r WHERE tenant_id=$1`,[t])).rows[0].hash;return result;}
 try{
  await client.query('BEGIN');const tenant=await lockRecovery(client),t=tenant.id,manifest=await readManifest(client,t);
  const competitor=await pool.connect();try{await competitor.query('BEGIN');await assert.rejects(()=>lockRecovery(competitor),/Another demo seed/);}finally{await competitor.query('ROLLBACK');competitor.release();}console.log('PASS simultaneous recovery refused by bounded advisory lock');
+ // Reviewers may have changed public demo records. Establish the curated baseline inside this rollback-only transaction.
+ await recoverDemo(client,tenant);console.log('PASS curated recovery baseline prepared transactionally; no public state committed');
  const employee=(await client.query("SELECT id FROM employees WHERE tenant_id=$1 AND email='employee@stanza-demo.com'",[t])).rows[0].id;
  const foreign=randomUUID();await client.query('INSERT INTO tenants(id,slug,company_name) VALUES($1,$2,$3)',[foreign,'demo-recovery-regression-'+foreign,'Disposable recovery control']);
  const foreignAsset=randomUUID();await client.query("INSERT INTO assets(id,tenant_id,name,asset_tag,category,status,condition) VALUES($1,$2,'Foreign control','RESTORE-CONTROL','laptop','available','good')",[foreignAsset,foreign]);
@@ -18,6 +26,9 @@ try{
  const candidateId=manifest.hiring_applicants[0],candidateName=(await client.query('SELECT full_name FROM hiring_applicants WHERE tenant_id=$1 AND id=$2',[t,candidateId])).rows[0].full_name;
  const stableTables=['employees','tenant_roles','tenant_role_permissions','company_locations','geofences','assets'];
  const baseline:Record<string,string>={};for(const table of stableTables)baseline[table]=(await client.query("SELECT md5(COALESCE(string_agg((to_jsonb(r)-ARRAY['updated_at','created_at','password_hash'] - CASE WHEN '"+table+"'='tenant_role_permissions' THEN ARRAY['id'] ELSE ARRAY[]::text[] END)::text,'' ORDER BY "+(table==='tenant_role_permissions'?'role_id,permission_key':'id')+"),'')) hash FROM "+table+" r WHERE tenant_id=$1",[t])).rows[0].hash;
+ const admin=(await client.query('SELECT id,password_hash FROM employees WHERE tenant_id=$1 AND email=$2',[t,DEMO_ADMIN_EMAIL])).rows[0];assert(admin,'bounded Demo Admin provisioned');
+ await client.query('UPDATE employees SET is_active=false WHERE tenant_id=$1 AND id=$2',[t,admin.id]);
+ await client.query("INSERT INTO auth_sessions(tenant_id,employee_id,session_token_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[t,admin.id,'recovery-admin-'+randomUUID()]);
  const ticket=randomUUID();await client.query("INSERT INTO support_tickets(id,tenant_id,requester_id,issue_type,summary,description,urgency) VALUES($1,$2,$3,'it_help','Recovery fixture','Disposable recovery check','normal')",[ticket,t,employee]);
  await client.query("UPDATE hiring_applicants SET full_name='Disposable changed fixture' WHERE tenant_id=$1 AND id=$2",[t,manifest.hiring_applicants[0]]);
  const session=randomUUID();await client.query("INSERT INTO auth_sessions(id,tenant_id,employee_id,session_token_hash,expires_at) VALUES($1,$2,$3,$4,now()+interval '1 hour')",[session,t,employee,'recovery-fixture-'+randomUUID()]);
@@ -30,8 +41,12 @@ try{
  assert.equal((await client.query('SELECT 1 FROM qr_access_tokens WHERE tenant_id=$1 AND id=$2',[t,badge])).rowCount,0);
  assert.deepEqual((await client.query('SELECT id,password_hash FROM employees WHERE tenant_id=$1 ORDER BY id',[t])).rows,passwords);
  assert.equal((await client.query('SELECT full_name FROM hiring_applicants WHERE tenant_id=$1 AND id=$2',[t,candidateId])).rows[0].full_name,candidateName);
+ assert.equal((await client.query('SELECT is_active FROM employees WHERE tenant_id=$1 AND id=$2',[t,admin.id])).rows[0].is_active,true);
+ const permissions=(await client.query('SELECT rp.permission_key FROM employee_role_assignments a JOIN tenant_role_permissions rp ON rp.tenant_id=a.tenant_id AND rp.role_id=a.role_id WHERE a.tenant_id=$1 AND a.employee_id=$2 AND a.revoked_at IS NULL',[t,admin.id])).rows.map(r=>r.permission_key).sort();assert.deepEqual(permissions,[...demoAdminPermissions].sort());
+ assert.equal((await client.query('SELECT 1 FROM router_platform_authorities WHERE employee_id=$1',[admin.id])).rowCount,0);console.log('PASS Demo Admin restored active, bounded permissions, no platform authority; its session invalidated');
  for(const table of stableTables)assert.equal((await client.query("SELECT md5(COALESCE(string_agg((to_jsonb(r)-ARRAY['updated_at','created_at','password_hash'] - CASE WHEN '"+table+"'='tenant_role_permissions' THEN ARRAY['id'] ELSE ARRAY[]::text[] END)::text,'' ORDER BY "+(table==='tenant_role_permissions'?'role_id,permission_key':'id')+"),'')) hash FROM "+table+" r WHERE tenant_id=$1",[t])).rows[0].hash,baseline[table],table+' baseline restored');
  const first=await counts();await recoverDemo(client,tenant);assert.deepEqual(await counts(),first);assert.deepEqual(await fingerprint(foreign),control);console.log('PASS mutation/recovery/twice; passwords, foreign tenant and baseline counts preserved; sessions invalidated');
  const wrong=process.env.DEMO_TENANT_ID;process.env.DEMO_TENANT_ID=foreign;await assert.rejects(()=>lockRecovery(client),/match|exact/);process.env.DEMO_TENANT_ID=wrong;
  console.log('PASS exact tenant mismatch refuses recovery');
+ await client.query('SAVEPOINT full_demo_credential_probe');await client.query('UPDATE employees SET password_hash=$2 WHERE id=$1',[admin.id,'task-owned-invalid-hash']);await seedDemoTenantAdmin(context(client,tenant,'required'));assert(await bcrypt.compare(PUBLIC_DEMO_PASSWORD,(await client.query('SELECT password_hash FROM employees WHERE id=$1',[admin.id])).rows[0].password_hash));await client.query('ROLLBACK TO SAVEPOINT full_demo_credential_probe');console.log('PASS Full Demo recovery path restores expected public credentials without changing other accounts');
 }finally{await client.query('ROLLBACK');client.release();await pool.end();console.log('PASS all recovery regression changes and foreign fixture rolled back; curated demo retained');}

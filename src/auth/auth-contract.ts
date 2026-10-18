@@ -8,6 +8,7 @@ export type AuthUser = {
   jobTitle?: string | null;
   roleNames?: string[];
   permissions?: string[];
+  companyPermissions?: string[];
   tenantId: string;
   isDemoTenant?: boolean;
   tenant?: string | { id: string; slug: string; companyName: string };

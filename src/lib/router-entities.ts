@@ -5,7 +5,7 @@ export type EntityCandidate = { id: string; label: string };
 export type EntityResolution = { type: EntityType; status: 'resolved' | 'ambiguous' | 'unresolved' | 'forbidden'; entityId?: string; label?: string; span?: EntitySpan; candidates?: EntityCandidate[]; truncated?: boolean; evaluated: number; latencyMs: number };
 export type EntityRoute = { status: 'resolved' | 'ambiguous' | 'unresolved' | 'forbidden'; entities: EntityResolution[]; cases: { id: string; reference: string; title: string; status: string }[]; caseId?: string; summary?:string; items?:{id:string;label:string;detail?:string}[]; total?:number; prefill?:{assetId:string;assetName:string;requesterId:string;summary:string;description:string}; candidateId?:string; operational?:{kind:'single_intent'|'entity'|'filtered'|'composition';plan:import('./operational-plan').OperationalPlan;timeZone:string;dateWindow:{from?:string;to?:string}}; locationMeaning: 'employee_current_team' };
 export type EntityChoices = Partial<Record<EntityType | 'case', string>>;
-export type EntityParameters = { employeeName?: string; locationName?: string; assetName?:string; jobName?:string; candidateName?:string;plan?:import('./operational-plan').OperationalPlan };
+export type EntityParameters = { timeZone?:string; employeeName?: string; locationName?: string; assetName?:string; jobName?:string; candidateName?:string;plan?:import('./operational-plan').OperationalPlan };
 export type EntityTemplate = { text: string; placeholders: (Omit<EntitySpan,'type'> & {type:EntityType|'duration'|'date_range'})[]; version: 1 };
 // Offsets refer to the original UTF-16 string, including Arabic diacritics.
 export function entityTokens(text: string) {

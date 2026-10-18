@@ -197,7 +197,7 @@ export function ResignationsPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-            <FileText className="h-4 w-4 text-emerald-500" />
+            <FileText className="h-4 w-4 stanza-accent-ink" />
             {t('dash.resignations')}
           </h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -262,8 +262,9 @@ export function ResignationsPanel({
           <button
             type="button"
             onClick={submitResignation}
+            aria-busy={submitting}
             disabled={isOffline || submitting}
-            className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 disabled:opacity-60 md:col-span-4"
+            className="stanza-primary-action resignation-submit min-h-11 min-w-[11rem] justify-self-start md:col-span-4 md:justify-self-end"
           >
             {submitting ? t('dash.submitting') : t('dash.submitResignation')}
           </button>

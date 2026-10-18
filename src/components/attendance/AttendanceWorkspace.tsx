@@ -1,3 +1,4 @@
+import {RefreshButton} from '../ui/RefreshButton';
 import {formatAttendanceDuration} from '../../lib/attendance-duration';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, apiFetchShared, apiUrl } from '../../lib/api';
@@ -20,6 +21,7 @@ export function AttendanceWorkspace({ attendance, employeeId, hasShift, canReque
 }) {
   const {isRtl}=useLanguage(); const text=(en:string,ar:string)=>isRtl?ar:en;
   const statusText=(v:string)=>({pending:text('Pending','معلقة'),approved:text('Approved','معتمدة'),rejected:text('Rejected','مرفوضة'),cancelled:text('Cancelled','ملغاة'),verified:text('Verified','معتمد'),outside:text('Outside','خارج النطاق'),unavailable:text('Unavailable','غير متاح'),disabled:text('Disabled','معطل')}[v]||v);
+  const [refreshing,setRefreshing]=useState(false);
   const [policy,setPolicy]=useState<Policy|null>(null),[draft,setDraft]=useState<Policy|null>(null);
   const [breaks,setBreaks]=useState<any[]>([]),[requests,setRequests]=useState<any[]>([]),[team,setTeam]=useState(false);
   const [departures,setDepartures]=useState<any[]>([]);
@@ -31,10 +33,11 @@ export function AttendanceWorkspace({ attendance, employeeId, hasShift, canReque
   const [from,setFrom]=useState(new Date(Date.now()-30*86400000).toISOString().slice(0,10)),[to,setTo]=useState(new Date().toISOString().slice(0,10));
   const [employeeFilter,setEmployeeFilter]=useState(''),[state,setState]=useState(''),[exceptions,setExceptions]=useState(false);
   const load=useCallback(async()=>{
+    setRefreshing(true);
     try { const [p,b,d]=await Promise.all([api('/api/attendance/policy'),api('/api/attendance/breaks?team='+canTeam),api('/api/attendance/early-leave')]);
       setDepartures(d.requests);
       setPolicy(p);onPolicy(p.attendanceLocationMode);setBreaks(b.breaks);setRequests(b.requests);setNow(Date.now());setError('');
-    } catch(e) {setError((e as Error).message);}
+    } catch(e) {setError((e as Error).message);} finally {setRefreshing(false);}
   },[canTeam,onPolicy]);
   useEffect(()=>{void load();},[load,hasShift,refreshKey]);
   const own=breaks.filter(b=>b.employee_id===employeeId),active=own.find(b=>!b.ended_at),unresolved=own.filter(b=>b.ended_at&&b.exception_status==='unresolved');
@@ -54,7 +57,7 @@ export function AttendanceWorkspace({ attendance, employeeId, hasShift, canReque
     {error&&<p role="alert" className="rounded-lg border border-red-500/30 p-3 text-sm">{error}</p>}
     {notice&&<p role="status" className="text-sm">{notice}</p>}
     <div className={`attendance-breaks ${unresolved.length?'border-amber-500/60':'border-[var(--stanza-border-subtle)]'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">{text('BREAKS','الاستراحات')}</h3><button className={button} disabled={busy||offline} onClick={onChange}>{text('Refresh','تحديث')}</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">{text('BREAKS','الاستراحات')}</h3><RefreshButton disabled={busy||offline} loading={refreshing} onClick={onChange}>{text('Refresh','تحديث')}</RefreshButton></div>
       <div className="my-3 flex gap-2"><button className={button} aria-pressed={!team} onClick={()=>setTeam(false)}>{text('My break','استراحتي')}</button>{canTeam&&<button className={button} aria-pressed={team} onClick={()=>setTeam(true)}>{text('Team queue','استراحات الفريق')}</button>}</div>
       {!team ? <>
         <p className="mb-3 text-sm font-bold" role="status">{active?text('On break','في استراحة'):hasShift?text('Clocked in','تم تسجيل الحضور'):text('Clocked out','تم تسجيل الانصراف')}{active&&` · ${elapsed(active)} ${text('min elapsed','دقيقة منقضية')}${active.planned_minutes?` · ${Math.max(0,active.planned_minutes-elapsed(active))} ${text('min remaining','دقيقة متبقية')}`:''}`}</p>

@@ -14,3 +14,5 @@
  .comms td[data-label]::before{content:attr(data-label) ': ';color:var(--stanza-text-secondary);font-size:var(--text-xs)}
  .comms td button{text-align:start}.comms small{max-width:none}.comms nav{gap:.6rem}
 }
+
+.comms nav {gap:.3rem;}

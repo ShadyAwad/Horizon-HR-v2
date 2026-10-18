@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import {seedDemoTenantAdmin} from './admin-persona';
 import { PERMISSION_REGISTRY, validatePermissionKeys } from '../../src/server/organisation/permission-registry';
 import { employeeFixtures, emailFor, COMPANY, demoAmount, type DemoContext } from './core';
 export const employeePermissions = ['qr.employee_badge.self', 'locations.read', 'attendance.clock', 'break_requests.create', 'break_requests.view_own', 'leave.create', 'leave.view.self', 'leave.cancel.self', 'payroll.view_self', 'payroll.export_pdf', 'loans.view_self', 'grievances.create', 'grievances.view_own', 'feed.read', 'expenses.submit.self', 'expenses.view.self', 'expenses.cancel.self', 'roster.goals.view_self', 'roster.goals.complete_self', 'performance.view', 'performance.review', 'organisation.view'];
@@ -93,4 +94,5 @@ export async function seedOrganisation(ctx: DemoContext) {
     await client.query("UPDATE company_locations SET is_primary=false WHERE tenant_id=$1 AND name='Headquarters'", [t]);
     const boundary = (await client.query("SELECT ST_AsEWKT(boundary) AS boundary FROM company_locations WHERE tenant_id=$1 AND name='Cairo HQ'", [t])).rows[0].boundary;
     await ctx.row('geofences', 'Cairo HQ', { name: 'Cairo HQ', boundary });
+    await seedDemoTenantAdmin(ctx);
 }

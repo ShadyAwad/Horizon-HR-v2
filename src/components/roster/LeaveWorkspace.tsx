@@ -892,7 +892,7 @@ export function LeaveWorkspace({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-emerald-50">
-            <CalendarDays className="h-5 w-5 text-emerald-500" />
+            <CalendarDays className="stanza-accent-ink h-5 w-5 " />
             {copy.title}
           </h3>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-emerald-100/55">{copy.subtitle}</p>
@@ -912,7 +912,7 @@ export function LeaveWorkspace({
       {view !== 'approvals' && <><p className="leave-page-caption">{copy.pageSummary}</p><div className="leave-summary mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {summaryCards.map(({ label, count, Icon }) => (
           <article key={label} className="min-w-0 rounded-lg border border-emerald-500/15 bg-white/70 p-3 dark:bg-black/25">
-            <Icon className="h-4 w-4 text-emerald-500" />
+            <Icon className="stanza-accent-ink h-4 w-4 " />
             <p className="mt-3 text-xl font-bold text-slate-900 dark:text-emerald-50">{count}</p>
             <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-emerald-100/50">{label}</p>
           </article>
@@ -1059,7 +1059,7 @@ export function LeaveWorkspace({
             </div>
           )}
           {approvalLoading ? (
-            <div className="flex min-h-28 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50"><LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />{copy.loading}</div>
+            <div className="flex min-h-28 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50"><LoaderCircle className="stanza-accent-ink h-5 w-5 animate-spin " />{copy.loading}</div>
           ) : approvals.length === 0 ? (
             <div className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
               <CheckCircle2 className="h-8 w-8 text-emerald-500/70" />
@@ -1079,7 +1079,7 @@ export function LeaveWorkspace({
                   </div>
                   <p className="mt-3 text-xs font-medium text-slate-600 dark:text-emerald-100/65" dir="ltr">{formatDate(request.startDate)} – {formatDate(request.endDate)}</p>
                   <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold">
-                    <span className="rounded-full border border-emerald-500/20 px-2 py-1 text-emerald-700 dark:text-emerald-200">{authorityLabel(request.approvalSourceLabel)}</span>
+                    <span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-500/20 px-2 py-1 ">{authorityLabel(request.approvalSourceLabel)}</span>
                     {request.scopeLabel && <span className="rounded-full border border-slate-400/20 px-2 py-1 text-slate-500 dark:text-slate-300">{request.scopeLabel}</span>}
                   </div>
                   {request.hasRosterConflict && <p className="mt-3 flex items-center gap-2 text-[11px] font-bold text-amber-700 dark:text-amber-200"><AlertTriangle className="h-4 w-4" />{request.conflictCount === 1 ? copy.oneConflict : `${request.conflictCount} ${copy.manyConflicts}`}</p>}
@@ -1100,12 +1100,12 @@ export function LeaveWorkspace({
         </section>
       ) : loading ? (
         <div className="flex min-h-28 items-center justify-center gap-2 text-xs text-slate-500 dark:text-emerald-100/50">
-          <LoaderCircle className="h-5 w-5 animate-spin text-emerald-500" />
+          <LoaderCircle className="stanza-accent-ink h-5 w-5 animate-spin " />
           {copy.loading}
         </div>
       ) : requests.length === 0 ? (
         <div className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
-          <CalendarDays className="h-8 w-8 text-emerald-500/70" />
+          <CalendarDays className="stanza-accent-ink h-8 w-8 " />
           <p className="mt-3 text-sm font-bold text-slate-800 dark:text-emerald-50">{emptyText}</p>
           {view === 'requests' && <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/50">{copy.emptyRequestsHelp}</p>}
         </div>
@@ -1202,7 +1202,7 @@ export function LeaveWorkspace({
 
       <LeaveDialog open={detailLoading || Boolean(detail) || Boolean(detailError)} title={copy.details} onClose={() => { setDetail(null); setDetailError(''); }}>
         {detailLoading ? (
-          <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-emerald-500" /></div>
+          <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="stanza-accent-ink h-6 w-6 animate-spin " /></div>
         ) : detailError ? (
           <div role="alert" className="mt-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200">
             <p>{detailError}</p>
@@ -1279,7 +1279,7 @@ export function LeaveWorkspace({
         }}
       >
         {approvalDetailLoading ? (
-          <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-emerald-500" /></div>
+          <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="stanza-accent-ink h-6 w-6 animate-spin " /></div>
         ) : approvalDetailError ? (
           <div role="alert" className="mt-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-xs text-red-700 dark:text-red-200">
             <p>{approvalDetailError}</p>

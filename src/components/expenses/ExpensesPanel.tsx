@@ -260,7 +260,7 @@ function Dialog({
 
 function StatusBadge({ status, label }: { status: ExpenseStatus; label: string }) {
   const tone = status === 'approved' || status === 'reimbursed'
-    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    ? 'stanza-positive'
     : status === 'rejected'
       ? 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300'
       : status === 'cancelled'
@@ -272,7 +272,7 @@ function StatusBadge({ status, label }: { status: ExpenseStatus; label: string }
 function SummaryCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
   return (
     <div className="min-w-0 rounded-xl border border-emerald-500/15 bg-white/75 p-4 shadow-sm dark:bg-white/[0.035]">
-      <div className="flex items-center justify-between gap-3 text-emerald-600 dark:text-emerald-300">
+      <div className="flex items-center justify-between gap-3 stanza-accent-ink">
         <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
         {icon}
       </div>
@@ -759,12 +759,12 @@ export function ExpensesPanel({
     <article key={claim.claimId} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-emerald-500/15 dark:bg-white/[0.035]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          {finance && claim.employee && <p className="mb-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">{claim.employee.displayName}</p>}
+          {finance && claim.employee && <p className="mb-1 text-xs font-bold stanza-accent-ink">{claim.employee.displayName}</p>}
           <h3 className="truncate font-bold">{claim.merchantName}</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-emerald-100/60">{formatDate(claim.expenseDate)} · {categoryLabel(claim.category)}</p>
           {finance && claim.employee && (
             <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-emerald-700 dark:text-emerald-300">{authorityLabel(claim)}</span>
+              <span className="rounded-full border border-emerald-500/20 stanza-accent-fill px-2 py-1 stanza-accent-ink">{authorityLabel(claim)}</span>
               {claim.approvalScopeType && <span className="rounded-full border border-slate-300 px-2 py-1 text-slate-500 dark:border-emerald-500/15 dark:text-emerald-100/55">{t(`expenses.scope.${claim.approvalScopeType}` as Parameters<typeof t>[0])}</span>}
               {(claim.employee.departmentName || claim.employee.teamName) && <span className="rounded-full border border-slate-300 px-2 py-1 text-slate-500 dark:border-emerald-500/15 dark:text-emerald-100/55">{claim.employee.teamName || claim.employee.departmentName}</span>}
             </div>
@@ -787,12 +787,12 @@ export function ExpensesPanel({
           )}
           {finance && claim.canApprove && (
             <>
-              <button type="button" onClick={() => setActionDialog({ kind: 'approve', claim })} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('expenses.approve')}</button>
+              <button type="button" onClick={() => setActionDialog({ kind: 'approve', claim })} className="stanza-primary-action rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('expenses.approve')}</button>
               <button type="button" onClick={() => setActionDialog({ kind: 'reject', claim })} className="rounded-lg border border-red-500/25 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-500 dark:text-red-300">{t('expenses.reject')}</button>
             </>
           )}
           {finance && claim.canReimburse && explicitReimburse && (
-            <button type="button" onClick={() => setActionDialog({ kind: 'reimburse', claim })} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('expenses.markReimbursed')}</button>
+            <button type="button" onClick={() => setActionDialog({ kind: 'reimburse', claim })} className="stanza-primary-action rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('expenses.markReimbursed')}</button>
           )}
         </div>
       </div>
@@ -833,14 +833,14 @@ export function ExpensesPanel({
     <section data-tutorial-target="expenses-workspace" dir={isRtl ? 'rtl' : 'ltr'} className="min-w-0 space-y-5 overflow-x-hidden">
       <header className="flex flex-col gap-4 rounded-2xl border border-emerald-500/15 bg-white/80 p-5 shadow-sm dark:bg-white/[0.035] sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
+          <div className="flex items-center gap-2 stanza-accent-ink">
             <ReceiptText className="h-5 w-5" />
             <span className="text-xs font-black uppercase tracking-[0.18em]">{t('expenses.financeWorkspace')}</span>
           </div>
           <h1 className="mt-2 text-2xl font-black">{t('expenses.title')}</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-emerald-100/60">{t('expenses.subtitle')}</p>
         </div>
-        <button type="button" onClick={openFlow} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-900/10 hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        <button type="button" onClick={openFlow} className="stanza-primary-action inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-900/10 hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">
           <Plus className="h-4 w-4" />
           {t('expenses.newClaim')}
         </button>
@@ -914,7 +914,7 @@ export function ExpensesPanel({
               </label>
             </div>
             {claimsLoading ? (
-              <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-emerald-500" /><span className="sr-only">{t('expenses.loading')}</span></div>
+              <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="stanza-accent-ink h-6 w-6 animate-spin " /><span className="sr-only">{t('expenses.loading')}</span></div>
             ) : claimsError ? (
               <div className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 p-5 text-center">
                 <p className="text-sm text-red-700 dark:text-red-300">{claimsError}</p>
@@ -922,7 +922,7 @@ export function ExpensesPanel({
               </div>
             ) : visibleOwnClaims.length === 0 ? (
               <div className="mt-5 rounded-xl border border-dashed border-emerald-500/20 p-8 text-center">
-                <ReceiptText className="mx-auto h-9 w-9 text-emerald-500/50" />
+                <ReceiptText className="stanza-accent-ink mx-auto h-9 w-9 " />
                 <h2 className="mt-3 font-bold">{activeView === 'history' ? t('expenses.noHistory') : t('expenses.noClaims')}</h2>
                 <p className="mx-auto mt-1 max-w-md text-sm text-slate-500 dark:text-emerald-100/55">{t('expenses.noClaimsHelp')}</p>
               </div>
@@ -947,7 +947,7 @@ export function ExpensesPanel({
               </label>
             </div>
             {financeLoading ? (
-              <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-emerald-500" /></div>
+              <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="stanza-accent-ink h-6 w-6 animate-spin " /></div>
             ) : financeError ? (
               <div className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 p-5 text-center">
                 <p className="text-sm text-red-700 dark:text-red-300">{financeError}</p>
@@ -969,7 +969,7 @@ export function ExpensesPanel({
 
       {detailLoading && (
         <div className="fixed inset-0 z-[119] flex items-center justify-center bg-black/40" role="status">
-          <LoaderCircle className="h-8 w-8 animate-spin text-emerald-400" />
+          <LoaderCircle className="stanza-accent-ink h-8 w-8 animate-spin " />
           <span className="sr-only">{t('expenses.loading')}</span>
         </div>
       )}
@@ -1000,7 +1000,7 @@ export function ExpensesPanel({
             <ol className="mt-3 space-y-3 border-s border-emerald-500/20 ps-4">
               {detail.history.map((item, index) => (
                 <li key={`${item.action}-${item.createdAt}-${index}`} className="relative">
-                  <span className="absolute -start-[1.22rem] top-1 h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="stanza-primary-action absolute -start-[1.22rem] top-1 h-2 w-2 rounded-full bg-emerald-500" />
                   <p className="text-sm font-semibold">{t(`expenses.history.${item.action}` as Parameters<typeof t>[0])}</p>
                   <p className="text-xs text-slate-500 dark:text-emerald-100/55">{formatDate(item.createdAt)}</p>
                 </li>
@@ -1011,9 +1011,9 @@ export function ExpensesPanel({
             {!detail.finance && detail.claim.status === 'pending' && <button type="button" onClick={() => { setActionDialog({ kind: 'cancel', claim: detail.claim }); setDetail(null); }} className="rounded-lg border border-red-500/25 px-4 py-2 text-sm font-bold text-red-700 dark:text-red-300">{t('expenses.cancelClaim')}</button>}
             {detail.finance && detail.claim.canApprove && <>
               <button type="button" onClick={() => { setActionDialog({ kind: 'reject', claim: detail.claim }); setDetail(null); }} className="rounded-lg border border-red-500/25 px-4 py-2 text-sm font-bold text-red-700 dark:text-red-300">{t('expenses.reject')}</button>
-              <button type="button" onClick={() => { setActionDialog({ kind: 'approve', claim: detail.claim }); setDetail(null); }} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white">{t('expenses.approve')}</button>
+              <button type="button" onClick={() => { setActionDialog({ kind: 'approve', claim: detail.claim }); setDetail(null); }} className="stanza-primary-action rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white">{t('expenses.approve')}</button>
             </>}
-            {detail.finance && detail.claim.canReimburse && explicitReimburse && <button type="button" onClick={() => { setActionDialog({ kind: 'reimburse', claim: detail.claim }); setDetail(null); }} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white">{t('expenses.markReimbursed')}</button>}
+            {detail.finance && detail.claim.canReimburse && explicitReimburse && <button type="button" onClick={() => { setActionDialog({ kind: 'reimburse', claim: detail.claim }); setDetail(null); }} className="stanza-primary-action rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white">{t('expenses.markReimbursed')}</button>}
           </div>
         </Dialog>
       )}
@@ -1062,7 +1062,7 @@ export function ExpensesPanel({
       {claimFlowOpen && (
         <Dialog title={t('expenses.newClaim')} description={t(`expenses.step.${claimStep}` as Parameters<typeof t>[0])} onClose={() => void resetFlow()} labelledBy="expense-flow-title" closeLabel={t('expenses.close')}>
           <div className="mt-5 flex items-center gap-2" aria-label={t('expenses.progress')}>
-            {[1, 2, 3, 4].map((step) => <span key={step} className={cn('h-1.5 flex-1 rounded-full', step <= claimStep ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-white/10')} />)}
+            {[1, 2, 3, 4].map((step) => <span key={step} className={cn('h-1.5 flex-1 rounded-full', step <= claimStep ? 'bg-[var(--stanza-accent)]' : 'bg-slate-200 dark:bg-white/10')} />)}
           </div>
 
           {claimStep === 1 && (
@@ -1078,7 +1078,7 @@ export function ExpensesPanel({
                 }}
                 className={cn('rounded-2xl border-2 border-dashed p-6 text-center transition', dropActive ? 'border-emerald-500 bg-emerald-500/10' : 'border-emerald-500/25 bg-emerald-500/[0.035]')}
               >
-                <Upload className="mx-auto h-9 w-9 text-emerald-500" />
+                <Upload className="stanza-accent-ink mx-auto h-9 w-9 " />
                 <h3 className="mt-3 font-bold">{t('expenses.dropReceipt')}</h3>
                 <p className="mt-1 text-sm text-slate-500 dark:text-emerald-100/55">{t('expenses.receiptFormats')}</p>
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setReceipt(event.target.files?.[0] || null)} className="sr-only" />
@@ -1093,13 +1093,13 @@ export function ExpensesPanel({
               <p className="mt-3 text-xs text-slate-500 dark:text-emerald-100/50">{t('expenses.temporaryReceipt')}</p>
               {extractionError && <p role="alert" className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">{extractionError} {t('expenses.manualFallback')}</p>}
               {suggestions && (
-                <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+                <p className="stanza-accent-ink stanza-accent-fill mt-3 rounded-lg border border-emerald-500/20 p-3 text-sm ">
                   {t('expenses.replacePreservesEdits')}
                 </p>
               )}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <button type="button" onClick={() => setClaimStep(2)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold dark:border-emerald-500/20">{t('expenses.continueManual')}</button>
-                <button type="button" disabled={!receiptFile || extracting} onClick={() => void extractReceipt()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={!receiptFile || extracting} onClick={() => void extractReceipt()} className="stanza-primary-action inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
                   {extracting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileImage className="h-4 w-4" />}
                   {extracting ? t('expenses.processing') : t('expenses.extractDetails')}
                 </button>
@@ -1140,7 +1140,7 @@ export function ExpensesPanel({
               {formError && <p id="expense-form-error" role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{formError}</p>}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <button type="button" onClick={() => setClaimStep(1)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold dark:border-emerald-500/20">{t('expenses.back')}</button>
-                <button type="button" onClick={moveToReview} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white">{t('expenses.reviewClaim')}</button>
+                <button type="button" onClick={moveToReview} className="stanza-primary-action rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white">{t('expenses.reviewClaim')}</button>
               </div>
             </div>
           )}
@@ -1161,7 +1161,7 @@ export function ExpensesPanel({
               {formError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{formError}</p>}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <button type="button" onClick={() => setClaimStep(2)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold dark:border-emerald-500/20">{t('expenses.back')}</button>
-                <button type="button" disabled={submitting} onClick={() => void submitClaim()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{submitting && <LoaderCircle className="h-4 w-4 animate-spin" />}{t('expenses.submitClaim')}</button>
+                <button type="button" disabled={submitting} onClick={() => void submitClaim()} className="stanza-primary-action inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{submitting && <LoaderCircle className="h-4 w-4 animate-spin" />}{t('expenses.submitClaim')}</button>
               </div>
             </div>
           )}
@@ -1172,7 +1172,7 @@ export function ExpensesPanel({
               <h3 className="mt-4 text-xl font-black">{t('expenses.submitted')}</h3>
               <p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-emerald-100/60">{t('expenses.submittedHelp')}</p>
               {duplicateWarning && <p className="mx-auto mt-4 max-w-md rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">{t('expenses.duplicateWarning')}</p>}
-              <button type="button" onClick={() => { void resetFlow(false); setActiveView('claims'); }} className="mt-6 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white">{t('expenses.viewClaims')}</button>
+              <button type="button" onClick={() => { void resetFlow(false); setActiveView('claims'); }} className="stanza-primary-action mt-6 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white">{t('expenses.viewClaims')}</button>
             </div>
           )}
         </Dialog>

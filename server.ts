@@ -1,3 +1,4 @@
+import {enforcePublicDemoBoundary,protectedDemoIdentity} from './src/server/auth/public-demo-boundary';
 import {registerHiringDepthRoutes} from './src/server/hiring/hiring-depth-routes';
 import {registerAtsRoutes} from './src/server/hiring/ats-routes';
 import {registerSupportRoutes} from './src/server/support/support-routes';
@@ -92,7 +93,7 @@ import {
   type CompanyLocationInput,
   type CompanyLocationType,
 } from './src/server/locations/company-location-input';
-import { hasPermissionClaim } from './src/server/auth/permission-claims';
+import { hasPermissionClaim, hasCompanyPermissionClaim } from './src/server/auth/permission-claims';
 import { claimPendingRecognitionDelivery } from './src/server/performance/recognition-delivery';
 import { recordAuditEvent } from './src/server/audit/audit-events';
 import {
@@ -130,6 +131,8 @@ type AuthenticatedUser = {
   jobTitle?: string | null;
   roleNames?: string[];
   permissions?: string[];
+  companyPermissions?: string[];
+  isDemoTenant?: boolean;
 };
 
 type AuthEmployeeRow = {
@@ -142,6 +145,8 @@ type AuthEmployeeRow = {
   profile_image_url: string | null;
   role_names: string[];
   permissions: string[];
+  companyPermissions?: string[];
+  isDemoTenant?: boolean;
   company_name: string;
   is_demo_tenant?: boolean;
 };
@@ -246,8 +251,8 @@ function isSameOriginSessionMutation(req: express.Request, res: express.Response
 // Every cookie-authenticated unsafe method uses the same Origin boundary,
 // including legacy modules that predate route-specific mutation guards.
 function finishSessionAuthentication(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  return isSameOriginSessionMutation(req, res, next);
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return enforcePublicDemoBoundary(req,res,next);
+  return isSameOriginSessionMutation(req, res, ()=>void enforcePublicDemoBoundary(req,res,next));
 }
 
 function getLoginRateLimitKeys(req: express.Request, normalizedEmail: string) {
@@ -284,6 +289,7 @@ function formatAuthUser(employee: AuthEmployeeRow) {
     profileImageUrl: employee.profile_image_url,
     roleNames: employee.role_names || [],
     permissions: employee.permissions || [],
+    companyPermissions: employee.companyPermissions || [],
     tenantId: employee.tenant_id,
     tenant: employee.company_name,
     isDemoTenant: employee.is_demo_tenant === true,
@@ -837,7 +843,8 @@ async function demoAuth(
           COALESCE(
             array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
             ARRAY[]::varchar[]
-          ) AS permissions
+          ) AS permissions,
+          COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key) FILTER (WHERE employee_role_assignments.scope_type='company' AND tenant_role_permissions.permission_key IS NOT NULL),ARRAY[]::varchar[]) AS "companyPermissions"
         FROM employees
         ${ACTIVE_AUTH_ROLE_JOINS}
         WHERE employees.id = $1
@@ -983,7 +990,7 @@ function requireHrAdminSessionCenter(
   next: express.NextFunction,
 ) {
   if (!req.authUser) return res.status(401).json({ success: false, error: 'Authentication required.' });
-  if (req.authUser.role !== 'hr_admin' || !hasPermissionClaim(req.authUser, 'sessions.manage')) {
+  if (!hasCompanyPermissionClaim(req.authUser, 'sessions.manage')) {
     return res.status(403).json({ success: false, error: 'You do not have permission to manage tenant sessions.' });
   }
   return next();
@@ -1150,6 +1157,7 @@ async function fetchAuthEmployeeByEmail(normalizedEmail: string) {
           array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
           ARRAY[]::varchar[]
         ) AS permissions,
+          COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key) FILTER (WHERE employee_role_assignments.scope_type='company' AND tenant_role_permissions.permission_key IS NOT NULL),ARRAY[]::varchar[]) AS "companyPermissions",
         tenants.company_name,
         tenants.slug = 'stanza-demo' AS is_demo_tenant
       FROM employees
@@ -1187,6 +1195,7 @@ async function fetchAuthEmployeeById(tenantId: string, employeeId: string) {
           array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
           ARRAY[]::varchar[]
         ) AS permissions,
+          COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key) FILTER (WHERE employee_role_assignments.scope_type='company' AND tenant_role_permissions.permission_key IS NOT NULL),ARRAY[]::varchar[]) AS "companyPermissions",
         tenants.company_name,
         tenants.slug = 'stanza-demo' AS is_demo_tenant
       FROM employees
@@ -2114,6 +2123,8 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
       profile_image_url: string | null;
       role_names: string[];
       permissions: string[];
+  companyPermissions?: string[];
+  isDemoTenant?: boolean;
       password_hash: string | null;
       company_name: string;
     }>(
@@ -2134,6 +2145,7 @@ app.post('/api/auth/login', sensitiveAuthRateLimiter, async (req, res) => {
             array_remove(array_agg(DISTINCT tenant_role_permissions.permission_key), NULL),
             ARRAY[]::varchar[]
           ) AS permissions,
+          COALESCE(array_agg(DISTINCT tenant_role_permissions.permission_key) FILTER (WHERE employee_role_assignments.scope_type='company' AND tenant_role_permissions.permission_key IS NOT NULL),ARRAY[]::varchar[]) AS "companyPermissions",
           employees.password_hash,
           tenants.company_name,
         tenants.slug = 'stanza-demo' AS is_demo_tenant
@@ -2822,7 +2834,7 @@ app.post('/api/auth/request-password-reset', passwordResetRequestRateLimiter, as
       We return success even if the email does not exist.
       This prevents account enumeration.
     */
-    if (result.rowCount === 0) {
+    if (result.rowCount === 0 || await withTenant(result.rows[0].tenant_id,c=>protectedDemoIdentity(c,result.rows[0].tenant_id,result.rows[0].employee_id))) {
       return res.json({
         success: true,
         message: 'If an account exists, password reset instructions have been sent.',
@@ -2985,6 +2997,7 @@ app.post('/api/auth/reset-password', passwordResetConfirmRateLimiter, async (req
     }
 
     const token = tokenResult.rows[0];
+    if(await protectedDemoIdentity(client,token.tenant_id,token.employee_id)){await client.query('ROLLBACK');return res.status(400).json({success:false,error:'Invalid or expired reset code.'});}
 
     await client.query(
       `

@@ -61,7 +61,8 @@ export async function processMessage(job: Pick<Job<CommunicationJob>, 'data' | '
     });
     if (!row)
         return;
-    const result = await send({ to: row.recipients, subject: row.subject, text: row.body, html: `<div style="white-space:pre-wrap">${escapeHtml(row.body)}</div>`, ...(row.invitation_ics ? { attachments: [{ filename: 'invitation.ics', content: Buffer.from(row.invitation_ics) }] } : {}) }, `stanza-message-${row.id}`);
+    const demo=await withTenant(tenantId,async c=>Boolean((await c.query('SELECT 1 FROM tenants WHERE id=$1 AND is_demo_tenant',[tenantId])).rowCount));
+    const result:ProviderResult = demo?{ok:false,kind:'unconfigured',code:'DEMO_EXTERNAL_DELIVERY_DISABLED'}:await send({ to: row.recipients, subject: row.subject, text: row.body, html: `<div style="white-space:pre-wrap">${escapeHtml(row.body)}</div>`, ...(row.invitation_ics ? { attachments: [{ filename: 'invitation.ics', content: Buffer.from(row.invitation_ics) }] } : {}) }, `stanza-message-${row.id}`);
     const outcome = classifyDelivery(result, row.attempts);
     const finalized = await withTenant(tenantId, async (client) => {
         // A replay must not overwrite a confirmed outcome or append its events twice.

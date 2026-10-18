@@ -91,12 +91,12 @@ async function request<T>(user: AuthUser, path: string, init: RequestInit = {}) 
   }
 }
 
-export async function listHiringApplicants(user: AuthUser, filters: HiringApplicantFilters) {
+export async function listHiringApplicants(user: AuthUser, filters: HiringApplicantFilters, signal?:AbortSignal) {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== '' && value !== false) query.set(key, String(value));
   });
-  return request<{ applicants: HiringApplicantListItem[]; total: number; stageCounts: Partial<Record<HiringStage, number>>; page: number; pageSize: number }>(user, `/api/hiring/applicants?${query}`);
+  return request<{ applicants: HiringApplicantListItem[]; total: number; stageCounts: Partial<Record<HiringStage, number>>; page: number; pageSize: number }>(user, `/api/hiring/applicants?${query}`,{signal});
 }
 
 export const createHiringApplicant = (user: AuthUser, payload: HiringApplicantInput) => request<{ applicant: HiringApplicantListItem; warnings: Array<{ code: string; applicantId: string; message: string }> }>(user, '/api/hiring/applicants', { method: 'POST', body: JSON.stringify(payload) });

@@ -218,7 +218,7 @@ export function AssetLabelExtraction({
   return (
     <section aria-labelledby="asset-label-extraction-title" className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.035] p-3 sm:p-4">
       <div className="flex items-start gap-3">
-        <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+        <FileImage className="stanza-accent-ink mt-0.5 h-5 w-5 shrink-0 " />
         <div className="min-w-0">
           <h4 id="asset-label-extraction-title" className="font-black text-slate-900 dark:text-emerald-50">{t('assets.extractionTitle')}</h4>
           <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-emerald-100/60">{t('assets.extractionFormats')}</p>
@@ -235,7 +235,7 @@ export function AssetLabelExtraction({
         }}
         className={cn('mt-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors', dropActive ? 'border-emerald-500 bg-emerald-500/10' : 'border-emerald-500/25 bg-white/55 dark:bg-black/15')}
       >
-        <Upload className="mx-auto h-7 w-7 text-emerald-500" />
+        <Upload className="stanza-accent-ink mx-auto h-7 w-7 " />
         <p className="mt-2 text-sm font-bold">{t('assets.extractionDrop')}</p>
         <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => chooseFile(event.target.files?.[0] || null)} />
         <button type="button" onClick={() => inputRef.current?.click()} className="mt-3 min-h-10 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-emerald-300">

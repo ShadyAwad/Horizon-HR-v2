@@ -1,5 +1,6 @@
 export type PermissionClaimUser = {
   role?: string | null;
+  companyPermissions?: readonly string[] | null;
   permissions?: readonly string[] | null;
 };
 
@@ -13,4 +14,9 @@ export function hasPermissionClaim(
 ) {
   if(permissionKey.startsWith('platform.'))return false; // Platform authority never comes from tenant claims.
   return user?.role === 'hr_admin' || Boolean(user?.permissions?.includes(permissionKey));
+}
+
+/** Company-wide features require an explicit company assignment, not a demo name. */
+export function hasCompanyPermissionClaim(user: PermissionClaimUser | null | undefined,key:string) {
+ return !key.startsWith('platform.') && (user?.role==='hr_admin'||Boolean(user?.companyPermissions?.includes(key)));
 }

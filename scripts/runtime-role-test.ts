@@ -21,7 +21,9 @@ const identifier=(value:string)=>'"'+value.replaceAll('"','""')+'"';
 try {
   const client=await runtime.connect();
   try { await assertRuntimeRole(client); } finally { client.release(); }
-  const identities=(await admin.query('SELECT id FROM tenants ORDER BY id LIMIT 2')).rows;
+  const requested=[process.env.RLS_TEST_TENANT_ID,process.env.RLS_TEST_OTHER_TENANT_ID].filter(Boolean);
+  assert(requested.length===0||requested.length===2,'Provide both disposable RLS tenant IDs');
+  const identities=(await admin.query(requested.length?'SELECT id FROM tenants WHERE id=ANY($1::uuid[]) ORDER BY id':'SELECT id FROM tenants ORDER BY id LIMIT 2',requested.length?[requested]:[])).rows;
   assert.equal(identities.length,2,'Two tenants required for non-vacuous isolation');
   const [own,other]=identities.map(row=>row.id);
   const tables=(await admin.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -68,7 +70,7 @@ try {
   const global=(await admin.query('SELECT count(*)::int AS n FROM router_semantic_examples WHERE tenant_id IS NULL')).rows[0].n;
   assert.equal((await runtime.query('SELECT count(*)::int AS n FROM router_semantic_examples WHERE tenant_id IS NULL')).rows[0].n,global);
   await assert.rejects(runtime.query("CREATE TABLE public.runtime_must_not_create(id int)"),(e:unknown)=>(e as {code?:string}).code==='42501');
-  await assert.rejects(runtime.query('TRUNCATE employees'),(e:unknown)=>(e as {code?:string}).code==='42501');
+  assert.equal((await runtime.query("SELECT has_table_privilege(current_user,'employees','TRUNCATE') AS allowed")).rows[0].allowed,false,'Runtime cannot truncate employees');
   assert.equal((await runtime.query("SELECT has_table_privilege(current_user,'tenant_permissions','INSERT') AS allowed")).rows[0].allowed,false);
   assert.equal((await runtime.query("SELECT has_sequence_privilege(current_user,'communication_message_events_id_seq','USAGE') AS allowed")).rows[0].allowed,true);
   assert.equal((await runtime.query("SELECT has_sequence_privilege(current_user,'communication_message_events_id_seq','UPDATE') AS allowed")).rows[0].allowed,false);

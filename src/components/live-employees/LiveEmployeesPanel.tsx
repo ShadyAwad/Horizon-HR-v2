@@ -1,3 +1,4 @@
+import {RefreshButton} from '../ui/RefreshButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Clock3, MapPin, RefreshCw, Search, ShieldCheck, UsersRound } from 'lucide-react';
 import { fetchLiveEmployees, type LiveEmployee } from '../../api/live-employees';
@@ -105,24 +106,16 @@ export function LiveEmployeesPanel() {
   ] as const;
 
   return (
-    <section className="w-full min-w-0 rounded-2xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4">
+    <section data-accent-panel="live-employees" className="w-full min-w-0 rounded-2xl border border-emerald-500/15 bg-white/90 p-3 shadow-xl backdrop-blur-sm dark:bg-[#061411]/90 md:p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <UsersRound className="h-5 w-5 text-emerald-500" />
+            <UsersRound className="stanza-accent-ink h-5 w-5 text-emerald-500" />
             <h2 className="text-lg font-black text-neutral-950 dark:text-emerald-50">{t('liveEmployees.title')}</h2>
           </div>
           <p className="mt-1 text-sm text-neutral-600 dark:text-emerald-100/55">{t('liveEmployees.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load(true)}
-          disabled={refreshing}
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-3 text-xs font-black uppercase text-emerald-700 transition hover:bg-emerald-500/10 disabled:cursor-wait disabled:opacity-60 dark:text-emerald-300"
-        >
-          <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
-          {t('liveEmployees.refresh')}
-        </button>
+        <RefreshButton onClick={() => void load(true)} loading={refreshing}>{t('liveEmployees.refresh')}</RefreshButton>
       </div>
 
       {error && (
@@ -137,7 +130,7 @@ export function LiveEmployeesPanel() {
           <div key={key} className="rounded-lg border border-emerald-500/15 bg-black/[0.025] p-3 dark:bg-black/25">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase text-neutral-500 dark:text-emerald-100/50">{t(`liveEmployees.summary.${key}` as const)}</span>
-              <Icon className="h-4 w-4 text-emerald-500" />
+              <Icon className="stanza-accent-ink h-4 w-4 text-emerald-500" />
             </div>
             <strong className="mt-2 block text-2xl text-neutral-950 dark:text-emerald-50" dir="ltr">{count}</strong>
           </div>
@@ -147,7 +140,7 @@ export function LiveEmployeesPanel() {
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto]">
         <label className="relative">
           <span className="sr-only">{t('liveEmployees.search')}</span>
-          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+          <Search className="stanza-accent-ink pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}

@@ -162,7 +162,7 @@ check('attention refresh is visibility-gated, removes listeners and has no polli
 check('idle attendance readiness indicator is static rather than an infinite compositor animation',
   dashboard.includes('<AttendanceStatus ') &&
   !/animate-|setInterval|setTimeout|requestAnimationFrame/.test(read('src/components/attendance/AttendanceStatus.tsx')) &&
-  !/animation\s*:/.test(styles.slice(styles.indexOf('/* Attendance composition only;'), styles.indexOf('/* Personal static backgrounds.'))));
+  !/animation\s*:[^;{}]*\binfinite\b/.test(styles.slice(styles.indexOf('/* Attendance composition only;'), styles.indexOf('/* Personal static backgrounds.'))));
 check('CSS infinite animation is restricted to authentication and request-bound refresh loading',
   (styles.match(/animation\s*:[^;{}]*\binfinite\b/g) || []).length === 3 &&
   styles.includes('.stanza-refresh-action[aria-busy=true] > svg') &&
@@ -196,7 +196,7 @@ check('interaction state system covers press, focus, disabled, destructive, and 
 check('physical toggle tracks retain token-owned on/off colors without fighting selected-card hover',
   interactionStyles.includes('.stanza-toggle-track[aria-checked="true"]') &&
   interactionStyles.includes('background-color: var(--stanza-control-selected);') &&
-  interactionStyles.includes(':not(.stanza-toggle-track):hover'));
+  /:not\(\.stanza-toggle-track\)(?::not\(\.stanza-tab--underline\))?:hover/.test(interactionStyles));
 check('interaction transitions never use transition all', !/transition\s*:\s*all/i.test(interactionStyles));
 check('Settings lazy mounting retains a short compositor-safe entry transition', dashboard.includes('stanza-accordion-content') && styles.includes('@keyframes stanza-accordion-enter'));
 check('Dashboard local entry transitions do not eagerly load Motion', !dashboard.includes("from 'motion/react'") && dashboard.includes('stanza-workspace-enter') && !readFileSync('src/components/attendance/AttendanceTerminal.tsx', 'utf8').includes('motion/react'));

@@ -1,3 +1,4 @@
+import {hasCompanyPermissionClaim} from '../auth/permission-claims';
 import { logServerError } from '../../lib/server-logging';
 import type express from 'express';
 import { withTenant } from '../../lib/hr-background';
@@ -30,12 +31,12 @@ export function registerLiveEmployeesRoutes(
   app: express.Express,
   dependencies: LiveEmployeesRouteDependencies,
 ) {
-  const { demoAuth, requireRole, requirePermission } = dependencies;
+  const { demoAuth, requirePermission } = dependencies;
 
   app.get(
     '/api/hr/live-employees',
     demoAuth,
-    requireRole(['hr_admin']),
+    (req,res,next)=>hasCompanyPermissionClaim(req.authUser,'attendance.view_live')&&hasCompanyPermissionClaim(req.authUser,'organisation.manage')?next():void res.status(403).json({success:false,error:'Company-wide live attendance authority required.'}),
     requirePermission('attendance.view_live'),
     async (req, res) => {
       const tenantId = req.authUser!.tenantId;

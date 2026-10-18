@@ -1,10 +1,10 @@
 import type {PoolClient} from 'pg';
 import type {RouterActor} from './openai-local-auth';
-import {resolveScopedPermission} from '../organisation/scoped-permissions';
-/** Mirror Live Employees' HR-admin and permission boundary; company-wide totals need company scope. */
+import {hasCompanyPermission} from '../organisation/scoped-permissions';
+/** Mirror Live Employees' company-scoped permission boundary; company-wide totals need company scope. */
 export async function canReadLivePresence(c:PoolClient,actor:RouterActor) {
-  const employee=(await c.query("SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2 AND role='hr_admin' AND is_active AND employment_status='active'",[actor.tenantId,actor.employeeId])).rowCount;
-  return !!employee&&(await resolveScopedPermission(c,{tenantId:actor.tenantId,actorEmployeeId:actor.employeeId,permissionKey:'attendance.view_live'})).allowed;
+  const employee=(await c.query("SELECT role FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active AND employment_status='active'",[actor.tenantId,actor.employeeId])).rows[0];
+  return !!employee&&(await hasCompanyPermission(c,actor.tenantId,actor.employeeId,'attendance.view_live')).allowed&&(employee.role==='hr_admin'||(await hasCompanyPermission(c,actor.tenantId,actor.employeeId,'organisation.manage')).allowed);
 }
 export async function livePresenceAnswer(c:PoolClient,actor:RouterActor) {
   if(!await canReadLivePresence(c,actor))throw Error('REVIEW_DENIED');

@@ -29,9 +29,9 @@ await test('exact aliases and regex never invoke either provider',async()=>{
 await test('strong rules distinguish personal assets, domain requests, and asset subjects',async()=>{
   const d=base();d.authorization={resolve:async()=>({state:'disabled'})};
   d.search={search:async()=>[{intentKey:'my_assets',score:.98},{intentKey:'employee_equipment',score:.55}]};
-  for(const query of ['what equipment do I have?','show my assigned equipment']){const r=await resolveQuery(query,d);assert.equal(r.intentKey,'my_assets');assert.equal(r.method,'semantic');}
+  for(const [query,method] of [['what equipment do I have?','semantic'],['show my assigned equipment','rule']]){const r=await resolveQuery(query,d);assert.equal(r.intentKey,'my_assets');assert.equal(r.method,method);assert.equal(r.fallbackUsed,false);}
   d.search={search:async()=>[]};
-  for(const query of ['show requests','who has requested leave'])assert.equal((await resolveQuery(query,d)).outcome,'no_match');
+  assert.equal((await resolveQuery('show requests',d)).outcome,'ambiguous');assert.equal((await resolveQuery('who has requested leave',d)).outcome,'no_match');
   for(const [query,key] of [['what laptop is Ahmed using?','employee_equipment'],['what equipment does Ahmed have?','employee_equipment'],['who has NS-LAP-003?','asset_holder'],['who has the company laptop?','asset_holder'],['show support requests','support_lookup']]){const r=await resolveQuery(query,d);assert.equal(r.intentKey,key);assert.equal(r.method,'rule');}
 });
 await test('explicit clock instructions stay local, permission-gated and direction-specific',async()=>{

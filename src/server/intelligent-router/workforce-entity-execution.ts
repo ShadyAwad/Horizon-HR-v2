@@ -1,3 +1,5 @@
+import {resolveDirectoryEmployee} from './scoped-read-execution';
+import {classificationQuery,ownEntityReference} from '../../lib/router-classification';
 import type { PoolClient } from 'pg';
 import { normalizeQuery } from '../../lib/router-normalization';
 import { entityTokens, findEntitySpan, generalizeEntities, safeEntityTemplate, type EntityType, type EntityResolution, type EntityRoute, type EntityChoices, type EntityParameters } from '../../lib/router-entities';
@@ -45,7 +47,7 @@ export function workforceExecutor(key: string) {
                 return result({ summary: 'Interviews today (company database date)', items: rows, total: rows[0]?.total || 0 });
             }
             let jobId: string | null = null, candidateId: string | null = null;
-            if (/applicants for|المتقدمين لوظيفة/iu.test(query)) {
+            if (/applicants for|candidates for|المتقدمين لوظيفه|مرشحين لوظيفه/iu.test(normalizeQuery(query))) {
                 const job = await resolve('job_opening');
                 jobId = job.entityId || null;
             }
@@ -63,8 +65,8 @@ export function workforceExecutor(key: string) {
             return result({ summary: 'Hiring candidates', items: rows, total: Number((await c.query(`SELECT count(*) FROM hiring_applicants WHERE ${where}`, params)).rows[0].count), candidateId: candidateId || undefined });
         }
         let employeeId: string | undefined, assetId: string | undefined, locationId: string | undefined;
-        const own = /\bmy\b|الخاصة بي|عهدتي/u.test(query);
-        const employeeMention = key === 'employee_equipment' || /['’]s|for [\p{L}]+['’]s|معاه|show .+ support tickets/iu.test(query) || key === 'support_report' && !own;
+        const own = ownEntityReference(query)&&!(key==='support_lookup'&&/assigned to me/iu.test(query)&&!/(?:^| )my(?: |$)/u.test(normalizeQuery(query)));
+        const employeeMention = key === 'employee_equipment' || key === 'support_lookup' && /(?:for|from) (?!today\b|tomorrow\b|this\b|next\b|last\b|my\b|me\b|asset\b|laptop\b|equipment\b)[\p{L}]/iu.test(query) || /['’]s|for [\p{L}]+['’]s|معاه|show .+ support tickets/iu.test(classificationQuery(query)) || key === 'support_report' && !own;
         if (own)
             employeeId = u.employeeId;
         else if (employeeMention) {
@@ -96,6 +98,7 @@ export function workforceExecutor(key: string) {
                 return result({ status: 'forbidden' });
             return result({ summary: 'Review the prefilled support form; nothing has been submitted.', prefill: { assetId: assetId!, assetName: entities.find(e => e.type === 'asset')?.label || 'Equipment', requesterId: employeeId!, summary: 'Equipment damage', description: query } });
         }
+        if(/\byesterday\b|امبارح|الامس/u.test(normalizeQuery(query)))return result({status:'unresolved',summary:'This date filter is not supported.'});
         const queue = !own;
         if (queue && !await supportAuthority(c, u) && !await supportAuthority(c, u, 'support.manage'))
             return result({ status: 'forbidden' });
@@ -113,15 +116,15 @@ export function workforceExecutor(key: string) {
 }
 /** Bounded, authorized template preparation for learned entity examples. No identifiers persist. */
 export async function prepareWorkforceSemanticQueries(c: PoolClient, u: Actor, query: string, allowedKeys: string[]) {
-    const keys = /laptop|equipment|asset|\b[A-Z]{2,}-[A-Z0-9]+-\d+\b|لابتوب|الجهاز|العهدة/iu.test(query) ? ['employee_equipment', 'asset_holder', 'support_report', 'support_lookup'] : /candidate|applicant|application|مرشح|المتقدم|طلب/iu.test(query) ? ['hiring_candidates_query'] : [];
-    const templates = new Set<string>();
-    for (const key of keys.filter(k => allowedKeys.includes(k)).slice(0, 4)) {
-        const result = await workforceExecutor(key)(c, u, query);
-        if (result.status !== 'resolved')
-            continue;
-        const template = generalizeEntities(query, result.entities);
-        if (template && safeEntityTemplate(template))
-            templates.add(template.text);
-    }
-    return [...templates].slice(0, 3);
+    if(ownEntityReference(query))return [];
+    const assets=/equipment|assets?|devices?|laptops?|hardware|معدات|اجهزه|عهد|لابتوب/iu.test(query);
+    const people=/manager|supervisor|department|direct reports|job title|مدير|مشرف|قسم/u.test(normalizeQuery(query));
+    if(!assets&&!people)return [];
+    if(assets&&!allowedKeys.some(k=>['employee_equipment','asset_holder'].includes(k)))return [];
+    if(!assets&&!allowedKeys.some(k=>['employee_directory_lookup','manager_direct_reports'].includes(k)))return [];
+    const holder=/owner|custodian|holder|who.*(?:has|holds)|مع مين|مين.*(?:معاه|واخد|مستلم)/iu.test(query);
+    const type:EntityType=holder?'asset':'employee';
+    const entity=!assets?await resolveDirectoryEmployee(c,u,query):await resolveWorkforceEntity(c,u,query,type);
+    if(entity.status!=='resolved'||!entity.span)return [];
+    const template=generalizeEntities(query,[entity]);return template?[template.text]:[];
 }

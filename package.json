@@ -99,7 +99,7 @@
     "test:local-preview": "tsx scripts/local-preview-test.ts",
     "test:deployment": "tsx scripts/migration-test.ts --operations",
     "test:containers": "node scripts/container-operations-test.mjs",
-    "test:semantic-router": "tsx scripts/semantic-router-test.ts && tsx scripts/semantic-router-client-test.ts && tsx scripts/semantic-router-evaluate.ts",
+    "test:semantic-router": "tsx scripts/semantic-router-test.ts && tsx scripts/semantic-router-client-test.ts && tsx scripts/semantic-router-evaluate.ts && tsx scripts/router-coverage-test.ts",
     "evaluate:semantic-router": "tsx scripts/semantic-router-evaluate.ts",
     "benchmark:semantic-router": "tsx scripts/semantic-router-benchmark.ts",
     "db:seed:router": "tsx scripts/semantic-router-seed.ts",
@@ -137,13 +137,18 @@
     "test:maplibre:browser": "node scripts/business-scenarios-runner.mjs maplibre",
     "test:visual-system": "tsx scripts/visual-system-test.ts",
     "test:visual-system:browser": "node scripts/business-scenarios-runner.mjs visual-system",
+    "test:visual-restoration:browser": "node scripts/business-scenarios-runner.mjs visual-restoration",
+    "test:final-ui:browser": "node scripts/business-scenarios-runner.mjs final-ui",
+    "demo:admin:prepare": "tsx scripts/seed-demo-admin.ts",
     "test:visual-correction:browser": "node scripts/business-scenarios-runner.mjs visual-correction",
     "demo:reset": "tsx scripts/recover-demo.ts",
     "demo:preview": "npm run build && node scripts/local-preview.mjs --public-demo",
     "test:demo-recovery": "tsx scripts/demo-recovery-test.ts",
     "demo:verify": "tsx scripts/verify-demo.ts",
     "test:demo-resources": "tsx scripts/demo-resource-test.ts",
-    "test:demo-public": "node scripts/business-scenarios-runner.mjs demo-public"
+    "test:demo-public": "node scripts/business-scenarios-runner.mjs demo-public",
+    "test:router-expansion": "node scripts/business-scenarios-runner.mjs router-expansion",
+    "test:semantic-router:holdout": "tsx scripts/router-blind-holdout-test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

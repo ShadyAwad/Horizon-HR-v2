@@ -203,7 +203,7 @@ assert.match(css, /:not\(:disabled\):not\(\[aria-disabled="true"\]\)[\s\S]*curso
 assert.match(css, /\.stanza-destructive-action:not\(:disabled\):hover/);
 assert.match(css, /\.stanza-toggle-track\s*\{\s*background-color: var\(--stanza-control-track\);/);
 assert.match(css, /\.stanza-toggle-track\[aria-checked="true"\]\s*\{\s*background-color: var\(--stanza-control-selected\);/);
-assert.match(css, /:not\(\.stanza-toggle-track\):hover/);
+assert.match(css, /:not\(\.stanza-toggle-track\)(?::not\(\.stanza-tab--underline\))?:hover/);
 assert.match(dashboard, /role="radio"[\s\S]{0,240}stanza-interactive-control/);
 assert.match(dashboard, /text-\[var\(--stanza-text-muted\)\]/);
 assert.doesNotMatch(dashboard, /flex items-center justify-between gap-2 text-xs font-bold text-neutral-800 dark:text-emerald-50/);

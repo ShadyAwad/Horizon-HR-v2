@@ -16,6 +16,10 @@ for (const state of ['idle','locating','verifying','success','clocked_out','open
   assert.equal((html.match(/<button/g)||[]).length,1,'One native keyboard control');
   assert(!html.includes('animate-'),'State changes need no continuous animation');
 }
+for(const clockedIn of [false,true]){
+ const html=renderToStaticMarkup(createElement(AttendanceTerminal,{state:'idle',label:clockedIn?'Clock out':'Clock in',clockedIn,disabled:false,onClick:()=>{}}));
+ assert(html.includes(`data-clocked-in="${clockedIn}"`));assert(html.includes(clockedIn?'Clock out':'Clock in'));
+}
 for (const busy of [false,true]) {
   const html = renderToStaticMarkup(createElement(PasskeyAction,{label:'Add passkey',busyLabel:'Opening…',busy,disabled:busy,onClick:()=>{}}));
   assert(html.includes(`aria-label="${busy?'Opening…':'Add passkey'}"`));
@@ -25,12 +29,16 @@ for (const busy of [false,true]) {
   assert(!html.includes('stanza-theme-primary'),'Security action does not inherit gradient-to-solid CTA paint');
 }
 const css=readFileSync('src/index.css','utf8');
-const terminalCss=css.slice(css.indexOf('/* Attendance access puck'),css.indexOf('button.passkey-action {'));
+const terminalCss=css.slice(css.indexOf('/* Historical circular Attendance face'),css.indexOf('button.passkey-action {'));
 assert(!terminalCss.includes('conic-gradient'), 'Continuous rim has no lit segments or progress arcs');
-assert(terminalCss.includes('border:2px solid color-mix(in srgb,var(--terminal-tone) 30%,var(--stanza-border-default))'), 'Quiet continuous theme-aware rim');
+assert(terminalCss.includes('.attendance-terminal::before {content:none;}'), 'Single action surface has no outer decorative ring');
+assert(terminalCss.includes('--terminal-face:color-mix(in srgb,var(--stanza-accent)'),'Historical face uses the selected theme');
+assert(terminalCss.includes('border-radius:50%'),'Signature circular geometry');
+assert(terminalCss.includes('1200ms ease-in-out 2'),'Busy feedback is finite');
+assert(terminalCss.includes('prefers-reduced-motion:reduce'),'Reduced motion preserves static appearance');
 assert(!css.includes('transparent 2deg 15deg'), 'Retired hairline ticks are removed');
-assert(css.includes('font-size:var(--text-base); font-weight:850'), 'The primary action owns the central hierarchy');
-assert(css.includes('max-inline-size:34rem'),'Bound status/action distance on ultrawide');
+assert(css.includes('font-size:var(--text-base);font-weight:650'), 'The primary action owns the central hierarchy');
+assert(css.includes('max-inline-size:28rem'),'Bound status/action distance on ultrawide');
 assert(css.includes('.attendance-primary .attendance-terminal { justify-self:center; }'));
 assert(!css.includes('stanza-geo-clock')&&!css.includes('attendance-radial'),'Obsolete radial CSS removed');
 for(const selector of ['button.attendance-terminal','button.passkey-action'])assert(css.includes(`${selector}:not(:disabled):is(:hover,:active) { transform:none; scale:none; }`));

@@ -249,7 +249,7 @@ export function CandidateDocumentExtraction({
       className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.035] p-3 sm:p-4"
     >
       <div className="flex items-start gap-3">
-        <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+        <FileImage className="stanza-accent-ink mt-0.5 h-5 w-5 shrink-0 " />
         <div className="min-w-0">
           <h4 id="candidate-extraction-title" className="font-black text-slate-900 dark:text-emerald-50">
             {t('hiring.extractionTitle')}
@@ -276,7 +276,7 @@ export function CandidateDocumentExtraction({
             : 'border-emerald-500/25 bg-white/55 dark:bg-black/15',
         )}
       >
-        <Upload className="mx-auto h-7 w-7 text-emerald-500" />
+        <Upload className="stanza-accent-ink mx-auto h-7 w-7 " />
         <p className="mt-2 text-sm font-bold text-slate-800 dark:text-emerald-50">
           {t('hiring.extractionDrop')}
         </p>

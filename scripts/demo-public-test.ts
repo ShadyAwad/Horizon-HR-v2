@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {DEMO_ADMIN_EMAIL} from '../src/lib/demo-personas';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {BusinessFixtures,type ScenarioActor} from './business-scenario-fixtures';
@@ -15,11 +16,16 @@ async function persona(label:string,email:string,width=1440,sw=false){
 }
 try{
  await f.setup('demo-public');
- const rows=(await f.db.query("SELECT id,email FROM employees WHERE tenant_id=$1 AND email=ANY($2::text[])",[t,['admin@stanza-demo.com','manager@stanza-demo.com','employee@stanza-demo.com']])).rows;assert.equal(rows.length,3);
+ const rows=(await f.db.query("SELECT id,email FROM employees WHERE tenant_id=$1 AND email=ANY($2::text[])",[t,['admin@stanza-demo.com','manager@stanza-demo.com','employee@stanza-demo.com',DEMO_ADMIN_EMAIL]])).rows;assert.equal(rows.length,4);
+ const tenantAdmin=await persona('Full Demo',DEMO_ADMIN_EMAIL);
+ for(const route of ['/api/hr/organisation/roles','/api/hr/live-employees','/api/hr/session-center'])assert.equal((await f.api(tenantAdmin.actor,route)).status,200,route+' Full Demo tenant access');assert.equal((await f.api(tenantAdmin.actor,'/api/semantic-intelligence/platform/overview')).status,403);
+ assert.equal((await f.api(tenantAdmin.actor,'/api/hr/organisation/overview')).status,200);
+ const department=await f.ok(tenantAdmin.actor,'/api/hr/organisation/departments',{name:'Demo review '+f.tag});owned.push({table:'organisation_departments',id:department.department.id});
+ const foreignDepartment=await f.ok(f.foreign,'/api/hr/organisation/departments',{name:'Foreign configuration control'});assert.equal((await f.api(tenantAdmin.actor,'/api/hr/organisation/departments/'+foreignDepartment.department.id,{name:'Denied'},'PATCH')).status,404);console.log('PASS Demo Admin own configuration succeeds, foreign configuration denied');
  const hr=await persona('HR / Hiring','admin@stanza-demo.com');
  for(const module of ['Workspace Composer','Organisation','Weekly Roster','Assets & Equipment','IT & equipment support','Hiring','Company Feed']){await f.navigate(hr.p,module);await hr.p.waitForTimeout(250);assert.equal(await hr.p.getByText('Internal Server Error',{exact:true}).count(),0);if(module==='Hiring'){await hr.p.getByLabel('Search candidates',{exact:true}).fill('Hana Nasser');await hr.p.getByText('Hana Nasser',{exact:true}).first().waitFor();}if(module==='IT & equipment support'){await hr.p.getByRole('button',{name:'Company support queue',exact:true}).click();await hr.p.getByText('Laptop docking station disconnects',{exact:true}).first().waitFor();}if(process.env.DEMO_REVIEW_ARTIFACT_DIR&&module==='Hiring')await hr.p.screenshot({path:path.join(process.env.DEMO_REVIEW_ARTIFACT_DIR,'hiring-1440.png'),fullPage:true});console.log('PASS HR module',module);}
  assert.equal((await f.api(hr.actor,'/api/hiring/applicants')).status,200);
- assert.equal((await f.api(hr.actor,'/api/hr/organisation/roles')).status,403);
+ assert.equal((await f.api(hr.actor,'/api/hr/organisation/roles')).status,403);assert.equal((await f.api(hr.actor,'/api/hr/live-employees')).status,403);assert.equal((await f.api(hr.actor,'/api/hr/session-center')).status,403);
  assert.equal((await f.api(hr.actor,'/api/semantic-intelligence/platform/overview')).status,403);
  assert.equal((await f.api(hr.actor,'/api/support?queue=true')).status,200);
  const candidate=await f.ok(hr.actor,'/api/hiring/applicants',{fullName:'Demo review '+f.tag,positionTitle:'Backend Engineer',email:'demo-review-'+f.tag+'@example.invalid',source:'Demo review'});owned.push({table:'hiring_applicants',id:candidate.applicant.id});
@@ -41,9 +47,9 @@ try{
  for(const [actor,query]of [[hr.actor,'open hiring'],[employee.actor,'where can I see what I got paid?']] as const){const r=await f.ok(actor,'/api/command-router/resolve',{query,allowReasoning:false,learn:false,timeZone:'Africa/Cairo'});assert(!JSON.stringify(r).includes('"method":"llm"'));console.log('PASS local command query',query,JSON.stringify(r).slice(0,450));}
  await employee.p.evaluate(()=>navigator.serviceWorker.ready);await employee.p.waitForFunction(()=>!!navigator.serviceWorker.controller);
  assert.equal(await employee.p.evaluate(async()=>{for(const name of await caches.keys())for(const req of await(await caches.open(name)).keys())if(new URL(req.url).pathname.startsWith('/api/'))return false;return true;}),true);
- for(const item of [hr,manager,second,employee]){await f.ok(item.actor,'/api/auth/logout',{});assert.equal((await f.ok(item.actor,'/api/auth/session')).authenticated,false);assert.equal((await f.api(item.actor,'/api/hiring/applicants')).status,401);}
+ for(const item of [tenantAdmin,hr,manager,second,employee]){await f.ok(item.actor,'/api/auth/logout',{});assert.equal((await f.ok(item.actor,'/api/auth/session')).authenticated,false);assert.equal((await f.api(item.actor,'/api/hiring/applicants')).status,401);}
  await employee.actor.context.setOffline(true);await employee.p.reload();await employee.p.getByRole('button',{name:'Log In',exact:true}).waitFor();await employee.actor.context.setOffline(false);
- console.log('PASS three real public personas, bounded mutations, second reviewer, tenant denials, public job, active PWA/private-cache/logout-offline');
+ console.log('PASS four real public personas, bounded mutations, second reviewer, tenant denials, public job, active PWA/private-cache/logout-offline');
 }finally{
  for(const context of contexts)for(const cookie of await context.cookies())if(cookie.name==='stanza_session')sessions.push(createHash('sha256').update(cookie.value).digest('hex'));
  for(const entry of owned.reverse()){if(entry.table==='hiring_applicants')await f.db.query('DELETE FROM outbox_events WHERE tenant_id=$1 AND payload->>\'applicantId\'=$2',[t,entry.id]);await f.db.query(`DELETE FROM ${entry.table} WHERE tenant_id=$1 AND id=$2`,[t,entry.id]);}

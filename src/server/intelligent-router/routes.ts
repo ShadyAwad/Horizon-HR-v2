@@ -1,3 +1,5 @@
+import {canUseReadIntent} from './scoped-read-execution';
+import {READ_KEYS} from '../../lib/router-read-intents';
 import {prepareWorkforceSemanticQueries} from './workforce-entity-execution';
 import {registerSemanticAdminRoutes,semanticAudit} from './semantic-admin';
 import {entityExecutors} from './entity-execution';
@@ -36,6 +38,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
   const active = async (c: PoolClient, u: ReturnType<typeof actor>) => Boolean((await c.query("SELECT 1 FROM employees WHERE tenant_id=$1 AND id=$2 AND is_active AND employment_status='active'", [u.tenantId,u.employeeId])).rowCount);
   const allowed = async (u: ReturnType<typeof actor>, i: Intent) => withTenant(u.tenantId, async c => {
     if (!await active(c,u)) return false;
+    if(READ_KEYS.has(i.key))return canUseReadIntent(c,u,i.key);
     if(i.key==='employee_grievance_lookup')return hasGrievanceLookupAuthority(c,u);
     if(i.key==='live_employees')return canReadLivePresence(c,u);
     if (!i.permissions.length) return true;
@@ -48,6 +51,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     const intents: Intent[] = [];
     for (const i of INTENTS) {
       if (!getIntent(i.key)) continue;
+      if(READ_KEYS.has(i.key)){if(await canUseReadIntent(c,u,i.key))intents.push(i);continue;}
       if(i.key==='employee_grievance_lookup'){if(await hasGrievanceLookupAuthority(c,u))intents.push(i);continue;}
       if(i.key==='live_employees'){if(await canReadLivePresence(c,u))intents.push(i);continue;}
       if (!i.permissions.length) { intents.push(i); continue; }
@@ -98,8 +102,8 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     let state:Awaited<ReturnType<ReasoningAuthorization['resolve']>>,openaiConnection:Awaited<ReturnType<LocalOpenAIAuth['status']>>|null=null;
     let reasoningStatusError:string|undefined;
     try {
-      state=await authorization.resolve(u);
-      if(userAuthorization)openaiConnection=await userAuthorization.status(u);
+      state=req.authUser!.isDemoTenant?{state:'disabled'}:await authorization.resolve(u);
+      if(userAuthorization&&!req.authUser!.isDemoTenant)openaiConnection=await userAuthorization.status(u);
       reasoningDiagnostics.recovered();
     }catch(error){
       // An unavailable credential store must not hide a healthy independent semantic provider.
@@ -117,7 +121,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
       const examples = await c.query('SELECT 1 FROM router_semantic_examples WHERE approval_state=$1 AND embedding_model=$2 AND embedding_dimensions=$3 AND embedding_version=$4 AND (tenant_id IS NULL OR tenant_id=$5) LIMIT 1', ['approved',embedding.model,embedding.dimensions,embedding.version,u.tenantId]);
       return examples.rowCount ? embedding.status?.() ?? 'configured_not_verified' : 'examples_missing';
     });
-    return { openaiLocalAvailable:Boolean(userAuthorization),openaiConnection,reasoningStatusError,mode:config.mode,reasoningState:state.state,embeddingConfigured:Boolean(embedding),semanticState,learningEnabled:config.learning,canReview };
+    return { openaiLocalAvailable:!req.authUser!.isDemoTenant&&Boolean(userAuthorization),openaiConnection,reasoningStatusError,mode:config.mode,reasoningState:state.state,embeddingConfigured:Boolean(embedding),semanticState,learningEnabled:config.learning,canReview };
   });
   route('post','/api/command-router/existing',async req=>{
     if(req.body&&Object.keys(req.body).length)throw Error('INVALID_QUERY');
@@ -135,7 +139,7 @@ export function registerIntelligentRouterRoutes(app: express.Express, d: Depende
     if(result.outcome==='matched'&&getIntent(result.intentKey)?.entities){
       const execute=entityExecutors[result.intentKey as keyof typeof entityExecutors];
       if(!execute)throw Error('INVALID_QUERY');
-      result.entityRoute=await withTenant(u.tenantId,c=>execute(c,u,req.body.query,choices as EntityChoices,result.entityParameters));
+      result.entityRoute=await withTenant(u.tenantId,c=>execute(c,u,req.body.query,choices as EntityChoices,{...result.entityParameters,timeZone}));
       if(result.entityRoute.status==='resolved'){
         const template=result.entityRoute.operational?generalizeOperationalQuery(req.body.query,result.entityRoute.entities):generalizeEntities(req.body.query,result.entityRoute.entities);
         if(template&&safeEntityTemplate(template))result.entityTemplate=template;

@@ -22,7 +22,7 @@ export function UserAvatar({
   useEffect(() => setImageFailed(false), [imageUrl]);
 
   return (
-    <div className={cn('shrink-0 overflow-hidden rounded-full border-2 border-emerald-500 bg-white p-0.5 dark:bg-black', className)}>
+    <div className={cn('stanza-user-avatar shrink-0 overflow-hidden rounded-full border-2 border-emerald-500 bg-white p-0.5 dark:bg-black', className)}>
       {imageUrl && !imageFailed ? (
         <img
           src={apiUrl(imageUrl)}

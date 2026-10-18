@@ -1,3 +1,4 @@
+import {DEMO_ADMIN_EMAIL} from '../src/lib/demo-personas';
 import 'dotenv/config';
 import {getMigrationPool as getDbPool, migrationUrl} from './migration-pool';
 import { assertDatabaseMutationSafety } from './mutation-safety';
@@ -19,8 +20,8 @@ export async function seedDemo() {
         console.log('Northstar Systems demo tenant seeded.');
         console.log('Reconciled fixture rows:', Object.fromEntries([...ctx.tables].map(([table, ids]) => [table, ids.size])));
         console.log('Employees:', ctx.people.size, 'Departments:', ctx.departments.size, 'Currency:', ctx.currency, 'Attendance location mode:', ctx.mode, 'Company loans:', ctx.loans);
-        console.log('Demo login identities:', ['admin', 'manager', 'employee'].map(emailFor).join(', '));
-        console.log('Existing passwords preserved. New fixture accounts use DEMO_PASSWORD; passwords omitted. No delivery jobs queued.');
+        console.log('Demo login identities:', [DEMO_ADMIN_EMAIL,...['admin', 'manager', 'employee'].map(emailFor)].join(', '));
+        console.log('Existing passwords preserved. New fixture accounts use DEMO_PASSWORD except the published Login Demo Admin; passwords omitted. No delivery jobs queued.');
     }
     catch (error) {
         await client.query('ROLLBACK');

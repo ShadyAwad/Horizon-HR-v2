@@ -257,7 +257,7 @@ export function RosterGoalsPanel({ employeeId, weekStart, compact = false, onOpe
   return <section className={cn('min-w-0', compact ? 'mt-4 border-t border-[var(--stanza-border-subtle)] pt-4' : 'p-3 sm:p-4')} dir={isRtl ? 'rtl' : 'ltr'} data-roster-goals={compact ? 'summary' : 'workspace'} data-tutorial-target={compact ? 'roster-goals' : undefined}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h3 className="flex items-center gap-2 text-base font-bold text-[color:var(--stanza-text-primary)]"><ClipboardCheck className="h-5 w-5 text-emerald-500" />{t('rosterGoals.title')}</h3>
+        <h3 className="flex items-center gap-2 text-base font-bold text-[color:var(--stanza-text-primary)]"><ClipboardCheck className="stanza-accent-ink h-5 w-5 " />{t('rosterGoals.title')}</h3>
         <p className="mt-1 text-xs text-[color:var(--stanza-text-muted)]">{t('rosterGoals.description')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -268,7 +268,7 @@ export function RosterGoalsPanel({ employeeId, weekStart, compact = false, onOpe
     </div>
     {error && <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
     {success && <p role="status" className="mt-3 rounded-md border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs text-emerald-700 dark:text-emerald-200">{success}</p>}
-    {loading ? <div className="flex min-h-32 items-center justify-center gap-2 text-xs text-[color:var(--stanza-text-muted)]"><LoaderCircle className="h-5 w-5 animate-spin motion-reduce:animate-none text-emerald-500" />{t('rosterGoals.loading')}</div> : goals.length === 0 && overdueGoals.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-[var(--stanza-border-subtle)] p-6 text-center"><ClipboardCheck className="mx-auto h-7 w-7 text-emerald-500/60" /><p className="mt-2 text-sm font-bold text-[color:var(--stanza-text-primary)]">{t('rosterGoals.empty')}</p><p className="mt-1 text-xs text-[color:var(--stanza-text-muted)]">{t('rosterGoals.emptyHelp')}</p></div> : <div className="mt-4 space-y-4">
+    {loading ? <div className="flex min-h-32 items-center justify-center gap-2 text-xs text-[color:var(--stanza-text-muted)]"><LoaderCircle className="stanza-accent-ink h-5 w-5 animate-spin motion-reduce:animate-none " />{t('rosterGoals.loading')}</div> : goals.length === 0 && overdueGoals.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-[var(--stanza-border-subtle)] p-6 text-center"><ClipboardCheck className="stanza-accent-ink mx-auto h-7 w-7 " /><p className="mt-2 text-sm font-bold text-[color:var(--stanza-text-primary)]">{t('rosterGoals.empty')}</p><p className="mt-1 text-xs text-[color:var(--stanza-text-muted)]">{t('rosterGoals.emptyHelp')}</p></div> : <div className="mt-4 space-y-4">
       {visibleGoals.length > 0 && <div className="grid min-w-0 gap-2 lg:grid-cols-2">{visibleGoals.map((goal) => renderGoal(goal))}</div>}
       {visibleOverdue.length > 0 && <section><h4 className="mb-2 text-xs font-black uppercase tracking-widest text-red-700 dark:text-red-200">{t('rosterGoals.overdueTitle')}</h4><div className="grid min-w-0 gap-2 lg:grid-cols-2">{visibleOverdue.map((goal) => renderGoal(goal, true))}</div></section>}
     </div>}

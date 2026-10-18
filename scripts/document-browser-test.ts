@@ -431,7 +431,7 @@ try {
   const opens: number[] = [];
   for (let i = 0; i < 12; i++) {
     await p
-      .getByRole("button", { name: "Back to Quick Composer", exact: true })
+      .getByRole("button", { name: "Close Advanced Editor", exact: true })
       .click();
     const start = performance.now();
     await p
@@ -463,7 +463,7 @@ try {
     .waitFor();
   await p.getByRole("button", { name: "Edit", exact: true }).click();
   await p
-    .getByRole("button", { name: "Back to Quick Composer", exact: true })
+    .getByRole("button", { name: "Close Advanced Editor", exact: true })
     .click();
   assert((await canvas.innerText()).includes("Callout body"));
   await p
@@ -539,7 +539,7 @@ try {
       "PASS service-worker-enabled ordinary autosave; delayed transport case is tested separately with service workers blocked",
     );
   await p
-    .getByRole("button", { name: "Back to Quick Composer", exact: true })
+    .getByRole("button", { name: "Close Advanced Editor", exact: true })
     .click();
   await p.waitForTimeout(1700);
   saved = await req("/api/me/company-feed/draft");

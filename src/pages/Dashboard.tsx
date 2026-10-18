@@ -1,3 +1,4 @@
+import {RefreshButton} from '../components/ui/RefreshButton';
 import {AppearancePatternControls} from '../components/ui/AppearancePatternControls';
 import '../components/organisation/people.css';
 import { CompanyFeedPublications } from '../components/communications/CompanyFeedPublications';
@@ -215,7 +216,7 @@ function ControlCenterAccordion({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {badge}
-          <ChevronDown className={cn('h-4 w-4 text-emerald-500 transition-transform duration-200 motion-reduce:transition-none', isOpen && 'rotate-180')} />
+          <ChevronDown className={cn('h-4 w-4 stanza-accent-ink transition-transform duration-200 motion-reduce:transition-none', isOpen && 'rotate-180')} />
         </span>
       </button>
       <div
@@ -1442,7 +1443,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewOwnLoans = hasPermission(user, 'loans.view_self');
   const canViewCommunications = ['view','send','templates.manage','meetings.view','meetings.manage','history.view'].some(key=>hasPermission(user, `communications.${key}`));
   const canViewHiring = hasPermission(user, 'hiring.view');
-  const canViewLiveEmployees = user.role === 'hr_admin' && hasPermission(user, 'attendance.view_live');
+  const canViewLiveEmployees = (user.role === 'hr_admin' || Boolean(user.companyPermissions?.includes('attendance.view_live') && user.companyPermissions?.includes('organisation.manage'))) && hasPermission(user, 'attendance.view_live');
   const canViewAudit = hasPermission(user, 'audit.view');
   const canManageSessions = hasPermission(user, 'sessions.manage');
   const canViewAssets = hasPermission(user, 'assets.view');
@@ -4069,7 +4070,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-            <Bell className="h-4 w-4 text-emerald-500" />
+            <Bell className="stanza-accent-ink h-4 w-4 " />
             {t('dash.notificationSettings')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -4091,7 +4092,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         {t('dash.notificationDeliveryReady')}
       </p>
       <p className="mt-2 flex gap-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        <Info className="stanza-accent-ink mt-0.5 h-3.5 w-3.5 shrink-0 " aria-hidden="true" />
         {t('demo.notifications')}
       </p>
 
@@ -4177,15 +4178,15 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     <div className="rounded-2xl border border-emerald-500/15 bg-white p-4 shadow-xl backdrop-blur-sm dark:border-emerald-500/15 dark:bg-black/35">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">
-          <MapPin className="h-5 w-5 text-emerald-500" /> {t('dash.locations')}
+          <MapPin className="stanza-accent-ink h-5 w-5 " /> {t('dash.locations')}
         </span>
-        <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+        <span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest dark:border-emerald-500/20 ">
           {companyLocations.length}
         </span>
       </div>
 
       <p className="mt-3 flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        <Info className="stanza-accent-ink mt-0.5 h-3.5 w-3.5 shrink-0 " aria-hidden="true" />
         {t('demo.mapNoticeBody')}
       </p>
 
@@ -4200,7 +4201,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 </p>
               </div>
               {location.is_primary && (
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                <span className="stanza-accent-ink stanza-accent-fill rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ">
                   {t('dash.primary')}
                 </span>
               )}
@@ -4234,7 +4235,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <div className="mt-4 space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
         <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
           <span>{t('dash.locationsConfigured')}</span>
-          <span className="font-bold text-emerald-600 dark:text-emerald-300">{companyLocations.length}</span>
+          <span className="stanza-accent-ink font-bold ">{companyLocations.length}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-b border-emerald-500/10 pb-2.5 dark:border-emerald-500/10">
           <span>{t('dash.currentShift')}</span>
@@ -4253,7 +4254,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-            <Smartphone className="h-4 w-4 text-emerald-500" />
+            <Smartphone className="stanza-accent-ink h-4 w-4 " />
             {t('dash.appReadiness')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
@@ -4261,7 +4262,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           </p>
         </div>
 
-        <span data-stanza-status={isOffline ? undefined : 'success'} className={cn(
+        <span data-stanza-status={isOffline ? undefined : 'positive'} className={cn(
           "w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest",
           isOffline
             ? "border-amber-300/30 bg-amber-500/10 text-amber-600 dark:text-amber-200"
@@ -4369,7 +4370,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
             <p className="truncate text-sm font-black text-slate-900 dark:text-emerald-50">{user.name}</p>
             <p className="truncate text-xs text-neutral-500 dark:text-emerald-100/50">{user.email}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+              <span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ">
                 {displayRole(user.role)}
               </span>
               {user.jobTitle && (
@@ -4432,7 +4433,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-            <Fingerprint className="h-4 w-4 text-emerald-500" />
+            <Fingerprint className="stanza-accent-ink h-4 w-4 " />
             {t('dash.passkeys')}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/50">
@@ -4445,7 +4446,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       </div>
 
       <p className="mt-3 flex gap-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+        <Info className="stanza-accent-ink mt-0.5 h-3.5 w-3.5 shrink-0 " aria-hidden="true" />
         {t('demo.passkeys')}
       </p>
 
@@ -4559,11 +4560,11 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               <p id="stanza-lanyard-description" className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-emerald-100/50">
                 {t('dash.lanyardCardDescription')}
               </p>
-              {lanyardHighlightSignal > 0 && <p id="stanza-lanyard-performance-help" role="status" className="mt-2 text-xs font-semibold leading-5 text-emerald-700 dark:text-emerald-300">
+              {lanyardHighlightSignal > 0 && <p id="stanza-lanyard-performance-help" role="status" className="stanza-accent-ink mt-2 text-xs font-semibold leading-5 ">
                 {t('tutorial.lanyard.settingHint')}
               </p>}
               {desktopNavigationMode === 'rail' && (
-                <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <p className="stanza-accent-ink mt-1 text-xs font-semibold ">
                   {t('dash.lanyardLauncherOnly')}
                 </p>
               )}
@@ -4629,7 +4630,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 aria-label={`${t('dash.interfaceSize')}: ${percentage}% - ${scaleLabel}`}
               >
                 <span className="text-sm font-black text-neutral-800 dark:text-emerald-50">{percentage}%</span>
-                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{scaleLabel}</span>
+                <span className="stanza-accent-ink text-xs font-bold ">{scaleLabel}</span>
               </div>
               <button
                 type="button"
@@ -4675,7 +4676,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
           className={cn("flex items-center justify-between gap-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-xs font-bold text-neutral-700 transition hover:border-emerald-400 dark:border-emerald-500/20 dark:bg-black/40 dark:text-emerald-50", isRtl ? "text-right" : "text-left")}
         >
           <span>{isDark ? t('dash.switchLight') : t('dash.switchDark')}</span>
-          {isDark ? <Sun className="h-4 w-4 text-emerald-500" /> : <Moon className="h-4 w-4 text-emerald-500" />}
+          {isDark ? <Sun className="stanza-accent-ink h-4 w-4 " /> : <Moon className="stanza-accent-ink h-4 w-4 " />}
         </button>
 
         <fieldset className="min-w-0 rounded-lg border border-emerald-500/15 bg-white px-3 py-3 dark:border-emerald-500/20 dark:bg-black/40 sm:col-span-2">
@@ -5281,7 +5282,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 title={t('dash.appReadiness')}
                 summary={`${isOffline ? t('dash.offline') : t('dash.online')} - ${isStandalone ? t('dash.installedMode') : t('dash.browserMode')}`}
                 renderContent={renderPwaReadinessPanel}
-                badge={<span data-stanza-status={isOffline ? undefined : 'success'} className={cn(
+                badge={<span data-stanza-status={isOffline ? undefined : 'positive'} className={cn(
                   "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest",
                   isOffline ? "border-amber-300/30 text-amber-600 dark:text-amber-200" : "border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
                 )}>{isOffline ? t('dash.offline') : t('dash.online')}</span>}
@@ -5294,7 +5295,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 title={t('dash.notificationSettings')}
                 summary={t('dash.emailPushPreferences')}
                 renderContent={renderNotificationSettingsPanel}
-                badge={<span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('dash.default')}</span>}
+                badge={<span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold ">{t('dash.default')}</span>}
                 isRtl={isRtl}
                 expandLabel={t('dash.expand')}
                 collapseLabel={t('dash.collapse')}
@@ -5310,7 +5311,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   {renderLocationsCard()}
                   {renderSystemStatusCard()}
                 </div>}
-                badge={<span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{companyLocations.length}</span>}
+                badge={<span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold " dir="ltr">{companyLocations.length}</span>}
                 isRtl={isRtl}
                 expandLabel={t('dash.expand')}
                 collapseLabel={t('dash.collapse')}
@@ -5359,7 +5360,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               >
                 {activeNavigationLabel}
               </span>
-              <span className="hidden shrink-0 whitespace-nowrap rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase text-emerald-600 dark:text-emerald-500 sm:inline-block">{t('dash.elitePortal')}</span>
+              <span className="hidden shrink-0 whitespace-nowrap rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs uppercase stanza-accent-ink stanza-accent-fill sm:inline-block">{t('dash.elitePortal')}</span>
             </h1>
             <PageHeaderActions navigation={<HistoryControls {...navigationHistory} />} navigationLabel={isRtl?'سجل التنقل':'Navigation history'} label={isRtl?'إجراءات الصفحة':'Page actions'}>
               {framedModule && <SurfaceSelector value={composerPreferences.state.surface} onChange={value=>composerPreferences.dispatch({type:'surface',value})} />}
@@ -5633,14 +5634,14 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                     <div
                       className="stanza-workspace-enter geo-operations-content dashboard-workspace-content relative flex min-h-[calc(100dvh-145px)] w-full max-w-full flex-col items-center justify-start overflow-hidden rounded-2xl border border-emerald-500/15 bg-white p-3 text-center shadow-xl backdrop-blur-sm dark:border-emerald-500/20 dark:bg-[#0a1a17]/90 md:min-h-0 md:p-4"
                     >
-                       <div className="absolute inset-0 bg-emerald-50/35 dark:bg-emerald-500/5 group-hover:bg-emerald-50/70 dark:group-hover:bg-emerald-500/10 transition-colors pointer-events-none"></div>
+                       <div className="stanza-surface-wash absolute inset-0 transition-colors pointer-events-none"></div>
                        <div className="w-full flex items-start justify-between mb-4 z-10 relative">
                            <div className={cn("flex flex-col gap-1", isRtl ? "items-end text-right" : "items-start text-left")}>
                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <MapPin className="w-5 h-5 text-emerald-500" />
+                                <MapPin className="stanza-accent-ink w-5 h-5 " />
                                 {attendanceLocationMode === 'required' ? t('dash.perimeter') : (isRtl ? 'الحضور' : 'Attendance')}
                                </h2>
-                               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-transparent font-mono border border-emerald-200 dark:border-emerald-500/30 px-2 py-0.5 rounded uppercase tracking-widest">{attendanceLocationMode === 'required' ? t('dash.hqSecure') : attendanceLocationMode === 'optional' ? (isRtl ? 'الموقع اختياري' : 'LOCATION OPTIONAL') : (isRtl ? 'الموقع معطل' : 'LOCATION DISABLED')}</p>
+                               <p className="stanza-positive text-[10px] font-mono border border-emerald-200 dark:border-emerald-500/30 px-2 py-0.5 rounded uppercase tracking-widest">{attendanceLocationMode === 'required' ? t('dash.hqSecure') : attendanceLocationMode === 'optional' ? (isRtl ? 'الموقع اختياري' : 'LOCATION OPTIONAL') : (isRtl ? 'الموقع معطل' : 'LOCATION DISABLED')}</p>
                            </div>
                        </div>
 
@@ -5652,6 +5653,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                            </div>
                            <AttendanceTerminal
                              state={clockInState}
+                             clockedIn={hasActiveShift}
                              disabled={!hasPermission(user, 'attendance.clock') || isOffline || clockInState === 'locating' || clockInState === 'verifying'}
                              onClick={(event) => recordDevInteraction('attendance:clock-action', () => {
                                void handleClockAction(event);
@@ -5678,14 +5680,14 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                            <div>
                              <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                               <MapPin className="h-4 w-4 text-emerald-500" />
+                               <MapPin className="stanza-accent-ink h-4 w-4 " />
                                {t('dash.companyLocations')}
                              </h3>
                              <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
                                {attendanceLocationMode === 'required' ? t('dash.clockInValidLocations') : (isRtl ? 'مواقع الشركة المسجلة. تحدد سياسة الحضور ما إذا كان الموقع مطلوباً.' : 'Registered company locations. Your attendance policy controls whether location is required.')}
                              </p>
                            </div>
-                           <span className="w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                           <span className="stanza-accent-ink stanza-accent-fill w-fit rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest dark:border-emerald-500/20 ">
                              {companyLocations.length} {t('dash.active')}
                            </span>
                          </div>
@@ -5701,7 +5703,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                    </p>
                                  </div>
                                  {location.is_primary && (
-                                   <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                                   <span className="stanza-accent-ink stanza-accent-fill rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ">
                                      {t('dash.primary')}
                                    </span>
                                  )}
@@ -5728,11 +5730,11 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   <section data-tutorial-target="roster-tabs" className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/15 bg-white/80 shadow-xl backdrop-blur-sm dark:bg-[#0a1a17]/55" dir={isRtl ? 'rtl' : 'ltr'}>
                     <div className="flex flex-col gap-3 border-b border-emerald-500/15 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-emerald-50"><Calendar className="h-5 w-5 text-emerald-500" />{t('dash.rosterHub')}</h2>
+                        <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-emerald-50"><Calendar className="stanza-accent-ink h-5 w-5 " />{t('dash.rosterHub')}</h2>
                         <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/55" dir="ltr">{rosterStartDate} - {rosterEndDate}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {rosterSubview === 'schedule' && canManageRoster && <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300"><Save className="h-3 w-3" />{lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}</span>}
+                        {rosterSubview === 'schedule' && canManageRoster && <span className="stanza-accent-ink stanza-accent-fill inline-flex items-center gap-1 rounded border border-emerald-500/20 px-2 py-1 text-[10px] font-bold uppercase tracking-widest "><Save className="h-3 w-3" />{lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}</span>}
                         {(rosterSubview === 'leave' || rosterSubview === 'schedule') && <button type="button" onClick={openLeaveRequestFlow} className="stanza-primary-action rounded bg-emerald-500 px-3 py-2 text-xs font-bold text-black">{t('dash.applyLeave')}</button>}
                       </div>
                     </div>
@@ -5782,9 +5784,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                        <div className="border-b border-emerald-500/15 p-4 dark:border-emerald-500/10">
                          <div className="flex flex-wrap items-center justify-end gap-2">
                            <div className="flex flex-wrap items-center gap-2">
-                             <span className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">{t('dash.weekView')}</span>
+                             <span className="stanza-accent-ink stanza-accent-fill rounded border border-emerald-200 px-3 py-1 text-xs font-bold uppercase dark:border-emerald-500/20 ">{t('dash.weekView')}</span>
                              {canManageRoster && (
-                               <span className="inline-flex items-center gap-1 px-3 py-1 text-emerald-600 dark:text-emerald-400 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
+                               <span className="stanza-accent-ink stanza-accent-fill inline-flex items-center gap-1 px-3 py-1 text-xs rounded border border-emerald-200 dark:border-emerald-500/20 font-bold uppercase">
                                  <Save className="h-3 w-3" />
                                  {lang === 'ar' ? 'أوقات الوردية تُحفظ تلقائياً' : 'Shift times auto-save'}
                                </span>
@@ -5875,13 +5877,13 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                <tr
                                  key={s.date}
                                  className={cn(
-                                   'group border-b border-emerald-500/10 transition-colors hover:bg-emerald-50 dark:border-emerald-500/10 dark:hover:bg-emerald-950/20',
+                                   'stanza-tonal-hover group border-b border-emerald-500/10 transition-colors dark:border-emerald-500/10',
                                    s.approvedLeave && 'bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]',
                                    s.hasRosterConflict && 'bg-amber-500/[0.08] dark:bg-amber-500/[0.08]',
                                  )}
                                >
                                  <td className="p-3">
-                                   <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></div>
+                                   <div className="stanza-row-accent font-bold text-slate-800 dark:text-slate-200 transition-colors">{displayWeekday(s.day)}, <span dir="ltr">{s.date}</span></div>
                                  </td>
                                  <td className="p-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                                    {canManageRoster ? (
@@ -5999,28 +6001,18 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-                            <Newspaper className="h-5 w-5 text-emerald-500" />
+                            <Newspaper className="stanza-accent-ink h-5 w-5 " />
                             {t('dash.companyFeed')}
                           </h2>
                           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {t('dash.companyFeedSubtitle')}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            loadFeed();
-                            loadAdminFeed();
-                          }}
-                          disabled={isOffline || feedLoading || adminFeedLoading}
-                          className="stanza-quiet-action rounded-lg border border-emerald-500/15 px-3 py-2 text-[10px] font-bold text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/15 dark:text-emerald-100/60"
-                        >
-                          {t('dash.refresh')}
-                        </button>
+                        <RefreshButton onClick={()=>{loadFeed();loadAdminFeed();}} disabled={isOffline} loading={feedLoading||adminFeedLoading}>{t('dash.refresh')}</RefreshButton>
                       </div>
 
                       <p className="mt-3 flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                        <Info className="stanza-accent-ink mt-0.5 h-3.5 w-3.5 shrink-0 " aria-hidden="true" />
                         {t('demo.feed')}
                       </p>
 
@@ -6122,11 +6114,11 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                 />
                               </Suspense>
                             </div>
-                            <div className="stanza-document-draft-actions flex min-h-10 flex-wrap items-center justify-between gap-2 text-sm md:col-span-4">
+                            <div className="stanza-document-draft-actions md:col-span-4">
                               <span className="flex flex-wrap items-center gap-2">
-                                {!feedEditing && feedDraft.hasDraft && <span className="text-slate-500 dark:text-slate-300">{isRtl ? 'مسودة خاصة · غير منشورة' : 'Private draft · Not published'}</span>}
+                                {!feedEditing && feedDraft.hasDraft && <span className="stanza-draft-status">{isRtl ? 'مسودة خاصة · غير منشورة' : 'Private draft · Not published'}</span>}
                                 {!feedEditing && feedDraft.hasDraft && (
-                                  <button type="button" onClick={() => void feedDraft.restore()} className="rounded border border-emerald-500/20 px-2 py-1 text-emerald-700 transition hover:border-emerald-500/50 dark:text-emerald-200">
+                                  <button type="button" onClick={() => void feedDraft.restore()} className="stanza-draft-continue stanza-secondary-action">
                                     {t('dash.feedDraftContinue')}
                                   </button>
                                 )}
@@ -6136,7 +6128,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                   </button>
                                 )}
                                 {!feedEditing && feedDraft.hasDraft && (
-                                  <button type="button" onClick={async () => { if (window.confirm(t('dash.feedDraftDiscardConfirm')) && await feedDraft.discard()) { setFeedForm(defaultFeedForm); setFeedEditorKey(k=>k+1); } }} className="rounded border border-red-400/25 px-2 py-1 text-red-700 transition hover:border-red-400/60 dark:text-red-300">
+                                  <button type="button" onClick={async () => { if (window.confirm(t('dash.feedDraftDiscardConfirm')) && await feedDraft.discard()) { setFeedForm(defaultFeedForm); setFeedEditorKey(k=>k+1); } }} className="stanza-draft-discard">
                                     {t('dash.feedDraftDiscard')}
                                   </button>
                                 )}
@@ -6209,10 +6201,10 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 {(activeTab === 'profile' || activeTab === 'resignations') && (
                    <div className="stanza-workspace-enter bg-white dark:bg-[#0a1a17]/90 border border-emerald-500/15 dark:border-emerald-500/20 rounded-2xl p-4 shadow-xl backdrop-blur-sm min-h-[320px]">
                       <div className="flex items-center gap-3 mb-5">
-                          <User className="w-7 h-7 text-emerald-600 dark:text-emerald-500" />
+                          <User className="stanza-accent-ink w-7 h-7 " />
                           <div>
                             <h2 className="text-lg font-bold text-slate-900 dark:text-white">{profilePanelHeading}</h2>
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono uppercase tracking-widest">{profilePanelSubtitle}</p>
+                            <p className="stanza-module-eyebrow text-xs font-mono uppercase tracking-widest">{profilePanelSubtitle}</p>
                           </div>
                       </div>
 
@@ -6235,7 +6227,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                           </div>
 
                           <p className="flex gap-2 rounded-lg border border-emerald-500/10 bg-black/15 px-3 py-2 text-[10px] leading-4 text-neutral-500 dark:text-emerald-100/45">
-                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                            <Info className="stanza-accent-ink mt-0.5 h-3.5 w-3.5 shrink-0 " aria-hidden="true" />
                             {t('demo.payroll')}
                           </p>
 
@@ -6412,7 +6404,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                 type="button"
                                 onClick={runPayroll}
                                 disabled={isOffline || payrollSubmitting}
-                                className="rounded bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                                className="stanza-primary-action px-3 py-2 text-sm disabled:cursor-wait disabled:opacity-60"
                               >
                                 {payrollSubmitting ? t('dash.generatingPayroll') : t('dash.runPayroll')}
                               </button>
@@ -6532,7 +6524,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                         ))}
                                       </select>
                                     ) : (
-                                      <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                      <span data-stanza-status={loan.status==='active'||loan.status==='paid'?'positive':undefined} className="stanza-record-status rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                                         {displayEnum(loan.status)}
                                       </span>
                                     )}
@@ -6613,9 +6605,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                     <td className="p-3" dir="ltr">{formatPayrollAmount(record.base_salary, record.currency)}</td>
                                     <td className="p-3" dir="ltr">{formatPayrollAmount(record.bonuses, record.currency)}</td>
                                     <td className="p-3" dir="ltr">{formatPayrollAmount(record.deductions, record.currency)}</td>
-                                    <td className="p-3 font-bold text-emerald-700 dark:text-emerald-300" dir="ltr">{formatPayrollAmount(record.net_pay, record.currency)}</td>
+                                    <td data-accent-role="payroll-net" className="stanza-accent-ink p-3 font-bold" dir="ltr">{formatPayrollAmount(record.net_pay, record.currency)}</td>
                                     <td className="p-3">
-                                      <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-300">
+                                      <span data-record-status={record.status} data-stanza-status={record.status==='approved'||record.status==='paid'?'positive':record.status==='draft'?'info':undefined} className="stanza-record-status rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                                         {displayEnum(record.status)}
                                       </span>
                                       {record.approved_at && (
@@ -6734,7 +6726,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                              </div>
                              <div className="flex flex-wrap gap-2">
                                <label className={cn(
-                                 "inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-black transition hover:bg-emerald-400 focus-within:ring-2 focus-within:ring-emerald-300",
+                                 "stanza-photo-upload inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-black transition hover:bg-emerald-400 focus-within:ring-2 focus-within:ring-emerald-300",
                                  (isOffline || profilePhotoSaving) && "pointer-events-none opacity-50",
                                )}>
                                  <Camera className="h-4 w-4" aria-hidden="true" />
@@ -6825,7 +6817,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                              {role.is_system ? t('dash.systemRole') : t('dash.customRole')} &bull; <span dir="ltr">{role.assigned_employee_count || 0}</span> {t('dash.assigned')}
                                            </p>
                                          </div>
-                                         <span className="rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                         <span className="stanza-accent-ink stanza-accent-fill rounded-full border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ">
                                            {role.system_key ? displayRole(role.system_key) : t('dash.custom')}
                                          </span>
                                        </div>
@@ -6854,7 +6846,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                              <p className="text-[10px] text-neutral-500 dark:text-emerald-100/45">
                                                <span dir="ltr" className="inline-block max-w-full truncate text-left">{employee.email}</span> &bull; {displayRole(employee.role)}
                                              </p>
-                                             <p className="mt-1 text-[10px] text-emerald-700/70 dark:text-emerald-100/55">
+                                             <p className="stanza-accent-ink mt-1 text-[10px]">
                                                {employee.assigned_roles.map((role) => role.name).join(', ') || t('dash.noCustomAssignments')}
                                              </p>
                                            </div>

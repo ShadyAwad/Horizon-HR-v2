@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { BriefcaseBusiness, ChevronDown, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
+import {DEMO_ADMIN_EMAIL,PUBLIC_DEMO_PASSWORD} from '../lib/demo-personas';
 import { useLanguage } from '../lib/LanguageContext';
 import { useTheme } from '../lib/ThemeContext';
 import { apiFetch, apiUrl } from '../lib/api';
@@ -22,7 +23,7 @@ const LoginFlickerBenchmark = import.meta.env.DEV ? lazy(() => import('../compon
 const useDemoMotion = import.meta.env.DEV ? useDevDemoMotion : () => undefined;
 const shellTest = import.meta.env.DEV ? readLoginShellTest(window.location.search) : undefined;
 
-type PortfolioDemoRole = 'hr_admin' | 'manager' | 'employee';
+type PortfolioDemoRole = 'tenant_admin' | 'hr_admin' | 'manager' | 'employee';
 
 interface LoginProps {
   onLoginSuccess: (user?: AuthUser, recognition?: RecognitionCelebrationPayload | null) => void;
@@ -127,6 +128,7 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
   const showPasswordError = passwordTouched && !password;
   const showRecoveryEmailError = (recoveryEmailTouched || recoverySubmitted || Boolean((recoveryEmail || email).trim())) && !recoveryEmailValidation.valid;
   const demoAccounts = useMemo(() => [
+    {role:'tenant_admin' as const,label:t('login.demoAdmin'),action:t('login.exploreAsDemoAdmin'),description:t('login.demoAdminDescription'),Icon:ShieldCheck},
     {
       role: 'hr_admin' as const,
       label: t('login.hrAdminDemo'),
@@ -160,12 +162,13 @@ export function Login({ onLoginSuccess, onNavigateSignup, onPulseStateChange, fo
     setSelectedDemoRole(role);
     setErrorMsg('');
     const account = {
+      tenant_admin:DEMO_ADMIN_EMAIL,
       hr_admin: 'admin@stanza-demo.com',
       manager: 'manager@stanza-demo.com',
       employee: 'employee@stanza-demo.com',
     }[role];
     setEmail(account);
-    setPassword('StrongPass!123');
+    setPassword(PUBLIC_DEMO_PASSWORD);
     setTimeout(() => loginFormRef.current?.requestSubmit(), 0);
   };
 
@@ -578,13 +581,12 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
                       <button
                         key={role}
                         type="button"
-                        title={action}
                         disabled={!showDemoAccounts || isLoading || isPasskeyLoading}
                         tabIndex={showDemoAccounts ? 0 : -1}
                         aria-pressed={selected}
                         aria-label={`${label}. ${description}. ${action}`}
                         onClick={() => handleDemoSession(role)}
-                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:focus-visible:ring-emerald-300/80 disabled:pointer-events-none ${selected ? 'border-emerald-500 bg-emerald-100 text-slate-900 dark:border-emerald-300/50 dark:bg-emerald-500/15 dark:text-emerald-50' : 'border-emerald-200 bg-white/80 text-slate-900 hover:border-emerald-400 hover:bg-emerald-50 dark:border-emerald-500/15 dark:bg-black/20 dark:text-emerald-50/90 dark:hover:border-emerald-300/45 dark:hover:bg-emerald-500/10'} ${isRtl ? 'text-right' : ''}`}
+                        className={`stanza-demo-persona-restored flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:focus-visible:ring-emerald-300/80 disabled:pointer-events-none ${selected ? 'border-emerald-500 bg-emerald-100 text-slate-900 dark:border-emerald-300/50 dark:bg-emerald-500/15 dark:text-emerald-50' : 'border-emerald-200 bg-white/80 text-slate-900 hover:border-emerald-400 hover:bg-emerald-50 dark:border-emerald-500/15 dark:bg-black/20 dark:text-emerald-50/90 dark:hover:border-emerald-300/45 dark:hover:bg-emerald-500/10'} ${isRtl ? 'text-right' : ''}`}
                       >
                         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${selected ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-300/35 dark:bg-emerald-400/15 dark:text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/15 dark:bg-black/20 dark:text-emerald-200/75'}`}>
                           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -593,7 +595,7 @@ className={`stanza-login-input w-full bg-white/80 dark:bg-[#04110d]/80 border bo
                           <span className="block text-[11px] font-bold">{label}</span>
                           <span className="mt-0.5 block text-[10px] leading-4 text-slate-600 dark:text-emerald-100/55">{description}</span>
                         </span>
-                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-200">
+                        <span className="stanza-demo-persona-cta shrink-0 text-[9px] font-semibold text-emerald-700 dark:text-emerald-200">
                           {isLoading && selected ? t('login.authenticating') : action}
                         </span>
                       </button>

@@ -138,7 +138,7 @@ export function ShiftSwapsPanel({ employeeId }: { employeeId: string }) {
     <section dir={isRtl ? 'rtl' : 'ltr'} className="w-full p-3 sm:p-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-emerald-50"><ArrowRightLeft className="h-5 w-5 text-emerald-500" />{text('My Shift Swaps', 'تبديل مناوباتي')}</h2>
+          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-emerald-50"><ArrowRightLeft className="stanza-accent-ink h-5 w-5 " />{text('My Shift Swaps', 'تبديل مناوباتي')}</h2>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-emerald-100/55">{text('Request, accept, or follow the approval of exchanges with eligible coworkers.', 'اطلب تبديل المناوبات مع الزملاء المؤهلين أو اقبل الطلبات وتابع الموافقات.')}</p>
         </div>
         <button ref={requestButtonRef} type="button" onClick={() => setDialogOpen(true)} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
@@ -161,7 +161,7 @@ export function ShiftSwapsPanel({ employeeId }: { employeeId: string }) {
       {error && <div role="alert" className="mt-4 flex flex-col gap-3 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between"><span>{error}</span><button type="button" onClick={() => void load()} className="min-h-9 rounded border border-current px-3 font-bold">{text('Retry', 'إعادة المحاولة')}</button></div>}
       {loading ? <p className="py-12 text-center text-xs text-slate-500 dark:text-emerald-100/50">{text('Loading shift swaps...', 'جارٍ تحميل طلبات التبديل...')}</p> : swaps.length === 0 ? (
         <div className="mt-4 flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-emerald-500/20 p-5 text-center">
-          <ArrowRightLeft className="h-8 w-8 text-emerald-500/70" />
+          <ArrowRightLeft className="stanza-accent-ink h-8 w-8 " />
           <p className="mt-3 text-sm font-bold text-slate-800 dark:text-emerald-50">{text('No shift swaps yet.', 'لا توجد طلبات تبديل بعد.')}</p>
           <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-emerald-100/50">{text('Choose one of your future shifts, then select an eligible coworker and their shift to start a request.', 'اختر إحدى مناوباتك القادمة، ثم اختر زميلاً مؤهلاً ومناوبته لبدء الطلب.')}</p>
           <button type="button" onClick={() => setDialogOpen(true)} className="mt-4 min-h-10 rounded-md border border-emerald-500/25 px-3 text-xs font-bold text-emerald-700 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:text-emerald-200">{text('Request swap', 'طلب تبديل')}</button>

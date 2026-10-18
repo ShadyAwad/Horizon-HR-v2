@@ -4,7 +4,7 @@ import {runInNewContext} from 'node:vm';
 import {once} from 'node:events';
 import ts from 'typescript';
 import express from 'express';
-import {hasPermissionClaim} from '../src/server/auth/permission-claims';
+import {hasPermissionClaim,hasCompanyPermissionClaim} from '../src/server/auth/permission-claims';
 import * as rules from '../src/server/live-employees/live-employees-rules';
 import {buildCommandRegistry} from '../src/components/command-palette/command-registry';
 import {getIntent} from '../src/lib/intelligent-router';
@@ -52,6 +52,9 @@ const actors=[
   {role:'employee',permissions:['attendance.view_live'],expected:false},
   {role:'manager',permissions:[],expected:false},
   {role:'employee',expected:false},
+  {role:'employee',permissions:['attendance.view_live'],companyPermissions:['attendance.view_live','organisation.manage'],expected:true},
+  {role:'employee',permissions:['attendance.view_live'],companyPermissions:['attendance.view_live'],expected:false},
+  {role:'Platform Admin',permissions:[],expected:false},
 ];
 for(const actor of actors) {
   const visible=production.visible(actor);assert.equal(visible,actor.expected);
@@ -64,7 +67,7 @@ for(const actor of actors) {
 const intent=getIntent('live_employees');assert(intent);
 assert.deepEqual(intent.permissions,['attendance.view_live']);
 assert.equal(intent.commandId,'navigation:liveEmployees');
-console.log('PASS production UI gate and palette: HR admin allowed; manager/employee denied even with live-attendance claims');
+console.log('PASS production UI gate and palette: HR/company-wide grant allowed; scoped claims and forged role names denied');
 
 // Only SQL is a fixture. The actual route and production role/permission
 // middleware execute over HTTP. Denied requests must never reach SQL.
@@ -75,6 +78,7 @@ runInNewContext(compile(read('src/server/live-employees/live-employees-routes.ts
   require:(name:string)=>{
     if(name.endsWith('/hr-background'))return {withTenant:async(tenantId:string,run:Function)=>run({query:async(_sql:string,params:unknown[])=>{queries++;assert.equal(params[0],tenantId);return {rows:[{employeeId:tenantId+'-employee'}]};}})};
     if(name.endsWith('/live-employees-rules'))return rules;
+    if(name.endsWith('/permission-claims'))return {hasCompanyPermissionClaim};
     if(name.endsWith('/server-logging'))return {logServerError:()=>{}};
     throw Error('Unexpected route dependency: '+name);
   },
