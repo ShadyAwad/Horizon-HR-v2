@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
+import {STANZA_FINGERPRINT_GROOVES} from '../src/components/stanzaFingerprintGeometry';
+import {iconSvg} from './generate-pwa-icons.mjs';
 import {
   detectPwaInstallPlatform,
   getPwaInstallMode,
@@ -29,6 +31,27 @@ assert.ok(manifest.icons.filter((icon) => icon.purpose === 'any').every((icon) =
 assert.ok(manifest.icons.filter((icon) => icon.purpose === 'maskable').every((icon) => icon.src.includes('maskable')));
 const standardIcon = await sharp(resolve('public/icons/stanza-512.png')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 assert.equal(standardIcon.data[3], 0, 'standard PWA icon must retain transparent outer pixels');
+for(const [variant,name] of [['standard','standard-icon'],['app','app-icon'],['favicon','favicon']]){
+ const svg=await readFile(`public/icons/stanza-${name}.svg`,'utf8');
+ assert.equal(svg.replace(/\r\n/g,'\n'),iconSvg(variant),'Checked-in vector must match the deterministic generator');
+ const paths=[...svg.matchAll(/<path d="([^"]+)"/g)].map(m=>m[1]);
+ assert.deepEqual([...new Set(paths)], [...STANZA_FINGERPRINT_GROOVES],`${variant} uses the Login/launcher geometry`);
+}
+for(const icon of manifest.icons){
+ const image=await sharp(resolve('public'+icon.src)).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+ const size=Number(icon.sizes.split('x')[0]);assert.equal(image.info.width,size);assert.equal(image.info.height,size);
+ if(icon.purpose==='maskable')for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const i=(y*size+x)*4;assert.equal(image.data[i+3],255,'Maskable background must be opaque to the edges');
+  if(image.data[i+1]>70)assert(Math.hypot(x+.5-size/2,y+.5-size/2)<=size*.4,'Essential foreground stays inside the maskable safe circle');
+ }
+}
+for(const [file,size] of [['stanza-apple-touch-icon.png',180],['stanza-favicon-32.png',32],['stanza-favicon-16.png',16]] as const){
+ const image=await sharp(`public/icons/${file}`).metadata();assert.equal(image.width,size);assert.equal(image.height,size);
+}
+for(const match of indexHtml.matchAll(/(?:property="og:image"|name="twitter:image") content="([^"]+)"/g)){
+ const asset=new URL(match[1]).pathname;assert((await readFile('public'+asset)).length>0,'Social metadata must resolve to a real local icon');
+}
+console.log('PASS canonical icon geometry, generated SVG parity, required dimensions, opaque maskable safe zone and social image paths');
 assert.match(indexHtml, /rel="manifest"/);
 assert.match(main, /navigator\.serviceWorker\.register\('\/service-worker\.js'\)/);
 assert.match(viteConfig, /mode === 'production'/);

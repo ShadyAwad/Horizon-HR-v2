@@ -28,6 +28,14 @@ export const WIDGETS: readonly WidgetDefinition[] = [
  define('feed','Company Feed','أخبار الشركة','Communications','feed',[],'Recent company announcements visible to you.'),
 ];
 export function widgetDefinition(id: string) { return WIDGETS.find(w=>w.id===id); }
+const descriptionsAr:Record<WidgetId,string>={equipment:'العهدة المسندة إليك وطلبات الدعم الخاصة بها.',inventory:'الأصول والمعدات ضمن نطاق صلاحياتك.',support:'تابع طلبات الدعم التقني والمعدات الخاصة بك.',communications:'آخر الرسائل التي أرسلتها وحالة تسليمها.',meetings:'الاجتماعات القادمة ضمن نطاق صلاحياتك.',attendance:'حالة دوامك الحالية. افتح عمليات الموقع لتسجيل الحضور.',breaks:'طلبات الاستراحة الأخيرة والاستراحات النشطة لفريقك.',leave:'طلبات الإجازة المعلقة التي يمكنك مراجعتها.',expenses:'المصروفات التي تنتظر المراجعة ضمن نطاق صلاحياتك.',goals:'أهداف هذا الأسبوع والمهام المتأخرة.',grievances:'الحالات الأخيرة المتاحة لك. افتح الصندوق للمراجعة الآمنة.',hiring:'المتقدمون النشطون ومراحلهم الحالية.',openRoles:'الوظائف المنشورة في الشركة.',hiringInterviews:'مواعيد مقابلات التوظيف القادمة.',pendingOffers:'عروض العمل التي تنتظر رداً مسجلاً.',newHires:'الموظفون الجدد وقوائم تهيئتهم.',onboardingRisk:'الموظفون الجدد الذين تحتاج تهيئتهم للمتابعة.',equipmentPending:'العهدة التي تنتظر التسليم للموظفين الجدد.',accessPending:'الحسابات والصلاحيات التي تنتظر التجهيز.',firstDayReadiness:'جاهزية الموظفين الجدد ليومهم الأول.',feed:'آخر إعلانات الشركة المتاحة لك.'};
+export const widgetDescription=(w:WidgetDefinition,isRtl:boolean)=>isRtl?descriptionsAr[w.id]:w.description;
+/** Presentation sizes respect the same catalog constraints as pointer/keyboard geometry. */
+export const widgetSizes=(w:WidgetDefinition)=>[
+ {name:'Small',nameAr:'صغير',width:w.minWidth,height:w.minHeight},
+ {name:'Medium',nameAr:'متوسط',width:w.defaultWidth,height:w.defaultHeight},
+ {name:'Wide',nameAr:'عريض',width:12,height:w.defaultHeight},
+];
 export function canUseWidget(user: AuthUser, widget: WidgetDefinition) {
  return widget.permissions.length===0 || (user.permissions ? widget.permissions.some(p=>user.permissions!.includes(p)) : user.role==='hr_admin');
 }

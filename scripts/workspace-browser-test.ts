@@ -26,8 +26,8 @@ try{
   async function navigate(name:string){await page.locator('[data-tutorial-target="stanza-launcher"]').click();await page.locator('#stanza-navigation-panel .stanza-navigation-item').filter({hasText:name}).last().click();}
   const openComposer=async()=>{await navigate(text('Workspace Composer','منشئ مساحات العمل'));await composer.getByRole('tablist').waitFor();};
   async function manage(name:string){await composer.getByLabel(text('Manage workspace','إدارة مساحة العمل'),{exact:true}).click();await composer.locator('.composer-workspace-menu-content').getByRole('button',{name,exact:true}).click();}
-  async function add(widget:string){await composer.getByRole('button',{name:text('+ Add Widget','+ إضافة لوحة'),exact:true}).first().click();await page.locator('.composer-library button').filter({has:page.getByText(widget,{exact:true})}).click();await composer.locator('.composer-widget').last().waitFor();}
-  async function customize(){const button=composer.getByRole('button',{name:text('Customize Workspace','تخصيص المساحة'),exact:true});if(await button.count())await button.click();}
+  async function add(widget:string){await customize();await composer.getByRole('button',{name:text('Add widgets','إضافة لوحات'),exact:true}).first().click();await page.locator('.composer-gallery-card').filter({has:page.getByText(widget,{exact:true})}).getByRole('button').click();await composer.locator('.composer-widget').last().waitFor();}
+  async function customize(){const button=composer.getByRole('button',{name:text('Customize','تخصيص المساحة'),exact:true});if(await button.count())await button.click();}
   await page.goto(base);await page.locator('[data-tutorial-target="stanza-launcher"]').waitFor();await openComposer();await composer.locator('.composer-empty').waitFor();
   await measure('create',()=>composer.getByRole('button',{name:text('New workspace','مساحة جديدة'),exact:true}).click());
   let state=await saved(),second=state.activeId;assert.equal(state.workspaces.length,2);assert.equal(state.workspaces[1].widgets.length,0);assert.equal(await composer.getByRole('tab',{selected:true}).textContent(),text('Workspace 2','مساحة العمل 2'));
@@ -56,9 +56,9 @@ try{
   await page.reload();await page.locator('[data-tutorial-target="stanza-launcher"]').waitFor();await openComposer();await composer.locator('.composer-empty').waitFor();
   assert.equal((await saved()).activeId,second);assert.equal((await saved()).workspaces.find((w:any)=>w.id===second).widgets.length,0);
   // Picker search/domain state must not make a newly empty workspace look unavailable.
-  await composer.getByRole('button',{name:text('+ Add Widget','+ إضافة لوحة'),exact:true}).first().click();
-  await page.locator('.composer-dialog input').fill('no such widget');await page.locator('.composer-dialog select').selectOption('Hiring');await page.keyboard.press('Escape');
-  await composer.locator('.composer-empty').getByRole('button').click();assert.equal(await page.locator('.composer-dialog input').inputValue(),'');assert.equal(await page.locator('.composer-dialog select').inputValue(),'');assert(await page.locator('.composer-library button').count());await page.keyboard.press('Escape');
+  await customize();await composer.getByRole('button',{name:text('Add widgets','إضافة لوحات'),exact:true}).first().click();
+  await page.locator('.composer-dialog input').fill('no such widget');await page.locator('.composer-gallery-filters select').selectOption('Hiring');await page.keyboard.press('Escape');
+  await composer.locator('.composer-empty').getByRole('button').click();assert.equal(await page.locator('.composer-dialog input').inputValue(),'');assert.equal(await page.locator('.composer-gallery-filters select').inputValue(),'');assert(await page.locator('.composer-library button').count());await page.keyboard.press('Escape');
   // Cross-module defaults and explicit destination are verified with real modules.
   const modules=ar?['عمليات الموقع','التوظيف','الدعم التقني والمعدات','التواصل','الأصول والمعدات']:['Geo-Operations','Hiring','IT & equipment support','Communications','Assets & Equipment'];
   for(const name of modules){await navigate(name);await page.getByRole('button',{name:text('Add to workspace','إضافة إلى مساحة مخصصة'),exact:true}).first().click();const select=page.locator('.composer-dialog').getByLabel(text('Workspace','مساحة العمل'),{exact:true});assert.equal(await select.inputValue(),second);await page.locator('.composer-dialog').getByRole('button',{name:text('Add widget','إضافة لوحة'),exact:true}).click();assert.equal((await saved()).activeId,second);}
@@ -71,11 +71,11 @@ try{
   assert(await card.locator('.composer-widget-menu').count(),'Collapsed widgets retain management');
   await card.locator('.composer-widget-menu summary').click();await card.getByRole('button',{name:text('Configure','إعداد'),exact:true}).click();
   for(const [mode,en,arabic] of [['auto','Auto','تلقائي'],['solid','Solid','مصمت'],['transparent','Transparent','شفاف'],['glass','Glass','زجاجي']]){
-   await page.locator('.composer-dialog').getByLabel(text('Panel surface','سطح اللوحات'),{exact:true}).click();
+   await page.locator('.composer-dialog').getByRole('button',{name:text('Panel surface','سطح اللوحات'),exact:true}).click();
    assert(await page.locator('.composer-dialog [role=menu]').evaluate((e:HTMLElement)=>{const b=e.getBoundingClientRect();return b.left>=0&&b.right<=innerWidth;}));
    await page.getByRole('menuitemradio',{name:text(en,arabic),exact:true}).click();assert.equal((await saved()).workspaces.find((w:any)=>w.id===second).widgets[0].surfaceOverride,mode);
   }
-  await page.locator('.composer-dialog').getByLabel(text('Workflow color','لون سير العمل'),{exact:true}).selectOption('purple');await page.keyboard.press('Escape');
+  await page.locator('.composer-dialog').getByLabel(text('Workflow color','لون سير العمل'),{exact:true}).selectOption('purple');await page.locator('.composer-dialog').getByRole('button',{name:text('Close','إغلاق'),exact:true}).click();
   assert.equal((await saved()).workspaces.find((w:any)=>w.id===second).widgets[0].surfaceOverride,'glass');assert.equal((await saved()).workspaces.find((w:any)=>w.id===second).widgets[0].accent,'purple');
   await card.locator('.composer-widget-menu summary').click();
   await measure('restore',async()=>{await card.getByRole('button',{name:new RegExp('^'+text('Restore','استعادة'))}).click();await card.locator('.composer-widget-body').waitFor();});

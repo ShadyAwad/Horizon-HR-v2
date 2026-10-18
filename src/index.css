@@ -1847,7 +1847,6 @@ body { font-family:var(--stanza-font-latin); line-height:var(--stanza-leading-bo
 }
 .stanza-form-control:disabled { background:var(--stanza-surface-muted); opacity:1; }
 
-@keyframes stanza-menu-enter { from { opacity:0; transform:translateY(-2px); } to { opacity:1; transform:none; } }
 @media (prefers-reduced-motion:reduce) {
   :is(.stanza-support-button,.stanza-document-control,.stanza-surface-selector button,.composer button,.composer-dialog button,.stanza-form-control) { transition:none; }
   .stanza-surface-menu { animation:none; }

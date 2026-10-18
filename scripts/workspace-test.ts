@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { WIDGETS, canUseWidget, widgetPath } from '../src/components/workspace-composer/widget-catalog';
+import { WIDGETS, canUseWidget, widgetPath, widgetSizes, widgetDescription } from '../src/components/workspace-composer/widget-catalog';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {createElement} from 'react';
+import {WidgetIcon,WidgetPreview} from '../src/components/workspace-composer/WidgetArtwork';
 import { defaultPreferences, normalizePreferences, readPreferences, reduceComposer, createWidget, overlap, settle, boundGeometry, stackedOrder, storageKey, nextWorkspaceName } from '../src/components/workspace-composer/workspace-model';
 import type { AuthUser } from '../src/auth/auth-contract';
 const user:AuthUser={id:'u',tenantId:'t',email:'test@example.invalid',name:'Test',role:'employee',permissions:['attendance.clock','roster.goals.view_self']};
@@ -9,6 +12,18 @@ assert(canUseWidget(user,WIDGETS.find(w=>w.id==='attendance')!));assert(!canUseW
 assert(!canUseWidget({...user,permissions:[]},WIDGETS.find(w=>w.id==='attendance')!),'revoking claims removes saved widget access');
 assert(!canUseWidget(user,WIDGETS.find(w=>w.id==='grievances')!));
 for(const w of WIDGETS){assert(widgetPath(w.id).startsWith('/api/'));assert(w.minWidth<=w.defaultWidth);assert(w.minHeight<=w.defaultHeight);}
+for(const w of WIDGETS){
+ assert(widgetDescription(w,true)&&widgetDescription(w,false));
+ for(const size of widgetSizes(w)){
+  const instance=boundGeometry({...createWidget(w.id),width:size.width,height:size.height});
+  assert.equal(instance.width,size.width);assert.equal(instance.height,size.height);
+ }
+ const icon=renderToStaticMarkup(createElement(WidgetIcon,{id:w.id}));
+ assert(icon.includes('currentColor'));assert(icon.includes('<path'));assert(!/#[0-9a-f]{3,8}/i.test(icon));
+ const preview=renderToStaticMarkup(createElement(WidgetPreview,{id:w.id}));
+ assert(preview.includes('aria-hidden="true"'));assert(!preview.includes('/api/'));assert(!preview.includes('<img'));
+}
+console.log('PASS every registered widget has owned themed artwork, static preview, Arabic purpose and bounded useful sizes');
 let state=defaultPreferences();state=reduceComposer(state,{type:'create',id:'morning',name:'HR Morning'});assert.equal(state.workspaces.length,2);assert.equal(state.activeId,'morning');
 state=reduceComposer(state,{type:'rename',id:'morning',name:'Morning Operations'});assert.equal(state.workspaces[1].name,'Morning Operations');
 const a={...createWidget('attendance'),instanceId:'a'},b={...createWidget('feed'),instanceId:'b'};
