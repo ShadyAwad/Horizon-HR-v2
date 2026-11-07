@@ -65,6 +65,20 @@ try {
  await f.db.query('DELETE FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2 AND permission_key=$3',[f.primary,support.roleId,'support.view']);
  assert.equal((await workforce(support,'support_lookup','show open tickets for Riya Meadow')).status,'forbidden','fresh permissions after revocation');
  assert.equal((await f.api(f.admin,'/api/command-router/resolve',{query:{bad:true}})).status,400);assert.equal((await f.api(null,'/api/system/live')).status,200);
+ // Natural families use the original query and existing tenant/date executors.
+ await f.db.query("INSERT INTO roster_shifts(tenant_id,employee_id,created_by,start_time,end_time) VALUES($1,$2,$3,(now() AT TIME ZONE 'UTC')::date+interval '1 day 9 hours',(now() AT TIME ZONE 'UTC')::date+interval '1 day 17 hours')",[f.primary,riya.id,manager.id]);
+ const roster=await resolve(manager,'who is scheduled tomorrow');assert.equal(roster.intentKey,'team_schedule');assert.equal(roster.entityRoute.total,1);assert.equal(roster.entityRoute.items[0].id!==f.foreign.id,true);assert.equal(roster.entityRoute.items[0].label,'Riya Meadow');
+ const nextMonday=(await f.db.query("SELECT (date_trunc('week',now() AT TIME ZONE 'UTC')::date+7)::text d")).rows[0].d;
+ await f.db.query("INSERT INTO leave_requests(tenant_id,employee_id,start_date,end_date,reason,status) VALUES($1,$2,$3::date,$3::date,'Natural fixture','approved')",[f.primary,riya.id,nextMonday]);
+ const leave=await resolve(manager,'who is on leave next week');assert.equal(leave.intentKey,'team_approved_leave');assert.equal(leave.entityRoute.total,1);assert.match(leave.entityRoute.items[0].detail,new RegExp(nextMonday));
+ assert.equal((await resolve(f.limited,'who is scheduled tomorrow')).outcome,'unauthorized');
+ assert.equal((await resolve(f.admin,'any vacancies')).intentKey,'hiring_jobs_query');
+ assert.equal((await resolve(f.admin,'any interviews today')).intentKey,'hiring_interviews_query');
+ await f.db.query('UPDATE employees SET full_name=$1 WHERE tenant_id=$2 AND id=$3',['عمر الجندي',f.primary,f.employee.id]);
+ const arabic=await resolve(f.admin,'مين مدير عمر الجندي');assert.equal(arabic.intentKey,'employee_directory_lookup');assert.equal(arabic.entityRoute.items[0].id,f.employee.id);
+ for(const q of ['allocate available equipment to me','who manages Riya Meadow and Coverage Manager'])assert.notEqual((await resolve(f.admin,q)).outcome,'matched');
+ assert.equal((await resolve(f.admin,'who is off next week')).outcome,'ambiguous');
+ console.log('PASS natural vacancies/interviews, exact tomorrow/next-week scoped dates, Arabic named employee (not self), unsupported writes/multiple subjects and unchanged permission gates');
  // Real browser command palette: recognized empty result, ambiguous record choices and query-preserving selection.
  const page=await f.page(f.admin);await page.locator('[data-tutorial-target=stanza-launcher]').waitFor();
  await page.keyboard.press('Control+k');const input=page.getByPlaceholder('Search commands or ask Stanza…');await input.fill('what is the department of Riya');

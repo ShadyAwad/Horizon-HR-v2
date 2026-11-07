@@ -2325,6 +2325,10 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .stanza-launcher-dock {isolation:isolate;}
 /* Geometry restored from 93adc20; bounded action copy preserves the 28px / 14px icon proportions. */
 .stanza-demo-persona-restored {text-align:start;}
+.stanza-auth-shell button.stanza-demo-persona-restored {transition:background-color 150ms ease,border-color 150ms ease,box-shadow 150ms ease;}
+:root[data-background-preset] .stanza-auth-shell button.stanza-demo-persona-restored:not(:disabled):hover {background:var(--stanza-surface-hover)!important;border-color:var(--stanza-border-accent)!important;box-shadow:inset 0 0 0 1px var(--stanza-border-accent);}
+:root[data-background-preset] .stanza-auth-shell button.stanza-demo-persona-restored:focus-visible {outline:2px solid var(--stanza-focus-ring);outline-offset:2px;background:var(--stanza-surface-hover)!important;border-color:var(--stanza-border-accent)!important;}
+@media(prefers-reduced-motion:reduce){.stanza-auth-shell button.stanza-demo-persona-restored{transition:none;}}
 .stanza-demo-persona-restored > span:first-child{inline-size:28px;block-size:28px;}
 .stanza-demo-persona-restored > span:first-child > svg{inline-size:14px;block-size:14px;}
 .stanza-demo-persona-cta{max-inline-size:6.5rem;white-space:normal;text-align:end;overflow-wrap:anywhere;line-height:1.4;}
@@ -2383,7 +2387,10 @@ button.stanza-refresh-action:not(:disabled):hover > svg {rotate:25deg;}
 button.stanza-refresh-action:not(:disabled):active {box-shadow:inset 0 1px 3px #0002;transition-duration:100ms;}
 button.stanza-refresh-action:not(:disabled):active > svg {scale:.94;}
 button.stanza-refresh-action:focus-visible {outline:2px solid var(--stanza-focus-ring);outline-offset:3px;}
-.stanza-surface-menu .stanza-surface-close {flex:0 0 30px;min-width:30px;align-self:center;padding:5px;animation-delay:114ms;color:var(--stanza-text-secondary);}
+.stanza-surface-menu button.stanza-surface-close {flex:0 0 32px;min-width:32px;width:32px;min-height:40px;align-self:center;align-items:center;padding:5px;border-color:transparent;background:transparent;box-shadow:none;animation-delay:114ms;color:var(--stanza-text-secondary);}
+.stanza-surface-menu button.stanza-surface-close > svg {width:14px;height:14px;}
+.stanza-surface-menu button.stanza-surface-close:hover {background:var(--stanza-surface-hover);color:var(--stanza-accent-ink);}
+.stanza-surface-menu button:focus-visible {outline:2px solid var(--stanza-focus-ring);outline-offset:-2px;}
 .stanza-document-modebar {position:relative;}
 .stanza-document-modebar:has(.stanza-advanced-exit) {padding-inline-end:3.5rem;}
 .stanza-advanced-exit {position:absolute;inset-inline-end:1rem;inset-block-start:1rem;}
@@ -2395,7 +2402,9 @@ button.stanza-refresh-action:focus-visible {outline:2px solid var(--stanza-focus
 @media(prefers-reduced-motion:reduce){button.stanza-refresh-action,button.stanza-refresh-action > svg,.stanza-document-draft-actions button{transition:none;animation:none!important;rotate:none!important;scale:none!important;}}
 
 .stanza-surface-menu {overflow:hidden;}
-.stanza-surface-options {display:flex;flex:1;min-width:0;gap:7px;overflow-x:auto;overflow-y:hidden;}
+.stanza-surface-options {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));flex:1;min-width:0;gap:7px;}
+.stanza-surface-options > button {min-width:0;align-items:center;gap:4px;padding-inline:6px;font-size:var(--text-xs);}
+.stanza-surface-selector[data-layout=grid] .stanza-surface-options {grid-template-columns:repeat(2,minmax(0,1fr));}
 
 button.stanza-refresh-action:not(:disabled):is(:hover,:active){transform:none;scale:none;}
 .stanza-tab.stanza-tab--underline {position:relative;padding-inline:.75rem;border:0;border-radius:.4rem .4rem 0 0;background:transparent;transition:background-color 110ms ease,color 160ms ease;}

@@ -16,6 +16,7 @@ import { validatePlannedBreaks } from '../lib/roster-breaks';
 import { Surface } from '../components/ui/Surface';
 import { WIDGETS, canUseWidget } from '../components/workspace-composer/widget-catalog';
 import { useNavigationHistory } from '../components/navigation/useNavigationHistory';
+import { useModuleContinuity } from '../components/navigation/useModuleContinuity';
 import { FontSizeControl } from '../components/ui/FontSizeControl';
 import { ComposerPreferencesProvider, useComposerPreferences } from '../components/workspace-composer/ComposerPreferences';
 import { AddToWorkspace } from '../components/workspace-composer/AddToWorkspace';
@@ -886,7 +887,7 @@ function useGeolocation() {
   return { coords, error, loading, requestCoordinates };
 }
 
-function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets' }) {
+function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, initialRecognition, onRecognitionDisplayed, initialTab, restoredSession = false }: { user: AuthUser; onLogout: () => void; onShowDemoNotice: () => void; onUserUpdate: (user: AuthUser) => void; initialRecognition?: RecognitionCelebrationPayload | null; onRecognitionDisplayed?: () => void; initialTab?: 'assets'; restoredSession?: boolean }) {
   const [activeTab, setActiveTab] = useState<DashboardTabId>(initialTab || 'geofence');
   useEffect(() => {
     markDevPerformance('startup:dashboard-mounted', undefined, true);
@@ -1449,7 +1450,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const canViewAssets = hasPermission(user, 'assets.view');
   const canViewPerformance = hasPermission(user, 'performance.view') || hasPermission(user, 'performance.review');
   const [semanticCaps,setSemanticCaps]=useState<{tenant:string[];platform:string[]}>({tenant:[],platform:[]});
-  useEffect(()=>{let alive=true;setSemanticCaps({tenant:[],platform:[]});void apiFetchShared('/api/semantic-intelligence/capabilities').then(async r=>{if(r.ok&&alive)setSemanticCaps(await r.json());}).catch(()=>{});return()=>{alive=false;};},[user.id]);
+  const [semanticCapsReady,setSemanticCapsReady]=useState(false);
+  useEffect(()=>{let alive=true;setSemanticCapsReady(false);setSemanticCaps({tenant:[],platform:[]});void apiFetchShared('/api/semantic-intelligence/capabilities').then(async r=>{if(r.ok&&alive)setSemanticCaps(await r.json());}).catch(()=>{}).finally(()=>{if(alive)setSemanticCapsReady(true);});return()=>{alive=false;};},[user.id]);
   const canViewSemantic=semanticCaps.tenant.length>0,canViewSemanticPlatform=semanticCaps.platform.some(k=>['view_all','view_tenants','review_global'].includes(k));
   const canViewOrganisation = hasPermission(user, 'organisation.view');
   const canViewLocations = hasPermission(user, 'locations.view');
@@ -2166,6 +2168,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   const activeNavigationLabel = navigationItems.find((item) => item.active)?.label || t('dash.geoOp');
   const composerPreferences = useComposerPreferences();
   const destination = navigationItems.find(item => item.active)?.id ?? activeTab;
+  const continuity = useModuleContinuity({tenantId:user.tenantId,userId:user.id,restoredSession:restoredSession && !initialTab,
+    availableIds:availableNavigationIds,activeId:destination,select:selectNavigationItem,capabilitiesReady:semanticCapsReady});
   const historyDestination = destination === 'composer' ? 'composer:' + composerPreferences.state.activeId : destination;
   const navigationHistory = useNavigationHistory(historyDestination, value => {
     if (value.startsWith('composer:')) return composerPreferences.state.workspaces.some(w => w.id === value.slice(9));
@@ -4853,6 +4857,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   return (
 <div
   ref={dashboardRootRef}
+  style={continuity.ready ? undefined : {visibility:'hidden'}}
   dir={isRtl ? 'rtl' : 'ltr'}
   className={cn(
     "stanza-dashboard h-screen min-h-screen h-[100dvh] min-h-[100dvh] w-full max-w-full bg-[var(--stanza-page-bg)] text-[color:var(--stanza-text-primary)] font-sans flex flex-col md:flex-row overflow-hidden relative transition-colors duration-300",
@@ -5333,7 +5338,12 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
 
       <main data-tutorial-target={getTutorialModuleTarget(showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab)} className="min-w-0 w-full max-w-full flex-1 flex flex-col px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] md:p-4 lg:p-5 z-10 overflow-y-auto overflow-x-hidden">
-        <ActiveModuleRenderProbe module={showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab} />
+        {continuity.ready && <ActiveModuleRenderProbe module={showPayrollPanel ? 'payroll' : showGrievancesPanel ? 'grievances' : showResignationsPanel ? 'resignations' : activeTab} />}
+        {continuity.resume && <aside data-module-resume dir={isRtl?'rtl':'ltr'} aria-label={isRtl?'متابعة العمل':'Resume work'} className="mb-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-[var(--stanza-border-default)] bg-[var(--stanza-surface-elevated)] p-3 text-sm text-[var(--stanza-text-primary)]">
+          <span className="min-w-0 flex-1 basis-full sm:basis-auto">{isRtl?'هل تريد المتابعة من حيث توقفت؟':'Continue where you left off?'} <strong>{navigationItems.find(item=>item.id===continuity.resume)?.label}</strong></span>
+          <button type="button" className="stanza-secondary-action stanza-control-compact" onClick={continuity.continuePrevious}>{isRtl?'متابعة':'Continue'}</button>
+          <button type="button" className="stanza-quiet-action stanza-control-compact" onClick={continuity.startHere}>{isRtl?'ابدأ هنا':'Dashboard / Start here'}</button>
+        </aside>}
 
         {/* Header Pipeline */}
         <header

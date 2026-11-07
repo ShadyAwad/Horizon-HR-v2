@@ -346,7 +346,7 @@ export function LocationsPanel() {
                     {location.address || tr('Address unavailable', 'العنوان غير متاح')}
                   </p>
                 </div>
-                <span className={location.isActive ? 'stanza-positive text-xs font-bold' : 'stanza-neutral-status text-xs font-bold'}>
+                <span className={location.isActive ? 'stanza-positive self-start text-xs font-bold' : 'stanza-neutral-status self-start text-xs font-bold'}>
                   {location.isActive ? tr('Active', 'نشط') : tr('Archived', 'مؤرشف')}
                 </span>
               </div>

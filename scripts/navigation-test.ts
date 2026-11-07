@@ -1,4 +1,12 @@
 import assert from 'node:assert/strict';
+import {authorisedLastModule,moduleContinuityKey} from '../src/components/navigation/useModuleContinuity';
+const continuityAllowed=new Set(['geofence','hiring','locations']);
+assert.equal(authorisedLastModule('hiring',continuityAllowed),'hiring');
+assert.equal(authorisedLastModule('locations',continuityAllowed),'locations');
+for(const value of ['sessionCenter','unknown','hiring?candidate=private','{"module":"hiring"}',null,{},42]) assert.equal(authorisedLastModule(value,continuityAllowed),null);
+assert.equal(authorisedLastModule('hiring',new Set(['geofence'])),null,'revoked destination fails closed');
+assert.notEqual(moduleContinuityKey('tenant-a','user-a'),moduleContinuityKey('tenant-b','user-a'));
+assert.notEqual(moduleContinuityKey('tenant-a','user-a'),moduleContinuityKey('tenant-a','user-b'));
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readStanzaPreferences } from '../src/lib/StanzaPreferencesContext';

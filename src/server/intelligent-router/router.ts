@@ -36,7 +36,8 @@ export async function resolveQuery(raw: string, d: RouterDependencies): Promise<
   if (!d.available) for (const i of INTENTS) if (getIntent(i.key) && await d.allowed(i)) allowed.push(i);
   if (!allowed.length) return finish({ ...empty, outcome: 'unauthorized' });
   if(/^(?:show|open|view|اعرض|وريني|افتح)(?: (?:my|the|all))? (?:requests|الطلبات)$/u.test(query)){const topics=['leave_history','my_grievances','hiring_candidates_query'].filter(key=>allowed.some(i=>i.key===key)).slice(0,3);if(topics.length>1)return finish({...empty,outcome:'ambiguous',method:'rule',choices:topics});}
-  if(/(?:^| )(?:absent|absence)(?: |$)/u.test(query)){const topics=['team_approved_leave','not_clocked_in_today'].filter(key=>allowed.some(i=>i.key===key));if(topics.length)return finish({...empty,outcome:'ambiguous',method:'rule',choices:topics});}
+  const offAmbiguity=/^(?:who (?:is|s|will be)|which (?:employees|people) are) off(?: |$)/u.test(query)&&!/(?:time off|leave|vacation)/u.test(query);
+  if(/(?:^| )(?:absent|absence)(?: |$)/u.test(query)||offAmbiguity){const topics=['team_approved_leave',offAmbiguity?'team_schedule':'not_clocked_in_today'].filter(key=>allowed.some(i=>i.key===key));if(topics.length)return finish({...empty,outcome:'ambiguous',method:'rule',choices:topics});}
   let semantic: Partial<RouterResult> = {}, choices: string[] = [], unavailable = !d.embedding;
   if (d.embedding) {
     try {

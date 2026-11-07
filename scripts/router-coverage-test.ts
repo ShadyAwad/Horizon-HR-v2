@@ -24,3 +24,14 @@ console.log('PASS normalization, bounded vocabulary repair, protected entity wor
 for(const q of ['Help me check in then sign off','explain clocking out and clocking in','ازاي اسجل حضوري واسجل انصرافي']){const result=await resolveQuery(q,d);assert.equal(result.outcome,'ambiguous');assert.deepEqual(result.choices,['clock_in_help','clock_out_help']);}
 
 assert.equal(ownEntityReference('show me Avery equipment'),false);assert.equal(ownEntityReference('equipment assigned to me'),true);assert.equal(operationalReadIntent("show me Avery Vale's equipment"),'employee_equipment');
+
+// Final natural-read calibration: fully consumed families, no authority or executor expansion.
+for(const q of ['open positions','Any vacancies?','Which vacancies are open right now','ايه الوظايف المفتوحة عندنا'])assert.equal(readGrammarIntent(q),'hiring_jobs_query');
+for(const q of ["who's working tomorrow",'who is scheduled tomorrow','مين عنده مناوبة بكره'])assert.equal(operationalReadIntent(q),'team_schedule');
+for(const q of ['any interviews today','عندنا مقابلات النهارده'])assert.equal(operationalReadIntent(q),'hiring_interviews_query');
+assert.equal(operationalReadIntent('مين مدير عمر'),'employee_directory_lookup');
+for(const q of ['allocate available equipment to me','who manages Nadia and Omar','who reports to Nadia or Omar'])assert(unsupportedReadQuery(q));
+for(const q of ['open positions except contractors','any interviews cancelled today','who is scheduled tomorrow except contractors','what laptops are available'])assert.equal(readGrammarIntent(q)??operationalReadIntent(q),undefined);
+const off=await resolveQuery('who is off next week',d);assert.equal(off.outcome,'ambiguous');assert.deepEqual(off.choices,['team_approved_leave','team_schedule']);
+const offDenied=await resolveQuery('who is off next week',{...d,allowed:async()=>false,available:async()=>[]});assert.equal(offDenied.outcome,'unauthorized');
+console.log('PASS natural read families, explicit other-person Arabic manager, unsupported allocation/multiple subjects, dated roster, and permission-filtered off/leave clarification');

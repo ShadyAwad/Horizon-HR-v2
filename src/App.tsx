@@ -92,6 +92,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser>(getStoredUser);
   const [pendingRecognition, setPendingRecognition] = useState<RecognitionCelebrationPayload | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [restoredSession, setRestoredSession] = useState(false);
   const [authBackgroundPulse, setAuthBackgroundPulse] = useState<AuthVisualState>('idle');
   const [authTransition, setAuthTransition] = useState<AuthTransition | null>(null);
   const [focusLoginEmail, setFocusLoginEmail] = useState(false);
@@ -128,6 +129,7 @@ export default function App() {
         if (!user) return;
         if (cancelled) return;
         setApiRequestIdentity(user); setAuthUser(user);
+        setRestoredSession(true);
         window.localStorage.setItem('horizon-auth-user', JSON.stringify(user));
         setAuthState('authenticated');
       })
@@ -231,6 +233,7 @@ export default function App() {
     startAuthTransition('logging-in', async () => {
       await Promise.all([loadDashboard(), pulseComplete]);
       setApiRequestIdentity(nextUser); setAuthUser(nextUser);
+      setRestoredSession(false);
       setPendingRecognition(recognition || null);
       window.localStorage.setItem('horizon-auth-user', JSON.stringify(nextUser));
       setAuthState('authenticated');
@@ -303,6 +306,8 @@ export default function App() {
            <>
              <Suspense fallback={<AuthTransitionLoader transition="logging-in" overlay />}>
                <Dashboard
+                 key={`${authUser.tenantId}:${authUser.id}`}
+                 restoredSession={restoredSession}
                  user={authUser}
                  onLogout={beginLogout}
                  onShowDemoNotice={() => setShowDemoNotice(true)}
