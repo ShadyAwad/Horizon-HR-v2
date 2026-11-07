@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {request} from 'node:http';
+import {gzipSync,deflateSync} from 'node:zlib';
 import {BusinessFixtures} from './business-scenario-fixtures';
 const f=new BusinessFixtures();
 const tokens:string[]=[];
@@ -45,5 +47,36 @@ try{
  assert((await f.db.query('SELECT revoked_at FROM auth_sessions WHERE id=$1 AND tenant_id=$2',[session.id,f.primary])).rows[0].revoked_at);
  const replay=await employee.context.request.get(f.base+'/api/auth/sessions',{headers:{Cookie:'stanza_session='+cookie.value}});assert.equal(replay.status(),401,'old cookie denied after logout');
  console.log('PASS same-origin logout revokes current session; replay denied; cross-origin logout blocked');
+ // Exercise the global parser before authentication/routing on the real built server.
+ async function compressedRequest(body:Buffer,encoding?:string,tail?:Buffer,contentType='application/json') {
+  return new Promise<number>((resolve,reject)=>{
+   const req=request(f.base+'/api/release-parser-probe',{method:'POST',headers:{Origin:f.base,'Content-Type':contentType,'Content-Length':body.length+(tail?.length??0),...(encoding?{'Content-Encoding':encoding}:{})}},res=>{
+    res.resume();res.once('end',()=>resolve(res.statusCode!));res.once('error',reject);
+   });
+   req.once('error',reject);req.setTimeout(5000,()=>req.destroy(new Error('Compressed request did not complete')));
+   if(tail){req.write(body);setTimeout(()=>req.end(tail),75);}else req.end(body);
+  });
+ }
+ async function parserStillHealthy() {
+  await new Promise(resolve=>setTimeout(resolve,250));
+  assert.equal((await f.publicContext.request.get(f.base+'/api/system/live')).status(),200,'late decoder errors must not shut down the server');
+ }
+ const json=Buffer.from('{}');
+ for(const [encoding,encode] of [['gzip',gzipSync],['deflate',deflateSync]] as const){
+  assert.equal(await compressedRequest(encode(json),encoding),404,'valid compressed JSON retains normal route behavior');
+  const first=Buffer.concat([encode(json),Buffer.from([0])]);
+  const tail=Buffer.alloc(100*1024,0x58);
+  assert.equal(await compressedRequest(Buffer.concat([first,tail]),encoding),404);
+  await parserStillHealthy();
+  assert.equal(await compressedRequest(first,encoding,tail),404,'delayed trailing bytes finish safely');
+  await parserStillHealthy();
+ }
+ assert.equal(await compressedRequest(json),404,'ordinary JSON retains normal route behavior');
+ assert.equal(await compressedRequest(Buffer.from('invalid gzip'),'gzip'),400);
+ assert.equal(await compressedRequest(json,'unsupported'),415);
+ assert.equal(await compressedRequest(gzipSync(json),'gzip',undefined,'application/json; charset=iso-8859-1'),415);
+ assert.equal(await compressedRequest(gzipSync(Buffer.from(JSON.stringify({value:'x'.repeat(2*1024*1024)}))),'gzip'),413,'limit applies to expanded JSON');
+ await parserStillHealthy();
+ console.log('PASS global JSON parser: gzip/deflate immediate and delayed trailing bytes cannot shut down server; valid compressed/plain, invalid compression, encoding/charset and expanded limit controls');
  await rememberTokens();assert(tokens.length>=4);process.send?.({type:'session-log-check',tokens});
 }finally{await f.cleanup();}
