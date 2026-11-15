@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="upper">
+      <stop stop-color="white" stop-opacity=".8"/>
+      <stop offset=".68" stop-color="white" stop-opacity=".48"/>
+      <stop offset="1" stop-color="white" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="lower">
+      <stop stop-color="white" stop-opacity="0"/>
+      <stop offset=".52" stop-color="white" stop-opacity=".39"/>
+      <stop offset="1" stop-color="white" stop-opacity=".78"/>
+    </linearGradient>
+    <filter id="soft" x="-.4" y="-.7" width="1.8" height="2.4">
+      <feGaussianBlur stdDeviation="15"/>
+    </filter>
+    <filter id="shine" x="-.4" y="-.7" width="1.8" height="2.4">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+  <g filter="url(#soft)">
+    <path fill="url(#upper)" d="M-45 52C45 36 74 150 157 150c75 0 90-109 161-129 69-20 111 30 165 43 66 16 104-23 198-39v55c-100 13-149 49-218 31-65-17-98-63-147-30-54 36-63 125-150 127C78 210 49 106-45 119Z"/>
+    <path fill="url(#lower)" d="M-22 256c111-41 164 75 253 53 92-23 103-108 187-95 75 12 99 68 166 37 35-16 61-55 101-73v65c-37 25-60 63-98 78-85 34-126-38-181-36-62 2-103 88-172 93-96 7-157-90-256-62Z"/>
+  </g>
+  <g fill="none" stroke-width="14" filter="url(#shine)" opacity=".64">
+    <path stroke="url(#upper)" d="M-15 75C59 71 86 179 162 176 249 172 253 68 320 48c51-16 94 26 147 40"/>
+    <path stroke="url(#lower)" d="M163 338c95 21 122-8 182-62s98-16 157 8c69 28 109-26 157-59"/>
+  </g>
+</svg>

@@ -2230,7 +2230,7 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
  .stanza-disclosure-icon {transform:none!important;}
 }
 
-/* Personal static backgrounds. Pattern size is fixed, never viewport-scaled. */
+/* Personal backgrounds. Repeating pattern tiles use fixed dimensions. */
 :root {--stanza-background-opacity:.18;--stanza-pattern-image:none;--stanza-pattern-mask:none;--stanza-pattern-color:transparent;--stanza-pattern-size:auto;}
 :root[data-background-intensity=quiet] {--stanza-background-opacity:.09;}
 :root[data-background-intensity=expressive] {--stanza-background-opacity:.3;}
@@ -2248,11 +2248,67 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
  mask-image:var(--stanza-pattern-mask);mask-size:var(--stanza-pattern-size);mask-repeat:repeat;mask-position:center;
 }
 .stanza-background-pattern {z-index:1;opacity:var(--stanza-background-opacity);pointer-events:none;}
-:is(:root[data-background-style=grid],.stanza-pattern-preview[data-pattern=grid]) {--stanza-pattern-image:linear-gradient(var(--stanza-accent) 1px,transparent 1px),linear-gradient(90deg,var(--stanza-accent) 1px,transparent 1px);--stanza-pattern-size:96px 96px;--stanza-pattern-mask:none;--stanza-pattern-color:transparent;}
+:is(:root[data-background-style=grid] .stanza-background-pattern, .stanza-pattern-preview[data-pattern=grid]) {
+  --stanza-pattern-mask: url('./assets/backgrounds/precision-sheet.svg');
+  --stanza-pattern-color: var(--stanza-accent-ink);
+  --stanza-pattern-size: 160px 160px;
+}
+:root[data-background-style=grid] .stanza-background-pattern {
+  mask-image: var(--stanza-pattern-mask), radial-gradient(ellipse at 46% 46%, rgb(255 255 255 / .24), rgb(255 255 255 / .68) 64%, rgb(255 255 255 / .87) 83%, rgb(255 255 255 / .57));
+  mask-size: var(--stanza-pattern-size), 100% 100%;
+  mask-repeat: repeat, no-repeat;
+  mask-composite: intersect;
+}
 :is(:root[data-background-style=dots],.stanza-pattern-preview[data-pattern=dots]) {--stanza-pattern-image:radial-gradient(circle,var(--stanza-accent) .9px,transparent 1.2px);--stanza-pattern-size:32px 32px;--stanza-pattern-mask:none;--stanza-pattern-color:transparent;}
-:is(:root[data-background-style=contours],.stanza-pattern-preview[data-pattern=contours]) {--stanza-pattern-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%22360%22%20viewBox%3D%220%200%20720%20360%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22white%22%20stroke-width%3D%22.8%22%3E%3Cpath%20d%3D%22M-40%2080C140-10%20210%20210%20400%20130S640%2010%20760%20100M-40%20116C140%2026%20210%20246%20400%20166S640%2046%20760%20136M-40%20152C140%2062%20210%20282%20400%20202S640%2082%20760%20172M-40%20188C140%2098%20210%20318%20400%20238S640%20118%20760%20208M-40%20224C140%20134%20210%20354%20400%20274S640%20154%20760%20244%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");--stanza-pattern-color:var(--stanza-accent);--stanza-pattern-image:none;--stanza-pattern-size:720px 360px;}
-:is(:root[data-background-style=radial],.stanza-pattern-preview[data-pattern=radial]) {--stanza-pattern-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22880%22%20height%3D%22720%22%20viewBox%3D%220%200%20880%20720%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22white%22%20stroke-width%3D%22.8%22%3E%3Ccircle%20cx%3D%22190%22%20cy%3D%22340%22%20r%3D%2290%22%2F%3E%3Ccircle%20cx%3D%22190%22%20cy%3D%22340%22%20r%3D%22150%22%2F%3E%3Ccircle%20cx%3D%22190%22%20cy%3D%22340%22%20r%3D%22230%22%2F%3E%3Ccircle%20cx%3D%22190%22%20cy%3D%22340%22%20r%3D%22330%22%2F%3E%3Ccircle%20cx%3D%22190%22%20cy%3D%22340%22%20r%3D%22460%22%2F%3E%3Cpath%20d%3D%22M100%20340h180M190%20250v180%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");--stanza-pattern-color:var(--stanza-accent);--stanza-pattern-image:none;--stanza-pattern-size:880px 720px;}
-:is(:root[data-background-style=ambient],.stanza-pattern-preview[data-pattern=ambient]) {--stanza-pattern-image:radial-gradient(ellipse at 15% 10%,var(--stanza-accent),transparent 60%),radial-gradient(ellipse at 85% 90%,var(--stanza-accent),transparent 65%);--stanza-pattern-mask:none;--stanza-pattern-color:transparent;--stanza-pattern-size:100% 100%;}
+:is(:root[data-background-style=contours] .stanza-background-pattern, .stanza-pattern-preview[data-pattern=contours]) {
+  --stanza-pattern-mask: url('./assets/backgrounds/flow-lines.svg?inline');
+  --stanza-pattern-color: var(--stanza-accent-ink);
+  --stanza-pattern-size: 640px 224px;
+}
+:root[data-background-style=contours] .stanza-background-pattern {
+  mask-image: var(--stanza-pattern-mask), linear-gradient(120deg, rgb(255 255 255 / .54), white 29%, rgb(255 255 255 / .45) 58%, rgb(255 255 255 / .86) 88%);
+  mask-size: var(--stanza-pattern-size), 100% 100%;
+  mask-repeat: repeat, no-repeat;
+  mask-composite: intersect;
+}
+:is(:root[data-background-style=radial] .stanza-background-pattern, .stanza-pattern-preview[data-pattern=radial]) {
+  --stanza-pattern-mask: url('./assets/backgrounds/radar-plot.svg');
+  --stanza-pattern-color: var(--stanza-accent-ink);
+  --stanza-pattern-size: min(360px, 100%) auto;
+  mask-repeat: no-repeat;
+}
+:root[data-background-style=radial] .stanza-background-pattern {
+  mask-image: var(--stanza-pattern-mask), url('./assets/backgrounds/radar-detail.svg');
+  mask-size: var(--stanza-pattern-size), min(208px, 50%) auto;
+  mask-position: 94% -18px, 12% 78%;
+}
+:root[data-background-style=radial][dir=rtl] .stanza-background-pattern { mask-position: 6% -18px, 88% 78%; }
+:is(:root[data-background-style=ambient] .stanza-background-pattern, .stanza-pattern-preview[data-pattern=ambient]) {
+  --stanza-pattern-mask: url('./assets/backgrounds/ambient-light.svg');
+  --stanza-pattern-image: linear-gradient(123deg, var(--stanza-accent-hover), var(--stanza-accent) 54%, var(--stanza-accent-hover));
+  --stanza-pattern-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+:is(:root[data-theme=light][data-background-style=ambient] .stanza-background-pattern, :root[data-theme=light] .stanza-pattern-preview[data-pattern=ambient]) {
+  --stanza-pattern-image: linear-gradient(123deg, var(--stanza-accent), var(--stanza-accent-hover) 65%, var(--stanza-accent));
+}
+:root[data-background-style=dynamic] .stanza-background-pattern::before,
+.stanza-pattern-preview[data-pattern=dynamic] {
+  background-image: linear-gradient(140deg, var(--stanza-accent-hover), var(--stanza-accent) 48%, var(--stanza-accent-hover));
+  background-size: 100% 100%;
+  mask: url('./assets/backgrounds/dynamic-still.svg?inline') center / 100% 100% no-repeat;
+}
+:root[data-background-style=dynamic] .stanza-background-pattern::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+:root[data-background-style=dynamic] .stanza-background-pattern:has([data-fluid-ready])::before,
+.stanza-fluid-canvas:not([data-fluid-ready]) { visibility: hidden; }
+.stanza-fluid-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+:root:is([data-background-style=grid], [data-background-style=contours], [data-background-style=radial], [data-background-style=ambient], [data-background-style=dynamic]) .stanza-background-vignette { display: none; }
+:root:is([data-background-style=grid], [data-background-style=contours], [data-background-style=radial], [data-background-style=ambient], [data-background-style=dynamic])[data-theme=light] .stanza-background-pattern { opacity: calc(var(--stanza-background-opacity) * 1.7); }
+
 .stanza-appearance-options {display:grid;gap:.75rem;padding:.75rem;border:1px solid var(--stanza-border-default);border-radius:var(--stanza-radius-sm);background:var(--stanza-surface);color:var(--stanza-text-primary);}
 .stanza-appearance-options fieldset {min-width:0;}
 .stanza-appearance-options legend {font-size:var(--text-sm);font-weight:700;}
@@ -2265,10 +2321,14 @@ button.passkey-action:not(:disabled):is(:hover,:active) { transform:none; scale:
 .stanza-pattern-preview {display:block;block-size:2.5rem;opacity:.45;border-radius:3px;}
 .stanza-pattern-preview[data-pattern=plain] {--stanza-pattern-image:none;--stanza-pattern-mask:none;--stanza-pattern-color:var(--stanza-page-bg);}
 .stanza-pattern-preview[data-pattern=topographic] {--stanza-pattern-mask:url('/topography.svg');--stanza-pattern-image:none;--stanza-pattern-color:var(--stanza-accent);--stanza-pattern-size:180px 180px;}
-.stanza-pattern-preview[data-pattern=grid] {--stanza-pattern-size:24px 24px;}
+.stanza-pattern-preview[data-pattern=grid] {--stanza-pattern-size:112px 112px;}
 .stanza-pattern-preview[data-pattern=dots] {--stanza-pattern-size:12px 12px;}
-.stanza-pattern-preview[data-pattern=contours] {--stanza-pattern-size:180px 90px;}
-.stanza-pattern-preview[data-pattern=radial] {--stanza-pattern-size:220px 180px;}
+.stanza-pattern-preview[data-pattern=contours] {--stanza-pattern-size:320px 112px;}
+.stanza-pattern-preview[data-pattern=radial] {--stanza-pattern-size:min(132px, 100%) auto;}
+@media (prefers-reduced-motion: no-preference) {
+  .stanza-pattern-preview[data-pattern=dynamic] { transition: opacity .25s ease-out; }
+}
+.stanza-pattern-choice:is(:hover, :focus-visible) .stanza-pattern-preview[data-pattern=dynamic] { opacity: .64; }
 .stanza-option-segments {display:flex;flex-wrap:wrap;gap:.35rem;}
 .stanza-option-segments button {min-block-size:2rem;padding:.35rem .65rem;font-size:var(--text-xs);border:1px solid var(--stanza-border-default);border-radius:var(--stanza-control-radius);}
 .stanza-appearance-options fieldset:disabled {opacity:.65;}

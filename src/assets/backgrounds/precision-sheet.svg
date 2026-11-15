@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <pattern id="minor" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M.5 20V.5H20" fill="none" stroke="white" opacity=".23"/>
+    </pattern>
+  </defs>
+  <path d="M0 0h160v160H0z" fill="url(#minor)"/>
+  <g fill="none" stroke="white">
+    <path d="M.5 160V.5H160M80.5 0v160M0 80.5h160" opacity=".16"/>
+    <path d="M4.5 8v-3.5H8m68.5 65v3.5H73" opacity=".29"/>
+    <path d="M95.5 80v3m5-3v2m5-2v3m5-3v2m5-2v3" opacity=".33"/>
+    <path d="M78 80.5h5m-2.5-2.5v5" opacity=".48"/>
+  </g>
+</svg>

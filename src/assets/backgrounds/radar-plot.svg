@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 144">
+  <defs>
+    <linearGradient id="sweep" x1=".1" y1="1" x2=".9" y2="0" gradientUnits="objectBoundingBox">
+      <stop stop-color="white" stop-opacity="0"/>
+      <stop offset="1" stop-color="white" stop-opacity=".28"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(215 68)">
+    <path d="M0 0L11-54A55 55 0 0 1 48-27Z" fill="url(#sweep)"/>
+    <g fill="none" stroke="white" stroke-width="1">
+      <path d="M-62-16A64 64 0 0 1 20-61M34-54A64 64 0 0 1 61 21M48 42A64 64 0 0 1-12 63" opacity=".78"/>
+      <path d="M-48 10A49 49 0 0 1-8-48M12-47A49 49 0 0 1 43-24M43 23A49 49 0 0 1-15 47" stroke-dasharray="1 2.5" opacity=".78"/>
+      <path d="M-33 9A34 34 0 0 1 11-32M30-16A34 34 0 0 1 16 30M-9 17A19 19 0 0 1-14-13M1-19A19 19 0 0 1 18-5" opacity=".7"/>
+      <path d="M-53 0H57M0-55V49M0 0l48-27" opacity=".42"/>
+      <path d="M0-69v6m54 22-4 3m19 38h-6m-26 57-3-5m-34 17v-6m-47-15 4-4m-26-44h6m17-48 4 4"/>
+      <path d="M25-17v-5h5m7 0h5v5m0 7v5h-5m-7 0h-5v-5" opacity=".83"/>
+    </g>
+    <g fill="white">
+      <circle r="1.6"/><circle cx="33" cy="-14" r="1.7"/><circle cx="-23" cy="16" r="1.35" opacity=".76"/>
+    </g>
+  </g>
+  <g fill="none" stroke="white" stroke-width="1" opacity=".53">
+    <path d="M26 106h46l30-21h43m-67 22v7h37" stroke-dasharray="2 4"/>
+    <path d="M41 85A22 22 0 0 1 77 74m-8 29A22 22 0 0 1 44 97m5-18 10 9 12-8m-12-7v29m-14-14h29"/>
+    <path d="M19 54v21m-3-19h6m-5 8h4m-5 8h6m250 38h22m-20-2v4m6-4v4m6-4v4m6-4v4"/>
+    <circle cx="59" cy="88" r="1.6" fill="white"/>
+  </g>
+</svg>

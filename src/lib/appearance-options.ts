@@ -2,7 +2,7 @@ export const BACKGROUND_STYLES = [
  {id:'plain',en:'Plain',ar:'بسيط'}, {id:'topographic',en:'Topographic',ar:'طبوغرافي'},
  {id:'grid',en:'Precision grid',ar:'شبكة دقيقة'}, {id:'dots',en:'Dot matrix',ar:'مصفوفة نقاط'},
  {id:'contours',en:'Contour waves',ar:'موجات كنتورية'}, {id:'radial',en:'Radial field',ar:'مجال شعاعي'},
- {id:'ambient',en:'Ambient',ar:'محيط هادئ'},
+ {id:'ambient',en:'Ambient',ar:'محيط هادئ'}, {id:'dynamic',en:'Dynamic',ar:'ديناميكي'},
 ] as const;
 export type BackgroundStyle = typeof BACKGROUND_STYLES[number]['id'];
 export type BackgroundIntensity = 'quiet'|'normal'|'expressive';

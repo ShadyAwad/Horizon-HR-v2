@@ -96,6 +96,8 @@ import {
   normalisePinnedQuickActionIds,
 } from '../components/command-palette/pinned-quick-actions';
 
+import DynamicBackground from '../components/ui/DynamicBackground';
+
 const SemanticIntelligencePanel = lazy(()=>import('../components/semantic-intelligence/SemanticIntelligencePanel'));
 const GrievancesPanel = lazy(() => import('../components/grievances/GrievancesPanel'));
 const CommunicationsPanel = lazy(() => import('../components/communications/CommunicationsPanel'));
@@ -1114,6 +1116,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setDesktopNavigationMode,
     backgroundPreset,
     setBackgroundPreset,
+    backgroundStyle,
     tutorialsEnabled,
     tutorialsAutoStart,
     completedTutorials,
@@ -4913,7 +4916,9 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
   {/* Dark mode soft glows */}
   {performanceIsolation.atmosphere && performanceIsolation.visualAtmosphere && performanceIsolation.atmosphericGlows && <><div className="stanza-dark-glow-strong absolute right-[-160px] top-[-120px] hidden h-[420px] w-[420px] rounded-full blur-3xl dark:block" /><div className="stanza-dark-glow-soft absolute left-[18%] bottom-[-220px] hidden h-[520px] w-[520px] rounded-full blur-3xl dark:block" /></>}
 
-  {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div className="stanza-background-pattern absolute inset-0" aria-hidden="true" />}
+  {performanceIsolation.topography && performanceIsolation.visualAtmosphere && <div className="stanza-background-pattern absolute inset-0" aria-hidden="true">
+    {backgroundStyle === 'dynamic' && <DynamicBackground />}
+  </div>}
   {/* Dark mode vignette only */}
   {performanceIsolation.decorativeGradients && <div className="stanza-background-vignette absolute inset-0 hidden bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_72%,rgba(0,0,0,0.62)_100%)] dark:block" />}
 </div>

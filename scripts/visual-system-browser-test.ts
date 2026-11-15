@@ -5,12 +5,15 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {BusinessFixtures} from './business-scenario-fixtures';
+import {verifyBackgroundDesigns} from './background-design-browser-check';
 const f=new BusinessFixtures(),baseline=process.env.VISUAL_BASELINE==='true';
 const owned=!process.env.VISUAL_ARTIFACT_DIR,dir=process.env.VISUAL_ARTIFACT_DIR||await mkdtemp(path.join(os.tmpdir(),'stanza-visual-'));
 async function shot(page:any,name:string){await page.screenshot({path:path.join(dir,(baseline?'before-':'after-')+name+'.png'),fullPage:true});}
 async function appearance(page:any){await page.keyboard.press('Control+k');await page.locator('.stanza-command-palette input').first().fill('Open Appearance');await page.locator('.stanza-command-palette [role=option]').filter({hasText:'Open Appearance'}).click();await page.getByLabel('Font family',{exact:true}).waitFor();}
 try{
- await f.setup('visual-system');const p=await f.page(f.admin);const errors:string[]=[];p.on('pageerror',(e:any)=>errors.push(e.message));
+ await f.setup('visual-system');
+ if(!baseline)await verifyBackgroundDesigns(f,process.env.VISUAL_ARTIFACT_DIR);
+ const p=await f.page(f.admin);const errors:string[]=[];p.on('pageerror',(e:any)=>errors.push(e.message));
  for(const module of ['Workspace Composer','Geo-Operations','Company Feed','Weekly Roster','Organisation','Profile','Grievances','Assets & Equipment','IT & equipment support','Hiring','Locations']){await f.navigate(p,module);await p.waitForTimeout(400);await shot(p,module.replace(/[^A-Za-z]/g,'-'));if(module==='Weekly Roster'){await p.getByRole('tab',{name:'Goals / Tasks',exact:true}).click();await p.getByRole('button',{name:'Assign goal',exact:true}).waitFor();await shot(p,'assign-goal');await p.getByRole('button',{name:'Assign goal',exact:true}).click();await p.getByRole('dialog').waitFor();await shot(p,'goal-dialog');await p.keyboard.press('Escape');await p.getByRole('tab',{name:/leave/i,exact:true}).click();await shot(p,'leave');}}
  await f.navigate(p,'Organisation');await p.getByRole('button',{name:'People & Hierarchy',exact:true}).click();await p.waitForTimeout(400);await shot(p,'people');
  await appearance(p);await shot(p,'appearance');

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="ribbon">
+      <stop stop-color="white" stop-opacity=".35"/>
+      <stop offset=".37" stop-color="white"/>
+      <stop offset=".72" stop-color="white" stop-opacity=".78"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="spill" x1=".15" y1="0" x2=".85" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="white"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="reflection">
+      <stop stop-color="white" stop-opacity=".54"/>
+      <stop offset=".54" stop-color="white" stop-opacity=".21"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="haze" x="-25%" y="-65%" width="150%" height="230%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <filter id="falloff" x="-25%" y="-75%" width="150%" height="250%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+  <ellipse cx="524" cy="280" rx="140" ry="40" transform="rotate(-24 524 280)" fill="url(#reflection)"/>
+  <g filter="url(#haze)">
+    <path fill="url(#ribbon)" d="M-54 51C22 30 49 110 103 92c46-16 61-79 126-92 43-9 79 16 141 12-70 22-102-7-146 26-53 38-66 96-127 101C30 145 4 75-54 98Z"/>
+    <path fill="url(#spill)" opacity=".59" d="M444-34c46 44 76 25 123 40 36 12 67 51 103 74l-13 57c-54-15-79-58-117-72-47-17-76-50-96-99Z"/>
+    <path fill="url(#ribbon)" opacity=".46" d="M-21 99c71 38 89 100 153 79 48-15 65-62 114-70 22-3 50 4 72 17-32-4-60 12-88 31-26 17-54 54-107 55-75 2-90-44-144-59Z"/>
+    <path fill="url(#ribbon)" opacity=".68" d="M286 380c63-64 93-33 157-51 46-13 67-57 115-61 39-3 72 28 130 24-53 17-78-2-119 8-57 14-53 57-115 69-50 9-102-7-145 21Z"/>
+  </g>
+  <g fill="none" stroke="url(#ribbon)" stroke-linecap="round" filter="url(#falloff)">
+    <path opacity=".78" stroke-width="14" d="M-10 65c56-1 66 60 119 40C162 84 174 29 226 22c27-4 48 2 68 2"/>
+    <path opacity=".43" stroke-width="11" d="M411 359c70 1 86-58 138-63 28-3 54 13 82 13"/>
+  </g>
+</svg>
