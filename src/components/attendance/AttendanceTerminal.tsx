@@ -1,5 +1,5 @@
 import type { MouseEventHandler } from 'react';
-import { MapPin, Navigation, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Clock3, Navigation, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 type Props = { state: string; label: string; disabled: boolean; clockedIn?: boolean; onClick: MouseEventHandler<HTMLButtonElement> };
 
@@ -7,7 +7,7 @@ type Props = { state: string; label: string; disabled: boolean; clockedIn?: bool
 export function AttendanceTerminal({ state, label, disabled, onClick, clockedIn=false }: Props) {
   const busy = state === 'locating' || state === 'verifying';
   const Icon = state === 'verifying' ? ShieldCheck : state === 'locating' ? Navigation : state === 'success' || state === 'clocked_out' ? CheckCircle2
-    : state === 'failed' || state === 'outside_geofence' || state === 'open_shift_conflict' ? AlertTriangle : MapPin;
+    : state === 'failed' || state === 'outside_geofence' || state === 'open_shift_conflict' ? AlertTriangle : Clock3;
   return (
     <button type="button" className="attendance-terminal" data-geo-interaction="clock"
       data-state={state} data-clocked-in={clockedIn} aria-busy={busy} disabled={disabled} onClick={onClick}>

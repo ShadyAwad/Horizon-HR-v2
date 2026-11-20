@@ -13,6 +13,7 @@ import {
 import { claimPendingRecognitionDelivery } from '../performance/recognition-delivery';
 
 type ClockInBody = {
+  requireVerifiedLocation?: boolean;
   tenantId?: string;
   employeeId?: string;
   latitude?: number | string;
@@ -149,10 +150,12 @@ export function registerAttendanceClockInRoute(
           const timeLog = await withTenant(tenantId, async (client) => {
             await lockAttendancePolicy(client, tenantId);
             attendanceLocationMode = (await attendancePolicy(client, tenantId)).attendanceLocationMode;
-            const coords = readCoordinates(body, attendanceLocationMode);
+            if(body.requireVerifiedLocation===true && attendanceLocationMode==='disabled') throw Object.assign(new Error('Company policy disables location collection.'),{statusCode:400});
+            const needsVerification=attendanceLocationMode==='required'||body.requireVerifiedLocation===true;
+            const coords = readCoordinates(body, needsVerification?'required':attendanceLocationMode);
             latitude = coords?.latitude ?? NaN;
             longitude = coords?.longitude ?? NaN;
-            const activeLocations = attendanceLocationMode === 'required' ? await client.query<{ count: string }>(
+            const activeLocations = needsVerification ? await client.query<{ count: string }>(
               `
                 SELECT COUNT(*)::text AS count
                 FROM company_locations
@@ -162,7 +165,7 @@ export function registerAttendanceClockInRoute(
               [tenantId],
             ) : { rows: [] };
   
-            if (attendanceLocationMode === 'required' && Number(activeLocations.rows[0]?.count || 0) === 0) {
+            if (needsVerification && Number(activeLocations.rows[0]?.count || 0) === 0) {
               throw Object.assign(new Error('No active company location found for this workspace.'), { statusCode: 404 });
             }
   
@@ -197,7 +200,7 @@ export function registerAttendanceClockInRoute(
               : undefined;
   
             locationStatus = attendanceLocationMode === 'disabled' ? 'disabled' : !coords ? 'unavailable' : isWithinGeofence ? 'verified' : 'outside';
-            if (attendanceLocationMode === 'required' && !isWithinGeofence) {
+            if (needsVerification && !isWithinGeofence) {
               throw Object.assign(new Error('You are outside the allowed worksite geofence.'), { statusCode: 403 });
             }
   

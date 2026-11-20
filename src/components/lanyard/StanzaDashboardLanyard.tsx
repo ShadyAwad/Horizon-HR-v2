@@ -29,6 +29,8 @@ export default function StanzaDashboardLanyard({
   eventSource,
   interactionEnabled,
   paused,
+  retracting,
+  onRetracted,
   language,
   direction,
   anchorSide,
@@ -38,6 +40,8 @@ export default function StanzaDashboardLanyard({
   eventSource?: HTMLElement | null;
   interactionEnabled: boolean;
   paused: boolean;
+  retracting?: boolean;
+  onRetracted?: () => void;
   language: StanzaBadgeLanguage;
   direction: 'ltr' | 'rtl';
   anchorSide: 'left' | 'right';
@@ -56,6 +60,7 @@ export default function StanzaDashboardLanyard({
       data-anchor-side={anchorSide}
       className="stanza-dashboard-lanyard pointer-events-none absolute inset-0 z-10 h-full w-full overflow-hidden bg-transparent"
     >
+      <div className="absolute inset-0" style={{clipPath: `inset(${(1-anchorNdc.y)*50}% 0 0)`}}>
       <LanyardRuntimeBoundary>
         <Lanyard
           position={[0, 0, 24]}
@@ -63,6 +68,8 @@ export default function StanzaDashboardLanyard({
           fov={20}
           anchorNdc={anchorNdc}
           eventSource={eventSource}
+          retracting={retracting}
+          onRetracted={onRetracted}
           paused={paused || expanded}
           onExpand={expand}
           strapColor={style.strapColor}
@@ -75,6 +82,7 @@ export default function StanzaDashboardLanyard({
           transparent
         />
       </LanyardRuntimeBoundary>
+      </div>
       {interactionEnabled && <button ref={viewButton} type="button" className="stanza-lanyard-view pointer-events-auto" onClick={() => expand()}>{t('lanyard.view')}</button>}
       {expanded && <LanyardDetails user={user} frontImage={stanzaFrontImage} backImage={stanzaBackImage} returnFocus={viewButton.current} onClose={() => setExpanded(false)} />}
     </div>

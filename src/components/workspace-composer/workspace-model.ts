@@ -1,3 +1,4 @@
+import {validateSketch} from '../../lib/stanza-document';
 import type { SurfaceVariant } from '../ui/Surface';
 import { widgetDefinition, type WidgetId, type WidgetConfig } from './widget-catalog';
 export const COLUMNS=12, MAX_WIDGETS=20, MAX_WORKSPACES=10;
@@ -41,7 +42,13 @@ export function normalizePreferences(raw:unknown):ComposerPreferences {
   const ids=new Set<string>();const widgets:WidgetInstance[]=[];
   for(const v of (Array.isArray(value.widgets)?value.widgets:[]).slice(0,MAX_WIDGETS)){
    if(!v||!widgetDefinition(v.widgetId)||!validId(v.instanceId)||ids.has(v.instanceId))continue;ids.add(v.instanceId);
-   widgets.push(boundGeometry({instanceId:v.instanceId,widgetId:v.widgetId,x:v.x,y:v.y,width:v.width,height:v.height,config:{compact:v.config?.compact===true,limit:[2,5,10].includes(v.config?.limit)?v.config.limit:5},surfaceOverride:surface(v.surfaceOverride),collapsed:v.collapsed===true,accent:WIDGET_ACCENTS.includes(v.accent!)?v.accent:'default'}));
+   widgets.push(boundGeometry({instanceId:v.instanceId,widgetId:v.widgetId,x:v.x,y:v.y,width:v.width,height:v.height,config:{
+    ...(typeof v.config?.title==='string'?{title:v.config.title.slice(0,60)}:{}),
+    ...(v.widgetId==='note'?{note:typeof v.config?.note==='string'?v.config.note.slice(0,4000):''}:{}),
+    ...(v.widgetId==='shortcut'&&typeof v.config?.target==='string'?{target:v.config.target.slice(0,80)}:{}),
+    ...(v.widgetId==='chart'?{source:v.config?.source==='equipment'?'equipment':'support',days:v.config?.days===7?7:v.config?.days===30?30:0,metric:v.config?.source==='equipment'?(v.config?.metric==='condition'?'condition':'status'):(v.config?.metric==='priority'?'priority':'status'),chartStyle:v.config?.chartStyle==='donut'?'donut':'bars'}:{}),
+    ...(v.widgetId==='sketch'&&validateSketch(v.config?.drawing)?{drawing:{description:v.config.drawing.description,shapes:v.config.drawing.shapes.map(({tool,points,color,text})=>({tool,points:points.map(([x,y])=>[Math.round(x),Math.round(y)]),color,...(tool==='text'?{text}:{})}))}}:{}),
+    compact:v.config?.compact===true,limit:[2,5,10].includes(v.config?.limit)?v.config.limit:5},surfaceOverride:surface(v.surfaceOverride),collapsed:v.collapsed===true,accent:WIDGET_ACCENTS.includes(v.accent!)?v.accent:'default'}));
   }
   workspaces.push({id:value.id,name:typeof value.name==='string'&&value.name.trim()?workspaceName(value.name):'My Workspace',widgets:settle(widgets)});
  }

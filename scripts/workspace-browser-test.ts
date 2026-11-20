@@ -26,7 +26,7 @@ try{
   async function navigate(name:string){await page.locator('[data-tutorial-target="stanza-launcher"]').click();await page.locator('#stanza-navigation-panel .stanza-navigation-item').filter({hasText:name}).last().click();}
   const openComposer=async()=>{await navigate(text('Workspace Composer','منشئ مساحات العمل'));await composer.getByRole('tablist').waitFor();};
   async function manage(name:string){await composer.getByLabel(text('Manage workspace','إدارة مساحة العمل'),{exact:true}).click();await composer.locator('.composer-workspace-menu-content').getByRole('button',{name,exact:true}).click();}
-  async function add(widget:string){await customize();await composer.getByRole('button',{name:text('Add widgets','إضافة لوحات'),exact:true}).first().click();await page.locator('.composer-gallery-card').filter({has:page.getByText(widget,{exact:true})}).getByRole('button').click();await composer.locator('.composer-widget').last().waitFor();}
+  async function add(widget:string){await customize();await composer.getByRole('button',{name:text('Add widgets','إضافة لوحات'),exact:true}).first().click();await page.locator('.composer-gallery-card').filter({has:page.getByRole('heading',{name:widget,exact:true})}).getByRole('button').click();await composer.locator('.composer-widget').last().waitFor();}
   async function customize(){const button=composer.getByRole('button',{name:text('Customize','تخصيص المساحة'),exact:true});if(await button.count())await button.click();}
   await page.goto(base);await page.locator('[data-tutorial-target="stanza-launcher"]').waitFor();await openComposer();await composer.locator('.composer-empty').waitFor();
   await measure('create',()=>composer.getByRole('button',{name:text('New workspace','مساحة جديدة'),exact:true}).click());

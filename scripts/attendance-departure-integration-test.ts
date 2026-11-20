@@ -1,3 +1,4 @@
+import {runtimeRoleName} from './runtime-role';
 import './router-env';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -46,6 +47,9 @@ try {
  assert.equal((await call(emp,'/api/attendance/clock-in-without-location',{})).status,400);
  assert.equal((await call(emp,'/api/attendance/clock-in-without-location',{confirm:true,latitude:30})).status,400);
  assert.equal((await call(emp,'/api/attendance/clock-in-without-location',{confirm:true,employeeId:outsider.id})).status,403);
+ assert.equal((await call(emp,'/api/attendance/clock-in-without-location',{confirm:true})).status,403);
+ await pool.query("INSERT INTO attendance_policies(tenant_id,location_mode) VALUES($1,'optional') ON CONFLICT(tenant_id) DO UPDATE SET location_mode='optional'",[emp.tenantId]);
+ assert.equal((await call(emp,'/api/clock-in',{latitude:0,longitude:0,requireVerifiedLocation:true})).status,403);
  const shift=await ok(emp,'/api/attendance/clock-in-without-location',{confirm:true,note:'Travel location privacy'});
  assert.equal((await call(emp,'/api/attendance/clock-in-without-location',{confirm:true})).status,409);
  const stored=(await pool.query('SELECT * FROM time_logs WHERE id=$1',[shift.timeLogId])).rows[0];assert.equal(stored.clock_in_location,null);assert.equal(stored.is_valid_geofence,false);assert.equal(stored.attendance_method,'no_location');assert.equal(stored.clock_in_note,'Travel location privacy');
@@ -98,7 +102,7 @@ try {
  await ok(outsider,'/api/clock-out',{timeLogId:overnight.id,confirmEarly:true});
  console.log('PASS real overnight roster binding, planned timestamps and clock-out');
  assert.equal((await ok(foreign,'/api/attendance/early-leave')).requests.length,0);
- const c=await pool.connect();try{await c.query('BEGIN');await c.query('SET LOCAL ROLE stanza_runtime');await c.query("SELECT set_config('app.current_tenant',$1,true)",[foreign.tenantId]);assert.equal((await c.query('SELECT count(*)::int n FROM attendance_early_leave_requests')).rows[0].n,0);await assert.rejects(c.query(`INSERT INTO attendance_early_leave_requests(tenant_id,employee_id,time_log_id,scheduled_end_time,requested_departure_time) VALUES($1,$2,$3,$4,$5)`,[emp.tenantId,emp.id,next.timeLogId,end,nearPast]),(e:any)=>e.code==='42501');}finally{await c.query('ROLLBACK');c.release();}
+ const c=await pool.connect();try{await c.query('BEGIN');await c.query('SET LOCAL ROLE '+runtimeRoleName(process.env.DATABASE_RUNTIME_ROLE||'stanza_runtime'));await c.query("SELECT set_config('app.current_tenant',$1,true)",[foreign.tenantId]);assert.equal((await c.query('SELECT count(*)::int n FROM attendance_early_leave_requests')).rows[0].n,0);await assert.rejects(c.query(`INSERT INTO attendance_early_leave_requests(tenant_id,employee_id,time_log_id,scheduled_end_time,requested_departure_time) VALUES($1,$2,$3,$4,$5)`,[emp.tenantId,emp.id,next.timeLogId,end,nearPast]),(e:any)=>e.code==='42501');}finally{await c.query('ROLLBACK');c.release();}
  const actions=(await pool.query('SELECT DISTINCT action FROM audit_logs WHERE tenant_id=$1',[emp.tenantId])).rows.map(r=>r.action);for(const action of ['attendance.clock_in.no_location','attendance.early_leave.requested','attendance.early_leave.approved','attendance.early_leave.rejected','attendance.clock_out','attendance.break.ended_on_clock_out'])assert(actions.includes(action),action);
  console.log('PASS approved departure effective end, normal on-time clock-out, runtime-role RLS read/write isolation and durable audit');
 } finally {const queue=getHrQueue();for(const job of await queue.getJobs(['wait','delayed','completed','failed'],0,-1))if(tenants.includes(job.data?.tenantId))await job.remove();await queue.close();for(const t of tenants){await pool.query('DELETE FROM tenants WHERE id=$1',[t]);}await pool.end();await getDbPool()?.end();}

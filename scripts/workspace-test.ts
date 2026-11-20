@@ -11,7 +11,7 @@ assert.equal(new Set(WIDGETS.map(w=>w.id)).size,WIDGETS.length);
 assert(canUseWidget(user,WIDGETS.find(w=>w.id==='attendance')!));assert(!canUseWidget(user,WIDGETS.find(w=>w.id==='hiring')!));
 assert(!canUseWidget({...user,permissions:[]},WIDGETS.find(w=>w.id==='attendance')!),'revoking claims removes saved widget access');
 assert(!canUseWidget(user,WIDGETS.find(w=>w.id==='grievances')!));
-for(const w of WIDGETS){assert(widgetPath(w.id).startsWith('/api/'));assert(w.minWidth<=w.defaultWidth);assert(w.minHeight<=w.defaultHeight);}
+for(const w of WIDGETS){assert(['note','sketch','shortcut'].includes(w.id)?widgetPath(w.id)==='':widgetPath(w.id).startsWith('/api/'));assert(w.minWidth<=w.defaultWidth);assert(w.minHeight<=w.defaultHeight);}
 for(const w of WIDGETS){
  assert(widgetDescription(w,true)&&widgetDescription(w,false));
  for(const size of widgetSizes(w)){
@@ -65,7 +65,7 @@ let firstFit=reduceComposer(defaultPreferences(),{type:'add',id:'my-workspace',w
 firstFit=reduceComposer(firstFit,{type:'add',id:'my-workspace',widget:b});
 assert.equal(firstFit.workspaces[0].widgets[1].x,6);assert.equal(firstFit.workspaces[0].widgets[1].y,0);
 assert(composer.indexOf('const allowed=visible.filter')<composer.indexOf('const results=useWidgetData'));
-assert(composer.includes('authorized&&<Component'),'restricted content never mounts');
+assert(composer.includes('authorized&&!personal&&<Component')&&composer.includes('authorized&&personal&&<DeskItem'),'restricted content never mounts');
 console.log('PASS oversized input, duplicate layout IDs, missing/deleted active layout, first-fit placement and pre-fetch/render authorization boundary');
 
 let enhanced=reduceComposer(defaultPreferences(),{type:'add',id:'my-workspace',widget:a});enhanced=reduceComposer(enhanced,{type:'update',id:'my-workspace',instanceId:'a',patch:{collapsed:true,accent:'purple'}});const replay=readPreferences(JSON.stringify(enhanced)).workspaces[0].widgets[0];assert.equal(replay.collapsed,true);assert.equal(replay.accent,'purple');assert.equal(replay.height,a.height,'minimizing preserves expanded dimensions');const restored=reduceComposer(enhanced,{type:'update',id:'my-workspace',instanceId:'a',patch:{collapsed:false}});assert.equal(restored.workspaces[0].widgets[0].height,a.height);assert.equal(normalizePreferences({...enhanced,workspaces:[{...enhanced.workspaces[0],widgets:[{...replay,accent:'untrusted',collapsed:'true'}]}]}).workspaces[0].widgets[0].accent,'default');assert(frame.includes('hidden={!!widget.collapsed}'),'minimize hides rather than destroys widget children');console.log('PASS collapse/restore/color migration and persistence, retained content, finite coalesced drag preview and stable layout.');

@@ -1,3 +1,5 @@
+import {flushSync} from 'react-dom';
+import {illuminateFingerprint, unfoldRail} from '../components/navigation/rail-motion';
 import {RefreshButton} from '../components/ui/RefreshButton';
 import {AppearancePatternControls} from '../components/ui/AppearancePatternControls';
 import '../components/organisation/people.css';
@@ -1176,6 +1178,64 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       connection?.removeEventListener?.('change', updateCapability);
     };
   }, []);
+
+  const [reelingBadge, setReelingBadge] = useState(false);
+  const reelTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(reelTimer.current), []);
+  const railMotion = useRef<Animation[]>([]);
+  const glow = useRef<Animation[]>([]);
+  const requestId = useRef(0);
+  const [motionTarget, setMotionTarget] = useState<'launcher' | 'rail' | null>(null);
+  const reelFinished = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => {
+    requestId.current++;
+    reelFinished.current?.();
+    for (const animation of [...railMotion.current, ...glow.current]) animation.cancel();
+  }, []);
+
+  const changeNavigationMode = async (mode: 'launcher' | 'rail') => {
+    const root = dashboardRootRef.current;
+    const id = ++requestId.current;
+    window.clearTimeout(reelTimer.current);
+    reelFinished.current?.();
+    reelFinished.current = undefined;
+    if (!root || !matchMedia('(min-width: 768px)').matches) {
+      setDesktopNavigationMode(mode);
+      setMotionTarget(null);
+      return;
+    }
+    const anchor = document.querySelector<HTMLButtonElement>('#stanza-control-center-trigger');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    glow.current.forEach(animation => animation.cancel());
+    glow.current = illuminateFingerprint(anchor, 1000);
+    setMotionTarget(mode);
+    if (mode === 'rail' && desktopNavigationMode === 'launcher' && !reduced && root.ownerDocument.querySelector('.stanza-dashboard-lanyard canvas')) {
+      setReelingBadge(true);
+      await new Promise<void>(resolve => {
+        reelFinished.current = resolve;
+        reelTimer.current = window.setTimeout(resolve, 1600);
+      });
+      if (id !== requestId.current) return;
+      window.clearTimeout(reelTimer.current);
+      reelFinished.current = undefined;
+    }
+    setReelingBadge(false);
+    const heading = root.querySelector<HTMLElement>('[data-dashboard-context-content]');
+    const headerStart = heading?.getBoundingClientRect();
+    const entering = mode === 'rail' && desktopNavigationMode === 'launcher';
+    if (entering) flushSync(() => setDesktopNavigationMode(mode));
+    const rail = root.querySelector<HTMLElement>('.stanza-desktop-rail');
+    if (rail && !entering && mode === 'launcher' && rail.contains(document.activeElement)) anchor?.focus({preventScroll:true});
+    if (rail) {
+      const animations = unfoldRail(rail, heading, headerStart, mode, entering, reduced, railMotion.current);
+      railMotion.current = animations;
+      try { await Promise.all(animations.map(animation => animation.finished)); }
+      catch { return; }
+    }
+    if (id !== requestId.current) return;
+    flushSync(() => { setDesktopNavigationMode(mode); setMotionTarget(null); });
+    railMotion.current.splice(0).forEach(animation => animation.cancel());
+  };
 
   const shouldMountLanyard = lanyardEnabled && performanceIsolation.lanyard && isLanyardCapable && desktopNavigationMode === 'launcher'
     && !(import.meta.env.DEV && readLanyardIsolation(window.location.search) === 'off');
@@ -2497,7 +2557,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
     setClockWarning(accuracyText);
   };
 
-  const handleClockAction = async (event?: MouseEvent<HTMLButtonElement>) => {
+  const clockInPending = useRef(false);
+  const handleClockAction = async (event?: MouseEvent<HTMLButtonElement>, withLocation = false) => {
     event?.preventDefault();
     event?.stopPropagation();
     logClockDebug('[clock-in] clicked');
@@ -2523,48 +2584,53 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
       return;
     }
 
-    let mode = attendanceLocationMode;
+    if (clockInPending.current) return;
+    clockInPending.current=true;
     try {
-      const response = await apiFetch(apiUrl('/api/attendance/policy'));
-      mode = (await readApiJson(response)).attendanceLocationMode;
-      setAttendanceLocationMode(mode);
-    } catch (error) { setClockInState('failed'); setClockMessage((error as Error).message); resetClockStatusSoon(); return; }
-    if (mode === 'disabled' || (mode === 'optional' && !navigator.geolocation)) { await verifyClockIn(); return; }
+      setClockInState('verifying');
+      let mode = attendanceLocationMode;
+      try {
+        const response = await apiFetch(apiUrl('/api/attendance/policy'));
+        mode = (await readApiJson(response)).attendanceLocationMode;
+        setAttendanceLocationMode(mode);
+      } catch (error) { setClockInState('failed'); setClockMessage((error as Error).message); resetClockStatusSoon(); return; }
+      if (mode === 'disabled' && withLocation) { setClockInState('failed'); setClockMessage(isRtl ? 'تسجيل الموقع معطل حسب سياسة الشركة' : 'Company policy disables location collection.'); resetClockStatusSoon(); return; }
+      if (mode !== 'required' && !withLocation) { await verifyClockIn(); return; }
 
-    if (!navigator.geolocation) {
-      setClockInState('failed');
-      setClockMessage(
-        !window.isSecureContext
-          ? `${t('dash.locationUnavailable')} ${t('dash.secureLocationContext')}`
-          : t('dash.locationUnavailable')
-      );
+      if (!navigator.geolocation) {
+        setClockInState('failed');
+        setClockMessage(
+          !window.isSecureContext
+            ? `${t('dash.locationUnavailable')} ${t('dash.secureLocationContext')}`
+            : t('dash.locationUnavailable')
+        );
+        setClockWarning('');
+        resetClockStatusSoon();
+        return;
+      }
+
+      if (!window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
+        logClockDebug('[clock-in] geolocation error', { message: t('dash.secureLocationContext') });
+      }
+
+      setClockInState('locating');
+      setClockMessage(t('dash.locationPermission'));
       setClockWarning('');
-      resetClockStatusSoon();
-      return;
-    }
 
-    if (!window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
-      logClockDebug('[clock-in] geolocation error', { message: t('dash.secureLocationContext') });
-    }
-
-    setClockInState('locating');
-    setClockMessage(t('dash.locationPermission'));
-    setClockWarning('');
-
-    try {
-      const coords = await geo.requestCoordinates({
-        unavailable: t('dash.locationUnavailable'),
-        denied: t('dash.locationDenied'),
-      });
-      updateClockAccuracyNotice(coords.accuracy);
-      await verifyClockIn(coords);
-    } catch (error) {
-      if (mode === 'optional') { await verifyClockIn(); return; }
-      setClockInState('failed');
-      setClockMessage((error as Error).message || t('dash.locationDenied'));
-      setClockWarning('');
-      resetClockStatusSoon();
-    }
+      try {
+        const coords = await geo.requestCoordinates({
+          unavailable: t('dash.locationUnavailable'),
+          denied: t('dash.locationDenied'),
+        });
+        updateClockAccuracyNotice(coords.accuracy);
+        await verifyClockIn(coords);
+      } catch (error) {
+        setClockInState('failed');
+        setClockMessage((error as Error).message || t('dash.locationDenied'));
+        setClockWarning('');
+        resetClockStatusSoon();
+      }
+    } finally {clockInPending.current=false;}
   };
 
   const rosterHeaders = (): Record<string, string> => ({
@@ -2719,6 +2785,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
               latitude: coords?.lat,
               longitude: coords?.lng,
               accuracy: coords?.accuracy,
+              requireVerifiedLocation: Boolean(coords),
             })
         });
         const data = await readApiJson(res, 'Attendance service', { allowErrorResponse: true });
@@ -4532,7 +4599,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                   type="button"
                   role="radio"
                   aria-checked={desktopNavigationMode === mode}
-                  onClick={() => setDesktopNavigationMode(mode)}
+                  onClick={() => changeNavigationMode(mode)}
                   className={cn(
                     'stanza-interactive-control min-h-11 rounded-lg border border-transparent px-3 py-2 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white motion-reduce:transition-none dark:focus-visible:ring-offset-[#061411]',
                     desktopNavigationMode === mode
@@ -4839,14 +4906,16 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
 
   // Keep the mounted scene intact beneath modal Settings, but stop its scheduler
   // until the overlay closes. Readiness and mount eligibility remain independent.
-  const isLanyardSchedulerPaused = !isDashboardVisible || showControlCenter;
+  const isLanyardSchedulerPaused = !isDashboardVisible || (showControlCenter && !reelingBadge);
   const launcherLanyard = shouldMountLanyard && isLanyardIdleReady && lanyardAnchorNdc ? (
     <DashboardLanyardBoundary>
       <Suspense fallback={null}>
         <StanzaDashboardLanyard
           anchorNdc={lanyardAnchorNdc}
           eventSource={dashboardRootRef.current}
-          interactionEnabled={!showControlCenter && isDashboardVisible}
+          interactionEnabled={!reelingBadge && !showControlCenter && isDashboardVisible}
+          retracting={reelingBadge}
+          onRetracted={() => reelFinished.current?.()}
           paused={isLanyardSchedulerPaused}
           language={lang}
           direction={isRtl ? 'rtl' : 'ltr'}
@@ -4929,6 +4998,8 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
         onModuleNavigate={recordModuleNavigation}
         isMobileLayout={isMobileNavigationLayout}
         desktopMode={desktopNavigationMode}
+        motionTarget={motionTarget}
+        onDesktopModeChange={changeNavigationMode}
         railOrder={desktopRailOrder}
         onRailOrderChange={setDesktopRailOrder}
         mobileShortcuts={mobileShortcuts}
@@ -5583,7 +5654,7 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                 <Surface variant={composerPreferences.state.surface} className={framedModule ? 'stanza-module-frame space-y-4' : 'contents border-0'} data-module-surface={framedModule || undefined}>
                 {/* Tab Contents */}
                 {activeTab === 'communications' && canViewCommunications && <Suspense fallback={<p>Loading Communications...</p>}><CommunicationsPanel initialView={communicationsInitialView} /></Suspense>}
-                {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
+                {activeTab === 'composer' && <Suspense fallback={<p>Loading Workspace Composer…</p>}><WorkspaceComposer modules={navigationItems} user={user} onOpen={(id,widgetId)=>{selectNavigationItem(id);if(widgetId==='goals')setRosterSubview('goals');if(widgetId==='leave')setRosterSubview('leave');}} /></Suspense>}
                 {activeTab === 'hiring' && canViewHiring && (
                   <Suspense fallback={<div className="min-h-[420px] animate-pulse rounded-xl border border-emerald-500/15 bg-emerald-500/5" />}>
                     <HiringPanel onOnboardingNavigate={selectNavigationItem} openCandidateId={hiringCandidateId} user={user} onRefreshAttentionCounts={refreshAttentionCounts} openCreateSignal={hiringCreateSignal} />
@@ -5679,14 +5750,15 @@ function DashboardContent({ user, onLogout, onShowDemoNotice, onUserUpdate, init
                                  : hasActiveShift ? t('dash.clockOut') : t('dash.clockIn')
                                : clockInState === 'locating' ? t('dash.locating')
                                : clockInState === 'verifying' ? t('dash.verifying')
-                               : clockInState === 'success' || clockInState === 'clocked_out' ? t('dash.verified')
+                               : clockInState === 'success' ? (isRtl ? 'تم الحضور' : 'Clocked in')
+                               : clockInState === 'clocked_out' ? t('dash.verified')
                                : clockInState === 'open_shift_conflict' ? t('dash.openShiftConflictLabel')
                                : clockInState === 'outside_geofence' ? t('dash.outsideGeofenceLabel') : t('dash.attendanceErrorLabel')}
                            />
 
                            {clockMessage && <p className="attendance-feedback" role="status">{clockMessage}</p>}
                            {clockWarning && <p className="attendance-feedback" role="status">{clockWarning}</p>}
-                           <AttendanceActions attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
+                           <AttendanceActions locationMode={attendanceLocationMode} clockBusy={clockInState==='locating'||clockInState==='verifying'} onLocationClock={()=>void handleClockAction(undefined,true)} attendance={attendanceState} hasShift={hasActiveShift} canClock={hasPermission(user,'attendance.clock')} offline={isOffline} onChanged={attendanceChanged} onClockOut={()=>void verifyClockOut()}/>
                        </div>
                        {earlyClockOut&&<EarlyClockOutDialog attendance={earlyClockOut} busy={clockInState==='verifying'} onClose={()=>setEarlyClockOut(null)} onConfirm={note=>void verifyClockOut(true,note)}/>}
                        <AttendanceWorkspace attendance={attendanceState} refreshKey={attendanceRevision} onChange={attendanceChanged} employeeId={user.id} hasShift={hasActiveShift} canRequest={canCreateBreakRequests} canTeam={canReviewBreakRequests} offline={isOffline} onPolicy={setAttendanceLocationMode} onBreakState={setAttendanceOnBreak} />

@@ -180,6 +180,8 @@ interface LanyardProps {
   imageFit?: 'cover' | 'contain' | 'fill';
   lanyardImage?: string | null;
   lanyardWidth?: number;
+  retracting?: boolean;
+  onRetracted?: () => void;
   anchorNdc?: { x: number; y: number } | null;
   eventSource?: HTMLElement | null;
   paused?: boolean;
@@ -224,6 +226,8 @@ function LanyardScene({
   imageFit = 'cover',
   lanyardImage = null,
   lanyardWidth = LANYARD_WIDTH,
+  retracting = false,
+  onRetracted,
   anchorNdc = null,
   eventSource = null,
   paused = false,
@@ -275,7 +279,7 @@ function LanyardScene({
         <LanyardCanvasLifecycle frameRuntime={frameRuntime} paused={paused} />
         <ambientLight intensity={2.2} />
         <directionalLight intensity={2.4} position={[-3, 4, 8]} />
-        <Physics gravity={gravity} timeStep={1 / 60} interpolate paused={paused}>
+        <Physics updatePriority={-1} gravity={gravity} timeStep={1 / 60} interpolate paused={paused}>
           {import.meta.env.DEV && <LanyardPhysicsProbe />}
           <Band
             frontImage={frontImage}
@@ -283,6 +287,8 @@ function LanyardScene({
             imageFit={imageFit}
             lanyardImage={lanyardImage}
             lanyardWidth={lanyardWidth}
+            retracting={retracting}
+            onRetracted={onRetracted}
             anchorNdc={anchorNdc}
             interactionElement={eventSource}
             interactionEnabled={interactionEnabled}
@@ -436,6 +442,8 @@ interface BandProps {
   imageFit?: 'cover' | 'contain' | 'fill';
   lanyardImage?: string | null;
   lanyardWidth?: number;
+  retracting?: boolean;
+  onRetracted?: () => void;
   anchorNdc?: { x: number; y: number } | null;
   interactionElement?: HTMLElement | null;
   interactionEnabled?: boolean;
@@ -502,6 +510,8 @@ function Band({
   imageFit = 'cover',
   lanyardImage = null,
   lanyardWidth = LANYARD_WIDTH,
+  retracting = false,
+  onRetracted,
   anchorNdc = null,
   interactionElement = null,
   interactionEnabled = true,
@@ -572,6 +582,7 @@ function Band({
 
   const vec = useMemo(() => new THREE.Vector3(), []);
   const dir = useMemo(() => new THREE.Vector3(), []);
+  const ferrule = useRef<THREE.Mesh>(null);
   const connectorDirection = useMemo(() => new THREE.Vector3(), []);
   const nextCardTranslation = useMemo(() => ({ x: 0, y: 0, z: 0 }), []);
 
@@ -638,6 +649,9 @@ function Band({
       if (imageFit === 'fill') ctx.drawImage(img, rx, ry, rw, rh);
       else ctx.drawImage(img, dx, dy, dw, dh);
       ctx.restore();
+      // Extend the artwork edge into unused atlas space for smaller mip levels.
+      const bottom = Math.ceil(ry + rh);
+      ctx.drawImage(canvas, rx, bottom - 2, rw, 1, rx, bottom - 1, rw, H - bottom + 1);
     };
 
     if (frontTex?.image) drawFitted(frontTex.image, FRONT_UV_RECT);
@@ -660,15 +674,15 @@ function Band({
     material.name = 'stanza-badge-edge';
     material.map = null;
     material.color.set('#0A3A2A');
-    material.roughness = 0.38;
-    material.metalness = 0.32;
+    material.roughness = 0.76;
+    material.metalness = 0.12;
     material.envMapIntensity = 0.35;
     material.needsUpdate = true;
     return material;
   }, [materials.base]);
 
   useEffect(() => {
-    edgeMaterial.color.set(cardEdgeColor ?? '#0A3A2A');
+    edgeMaterial.color.set(cardEdgeColor ?? '#0A3A2A').multiplyScalar(0.22);
     frameRuntime.current.requestFrame('passive');
   }, [cardEdgeColor, edgeMaterial, frameRuntime]);
 
@@ -873,6 +887,24 @@ function Band({
     });
   }, [anchorNdc, anchorWorld, size.height, size.width]);
 
+  const [entryLift] = useState(() => anchorNdc && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? ROPE_SEGMENT_LENGTH * 3 + CLIP_SEGMENT_LENGTH + BADGE_HALF_HEIGHT * 2.5 : 0);
+  const spawnY = anchorWorld.y + entryLift;
+  const entryStarted = useRef<number | null>(null);
+  const entryComplete = useRef(entryLift === 0);
+  const reelStart = useRef<number | null>(null);
+  useEffect(() => {
+    if (retracting) {
+      reelStart.current = performance.now();
+      for (const body of [j1, j2, j3, j4, card]) body.current?.wakeUp();
+      frameRuntime.current.requestFrame('active');
+    } else if (reelStart.current !== null) {
+      reelStart.current = null;
+      fixed.current?.setTranslation(anchorWorld, true);
+      frameRuntime.current.requestFrame('active');
+    }
+  }, [retracting, anchorWorld, frameRuntime]);
+
   useFrame((state, delta) => {
     if (!firstFrameReported.current) {
       firstFrameReported.current = true;
@@ -903,6 +935,27 @@ function Band({
     }
 
     const safeDelta = Math.min(delta, MAX_LANYARD_DELTA_SECONDS);
+    if (!entryComplete.current && !retracting) {
+      const now = performance.now();
+      entryStarted.current ??= now;
+      const progress = Math.min(1, (now - entryStarted.current) / 520);
+      const lift = entryLift * (1 - progress * progress * (3 - 2 * progress));
+      fixed.current.setTranslation(vec.copy(anchorWorld).addScaledVector(THREE.Object3D.DEFAULT_UP, lift), true);
+      entryComplete.current = progress === 1;
+    }
+    if (retracting && reelStart.current !== null) {
+      const t = Math.min(1, (performance.now() - reelStart.current) / 360);
+      const eased = t*t*(3 - 2*t);
+      const travel = ROPE_SEGMENT_LENGTH * 4 + BADGE_HALF_HEIGHT * 3 + 1;
+      if (t < 1 || fixed.current.translation().y < anchorWorld.y + travel - ANCHOR_EPSILON) {
+        fixed.current.setTranslation(vec.copy(anchorWorld).addScaledVector(THREE.Object3D.DEFAULT_UP, travel * eased), true);
+      }
+      // Include the full swept badge radius even if the joint is still swinging.
+      if (card.current.translation().y - Math.hypot(BADGE_HALF_WIDTH, BADGE_MIN_Y + BADGE_GROUP_Y) > anchorWorld.y + 0.1) {
+        reelStart.current = null;
+        onRetracted?.();
+      }
+    }
     const smoothing = 1 - Math.exp(-ROPE_SMOOTHING_RATE * safeDelta);
     const bodiesSleeping = card.current.isSleeping() && j1.current.isSleeping() && j2.current.isSleeping() && j3.current.isSleeping() && j4.current.isSleeping();
     const shouldUpdateRope = !ropeInitialized.current || isDraggingRef.current || !bodiesSleeping;
@@ -912,7 +965,10 @@ function Band({
       const priorSegment = j3.current.translation();
       connectorDirection
         .set(connector.x - priorSegment.x, connector.y - priorSegment.y, connector.z - priorSegment.z);
-      curve.points[0].set(connector.x, connector.y, connector.z);
+      // The card mesh uses Rapier interpolation. End the ribbon in the same
+      // rendered pose as the socket, including during fast reel movement.
+      if (ferrule.current) ferrule.current.getWorldPosition(curve.points[0]);
+      else curve.points[0].set(connector.x, connector.y, connector.z);
       if (connectorDirection.lengthSq() > 0.000001) {
         curve.points[0].addScaledVector(connectorDirection.normalize(), CONNECTOR_ROPE_OVERLAP);
       }
@@ -1018,7 +1074,7 @@ function Band({
       settledElapsed.current >= SETTLED_STABLE_DURATION_SECONDS &&
       idleVisualSettled;
     const nextFrameTier: LanyardFrameTier =
-      Boolean(pointerGestureRef.current) || isDraggingRef.current || isFlipActive || !readyReported.current
+      !entryComplete.current || retracting || Boolean(pointerGestureRef.current) || isDraggingRef.current || isFlipActive || !readyReported.current
         ? 'active'
         : sceneSettled
           ? 'settled'
@@ -1034,23 +1090,23 @@ function Band({
   curve.curveType = 'centripetal';
   return (
     <>
-      <RigidBody position={[anchorWorld.x, anchorWorld.y, anchorWorld.z]} ref={fixed} {...segmentProps} type="fixed" />
-        <RigidBody position={[anchorWorld.x, anchorWorld.y - ROPE_SEGMENT_LENGTH, anchorWorld.z]} ref={j1} {...segmentProps} type="dynamic">
+      <RigidBody position={[anchorWorld.x, spawnY, anchorWorld.z]} ref={fixed} {...segmentProps} type="fixed" />
+        <RigidBody position={[anchorWorld.x, spawnY - ROPE_SEGMENT_LENGTH, anchorWorld.z]} ref={j1} {...segmentProps} type="dynamic">
           <BallCollider args={[ROPE_COLLIDER_RADIUS]} />
         </RigidBody>
-        <RigidBody position={[anchorWorld.x, anchorWorld.y - ROPE_SEGMENT_LENGTH * 2, anchorWorld.z]} ref={j2} {...segmentProps} type="dynamic">
+        <RigidBody position={[anchorWorld.x, spawnY - ROPE_SEGMENT_LENGTH * 2, anchorWorld.z]} ref={j2} {...segmentProps} type="dynamic">
           <BallCollider args={[ROPE_COLLIDER_RADIUS]} />
         </RigidBody>
-        <RigidBody position={[anchorWorld.x, anchorWorld.y - ROPE_SEGMENT_LENGTH * 3, anchorWorld.z]} ref={j3} {...segmentProps} type="dynamic">
+        <RigidBody position={[anchorWorld.x, spawnY - ROPE_SEGMENT_LENGTH * 3, anchorWorld.z]} ref={j3} {...segmentProps} type="dynamic">
           <BallCollider args={[ROPE_COLLIDER_RADIUS]} />
         </RigidBody>
-        <RigidBody position={[anchorWorld.x, anchorWorld.y - ROPE_SEGMENT_LENGTH * 3 - CLIP_SEGMENT_LENGTH, anchorWorld.z]} ref={j4} {...segmentProps} type="dynamic">
+        <RigidBody position={[anchorWorld.x, spawnY - ROPE_SEGMENT_LENGTH * 3 - CLIP_SEGMENT_LENGTH, anchorWorld.z]} ref={j4} {...segmentProps} type="dynamic">
           <BallCollider args={[CLIP_CONNECTOR_COLLIDER_RADIUS]} sensor />
         </RigidBody>
         <RigidBody
           position={[
             anchorWorld.x,
-            anchorWorld.y - ROPE_SEGMENT_LENGTH * 3 - CLIP_SEGMENT_LENGTH - CARD_ATTACHMENT.y,
+            spawnY - ROPE_SEGMENT_LENGTH * 3 - CLIP_SEGMENT_LENGTH - CARD_ATTACHMENT.y,
             anchorWorld.z
           ]}
           ref={card}
@@ -1130,12 +1186,28 @@ function Band({
             }}
           >
             <group ref={idleMotionPivot}>
+              <mesh ref={ferrule} position={[0, 0.038, 0]}>
+                <cylinderGeometry args={[0.034, 0.043, 0.085, 12]} />
+                <meshStandardMaterial color="#75817e" roughness={0.45} metalness={0.65} />
+              </mesh>
+              <mesh position={[0, -0.012, 0]}>
+                <torusGeometry args={[0.042, 0.012, 8, 20]} />
+                <meshStandardMaterial color="#9aa6a2" roughness={0.36} metalness={0.72} />
+              </mesh>
               <group position={[0, -CARD_ATTACHMENT.y, 0]} scale={BADGE_SCALE}>
                 <group position={[0, BADGE_GROUP_Y, -0.05]}>
                   <mesh ref={faceMesh} geometry={faceGeometry} material={faceMaterial} />
                   <mesh geometry={edgeGeometry} material={edgeMaterial} />
-                  <mesh geometry={nodes.clip.geometry} material={materials.metal} material-roughness={0.3} />
-                  <mesh geometry={nodes.clamp.geometry} material={materials.metal} />
+                  <mesh geometry={nodes.clip.geometry}>
+                    <meshStandardMaterial color="#616d69" roughness={0.52} metalness={0.48} />
+                  </mesh>
+                  <mesh geometry={nodes.clamp.geometry}>
+                    <meshStandardMaterial color="#707a79" roughness={0.54} metalness={0.3} />
+                  </mesh>
+                  <mesh position={[0, 0.982, 0.01]} scale={[1.65, 0.55, 1]}>
+                    <torusGeometry args={[0.028, 0.007, 8, 20]} />
+                    <meshStandardMaterial color="#555f5e" roughness={0.62} metalness={0.25} />
+                  </mesh>
                 </group>
               </group>
             </group>
@@ -1145,7 +1217,7 @@ function Band({
         <meshLineGeometry />
         <meshLineMaterial
           color={strapColor ?? "#d7f5e9"}
-          depthTest={false}
+          depthTest={true}
           resolution={[1000, 1000]}
           useMap
           map={texture}

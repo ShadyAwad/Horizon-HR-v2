@@ -34,6 +34,7 @@ export function registerFlexibleAttendanceRoutes(app: express.Express, deps: {st
     if(req.body.latitude!==undefined||req.body.longitude!==undefined)throw fail(400,'This attendance method does not accept coordinates.');
     await lockAttendancePolicy(c,u.tenantId);
     const config=await attendancePolicy(c,u.tenantId);
+    if(config.attendanceLocationMode==='required') throw fail(403,'Company policy requires a verified worksite location.');
     const row=(await c.query(`INSERT INTO time_logs(tenant_id,employee_id,clock_in_time,is_valid_geofence,attendance_location_mode,location_status,attendance_method,clock_in_note) VALUES($1,$2,clock_timestamp(),false,$3,'unavailable','no_location',$4) RETURNING *`,[u.tenantId,u.employeeId,config.attendanceLocationMode,attendanceNote(req.body.note)])).rows[0];
     await bindAttendanceSchedule(c,u.tenantId,u.employeeId,row);
     await attendanceAudit(c,u.tenantId,u.employeeId,'attendance.clock_in.no_location',row.id,{method:'no_location',locationVerified:false,noteProvided:Boolean(row.clock_in_note)});

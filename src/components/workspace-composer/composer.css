@@ -132,3 +132,84 @@
 @media(prefers-reduced-motion:reduce){.composer-widget,.composer-gallery-card,.composer-dialog{animation:none;transition:none}}
 .composer-mobile-instruction{display:none}
 @media(max-width:899px){.composer-mobile-instruction{display:inline}.composer-desktop-instruction{display:none}}
+.composer-panel {isolation:isolate;border:1px solid var(--stanza-border-default);border-radius:18px;padding:clamp(8px,1.4vw,20px);background:radial-gradient(ellipse at 15% 0%,color-mix(in srgb,var(--stanza-accent) 10%,transparent),transparent 60%),var(--stanza-surface-panel)}
+.composer .composer-toolbar {width:fit-content;max-width:100%;border-radius:16px;padding:.45rem;border:1px solid var(--stanza-border-default);background:var(--stanza-surface-elevated)}
+.composer .composer-widget {border-radius:15px;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--stanza-text-primary) 8%,transparent),0 3px 12px #0001}
+.composer-widget:focus-within {outline:1px solid var(--stanza-accent);outline-offset:1px}
+.composer .desk-shortcut {display:grid;justify-items:center;gap:.5rem;width:100%;border:0;background:transparent;text-align:center;font-weight:650}
+.desk-shortcut span {display:grid;place-items:center;width:3rem;height:3rem;border-radius:14px;color:var(--stanza-accent);background:var(--stanza-accent-soft);border:1px solid var(--stanza-border-accent)}
+.desk-note {width:100%;min-height:7rem;height:100%;resize:none;padding:.75rem;color:var(--stanza-text-primary);line-height:1.65;background:transparent}
+.desk-sketch svg {display:block;width:100%;max-height:15rem;background:#f5f4ef;border-radius:8px}
+.desk-chart-tools {display:flex;flex-wrap:wrap;gap:.4rem}.desk-chart-tools select {max-width:100%;background:var(--stanza-surface-panel);color:var(--stanza-text-primary);border:1px solid var(--stanza-border-default);border-radius:6px;padding:.35rem}
+.desk-chart ul {list-style:none;padding:0}.desk-chart li {display:grid;grid-template-columns:1fr auto;padding:.25rem 0}.desk-chart li i {grid-column:1/-1;height:6px;border-radius:6px}.desk-ring {width:5rem;aspect-ratio:1;border-radius:50%;mask-image:radial-gradient(circle,transparent 43%,black 45%)}
+
+.composer .desk-window-picker {gap:.35rem;padding-inline:.4rem}
+.desk-window-picker > svg {width:1rem;height:1rem;color:var(--stanza-accent)}
+@media(min-width:900px) {
+ .composer:not([data-editing]) .composer-widget[data-widget-kind=shortcut]:not([data-collapsed]):not([data-maximized]) {align-self:start;justify-self:center;width:100%;max-width:10rem;background:transparent;border:0;box-shadow:none}
+ .composer:not([data-editing]) .composer-widget[data-widget-kind=shortcut]:not([data-collapsed]):not([data-maximized]) :is(header,footer) {display:none}
+ .composer .desk-shortcut span {width:3.5rem;height:3.5rem;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--stanza-accent) 25%,transparent)}
+}
+
+/* A shared desktop plane gives individual windows and tools a clear silhouette. */
+.composer .composer-panel {
+  padding:clamp(12px,2vw,30px);
+  background:
+    radial-gradient(ellipse at 85% 18%,color-mix(in srgb,var(--stanza-accent) 28%,transparent),transparent 55%),
+    radial-gradient(circle,color-mix(in srgb,var(--stanza-text-primary) 13%,transparent) 1px,transparent 1.2px) 0 0/18px 18px,
+    var(--stanza-page-bg);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--stanza-text-primary) 8%,transparent);
+}
+.desktop-shelf {
+  display:flex;flex-wrap:wrap;gap:4px;width:fit-content;max-width:100%;margin:0 auto 22px;
+  padding:6px;border:1px solid var(--stanza-border-default);border-radius:22px;
+  background:var(--stanza-surface-panel);box-shadow:0 8px 22px #0003;
+}
+.desktop-shelf button {
+  display:grid;justify-items:center;align-content:center;gap:5px;flex:1 1 65px;
+  font-size:.76rem;line-height:1.15;padding:6px 10px;color:var(--stanza-text-primary);border-radius:16px;
+}
+.desktop-shelf button:hover,.desktop-shelf button:focus-visible {background:color-mix(in srgb,var(--stanza-accent) 16%,transparent)}
+.desktop-shelf button span {
+  display:grid;place-items:center;width:34px;height:34px;border-radius:11px;
+  color:var(--shelf-tone,var(--stanza-accent));background:color-mix(in srgb,currentColor 16%,var(--stanza-surface-panel));
+  box-shadow:inset 0 1px 0 #ffffff35;
+}
+.desktop-shelf button:nth-child(2){--shelf-tone:#629cde}
+.desktop-shelf button:nth-child(3){--shelf-tone:#c99443}
+.desktop-shelf button:nth-child(4){--shelf-tone:#ac83cf}
+.composer-grid>.composer-widget {border-radius:16px;box-shadow:0 9px 22px -9px #0006;border-top-width:1px}
+.composer-widget>header {box-shadow:inset 0 1px 0 #ffffff18}
+.composer-grid>.composer-widget[data-collapsed] {align-self:start;min-height:0;border-radius:12px}
+.composer[data-editing] .composer-panel {outline:1px dashed var(--stanza-accent);outline-offset:-5px}
+@media(max-width:550px){.desktop-shelf{width:100%;gap:0}.desktop-shelf button{padding-inline:3px}}
+.composer:not([data-editing]) .composer-widget[data-widget-kind=shortcut]:not([data-collapsed]):not([data-maximized]) {
+  align-self:start;border-color:transparent!important;background:transparent!important;box-shadow:none!important;
+}
+.composer:not([data-editing]) [data-widget-kind=shortcut]:not([data-collapsed]) header {background:transparent;box-shadow:none;border-color:transparent}
+.composer:not([data-editing]) [data-widget-kind=shortcut]:not([data-collapsed]) .composer-card-title {
+  position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);
+}
+.composer:not([data-editing]) [data-widget-kind=shortcut] .desk-shortcut span {
+  width:3.75rem;height:3.75rem;border-radius:18px;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--stanza-accent) 32%,var(--stanza-surface-panel)),var(--stanza-surface-panel));
+  box-shadow:inset 0 1px 0 #fff4,0 5px 14px #0003;
+}
+
+@media(min-width:1100px) {
+  .composer .composer-panel {display:grid;grid-template-columns:5.5rem minmax(0,1fr);align-items:start;gap:clamp(12px,2vw,32px)}
+  .desktop-shelf {position:sticky;top:1rem;display:grid;grid-template-columns:1fr;justify-self:stretch;width:auto;margin:0;border-radius:20px}
+  .desktop-shelf button {padding:9px 3px}
+}
+.composer-grid>.composer-widget[data-widget-kind=note] {
+  --paper:color-mix(in srgb,#ce9b43 17%,var(--stanza-surface-panel));
+  background:var(--paper)!important;box-shadow:inset 3px 0 0 #ce9b4399,0 9px 22px -9px #0005;
+}
+.composer-widget[data-widget-kind=note] .desk-note {
+  border:0;border-radius:0;line-height:1.8rem;
+  background:repeating-linear-gradient(transparent 0 calc(1.8rem - 1px),color-mix(in srgb,var(--stanza-text-primary) 10%,transparent) 0 1.8rem) local;
+}
+.composer-grid>.composer-widget[data-widget-kind=sketch] {border-color:color-mix(in srgb,#ad83bc 45%,var(--stanza-border-default))}
+.composer .desk-sketch svg {box-shadow:inset 0 0 0 1px #3332,0 3px 8px #0002}
+.composer-widget[data-widget-kind=chart]>header {background:linear-gradient(90deg,color-mix(in srgb,#608cce 22%,var(--stanza-surface-panel)),transparent)}
+.composer-gallery-card:focus-within {outline:2px solid var(--stanza-focus-ring);outline-offset:2px}

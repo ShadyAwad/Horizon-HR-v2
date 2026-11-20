@@ -13,8 +13,10 @@ function ScopedProvider({storage,user,children}:{storage:string;user:AuthUser;ch
  // Ephemeral editing intent survives module unmounts, but never crosses account/logout.
  const [editingId,setEditingId]=useState<string|null>(null);
  const dispatch=useCallback((action:ComposerAction)=>{
-  const next=reduceComposer(current.current,action);current.current=next;setState(next);
-  try{localStorage.setItem(storage,JSON.stringify(next));setSaveError(false);}catch{setSaveError(true);}
+  const next=reduceComposer(current.current,action);const serialized=JSON.stringify(next);
+  if(serialized.length>200_000){setSaveError(true);return;}
+  current.current=next;setState(next);
+  try{localStorage.setItem(storage,serialized);setSaveError(false);}catch{setSaveError(true);}
  },[storage]);
  useEffect(()=>{const sync=(event:StorageEvent)=>{if(event.storageArea===localStorage&&(event.key===storage||event.key===null)){const next=readPreferences(event.newValue);current.current=next;setState(next);}};window.addEventListener('storage',sync);return()=>window.removeEventListener('storage',sync);},[storage]);
  const value=useMemo(()=>({state,dispatch,saveError,editingId,setEditingId}),[state,dispatch,saveError,editingId]);

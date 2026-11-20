@@ -10,9 +10,11 @@ import { ComposerDialog } from "../workspace-composer/ComposerDialog";
 export default function SketchEditor({
   value,
   onSave,
+  saveError,
   onClose,
 }: {
   value: SketchData;
+  saveError?: string;
   onSave: (d: SketchData) => void;
   onClose: () => void;
 }) {
@@ -202,6 +204,7 @@ export default function SketchEditor({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        {saveError&&<p role="alert">{saveError}</p>}
         <button
           className="stanza-document-control"
           type="button"

@@ -11,10 +11,40 @@ try {
  const open=()=>f.navigate(p,'Workspace Composer');
  const customize=async()=>{await c.waitFor();if(await c.getAttribute('data-editing')!=='true')await c.getByRole('button',{name:'Customize',exact:true}).click();};
  const card=()=>c.getByRole('article',{name:'Attendance Status',exact:true});
+ // Sample the painted overlay on the actual fingerprint geometry.
+ const shortcut=p.locator('.stanza-mode-shortcut');await shortcut.waitFor();await shortcut.click();
+ const offsets=await p.locator('#stanza-control-center-trigger').evaluate(async(anchor:HTMLElement)=>{
+   const mark=anchor.querySelector<SVGPathElement>('[data-light-segment]');if(!mark)return [];
+   const first=getComputedStyle(mark).strokeDashoffset;await new Promise(r=>setTimeout(r,100));return [first,getComputedStyle(mark).strokeDashoffset];
+ });
+ assert.equal(offsets.length,2);assert.notEqual(offsets[0],offsets[1]);
+ for(const time of [110,420,780]){
+   await p.locator('[data-light-segment]').evaluateAll((paths:SVGPathElement[],ms:number)=>paths.forEach(path=>path.getAnimations().forEach(anim=>{anim.pause();anim.currentTime=ms;})),time);
+   await p.locator('#stanza-control-center-trigger').screenshot({path:path.join(os.tmpdir(),'stanza-groove-'+time+'.png')});
+ }
+ await p.locator('[data-light-segment]').evaluateAll((paths:SVGPathElement[])=>paths.forEach(path=>path.getAnimations().forEach(anim=>anim.play())));
+ await p.waitForTimeout(1100);assert.equal(await p.locator('[data-light-segment]').count(),0);
+ for(const [index,backgroundStyle] of ['topographic','dynamic','dots','grid','ambient','plain'].entries()){
+   await p.evaluate(({backgroundStyle,index})=>{
+     const key='stanza.preferences.v1',prefs=JSON.parse(localStorage.getItem(key)!);
+     Object.assign(prefs,{backgroundStyle,backgroundPreset:['emerald','amethyst','warm_sand','graphite','ember','custom'][index]});
+     const value=JSON.stringify(prefs);localStorage.setItem(key,value);dispatchEvent(new StorageEvent('storage',{key,newValue:value}));
+     const theme=index%2?'dark':'light';localStorage.setItem('horizon-theme',theme);dispatchEvent(new StorageEvent('storage',{key:'horizon-theme',newValue:theme}));
+   },{backgroundStyle,index});
+   const rail=p.locator('.stanza-desktop-rail');
+   await rail.waitFor();assert.match(await rail.evaluate((el:HTMLElement)=>getComputedStyle(el).backdropFilter),/blur/);
+   for(const theme of ['light','dark']){
+     await p.evaluate(theme=>{localStorage.setItem('horizon-theme',theme);dispatchEvent(new StorageEvent('storage',{key:'horizon-theme',newValue:theme}));},theme);
+     const material=await rail.evaluate(el=>({fill:getComputedStyle(el).backgroundColor,blur:getComputedStyle(el).backdropFilter,reflection:getComputedStyle(el).backgroundImage}));
+     assert.match(material.blur,/13px/);console.log('Rail',backgroundStyle,theme,material);
+     await rail.screenshot({path:path.join(os.tmpdir(),'stanza-glass-'+backgroundStyle+'-'+theme+'.png')});
+   }
+ }
+ await shortcut.click();await p.waitForTimeout(1100);
  await open();await c.locator('.composer-empty').waitFor();
  let widgetRequests=0;const count=(r:any)=>{if(['/api/clock-status','/api/communications/meetings','/api/hiring/applicants'].includes(new URL(r.url()).pathname))widgetRequests++;};p.on('request',count);
  await c.locator('.composer-empty button').focus();await p.keyboard.press('Enter');const before=widgetRequests;await p.waitForTimeout(500);assert.equal(widgetRequests,before,'Gallery previews do not fetch live widget data');
- assert(await p.locator('.composer-gallery-card').count()>10);assert.equal(await p.locator('.composer-gallery-card svg').count(),42);
+ assert(await p.locator('.composer-gallery-card').count()>10);assert.equal(await p.locator('.composer-gallery-card svg').count(),2*await p.locator('.composer-gallery-card').count());
  shots.push(path.join(os.tmpdir(),'stanza-composer-v2-gallery.png'));await p.screenshot({path:shots.at(-1)});
  await p.getByRole('button',{name:'Add Attendance Status',exact:true}).focus();await p.keyboard.press('Enter');await p.waitForFunction(()=>document.activeElement?.matches('.composer-drag'));
  await c.getByRole('button',{name:'Add widgets',exact:true}).click();await p.getByRole('button',{name:'Add Upcoming Meetings',exact:true}).click();
@@ -70,9 +100,53 @@ try {
  await p.emulateMedia({reducedMotion:'reduce'});assert.equal(await c.locator('.composer-widget').first().evaluate((e:HTMLElement)=>getComputedStyle(e).animationName),'none');
  // Persist a protected shell, revoke permission, reload, and verify both server denial and no widget mount/fetch.
  await p.evaluate(()=>localStorage.setItem('__composer_test_language','en'));await p.reload();await open();await customize();await p.setViewportSize({width:1440,height:1000});
+ // Exercise the personal desktop using the same authorized gallery and saved layout.
+ await c.getByRole('button',{name:'New workspace',exact:true}).click();
+ const addDesk=async(label:string,module?:string)=>{
+   await c.getByRole('button',{name:'Add widgets',exact:true}).first().click();
+   if(module)await p.getByRole('dialog').getByLabel('Module',{exact:true}).selectOption(module);
+   await p.getByRole('button',{name:'Add '+label,exact:true}).click();
+ };
+ await f.db.query("INSERT INTO support_tickets(tenant_id,requester_id,issue_type,summary,description,urgency) VALUES($1,$2,'it_help','Fixture display','Display setup','high')",[f.primary,actor.id]);
+ await addDesk('Module shortcut','hiring');await addDesk('Module shortcut','geofence');await addDesk('Attendance Status');
+ await addDesk('Snapshot chart');await addDesk('Desk note');await addDesk('Sketchpad');
+ await c.getByRole('button',{name:'Done',exact:true}).click();
+ await c.getByLabel('Personal note').fill('Prepare the interview room');await c.getByLabel('Personal note').blur();
+ await c.getByLabel('Data source').selectOption('equipment');await c.getByLabel('Metric',{exact:true}).selectOption('condition');await c.getByLabel('Data source').selectOption('support');await c.getByLabel('Metric',{exact:true}).selectOption('priority');await c.getByLabel('Chart style').selectOption('donut');
+ await c.getByLabel('Opened within').selectOption('7');await c.locator('.desk-chart li').filter({hasText:'high'}).waitFor();
+ await c.getByRole('button',{name:'Edit sketch'}).click();
+ const pad=p.getByLabel('Drawing canvas; use pointer to draw');await pad.scrollIntoViewIfNeeded();const box=await pad.boundingBox();assert(box&&box.height>0);
+ await p.mouse.move(box.x+box.width*.2,box.y+box.height*.3);await p.mouse.down();await p.mouse.move(box.x+box.width*.65,box.y+box.height*.6,{steps:8});await p.mouse.up();
+ await p.getByLabel('Sketch description').fill('Desk layout');await p.getByRole('button',{name:'Save sketch',exact:true}).click();
+ await c.locator('.desk-shortcut').filter({hasText:'Hiring'}).click();await c.waitFor({state:'hidden'});await open();
+ await p.reload();await open();assert.equal(await c.getByLabel('Personal note').inputValue(),'Prepare the interview room');assert.equal(await c.getByLabel('Chart style').inputValue(),'donut');assert(await c.locator('.desk-sketch polyline').count());
+ await p.setViewportSize({width:1440,height:1550});await c.locator('.composer-panel').screenshot({path:path.join(os.tmpdir(),'stanza-business-personal-desktop.png')});if(process.env.COMPOSER_INSPECT_LOCALHOST==='true'){
+   const live=await actor.context.newPage();
+   try{
+     // Read the development frontend with all API traffic isolated to the disposable tenant.
+     await live.route('**/api/**',async(route:any)=>{
+       const req=route.request(),url=new URL(req.url());
+       if(req.method()!=='GET')return route.abort();
+       await route.fulfill({response:await actor.context.request.get(f.base+url.pathname+url.search)});
+     });
+     await live.goto('http://localhost:3100');
+     await live.evaluate(({key,state})=>localStorage.setItem(key,JSON.stringify(state)),{key,state:await saved()});
+     await live.reload();await f.navigate(live,'Workspace Composer');
+     const shell=live.locator('.composer'),shelf=shell.locator('.desktop-shelf');await shelf.waitFor();
+     await shell.getByRole('button',{name:'Customize',exact:true}).click();await live.locator('.composer[data-editing=true]').waitFor();
+     await shell.getByRole('button',{name:'Done',exact:true}).click();
+     console.log('Live 3100',await shelf.evaluate(el=>({display:getComputedStyle(el).display,controlled:!!navigator.serviceWorker.controller,windows:document.querySelectorAll('.composer-widget').length})));
+   }finally{await live.close();}
+ }
+ await c.getByRole('button',{name:'Desk note',exact:true}).click();
+ assert.equal(await p.getByLabel('Search widgets').inputValue(),'Desk note');await p.keyboard.press('Escape');
+ const minimize=c.getByRole('button',{name:/^Minimize .*note/i}).first();await minimize.click();
+ await c.locator('.composer-panel').screenshot({path:path.join(os.tmpdir(),'stanza-desktop-minimized.png')});
+ await c.getByRole('button',{name:/^Restore .*note/i}).first().click();
+ await p.setViewportSize({width:1440,height:1000});await customize();
  await c.getByRole('button',{name:'Add widgets',exact:true}).click();await p.getByRole('button',{name:'Add Hiring Pipeline Summary',exact:true}).click();
  await f.db.query('DELETE FROM tenant_role_permissions WHERE tenant_id=$1 AND role_id=$2 AND permission_key=$3',[f.primary,actor.roleId,'hiring.view']);
- await p.reload();await open();await c.getByText('This widget is unavailable with your current permissions.',{exact:true}).waitFor();assert.equal((await f.api(actor,'/api/hiring/applicants')).status,403);
+ await p.reload();await open();await c.locator('[data-widget-kind=hiring]').getByText('This widget is unavailable with your current permissions.',{exact:true}).waitFor();assert.equal(await c.locator('.desk-shortcut').filter({hasText:'Hiring'}).count(),0);assert.equal((await f.api(actor,'/api/hiring/applicants')).status,403);
  const pwa=await f.browser.newContext({serviceWorkers:'allow'});await pwa.addCookies(await actor.context.cookies());const pp=await pwa.newPage();await pp.goto(f.base);await pp.waitForFunction(()=>Boolean(navigator.serviceWorker.controller),undefined,{timeout:15000});await pp.waitForTimeout(1000);await pp.reload();assert(await pp.evaluate(()=>Boolean(navigator.serviceWorker.controller)));const cached=await pp.evaluate(async()=>{const urls:string[]=[];for(const k of await caches.keys())for(const r of await (await caches.open(k)).keys())urls.push(r.url);return urls;});assert(!cached.some((u:string)=>new URL(u).pathname.startsWith('/api/')));await pwa.close();
  const foreign=await f.page(f.foreign);assert.equal(await foreign.evaluate((key:string)=>localStorage.getItem(key),key),null);
  const client=await actor.context.newCDPSession(p);await client.send('Performance.enable');const m1=(await client.send('Performance.getMetrics')).metrics;await p.waitForTimeout(1000);const m2=(await client.send('Performance.getMetrics')).metrics;

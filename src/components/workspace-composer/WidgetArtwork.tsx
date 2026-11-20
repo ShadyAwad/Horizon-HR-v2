@@ -1,6 +1,7 @@
 import type {WidgetId} from './widget-catalog';
 // Owned Workspace-only glyphs. No live content, filters or external artwork.
 const paths:Record<WidgetId,string>={
+ note:'M4 3h16v14l-4 4H4z M7 8h10 M7 12h7',sketch:'M4 20l5-1L21 7l-4-4L5 15z',shortcut:'M5 19l14-14 M9 5h10v10',chart:'M3 3v18h18 M7 17v-4 M12 17V7 M17 17v-8',
  attendance:'M12 4a8 8 0 1 0 8 8 M12 8v5l3 2 M17 4l2 2 3-3',
  equipment:'M4 4h16v11H4z M8 19h8 M12 15v4 M8 8h8',
  inventory:'M3 8l9-5 9 5v11l-9 3-9-3z M3 8l9 4 9-4 M12 12v10 M8 5l9 5v4',

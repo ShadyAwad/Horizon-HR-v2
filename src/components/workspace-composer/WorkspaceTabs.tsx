@@ -18,7 +18,7 @@ export function WorkspaceTabs({workspaces,activeId,panelId,onSelect,onCreate,onR
  };
  const action=(fn:()=>void)=>{if(menu.current)menu.current.open=false;trigger.current?.focus();fn();};
  return <div className="composer-workspace-navigation">
-  <div role="tablist" aria-label={text('Saved workspaces','مساحات العمل المحفوظة')} className="composer-tabs" onKeyDown={keyboard}>
+  <div role="tablist" aria-label={text('Saved workspaces','مساحات العمل المحفوظة')} className="composer-tabs stanza-scrollbar" onKeyDown={keyboard}>
    {workspaces.map(w=><button ref={node=>{if(node)tabs.current.set(w.id,node);else tabs.current.delete(w.id);}} type="button" role="tab" id={`${panelId}-tab-${encodeURIComponent(w.id)}`} aria-controls={panelId} aria-selected={activeId===w.id} tabIndex={activeId===w.id?0:-1} key={w.id} title={w.name} onClick={()=>onSelect(w.id)}><span>{w.name}</span></button>)}
   </div>
   <div className="composer-workspace-actions">

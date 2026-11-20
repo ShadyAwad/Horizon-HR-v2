@@ -1,9 +1,10 @@
+import {illuminateFingerprint} from './rail-motion';
 import {ControlTooltip} from '../ui/ControlTooltip';
 import {BrandWordmark} from '../BrandWordmark';
 import { LogoutControl } from '../ui/LogoutControl';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Menu, Plus, Search, Settings, X } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { recordDevRender } from '../../lib/render-diagnostics';
 import { recordDevInteraction } from '../../lib/dev-performance';
@@ -27,6 +28,8 @@ type Props = {
   onModuleNavigate?: (navigationId: string) => void;
   isMobileLayout?: boolean;
   desktopMode?: 'launcher' | 'rail';
+  motionTarget?: 'launcher' | 'rail' | null;
+  onDesktopModeChange?: (mode: 'launcher' | 'rail') => void;
   railOrder?: string[];
   onRailOrderChange?: (order: string[]) => void;
   mobileShortcuts: string[];
@@ -51,7 +54,7 @@ function itemButton(item: DashboardNavigationItem, className: string, onSelect: 
   return <button key={item.id} type="button" onClick={onSelect} aria-current={item.active ? 'page' : undefined} data-selected={item.active} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('stanza-interactive-control stanza-navigation-item', className, item.active ? 'font-extrabold tracking-normal' : 'text-slate-700 dark:text-emerald-100/75')}><span className="relative shrink-0">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span><span className="min-w-0 flex-1 truncate">{item.label}</span></button>;
 }
 
-export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, quickActions = [], onExecuteQuickAction, onOpenControlCenter, onLogout, userName, userEmail, lanyardSlot, showUsageSections = true, showMobileNavigation = true }: Props) {
+export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate, isMobileLayout = false, desktopMode = 'launcher', motionTarget, onDesktopModeChange, railOrder = [], onRailOrderChange, mobileShortcuts, onShortcutsChange, onOpenMobileShortcutEditor, mobileShortcutEditorTriggerRef, onOpenCommandPalette, quickActions = [], onExecuteQuickAction, onOpenControlCenter, onLogout, userName, userEmail, lanyardSlot, showUsageSections = true, showMobileNavigation = true }: Props) {
   const { isRtl, lang, t } = useLanguage();
   const text = (english: string, arabic: string) => lang === 'ar' ? arabic : english;
   const [open, setOpenState] = useState(false);
@@ -159,11 +162,18 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
     attribute: 'data-mobile-shortcut-id',
     onSwap: swapShortcuts,
   });
+  const mobileGlow = useRef<Animation[]>([]);
+  useEffect(() => () => mobileGlow.current.forEach(animation => animation.cancel()), []);
   const launcherAnchor = (
     <div data-stanza-lanyard-anchor className="relative shrink-0">
-      <button ref={launcherRef} data-tutorial-target="stanza-launcher" data-selected={open} id="stanza-control-center-trigger" type="button" aria-label={text('Open Stanza navigation', 'فتح تنقل Stanza')} title={text('Open Stanza navigation', 'فتح تنقل Stanza')} aria-expanded={open} aria-controls="stanza-navigation-panel" onClick={() => { setOpen((value) => !value); reportTutorialAction('click', 'stanza-launcher'); }} className="stanza-interactive-control stanza-identity-launcher"><StanzaFingerprintMark size={24} /></button>
+      <button ref={launcherRef} data-tutorial-target="stanza-launcher" data-selected={open} id="stanza-control-center-trigger" type="button" aria-label={text('Open Stanza navigation', 'فتح تنقل Stanza')} title={text('Open Stanza navigation', 'فتح تنقل Stanza')} aria-expanded={open} aria-controls="stanza-navigation-panel" onClick={() => { if (isMobileLayout) { mobileGlow.current.forEach(animation => animation.cancel()); mobileGlow.current = illuminateFingerprint(launcherRef.current, 430); } setOpen((value) => !value); reportTutorialAction('click', 'stanza-launcher'); }} className="stanza-interactive-control stanza-identity-launcher"><StanzaFingerprintMark size={24} /></button>
     </div>
   );
+  const shortcutMode = motionTarget ?? desktopMode;
+  const modeLabel = shortcutMode === 'launcher'
+    ? text('Use compact navigation', 'استخدم التنقل المصغر')
+    : text('Use launcher navigation', 'استخدم مشغل التنقل');
+  const ModeIcon = shortcutMode === 'launcher' ? PanelLeftOpen : PanelLeftClose;
   const launcherAssembly = !isMobileLayout ? (
     <div
       data-stanza-launcher-assembly data-navigation-mode={desktopMode}
@@ -172,22 +182,63 @@ export function DashboardNavigation({ items, moduleUsage = {}, onModuleNavigate,
       {lanyardSlot}
       <div className="stanza-launcher-dock pointer-events-auto absolute start-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] z-20">
         {launcherAnchor}
+        {onDesktopModeChange && <button type="button" className="stanza-mode-shortcut" aria-label={modeLabel} title={modeLabel}
+          onClick={() => { if (open) setOpen(false); onDesktopModeChange(shortcutMode === 'launcher' ? 'rail' : 'launcher'); }}>
+          <ModeIcon size={14} aria-hidden="true" />
+        </button>}
       </div>
     </div>
   ) : null;
+  const shell = useRef<HTMLElement>(null);
+  const [mobilePresent, setMobilePresent] = useState(showMobileNavigation);
+  useLayoutEffect(() => {
+    if (showMobileNavigation || !isMobileLayout) {
+      setMobilePresent(showMobileNavigation);
+      return;
+    }
+    const tray = shell.current;
+    if (!tray) return;
+    const collapsed = isRtl ? 'inset(0 0 0 calc(100% - 44px) round 16px)' : 'inset(0 calc(100% - 44px) 0 0 round 16px)';
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const exit = tray.animate(reduceMotion ? [{opacity:1}, {opacity:0}] : [{clipPath:'inset(0 round 16px)'}, {clipPath:collapsed}],
+      {duration:reduceMotion ? 70 : 240, easing:'ease-in', fill:'both'});
+    exit.onfinish = () => setMobilePresent(false);
+    return () => { exit.onfinish = null; exit.cancel(); };
+  }, [showMobileNavigation, isMobileLayout, isRtl]);
+  useLayoutEffect(() => {
+    const track = shell.current?.querySelector<HTMLElement>(isMobileLayout ? '.stanza-mobile-shortcuts' : '.stanza-rail-scroll');
+    if (!track) return;
+    const update = () => {
+      if (isMobileLayout && launcherRef.current && shell.current) {
+        const tray = shell.current.getBoundingClientRect();
+        const anchor = launcherRef.current.getBoundingClientRect();
+        const kept = (isRtl ? tray.right - anchor.left : anchor.right - tray.left) + 2;
+        shell.current.style.setProperty('--tray-anchor-width', kept + 'px');
+      }
+      const active = track.querySelector<HTMLElement>('[aria-current="page"]');
+      track.toggleAttribute('data-route-visible', Boolean(active));
+      if (!active) return;
+      const x = isMobileLayout ? active.offsetLeft + active.offsetWidth / 2 - 9 : isRtl ? track.clientWidth - 3 : 0;
+      track.style.setProperty('--route-x', x + 'px');
+      track.style.setProperty('--route-y', (active.offsetTop + (isMobileLayout ? active.offsetHeight - 3 : active.offsetHeight / 2 - 9)) + 'px');
+    };
+    update();
+    const resize = new ResizeObserver(update);
+    resize.observe(track);
+    return () => resize.disconnect();
+  }, [items, shortcutItems, orderedRailItems, isRtl, isMobileLayout, desktopMode, mobilePresent]);
   return <>
-    {(desktopMode === 'rail' || (isMobileLayout && showMobileNavigation)) && <aside className={cn(
-      'stanza-navigation-shell fixed bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-40 flex w-fit max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-2xl border border-emerald-500/15 bg-white/95 p-2 shadow-xl backdrop-blur-[6px] dark:bg-[#061411]/95',
-      desktopMode === 'rail'
+    {(isMobileLayout ? (showMobileNavigation || mobilePresent) : desktopMode === 'rail') && <aside ref={shell} data-tray-contracted={isMobileLayout && open} inert={isMobileLayout && !showMobileNavigation} className={cn(
+      'stanza-navigation-shell fixed bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-40 flex w-fit max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-2xl border border-emerald-500/15 p-2 shadow-xl backdrop-blur-[6px]',
+      !isMobileLayout && desktopMode === 'rail'
         ? 'stanza-desktop-rail inset-x-3 md:static md:inset-auto md:z-20 md:mx-1 md:my-3 md:w-[3.75rem] md:flex-col md:self-start md:px-[calc(.5rem-1px)]'
-        : 'left-1/2 -translate-x-1/2 md:hidden',
-      isRtl && desktopMode === 'rail' ? 'md:order-last' : '',
+        : 'left-1/2 -translate-x-1/2 md:hidden bg-white/95 dark:bg-[#061411]/95',
     )}>
       {isMobileLayout ? launcherAnchor : <div aria-hidden="true" className="hidden h-11 w-11 shrink-0 md:block" />}
       {desktopMode === 'rail' && <nav ref={railScrollRef} aria-label={text('Quick navigation', 'التنقل السريع')} className="stanza-rail-scroll hidden w-full min-h-0 flex-1 flex-col items-center gap-1 md:flex">{orderedRailItems.map((item) => <button key={item.id} type="button" draggable={Boolean(onRailOrderChange)} onDragStart={(event) => { setDraggedRailId(item.id); event.dataTransfer.effectAllowed = 'move'; }} onDragOver={(event) => { if (draggedRailId) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (draggedRailId) reorderRail(draggedRailId, item.id); suppressRailClickRef.current = true; setDraggedRailId(null); }} onDragEnd={() => { if (draggedRailId) suppressRailClickRef.current = true; setDraggedRailId(null); }} onClick={() => { if (suppressRailClickRef.current) { suppressRailClickRef.current = false; return; } choose(item); }} aria-current={item.active ? 'page' : undefined} data-selected={item.active} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('stanza-interactive-control stanza-navigation-item flex h-10 w-10 items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', draggedRailId === item.id && 'scale-95 opacity-45', !item.active && 'border-transparent text-slate-500 dark:text-emerald-100/65')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</nav>}
       {desktopMode === 'rail' && <ControlTooltip className="stanza-tooltip-desktop" label={text('Settings','الإعدادات')}><button type="button" onClick={onOpenControlCenter} aria-label={text('Settings', 'الإعدادات')} className="stanza-interactive-control stanza-icon-action hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-emerald-100/65 md:flex"><Settings className="h-5 w-5" /></button></ControlTooltip>}
-      <div className="stanza-mobile-shortcuts flex max-w-[calc(100vw-7.5rem)] items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => <button key={item.id} data-mobile-shortcut-id={item.id} type="button" {...shortcutDrag.bind(item.id)} onClick={() => { if (shortcutDrag.consumeSuppressedClick()) return; choose(item); }} aria-current={item.active ? 'page' : undefined} data-selected={item.active} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('stanza-interactive-control stanza-navigation-item flex h-10 w-10 shrink-0 touch-pan-x items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', shortcutDrag.draggedId === item.id && 'scale-95 opacity-50 ring-2 ring-emerald-400', shortcutDrag.targetId === item.id && shortcutDrag.draggedId !== item.id && 'bg-emerald-500/15 ring-2 ring-emerald-400/70', !item.active && 'border-transparent text-slate-500 dark:text-emerald-100/65')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</div>
-      <button ref={mobileShortcutEditorTriggerRef} type="button" onClick={onOpenMobileShortcutEditor} aria-label={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} title={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><Plus className="h-5 w-5" /></button>
+      <div className="stanza-mobile-shortcuts flex max-w-[calc(100vw-7.5rem)] items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden">{shortcutItems.map((item) => <button key={item.id} tabIndex={isMobileLayout && open ? -1 : undefined} data-mobile-shortcut-id={item.id} type="button" {...shortcutDrag.bind(item.id)} onClick={() => { if (shortcutDrag.consumeSuppressedClick()) return; choose(item); }} aria-current={item.active ? 'page' : undefined} data-selected={item.active} aria-label={item.badge ? `${item.label}: ${item.badge} action items` : item.label} title={item.label} className={cn('stanza-interactive-control stanza-navigation-item flex h-10 w-10 shrink-0 touch-pan-x items-center justify-center rounded-lg border transition duration-150 motion-reduce:transition-none', shortcutDrag.draggedId === item.id && 'scale-95 opacity-50 ring-2 ring-emerald-400', shortcutDrag.targetId === item.id && shortcutDrag.draggedId !== item.id && 'bg-emerald-500/15 ring-2 ring-emerald-400/70', !item.active && 'border-transparent text-slate-500 dark:text-emerald-100/65')}><span className="relative pointer-events-none">{item.icon}{item.badge ? <AttentionBadge count={item.badge} ariaLabel={`${item.label}: ${item.badge} action items`} className="absolute -end-2 -top-2" /> : null}</span></button>)}</div>
+      <button ref={mobileShortcutEditorTriggerRef} tabIndex={isMobileLayout && open ? -1 : undefined} type="button" onClick={onOpenMobileShortcutEditor} aria-label={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} title={text('Customise shortcuts', '\u062a\u062e\u0635\u064a\u0635 \u0627\u0644\u0627\u062e\u062a\u0635\u0627\u0631\u0627\u062a')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-500/10 dark:text-emerald-100/65 md:hidden"><Plus className="h-5 w-5" /></button>
     </aside>}
     {launcherAssembly
       ? createPortal(launcherAssembly, document.body)
